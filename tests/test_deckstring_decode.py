@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.deckstring_decode import decode_deck_code
 
 
@@ -9,6 +11,11 @@ SHADOWPRIEST_CODE = (
 MECHPALA_CODE = (
     "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/"
     "AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA=="
+)
+
+PIRATEDH_CODE = (
+    "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQ"
+    "ax6wYAAA=="
 )
 
 
@@ -63,6 +70,7 @@ def test_decode_mechpala_sideboards_from_hearthsim_triplets():
 
     assert decoded["hero_dbf_id"] == 671
     assert decoded["format"] == "FT_WILD"
+    assert decoded["card_count"] == 30
     assert decoded["card_count_total"] == 30
     assert decoded["sideboard_count"] == 3
     assert decoded["deckstring_decode_receipt"]["sideboard_unique_card_count"] == 3
@@ -70,5 +78,17 @@ def test_decode_mechpala_sideboards_from_hearthsim_triplets():
 
     sideboard = decoded["sideboards"][0]
     assert sideboard["owner_dbf_id"] == 102983
-    assert sideboard["owner_card_id"]
+    assert sideboard["owner_card_id"] == "TOY_330"
     assert {card["dbf_id"] for card in sideboard["cards"]} == {104947, 104950, 110446}
+    assert {card["card_id"] for card in sideboard["cards"]} == {
+        "TOY_330t95",
+        "TOY_330t98",
+        "TOY_330t11",
+    }
+
+
+@pytest.mark.parametrize("deck_code", [MECHPALA_CODE, PIRATEDH_CODE])
+def test_decode_accepts_exact_supplied_codes_without_manual_base64_padding(deck_code):
+    decoded = decode_deck_code(deck_code.rstrip("="))
+
+    assert decoded["card_count"] == 30

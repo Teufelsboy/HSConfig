@@ -98,6 +98,64 @@ def _covered_claims(card_id: str, coverage_status: str) -> dict:
     }
 
 
+def test_sideboard_cards_are_visible_but_do_not_expand_main_deck_readiness_counts():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "MechPala",
+            "deck_slug": "mechpala",
+            "cards": [
+                {"card_id": "TOY_330", "name": "Zilliax Deluxe 3000", "count": 1}
+            ],
+            "sideboards": [
+                {
+                    "owner_card_id": "TOY_330",
+                    "cards": [
+                        {"card_id": "TOY_330t95", "name": "Virus Module", "count": 1},
+                        {"card_id": "TOY_330t98", "name": "Perfect Module", "count": 1},
+                        {"card_id": "TOY_330t11", "name": "Power Module", "count": 1},
+                    ],
+                }
+            ],
+        },
+        claim_coverage={"uncovered_cards": [], "total_cards": 1},
+        gameplan_contract={
+            "cards": {
+                "TOY_330": {
+                    "card_id": "TOY_330",
+                    "name": "Zilliax Deluxe 3000",
+                    "count": 1,
+                    "coverage_status": "guide_backed",
+                    "roles": ["deckbuilding_modifier", "sideboard_owner"],
+                }
+            }
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+    )
+
+    assert report["summary"]["total_cards"] == 1
+    assert report["summary"]["analysis_only_sideboard_cards"] == 3
+    for card_id in {"TOY_330t95", "TOY_330t98", "TOY_330t11"}:
+        assert report["cards"][card_id] == {
+            "card_id": card_id,
+            "name": report["cards"][card_id]["name"],
+            "count": 1,
+            "coverage_status": "",
+            "roles": [],
+            "source_claim_ids": [],
+            "mechanic_support": [],
+            "deck_zone": "sideboard",
+            "sideboard_owner_card_id": "TOY_330",
+            "runtime_eligible": False,
+            "runtime_surfaces": [],
+            "readiness_lane": "report_only_supported",
+            "first_missing_link": "none",
+            "source_depth_lane": "closed",
+        }
+
+
 def test_empty_per_card_file_is_visible_but_not_semantically_closed():
     report = build_config_readiness_report(
         deck_identity=_one_card_identity("CFM_637"),

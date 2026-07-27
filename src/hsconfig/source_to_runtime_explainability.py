@@ -96,7 +96,9 @@ def build_source_to_runtime_explainability_report(
             1 for row in claim_rows if row.get("first_missing_link") is not None
         ),
         "cards_with_first_missing_link": sum(
-            1 for row in card_rows if row.get("first_missing_link") is not None
+            1
+            for row in card_rows
+            if _normalized_missing_link(row.get("first_missing_link")) is not None
         ),
         "apply_blocking": False,
         "next_report_to_open": REPORT_PATH,
@@ -265,6 +267,9 @@ def _card_rows(
                 else []
             ),
         )
+        runtime_eligible = raw_card.get("runtime_eligible", True) is True
+        if not runtime_eligible:
+            first_missing_link = "none"
         why_not_emitted = _card_why_not_emitted(strongest_claim, missing_claim)
         runtime_backed = bool(emitted_files) or any(
             _bool_value(claim.get("runtime_backed")) for claim in related_claims
@@ -317,6 +322,18 @@ def _card_rows(
                 diagnostic_first_missing_link == "default_only_runtime_surface"
             ),
         }
+        if "deck_zone" in raw_card:
+            card_row.update(
+                {
+                    "deck_zone": str(raw_card.get("deck_zone", "main")),
+                    "sideboard_owner_card_id": raw_card.get(
+                        "sideboard_owner_card_id"
+                    ),
+                    "runtime_eligible": runtime_eligible,
+                    "runtime_surfaces": list(raw_card.get("runtime_surfaces", [])),
+                    "readiness_lane": str(raw_card.get("readiness_lane", "")),
+                }
+            )
         closure_input = {
             **card_row,
             "first_missing_link": diagnostic_first_missing_link,

@@ -32,7 +32,9 @@ MECHANIC_ATTRS = (
 
 
 def decode_deck_code(deck_code: str) -> dict[str, Any]:
-    parsed = _parse_deckstring(deck_code)
+    normalized_deck_code = deck_code.strip()
+    normalized_deck_code += "=" * (-len(normalized_deck_code) % 4)
+    parsed = _parse_deckstring(normalized_deck_code)
     cards_db, _ = cardxml.load_dbf()
 
     cards: list[dict[str, Any]] = []
@@ -79,6 +81,7 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
         "sideboards": sideboards,
         "hero_dbf_id": hero_dbf_id,
         "format": format_name,
+        "card_count": card_count_total,
         "card_count_total": card_count_total,
         "sideboard_count": sideboard_count,
         "unresolved_card_count": len(unresolved),

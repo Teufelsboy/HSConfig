@@ -944,6 +944,9 @@ def _card_rows(
             "runtime_surfaces": list(readiness.get("runtime_surfaces", []))
             if isinstance(readiness.get("runtime_surfaces", []), list)
             else [],
+            "deck_zone": str(readiness.get("deck_zone", "main")),
+            "sideboard_owner_card_id": readiness.get("sideboard_owner_card_id"),
+            "runtime_eligible": readiness.get("runtime_eligible", True) is True,
             "readiness_lane": str(readiness.get("readiness_lane", "")),
             "first_missing_link": str(readiness.get("first_missing_link", "")),
             "claim_lanes": dict(sorted(card_claim_lanes.get(card_id, Counter()).items())),

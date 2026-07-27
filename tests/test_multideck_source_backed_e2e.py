@@ -90,6 +90,58 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
     assert code == 0
     summary = read_json(out / "reports" / "operator_summary.json")
     assert summary["technical_status"] == "VALID_PACKAGE"
+    if deck_name == "MechPala":
+        reports = out / "reports"
+        deck_identity = read_json(reports / "deck_identity.json")
+        metadata = read_json(reports / "semantic_enrichment_report.json")
+        readiness = read_json(reports / "per_card_config_readiness_report.json")
+        coverage = read_json(reports / "claim_coverage_report.json")
+        explainability = read_json(reports / "source_to_runtime_explainability.json")
+        roles = read_json(reports / "research" / "card_role_map.json")
+        module_ids = {"TOY_330t95", "TOY_330t98", "TOY_330t11"}
+
+        assert deck_identity["card_count_total"] == 30
+        assert deck_identity["sideboard_count"] == 3
+        assert coverage["total_cards"] == len(deck_identity["cards"])
+        assert readiness["summary"]["total_cards"] == len(deck_identity["cards"])
+        metadata_by_card = {row["card_id"]: row for row in metadata["cards"]}
+        explainability_by_card = {
+            row["card_id"]: row for row in explainability["card_rows"]
+        }
+        assert explainability["summary"]["cards_with_first_missing_link"] == sum(
+            row.get("first_missing_link") not in {None, "", "none", "closed"}
+            for row in explainability["card_rows"]
+        )
+        assert module_ids <= set(metadata_by_card)
+        assert module_ids <= set(readiness["cards"])
+        assert module_ids <= set(explainability_by_card)
+        for card_id in module_ids:
+            assert metadata_by_card[card_id]["deck_zone"] == "sideboard"
+            assert metadata_by_card[card_id]["sideboard_owner_card_id"] == "TOY_330"
+            assert metadata_by_card[card_id]["runtime_eligible"] is False
+            assert readiness["cards"][card_id]["deck_zone"] == "sideboard"
+            assert readiness["cards"][card_id]["runtime_surfaces"] == []
+            assert readiness["cards"][card_id]["readiness_lane"] == "report_only_supported"
+            assert readiness["cards"][card_id]["first_missing_link"] == "none"
+            assert explainability_by_card[card_id]["deck_zone"] == "sideboard"
+            assert explainability_by_card[card_id]["sideboard_owner_card_id"] == "TOY_330"
+            assert explainability_by_card[card_id]["runtime_eligible"] is False
+            assert explainability_by_card[card_id]["runtime_surfaces"] == []
+            assert (
+                explainability_by_card[card_id]["readiness_lane"]
+                == "report_only_supported"
+            )
+            assert explainability_by_card[card_id]["first_missing_link"] == "none"
+
+        assert "sideboard_owner" in roles["TOY_330"]["roles"]
+        assert not module_ids & {
+            path.stem for path in (out / "CustomConfig").rglob("*.json")
+        }
+        mulligan = read_json(next((out / "CustomConfig").rglob("Mulligan.json")))
+        assert all(
+            row.get("mulligan") != "TOY_330"
+            for row in mulligan["Mulligan"]["values"]
+        )
     if deck_name == "ShadowPriest":
         assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0

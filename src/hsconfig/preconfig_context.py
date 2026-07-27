@@ -10,7 +10,10 @@ from hsconfig.card_feed_loading import (
     card_feed_receipt_status,
     load_optional_card_feed,
 )
-from hsconfig.card_metadata import hydrate_card_metadata
+from hsconfig.card_metadata import (
+    analysis_cards_from_deck_identity,
+    hydrate_card_metadata,
+)
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.guide_source_builder import (
@@ -120,8 +123,13 @@ def build_preconfig_context(
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
+    analysis_cards = analysis_cards_from_deck_identity(deck_identity)
+    source_records = {
+        **source_records_from_cards(analysis_cards),
+        **source_records,
+    }
     card_metadata = hydrate_card_metadata(
-        cards=deck_identity["cards"],
+        cards=analysis_cards,
         source_records=source_records,
     )
     hearthstonejson_cards = [*collectible_cards, *full_cards]
@@ -129,6 +137,13 @@ def build_preconfig_context(
         card_metadata,
         hearthstonejson_cards=hearthstonejson_cards,
     )
+    for card in semantic_report["cards"]:
+        card["semantic_families"] = sorted(
+            {
+                *[str(role) for role in card.get("semantic_families", [])],
+                *[str(role) for role in card.get("analysis_roles", [])],
+            }
+        )
     if card_data_fetch_error is not None:
         append_semantic_warning(
             semantic_report,
@@ -138,6 +153,26 @@ def build_preconfig_context(
             },
         )
     enriched_card_metadata = {"cards": semantic_report["cards"]}
+    main_card_ids = {
+        str(card["card_id"])
+        for card in deck_identity["cards"]
+        if card.get("card_id")
+    }
+    guide_card_metadata = {
+        "cards": [
+            {
+                **card,
+                "analysis_roles": [],
+                "semantic_families": [
+                    family
+                    for family in card.get("semantic_families", [])
+                    if family not in set(card.get("analysis_roles", []))
+                ],
+            }
+            for card in semantic_report["cards"]
+            if str(card.get("card_id", "")) in main_card_ids
+        ]
+    }
     source_document_draft_report = None
     if source_evidence_rows:
         source_document_draft_report = draft_source_documents(
@@ -172,7 +207,7 @@ def build_preconfig_context(
     ]
     guide_claim_bundle = build_guide_claim_bundle(
         deck_identity=deck_identity,
-        card_metadata=enriched_card_metadata,
+        card_metadata=guide_card_metadata,
         source_documents=source_documents,
         current_date=operator_date,
     )

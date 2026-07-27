@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Iterable, Mapping
 
+from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.mechanic_support import (
     support_for_roles,
     summarize_mechanic_support,
@@ -148,37 +149,39 @@ def build_config_readiness_report(
     rows: dict[str, dict[str, Any]] = {}
     lane_counter: Counter[str] = Counter()
     missing_counter: Counter[str] = Counter()
+    counted_rows: list[dict[str, Any]] = []
 
     for card_id, card in sorted(cards.items()):
         mechanic_support = _readiness_mechanic_support(card.get("roles", []))
-        runtime_surfaces = _runtime_surfaces(
-            card_id=card_id,
-            emitted_cardid_file_map=emitted_cardid_file_map,
-            linked_runtime_sources=linked_runtime_sources,
-            mulligan_cards=mulligan_cards,
-            combo_cards=combo_cards,
-            globalvalue_cards=globalvalue_cards,
-        )
-        lane, missing = _lane_and_missing_link(
-            card_id=card_id,
-            card=card,
-            uncovered=uncovered,
-            concrete_cardid_cards=concrete_cardid_cards,
-            emitted_cardid_cards=emitted_cardid_cards,
-            semantic_suppression_missing_links=semantic_suppression_missing_links,
-            mulligan_cards=mulligan_cards,
-            suppressed_mulligan_cards=suppressed_mulligan_cards,
-            mulligan_authority_gap_cards=mulligan_authority_gap_cards,
-            combo_cards=combo_cards,
-            globalvalue_cards=globalvalue_cards,
-            linked_runtime_source_cards=set(linked_runtime_sources),
-        )
+        runtime_eligible = card.get("runtime_eligible", True) is True
+        if runtime_eligible:
+            runtime_surfaces = _runtime_surfaces(
+                card_id=card_id,
+                emitted_cardid_file_map=emitted_cardid_file_map,
+                linked_runtime_sources=linked_runtime_sources,
+                mulligan_cards=mulligan_cards,
+                combo_cards=combo_cards,
+                globalvalue_cards=globalvalue_cards,
+            )
+            lane, missing = _lane_and_missing_link(
+                card_id=card_id,
+                card=card,
+                uncovered=uncovered,
+                concrete_cardid_cards=concrete_cardid_cards,
+                emitted_cardid_cards=emitted_cardid_cards,
+                semantic_suppression_missing_links=semantic_suppression_missing_links,
+                mulligan_cards=mulligan_cards,
+                suppressed_mulligan_cards=suppressed_mulligan_cards,
+                mulligan_authority_gap_cards=mulligan_authority_gap_cards,
+                combo_cards=combo_cards,
+                globalvalue_cards=globalvalue_cards,
+                linked_runtime_source_cards=set(linked_runtime_sources),
+            )
+        else:
+            runtime_surfaces = []
+            lane, missing = "report_only_supported", "none"
 
-        lane_counter[lane] += 1
-        if missing != "none":
-            missing_counter[missing] += 1
-
-        rows[card_id] = {
+        row = {
             "card_id": card_id,
             "name": str(card.get("name", card_id)),
             "count": int(card.get("count", 1)),
@@ -186,11 +189,20 @@ def build_config_readiness_report(
             "roles": [str(role) for role in card.get("roles", [])],
             "source_claim_ids": [str(item) for item in card.get("source_claim_ids", [])],
             "mechanic_support": mechanic_support,
+            "deck_zone": str(card.get("deck_zone", "main")),
+            "sideboard_owner_card_id": card.get("sideboard_owner_card_id"),
+            "runtime_eligible": runtime_eligible,
             "runtime_surfaces": runtime_surfaces,
             "readiness_lane": lane,
             "first_missing_link": missing,
             "source_depth_lane": _source_depth_lane(missing),
         }
+        rows[card_id] = row
+        if runtime_eligible:
+            counted_rows.append(row)
+            lane_counter[lane] += 1
+            if missing != "none":
+                missing_counter[missing] += 1
 
     deck_name = str(deck_identity.get("deck_name", gameplan_contract.get("deck_name", "Deck")))
     deck_slug = str(
@@ -204,11 +216,12 @@ def build_config_readiness_report(
         "deck_slug": deck_slug,
         "summary": {
             **_summary(
-                total_cards=len(rows),
+                total_cards=len(counted_rows),
                 lane_counter=lane_counter,
                 missing_counter=missing_counter,
-                rows=rows.values(),
+                rows=counted_rows,
             ),
+            "analysis_only_sideboard_cards": len(rows) - len(counted_rows),
             "linked_runtime_entity": sum(
                 1
                 for row in linked_runtime_entities.values()
@@ -226,7 +239,7 @@ def _cards_from_deck(
     gameplan_contract: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     cards: dict[str, dict[str, Any]] = {}
-    for card in deck_identity.get("cards", []):
+    for card in analysis_cards_from_deck_identity(deck_identity):
         if not isinstance(card, dict) or not card.get("card_id"):
             continue
         card_id = str(card["card_id"])
