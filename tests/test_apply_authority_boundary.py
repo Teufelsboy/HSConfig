@@ -39,6 +39,10 @@ RECEIPT_TAMPERING_CASES = [
     ("deck_fingerprint_mismatch", "source_receipt_deck_mismatch"),
     ("duplicate_claim_receipt", "source_receipt_duplicate"),
     ("claim_receipt_parity_mismatch", "source_receipt_claim_parity_mismatch"),
+    (
+        "source_evidence_provenance_mismatch",
+        "source_receipt_claim_parity_mismatch",
+    ),
 ]
 
 FORBIDDEN_DIAGNOSTIC_IMPORTS = [
@@ -199,6 +203,11 @@ def test_apply_gate_rejects_semantically_tampered_canonical_receipt(
         bundle["canonical_source_receipts"].append(copy.deepcopy(receipt))
     elif mutation == "claim_receipt_parity_mismatch":
         receipt["source_url"] = "https://example.test/different-source"
+    elif mutation == "source_evidence_provenance_mismatch":
+        evidence = bundle["source_evidence_index"][0]
+        evidence["acquisition_provenance"]["content_sha256"] = (
+            "sha256:" + ("2" * 64)
+        )
     else:
         raise AssertionError(f"unknown mutation: {mutation}")
 

@@ -397,6 +397,11 @@ def _receipt_claim_parity_verified(
         "acquisition_provenance"
     ) != claim_provenance:
         return False
+    evidence_provenance = strategic_source_receipt_provenance(
+        matching_source_rows[0]
+    )
+    if evidence_provenance is None or evidence_provenance != claim_provenance:
+        return False
 
     if "claim_kind" in receipt and _clean_text(
         receipt.get("claim_kind")
