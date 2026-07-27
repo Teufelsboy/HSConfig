@@ -113,11 +113,17 @@ def test_policy_mulligan_honors_named_source_and_role_vetoes(
     assert any(
         row.get("card") == "WW_092"
         and row.get("reason") == "claim_not_runtime_lowerable"
+        and row.get("claim_id") in row.get("source_claim_ids", [])
+        and row.get("source_type") == "source_claim"
+        and row.get("source_url")
         for row in boarlock_plan["suppressed_rules"]
     )
     assert any(
         row.get("card") == "DEEP_014"
         and row.get("reason") == "claim_not_runtime_lowerable"
+        and row.get("claim_id") in row.get("source_claim_ids", [])
+        and row.get("source_type") == "source_claim"
+        and row.get("source_url")
         for row in kingslayer_plan["suppressed_rules"]
     )
 

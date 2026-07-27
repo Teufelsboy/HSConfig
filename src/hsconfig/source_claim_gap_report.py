@@ -87,35 +87,36 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
 }
 
 
-def documented_mulligan_stop_condition_cards(
-    fixture_row: Mapping[str, Any] | None,
-) -> dict[str, str]:
-    """Project exact card IDs from a documented Mulligan stop condition."""
-    if not isinstance(fixture_row, Mapping):
-        return {}
-    visibility = fixture_row.get("strongness_visibility")
-    if not isinstance(visibility, Mapping):
-        return {}
-    if (
-        visibility.get("operator_action")
-        != "preserve_source_informed_with_explicit_stop_condition"
-        or not str(visibility.get("stop_condition", "")).strip()
-    ):
-        return {}
-    limits = fixture_row.get("known_coverage_limits", [])
-    if not isinstance(limits, Sequence) or isinstance(limits, (str, bytes)):
-        return {}
-    cards: dict[str, str] = {}
-    for limit in limits:
-        parts = str(limit).split(":")
-        if (
-            len(parts) >= 4
-            and parts[0] == "first_missing_chain"
-            and parts[-1] == "needs_mulligan_claim"
-            and parts[1]
-        ):
-            cards[parts[1]] = "explicit_source_gap_requires_resolution"
-    return cards
+def suppressed_mulligan_claims_from_lifecycle(
+    lifecycle_rows: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Return report-only Mulligan claims with their real lifecycle provenance."""
+    claims: list[dict[str, Any]] = []
+    for row in lifecycle_rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        if row.get("runtime_eligibility") != "report_only":
+            continue
+        claim_kind = str(row.get("claim_kind", ""))
+        if claim_kind not in {"mulligan_keep", "mulligan_discard"}:
+            continue
+        source_claim = row.get("claim")
+        if not isinstance(source_claim, Mapping):
+            continue
+        claim = dict(source_claim)
+        claim["claim_kind"] = claim_kind
+        claim["_claim_lifecycle"] = {
+            "claim_id": str(row.get("claim_id", "")),
+            "surface": "mulligan",
+            "policy_lane": str(row.get("policy_lane", "")),
+            "surface_gate_allowed": False,
+            "surface_gate_reason": str(
+                claim.get("runtime_lowering_reason")
+                or "claim_not_runtime_lowerable"
+            ),
+        }
+        claims.append(claim)
+    return claims
 
 
 def build_source_claim_gap_report(

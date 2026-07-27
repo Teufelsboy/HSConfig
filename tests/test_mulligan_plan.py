@@ -372,19 +372,33 @@ def test_mulligan_plan_reports_lifecycle_rejected_claim_without_compiling_rule()
     )
 
     assert plan["rules"] == []
-    assert plan["suppressed_rules"] == [
-        {
-            "card": "TOY_381",
-            "action": "hold",
-            "reason": "mulligan_requires_exact_deck_match",
-            "source_claim_ids": ["archetype-guide-keep"],
-            "claim_id": "archetype-guide-keep",
-        }
-    ]
+    assert len(plan["suppressed_rules"]) == 1
+    suppressed = plan["suppressed_rules"][0]
+    assert {
+        key: suppressed[key]
+        for key in (
+            "card",
+            "action",
+            "reason",
+            "source_claim_ids",
+            "claim_id",
+            "source_type",
+            "claim_readiness",
+        )
+    } == {
+        "card": "TOY_381",
+        "action": "hold",
+        "reason": "mulligan_requires_exact_deck_match",
+        "source_claim_ids": ["archetype-guide-keep"],
+        "claim_id": "archetype-guide-keep",
+        "source_type": "source_claim",
+        "claim_readiness": "guide_backed",
+    }
+    assert suppressed["acquisition_provenance"]["authority"] == "live_verified"
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
 
 
-def test_policy_fallback_can_hold_card_from_lifecycle_rejected_guide_claim():
+def test_policy_vetoes_exact_card_from_lifecycle_rejected_guide_claim():
     plan = build_mulligan_plan(
         deck_name="Deck",
         claims=[
@@ -403,9 +417,40 @@ def test_policy_fallback_can_hold_card_from_lifecycle_rejected_guide_claim():
         allow_policy_backed=True,
     )
 
+    assert not any(
+        row.get("card") == "TOY_381" and row.get("action") == "hold"
+        for row in plan["rules"]
+    )
+    assert {
+        "card": "TOY_381",
+        "reason": "explicit_source_gap_requires_resolution",
+        "policy_lane": "source_veto",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in plan["quality"]["policy_result"]["suppressed"]
+
+
+def test_non_card_specific_lifecycle_rejection_keeps_safe_policy_fallback():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_id": "generic-guide-reject",
+                "claim_kind": "mulligan_keep",
+                "cards": [],
+                "_claim_lifecycle": {
+                    "surface_gate_allowed": False,
+                    "surface_gate_reason": "mulligan_requires_exact_deck_match",
+                },
+            }
+        ],
+        card_roles={},
+        deck_cards={"SAFE_002": {"name": "Safe Two Drop", "cost": 2}},
+        allow_policy_backed=True,
+    )
+
     hold = next(row for row in plan["rules"] if row["action"] == "hold")
 
-    assert hold["card"] == "TOY_381"
+    assert hold["card"] == "SAFE_002"
     assert hold["source_type"] == "policy_backed_autonomous_mulligan"
 
 

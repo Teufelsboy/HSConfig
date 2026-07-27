@@ -4,7 +4,6 @@ from typing import Any
 
 from hsconfig.autonomous_mulligan_policy import build_policy_backed_mulligan_rules
 from hsconfig.condition_format import lower_runtime_condition
-from hsconfig.input_loading import fixture_row_for
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.role_tokens import (
     claim_role_tokens,
@@ -12,7 +11,7 @@ from hsconfig.role_tokens import (
     role_tokens,
 )
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
-from hsconfig.source_claim_gap_report import documented_mulligan_stop_condition_cards
+from hsconfig.source_claim_gap_report import suppressed_mulligan_claims_from_lifecycle
 from hsconfig.source_document_model import can_lower_to_mulligan, normalized_claim_kind
 
 
@@ -38,6 +37,7 @@ def build_mulligan_plan(
     deck_cards: dict[str, Any] | list[dict[str, Any]] | None = None,
     allow_policy_backed: bool = False,
     policy_excluded_card_ids: set[str] | None = None,
+    source_claim_lifecycle_rows: list[dict[str, Any]] | None = None,
     deck_identity: dict[str, Any] | None = None,
     verified_source_receipts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -45,6 +45,12 @@ def build_mulligan_plan(
     suppressed_rules: list[dict[str, Any]] = []
     rules_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
     merged_duplicate_rule_count = 0
+    claims = _merge_claim_rows(
+        claims,
+        suppressed_mulligan_claims_from_lifecycle(
+            source_claim_lifecycle_rows
+        ),
+    )
 
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
@@ -53,16 +59,17 @@ def build_mulligan_plan(
         if isinstance(lifecycle, dict) and lifecycle.get("surface_gate_allowed") is False:
             reason = str(lifecycle.get("surface_gate_reason") or "surface_gate_rejected")
             if claim_cards:
+                suppressed_row = _with_claim_id(
+                    {
+                        "card": claim_cards[0],
+                        "action": "hold" if claim_kind == "mulligan_keep" else "none",
+                        "reason": reason,
+                        "source_claim_ids": _source_claim_ids(claim),
+                    },
+                    claim,
+                )
                 suppressed_rules.append(
-                    _with_claim_id(
-                        {
-                            "card": claim_cards[0],
-                            "action": "hold" if claim_kind == "mulligan_keep" else "none",
-                            "reason": reason,
-                            "source_claim_ids": _source_claim_ids(claim),
-                        },
-                        claim,
-                    )
+                    _with_source_claim_provenance(suppressed_row, claim)
                 )
             continue
         gate = can_lower_to_mulligan(
@@ -197,21 +204,12 @@ def build_mulligan_plan(
     )
     has_source_backed_keeps = source_backed_keep_rule_count > 0
     if allow_policy_backed and not has_source_backed_keeps:
-        documented_gap_cards = documented_mulligan_stop_condition_cards(
-            fixture_row_for(deck_name)
-        )
         policy_veto_card_ids = _policy_veto_card_ids(
             claims=claims,
             rules=rules,
             suppressed_rules=suppressed_rules,
             card_roles=card_roles,
-            documented_gap_cards=documented_gap_cards,
             extra_card_ids=policy_excluded_card_ids or set(),
-        )
-        _preserve_documented_source_gap_suppression(
-            suppressed_rules=suppressed_rules,
-            documented_gap_cards=documented_gap_cards,
-            exact_authority_cards=_exact_source_mulligan_authority_cards(rules),
         )
         policy_result = build_policy_backed_mulligan_rules(
             deck_name=deck_name,
@@ -423,7 +421,6 @@ def _policy_veto_card_ids(
     rules: list[dict[str, Any]],
     suppressed_rules: list[dict[str, Any]],
     card_roles: dict[str, Any],
-    documented_gap_cards: dict[str, str],
     extra_card_ids: set[str],
 ) -> dict[str, str]:
     vetoes = {
@@ -436,28 +433,29 @@ def _policy_veto_card_ids(
         if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:
             continue
         lifecycle = claim.get("_claim_lifecycle")
-        if (
-            isinstance(lifecycle, dict)
-            and lifecycle.get("surface_gate_allowed") is False
-            and str(lifecycle.get("surface_gate_reason", ""))
-            in SURFACE_REJECTION_REASONS
-        ):
-            continue
         for card_id in _claim_cards(claim):
             vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
-    for row in [*rules, *suppressed_rules]:
+            if (
+                isinstance(lifecycle, dict)
+                and lifecycle.get("surface_gate_allowed") is False
+            ):
+                vetoes[card_id] = "explicit_source_gap_requires_resolution"
+    for row in rules:
         if row.get("action") not in {"hold", "discard"}:
-            continue
-        reason = str(row.get("reason", ""))
-        if reason in SURFACE_REJECTION_REASONS:
             continue
         for card_id in _row_card_ids(row):
             vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
-            if reason == "claim_not_runtime_lowerable":
+    for row in suppressed_rules:
+        if row.get("action") not in {"hold", "discard"}:
+            continue
+        reason = str(row.get("reason", ""))
+        for card_id in _row_card_ids(row):
+            vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
+            if (
+                reason == "claim_not_runtime_lowerable"
+                or reason in SURFACE_REJECTION_REASONS
+            ):
                 vetoes[card_id] = "explicit_source_gap_requires_resolution"
-    for card_id, reason in documented_gap_cards.items():
-        if card_id not in exact_authority_cards:
-            vetoes[card_id] = reason
     for card_id, role_row in card_roles.items():
         card_id = str(card_id)
         if not card_id:
@@ -516,33 +514,6 @@ def _exact_source_mulligan_authority_cards(
     return cards
 
 
-def _preserve_documented_source_gap_suppression(
-    *,
-    suppressed_rules: list[dict[str, Any]],
-    documented_gap_cards: dict[str, str],
-    exact_authority_cards: set[str],
-) -> None:
-    for card_id in documented_gap_cards:
-        if card_id in exact_authority_cards:
-            continue
-        if any(
-            row.get("card") == card_id
-            and row.get("action") in {"hold", "discard"}
-            and row.get("reason") == "claim_not_runtime_lowerable"
-            for row in suppressed_rules
-        ):
-            continue
-        suppressed_rules.append(
-            {
-                "card": card_id,
-                "action": "hold",
-                "reason": "claim_not_runtime_lowerable",
-                "source_claim_ids": [],
-                "source_type": "documented_source_gap",
-            }
-        )
-
-
 def _card_role_tokens(row: Any) -> set[str]:
     if not isinstance(row, dict):
         return set()
@@ -557,6 +528,26 @@ def _claim_cards(claim: dict[str, Any]) -> list[str]:
     if isinstance(cards, str):
         cards = [cards]
     return [str(card) for card in cards if str(card)]
+
+
+def _merge_claim_rows(
+    claims: list[dict[str, Any]],
+    additional_claims: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = list(claims)
+    seen_claim_ids = {
+        lifecycle_claim_id(claim)
+        for claim in claims
+        if lifecycle_claim_id(claim)
+    }
+    for claim in additional_claims:
+        claim_id = lifecycle_claim_id(claim)
+        if claim_id and claim_id in seen_claim_ids:
+            continue
+        merged.append(claim)
+        if claim_id:
+            seen_claim_ids.add(claim_id)
+    return merged
 
 
 def _selector_rows_from_claim(
@@ -582,6 +573,29 @@ def _with_claim_id(row: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]
     claim_id = lifecycle_claim_id(claim)
     if claim_id:
         row["claim_id"] = claim_id
+    return row
+
+
+def _with_source_claim_provenance(
+    row: dict[str, Any],
+    claim: dict[str, Any],
+) -> dict[str, Any]:
+    provenance_keys = (
+        "source_url",
+        "source_title",
+        "source_refs",
+        "acquisition_provenance",
+        "claim_readiness",
+        "trust_ceiling",
+    )
+    copied = False
+    for key in provenance_keys:
+        if key not in claim:
+            continue
+        row[key] = claim[key]
+        copied = True
+    if copied:
+        row["source_type"] = "source_claim"
     return row
 
 

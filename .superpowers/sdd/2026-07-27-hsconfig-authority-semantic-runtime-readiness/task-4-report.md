@@ -77,8 +77,71 @@ The final commit hash is reported in the task handoff. Nothing is pushed.
 
 ## Concerns
 
-- Documented exact-card stop conditions are projected from the existing
-  `known_coverage_limits` `first_missing_chain` schema. A future schema change
-  must update that normalizer and its E2E regression together.
 - Runtime, HSTuner, replay, and desktop behavior were not exercised because
   they are explicitly outside Task 4.
+
+## Specification Review Fix Round 1
+
+The initial implementation failed specification review for two reasons:
+
+1. It allowed exact-card lifecycle/surface rejections to become policy holds.
+2. It read the diagnostic fixture matrix from production Mulligan code and
+   synthesized a provenance-free source-gap row.
+
+### Fix-Round RED
+
+Focused command:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE = "1"
+python -m pytest -q -p no:cacheprovider `
+  tests/test_mulligan_plan.py::test_policy_vetoes_exact_card_from_lifecycle_rejected_guide_claim `
+  tests/test_mulligan_plan.py::test_non_card_specific_lifecycle_rejection_keeps_safe_policy_fallback `
+  tests/test_multideck_source_backed_e2e.py::test_policy_mulligan_honors_named_source_and_role_vetoes
+```
+
+Result before the fix-round production changes: `2 failed, 1 passed`.
+
+- The exact rejected `TOY_381` claim became a policy hold.
+- Boarlock lacked a real `claim_not_runtime_lowerable` row with Claim-ID and
+  source provenance.
+- The card-free rejection control retained its safe fallback.
+
+### Fix-Round Implementation
+
+- Removed `fixture_row_for(deck_name)` and all fixture-matrix parsing from the
+  production Mulligan path.
+- Removed the synthetic `documented_source_gap` row with empty claim IDs.
+- Passed the current normalized `initial_lifecycle_rows` explicitly from
+  `package_builder` into `build_mulligan_plan`.
+- Projected the real report-only Mulligan claims, including their Claim-ID,
+  source URL, source references, acquisition provenance, readiness, and trust
+  ceiling.
+- Made every exact-card suppressed Mulligan claim a policy veto, including
+  surface-gate rejections.
+- Kept card-free lifecycle/surface rejections from manufacturing a veto card,
+  so an unrelated safe curve fallback remains available.
+
+### Fix-Round GREEN
+
+Required Task-4 suite:
+
+```text
+67 passed in 26.52s
+```
+
+Complete Mulligan-plan and source-gap compatibility suite:
+
+```text
+41 passed in 0.36s
+```
+
+The fix round is committed separately from the initial Task-4 commit. Its final
+local commit hash is reported in the task handoff; nothing is pushed.
+
+### Remaining Risk
+
+The production policy now depends only on the current normalized lifecycle
+contract. A future lifecycle schema change must preserve the `claim` payload,
+`claim_id`, `claim_kind`, and `runtime_eligibility` fields or update the
+projection and its contract tests together.

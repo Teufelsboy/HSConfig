@@ -282,6 +282,7 @@ def build_package_payload(
         policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
             mulligan_runtime_claims
         ),
+        source_claim_lifecycle_rows=initial_lifecycle_rows,
         deck_identity=deck_identity,
         verified_source_receipts=verified_source_receipts,
     )
