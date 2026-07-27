@@ -1,10 +1,10 @@
 # ShadowPriest Live-Verified Configure and Guarded Apply Design
 
-**Date:** 2026-07-27  
-**Repository:** `C:\Users\darbo\Documents\HSConfig`  
-**Deck:** ShadowPriest  
-**Deck code:** `AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=`  
-**Hearthstone deck ID:** `2737726722`  
+**Date:** 2026-07-27
+**Repository:** `C:\Users\darbo\Documents\HSConfig`
+**Deck:** ShadowPriest
+**Deck code:** `AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=`
+**Hearthstone deck ID:** `2737726722`
 **HDT deck ID:** `c4c8b6b9-1d8e-4c07-a6cd-1c0de84f7602`
 
 ## Objective
