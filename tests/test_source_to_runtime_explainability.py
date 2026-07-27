@@ -3,13 +3,19 @@ from __future__ import annotations
 import pytest
 
 from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.globalvalues_authority import (
+    build_globalvalues_authority_matrix,
+)
+from hsconfig.operator_summary import build_operator_summary
 from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
 from hsconfig.source_contract_audit import build_source_contract_audit
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_to_runtime_explainability import _card_expected_runtime_files
 from tests.mulligan_authority_fixtures import build_canonical_mulligan_bundle
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 def _fixture_audit() -> dict:
@@ -690,6 +696,136 @@ def test_productive_audit_preserves_globalvalues_key_in_explainability(
     assert claim[identity_field] == "GlobalAggroValue"
 
 
+def test_productive_matrix_globalvalues_identity_matches_exact_physical_key():
+    deck_identity = {
+        "deck_name": "MatrixGlobalValues",
+        "deck_fingerprint": "sha256:matrix-globalvalues",
+        "cards": [{"card_id": "CARD_HP", "name": "Hero Power Card", "count": 1}],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.test/matrix-globalvalues",
+                "source_title": "Matrix GlobalValues Guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-27T00:00:00Z",
+                "acquisition_provenance": acquire_live_test_provenance(),
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": (
+                            "sha256:matrix-globalvalues"
+                        ),
+                        "candidate_deck_code_hashes": [
+                            "sha256:matrix-globalvalues-source"
+                        ],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "hero-power-posture",
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_HP"],
+                        "scope": "deck",
+                        "stance": "hero_power_pressure",
+                        "evidence_text_short": (
+                            "Prioritize repeated hero power pressure."
+                        ),
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-27",
+    )
+    claim = bundle["claims"][0]
+    claim_id = claim["claim_id"]
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="baseline",
+        claims=bundle["claims"],
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+    assert [
+        row["key"] for row in matrix["allowed_step1_overlays"]
+    ] == ["MyHeroPowerValue"]
+    audit = build_source_contract_audit(
+        deck_name="MatrixGlobalValues",
+        deck_identity=deck_identity,
+        guide_claim_bundle=bundle,
+        global_values_authority_matrix=matrix,
+    )
+    matching_ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={},
+        compiled_globalvalues={
+            "MyHeroPowerValue": {
+                "values": [{"condition": "*", "value": "9"}]
+            }
+        },
+        globalvalues_baseline={
+            "MyHeroPowerValue": {
+                "values": [{"condition": "*", "value": "5"}]
+            }
+        },
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    matching = build_source_to_runtime_explainability_report(
+        audit,
+        runtime_surface_ledger=matching_ledger,
+    )
+    audit_claim = audit["claim_rows"][claim_id]
+    matching_claim = next(
+        row for row in matching["claim_rows"] if row["claim_id"] == claim_id
+    )
+    assert audit_claim["key"] == "MyHeroPowerValue"
+    assert audit_claim["globalvalues_keys"] == ["MyHeroPowerValue"]
+    assert matching_claim["emitted_runtime_files"] == ["GlobalValues.json"]
+
+    mismatching_ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={},
+        compiled_globalvalues={
+            "FirstTurnValueWeight": {
+                "values": [{"condition": "*", "value": "0.75"}]
+            }
+        },
+        globalvalues_baseline={
+            "FirstTurnValueWeight": {
+                "values": [{"condition": "*", "value": "0.50"}]
+            }
+        },
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+    mismatching = build_source_to_runtime_explainability_report(
+        audit,
+        runtime_surface_ledger=mismatching_ledger,
+    )
+    mismatching_claim = next(
+        row
+        for row in mismatching["claim_rows"]
+        if row["claim_id"] == claim_id
+    )
+    assert mismatching_claim["emitted_runtime_files"] == []
+    assert mismatching_claim["not_emitted_runtime_files"] == [
+        "GlobalValues.json"
+    ]
+
+
 def test_multi_identity_behavior_claim_reconciles_each_physical_runtime_file():
     claim_id = "multi_behavior_claim"
     deck_identity = {
@@ -725,6 +861,8 @@ def test_multi_identity_behavior_claim_reconciles_each_physical_runtime_file():
                     "claim_id": claim_id,
                     "claim_kind": "targeting_rule",
                     "cards": ["CARD_A", "CARD_B"],
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
                 }
             ]
         },
@@ -781,6 +919,62 @@ def test_multi_identity_behavior_claim_reconciles_each_physical_runtime_file():
     )
     assert partial_claim["emitted_runtime_files"] == ["CARD_A.json"]
     assert partial_claim["not_emitted_runtime_files"] == ["CARD_B.json"]
+    assert partial_claim["builder_or_router_decision"] == "physical_partial"
+    assert partial_claim["first_missing_link"] == "needs_runtime_surface"
+    assert (
+        partial_claim["why_not_emitted"]
+        == "physical_runtime_surface_missing"
+    )
+    assert partial_claim["next_source_action"] == (
+        "add_runtime_lowerable_claim_or_router_support"
+    )
+    assert partial["summary"]["runtime_lowered_claims"] == 0
+    assert partial["summary"]["claims_with_first_missing_link"] == 1
+    assert partial["summary"]["cards_with_first_missing_link"] == 1
+
+    cards = {row["card_id"]: row for row in partial["card_rows"]}
+    assert cards["CARD_A"]["emitted_runtime_files"] == ["CARD_A.json"]
+    assert cards["CARD_A"]["not_emitted_runtime_files"] == []
+    assert cards["CARD_A"]["first_missing_link"] is None
+    assert cards["CARD_A"]["closure_lane"] == "runtime_backed_non_strong"
+    assert cards["CARD_A"]["strong_ready"] is False
+    assert cards["CARD_B"]["emitted_runtime_files"] == []
+    assert cards["CARD_B"]["not_emitted_runtime_files"] == ["CARD_B.json"]
+    assert cards["CARD_B"]["first_missing_link"] == "needs_runtime_surface"
+    assert cards["CARD_B"]["closure_lane"] == "explicit_gap"
+    assert cards["CARD_B"]["strong_ready"] is False
+    attention = {
+        row["card_id"]: row for row in partial["operator_attention"]
+    }
+    assert attention["CARD_A"]["status"] == "runtime_backed"
+    assert attention["CARD_B"]["status"] == "source_action_needed"
+
+    operator_summary = build_operator_summary(
+        deck_name="MultiBehavior",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 1,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["CARD_A.json", "CARD_B.json"],
+        runtime_surface_ledger={
+            "mulligan": {"rule_count": 0},
+            "globalvalues": {"changed_key_count": 0},
+            "cardid": {"entity_count": 2},
+            "combo": {"row_count": 0},
+        },
+        source_to_runtime_explainability_report=partial,
+    )
+    strong_closure = operator_summary["source_backed_strong_closure"]
+    assert strong_closure["promotion_ready"] is False
+    assert strong_closure["strong_closure_diagnostics"] == [
+        {
+            "claim_id": claim_id,
+            "reason": "strong_closure_claim_not_eligible",
+        }
+    ]
 
 
 def test_multi_row_behavior_claim_requires_every_identity_in_runtime_file():

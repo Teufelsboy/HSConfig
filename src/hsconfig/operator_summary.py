@@ -1086,6 +1086,7 @@ def _closure_profile_verdict(
             {
                 filename
                 for row in canonical_claim_rows
+                if _closure_profile_claim_is_physically_complete(row)
                 for filename in _string_list(
                     row.get("emitted_runtime_files")
                 )
@@ -1244,10 +1245,7 @@ def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
 
 
 def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
-    if (
-        "emitted_runtime_files" in row
-        and not _string_list(row.get("emitted_runtime_files"))
-    ):
+    if not _closure_profile_claim_is_physically_complete(row):
         return False
     if row.get("promotion_eligible") is False:
         return False
@@ -1276,6 +1274,16 @@ def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
         claim_kind=str(row.get("claim_kind") or ""),
         source_lane=str(row.get("source_lane") or ""),
         strategic_receipt_verified=row.get("strategic_receipt_verified") is True,
+    )
+
+
+def _closure_profile_claim_is_physically_complete(
+    row: dict[str, Any],
+) -> bool:
+    if "emitted_runtime_files" not in row:
+        return True
+    return bool(_string_list(row.get("emitted_runtime_files"))) and not bool(
+        _string_list(row.get("not_emitted_runtime_files"))
     )
 
 

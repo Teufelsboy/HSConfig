@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
+from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
@@ -106,6 +107,7 @@ def build_source_to_runtime_explainability_report(
             1
             for row in claim_rows
             if row.get("emitted_runtime_files")
+            and not row.get("not_emitted_runtime_files")
         ),
         "claims_with_first_missing_link": sum(
             1 for row in claim_rows if row.get("first_missing_link") is not None
@@ -214,25 +216,34 @@ def _apply_runtime_surface_ledger_to_claim_rows(
             ledger=ledger,
             behavior_identities=behavior_identities,
         )
+        not_emitted_files = [
+            path for path in expected_files if path not in emitted_files
+        ]
+        fully_emitted = bool(emitted_files) and not not_emitted_files
+        partially_emitted = bool(emitted_files) and bool(not_emitted_files)
         projected.append(
             {
                 **row,
                 "emitted_runtime_files": emitted_files,
-                "not_emitted_runtime_files": [
-                    path for path in expected_files if path not in emitted_files
-                ],
+                "not_emitted_runtime_files": not_emitted_files,
                 "builder_or_router_decision": (
-                    "emitted" if emitted_files else "physical_not_emitted"
+                    "emitted"
+                    if fully_emitted
+                    else "physical_partial"
+                    if partially_emitted
+                    else "physical_not_emitted"
                 ),
                 "first_missing_link": (
-                    None if emitted_files else "needs_runtime_surface"
+                    None if fully_emitted else "needs_runtime_surface"
                 ),
                 "why_not_emitted": (
-                    None if emitted_files else "physical_runtime_surface_missing"
+                    None
+                    if fully_emitted
+                    else "physical_runtime_surface_missing"
                 ),
                 "next_source_action": (
                     "none"
-                    if emitted_files
+                    if fully_emitted
                     else _next_source_action(
                         first_missing_link="needs_runtime_surface",
                         why_not_emitted="physical_runtime_surface_missing",
@@ -291,7 +302,13 @@ def _claim_physical_files(
             return ["Combo.json"] if "Combo.json" in physical_files else []
         cards = _string_list(raw_claim.get("cards"))
         rows = _string_list(metrics.get("rows"))
-        operator = str(raw_claim.get("operator", ">>"))
+        timing_kind = str(raw_claim.get("timing_kind", "")).strip()
+        operator = str(
+            raw_claim.get(
+                "operator",
+                SUPPORTED_TIMING_TO_OPERATOR.get(timing_kind, ">>"),
+            )
+        )
         if cards and any(
             identity["cards"] == cards
             and identity["operator"] == operator
@@ -299,10 +316,22 @@ def _claim_physical_files(
         ):
             return ["Combo.json"]
         return []
-    if "globalvalue" in kind and "GlobalValues.json" in expected:
+    if "GlobalValues.json" in expected:
         metrics = ledger.get("globalvalues")
-        key = str(raw_claim.get("key") or raw_claim.get("globalvalues_key") or "")
-        if isinstance(metrics, Mapping) and key in _string_list(metrics.get("changed_keys")):
+        expected_keys = _string_list(raw_claim.get("globalvalues_keys"))
+        if not expected_keys:
+            key = str(
+                raw_claim.get("key")
+                or raw_claim.get("globalvalues_key")
+                or ""
+            )
+            expected_keys = [key] if key else []
+        changed_keys = (
+            set(_string_list(metrics.get("changed_keys")))
+            if isinstance(metrics, Mapping)
+            else set()
+        )
+        if expected_keys and set(expected_keys) <= changed_keys:
             return ["GlobalValues.json"]
         return []
     cardid_metrics = ledger.get("cardid")
@@ -624,10 +653,12 @@ def _claim_rows(
                 "action",
                 "condition",
                 "operator",
+                "timing_kind",
                 "behavior_block",
                 "value",
                 "key",
                 "globalvalues_key",
+                "globalvalues_keys",
                 "source_lane",
                 "source_type",
                 "source_confidence",
@@ -697,16 +728,24 @@ def _card_rows(
             related_claims,
             audit_claim_rows,
         )
+        related_claims = [
+            _claim_projection_for_card(str(card_id), claim)
+            for claim in related_claims
+        ]
         strongest_claim = (
             _matching_claim(related_claims, strongest_claim_id) or strongest_claim
         )
         best_source_lane = _best_source_lane(raw_card, strongest_claim_id, audit_claim_rows)
         missing_claim = _first_missing_related_claim(related_claims)
-        emitted_files = _aggregate_claim_files(
-            related_claims, key="emitted_runtime_files"
+        emitted_files = _aggregate_card_claim_files(
+            str(card_id),
+            related_claims,
+            key="emitted_runtime_files",
         )
-        not_emitted_files = _aggregate_claim_files(
-            related_claims, key="not_emitted_runtime_files"
+        not_emitted_files = _aggregate_card_claim_files(
+            str(card_id),
+            related_claims,
+            key="not_emitted_runtime_files",
         )
         expected_files = _aggregate_expected_card_files(str(card_id), related_claims)
         missing_runtime_files = [
@@ -1338,11 +1377,56 @@ def _expected_runtime_files(row: Mapping[str, Any]) -> list[str]:
     return [runtime_surface] if runtime_surface else []
 
 
+def _claim_projection_for_card(
+    card_id: str,
+    claim: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected_files = set(_card_expected_runtime_files(card_id, claim))
+    if not expected_files:
+        return dict(claim)
+    emitted_files = sorted(
+        expected_files
+        & set(_string_list(claim.get("emitted_runtime_files")))
+    )
+    not_emitted_files = sorted(
+        expected_files
+        & set(_string_list(claim.get("not_emitted_runtime_files")))
+    )
+    projected = {
+        **claim,
+        "emitted_runtime_files": emitted_files,
+        "not_emitted_runtime_files": not_emitted_files,
+    }
+    if emitted_files and not not_emitted_files:
+        projected.update(
+            {
+                "first_missing_link": None,
+                "why_not_emitted": None,
+                "next_source_action": "none",
+            }
+        )
+    return projected
+
+
 def _card_expected_runtime_files(
     card_id: str, strongest_claim: Mapping[str, Any] | None
 ) -> list[str]:
     if strongest_claim is None:
         return []
+    identity_files = {
+        f"{identity.get('runtime_card_id')}.json"
+        for key in ("behavior_identities", "runtime_entity_owners")
+        for identity in (
+            strongest_claim.get(key, [])
+            if isinstance(strongest_claim.get(key), list)
+            else []
+        )
+        if isinstance(identity, Mapping)
+        and str(identity.get("source_card_id", "")) == card_id
+        and str(identity.get("runtime_card_id", "")).strip()
+    }
+    if identity_files:
+        return sorted(identity_files)
     runtime_card_id = _normalized_empty(
         strongest_claim.get("runtime_card_id")
     )
@@ -1489,9 +1573,18 @@ def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:
         return True
     if combo.get("runtime_surface") == "Combo.json":
         return True
-    timing = str(combo.get("timing") or combo.get("sequence_timing") or "").strip()
+    timing = str(
+        combo.get("timing_kind")
+        or combo.get("timing")
+        or combo.get("sequence_timing")
+        or ""
+    ).strip()
     cards = combo.get("cards") or combo.get("card_ids") or []
-    return timing in {"same_turn", "ordered", "exact_order"} and len(cards) >= 2
+    return timing in {
+        *SUPPORTED_TIMING_TO_OPERATOR,
+        "ordered",
+        "exact_order",
+    } and len(cards) >= 2
 
 
 def _aggregate_expected_card_files(
@@ -1503,12 +1596,20 @@ def _aggregate_expected_card_files(
     return sorted(files)
 
 
-def _aggregate_claim_files(
-    related_claims: list[Mapping[str, Any]], *, key: str
+def _aggregate_card_claim_files(
+    card_id: str,
+    related_claims: list[Mapping[str, Any]],
+    *,
+    key: str,
 ) -> list[str]:
     files: set[str] = set()
     for claim in related_claims:
-        files.update(_string_list(claim.get(key)))
+        expected_files = set(_card_expected_runtime_files(card_id, claim))
+        files.update(
+            path
+            for path in _string_list(claim.get(key))
+            if path in expected_files
+        )
     return sorted(files)
 
 
@@ -1596,6 +1697,12 @@ def _closure_lane(
 
 
 def _is_source_backed_strong_claim(claim: Mapping[str, Any]) -> bool:
+    if (
+        str(claim.get("builder_or_router_decision", ""))
+        == "physical_partial"
+        or _string_list(claim.get("not_emitted_runtime_files"))
+    ):
+        return False
     if claim.get("promotion_eligible") is True:
         return True
     if str(claim.get("source_type")) == "policy_backed_autonomous_mulligan":

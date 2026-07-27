@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
+from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
@@ -70,6 +71,9 @@ def build_source_contract_audit(
     except RuntimeError:
         policy_by_claim_kind = {}
     policy_lane_counts: Counter[str] = Counter()
+    globalvalues_keys_by_claim_id = _globalvalues_keys_by_claim_id(
+        global_values_authority_matrix
+    )
     for index, claim in enumerate(claims, start=1):
         claim_id = _claim_id(claim, index)
         cards = _claim_cards(claim)
@@ -138,6 +142,9 @@ def build_source_contract_audit(
                 claim,
                 claim_kind=normalized_claim_kind(claim),
                 cards=cards,
+                globalvalues_keys=globalvalues_keys_by_claim_id.get(
+                    claim_id, ()
+                ),
             ),
         }
         for card_id in cards:
@@ -189,6 +196,7 @@ def _claim_runtime_identity(
     *,
     claim_kind: str,
     cards: list[str],
+    globalvalues_keys: Sequence[str] = (),
 ) -> dict[str, Any]:
     identity: dict[str, Any] = {}
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
@@ -212,10 +220,23 @@ def _claim_runtime_identity(
             "conditions", claim.get("condition", "*")
         )
     if claim_kind == "combo_sequence":
-        identity["operator"] = str(claim.get("operator", ">>"))
+        timing_kind = str(claim.get("timing_kind", "")).strip()
+        if timing_kind:
+            identity["timing_kind"] = timing_kind
+        identity["operator"] = str(
+            claim.get(
+                "operator",
+                SUPPORTED_TIMING_TO_OPERATOR.get(timing_kind, ">>"),
+            )
+        )
     for key in ("key", "globalvalues_key"):
         if key in claim and str(claim.get(key, "")).strip():
             identity[key] = str(claim[key])
+    matrix_keys = sorted({str(key) for key in globalvalues_keys if str(key)})
+    if matrix_keys:
+        identity["globalvalues_keys"] = matrix_keys
+        if len(matrix_keys) == 1:
+            identity.setdefault("key", matrix_keys[0])
     return identity
 
 
@@ -378,6 +399,22 @@ def _emitted_claim_ids(
         "globalvalues": _ids_from_rows(
             global_values_authority_matrix.get("allowed_step1_overlays", [])
         ),
+    }
+
+
+def _globalvalues_keys_by_claim_id(
+    matrix: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]]:
+    keys_by_claim_id: dict[str, set[str]] = defaultdict(set)
+    for row in _rows(matrix.get("allowed_step1_overlays", [])):
+        key = str(row.get("key", "")).strip()
+        if not key or key == "baseline":
+            continue
+        for claim_id in _row_claim_ids(row):
+            keys_by_claim_id[claim_id].add(key)
+    return {
+        claim_id: tuple(sorted(keys))
+        for claim_id, keys in keys_by_claim_id.items()
     }
 
 

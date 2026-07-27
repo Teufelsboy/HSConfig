@@ -140,7 +140,14 @@ def test_shadowpriest_linked_hero_power_is_separate_from_darkbishop_source_recor
     assert readiness["cards"]["SW_448"]["readiness_lane"] == "linked_runtime_source"
 
 
-def test_shadowpriest_default_combo_operator_matches_physical_ledger() -> None:
+@pytest.mark.parametrize(
+    ("timing_kind", "expected_operator"),
+    [("same_turn", ">>"), ("cross_turn", ">->")],
+)
+def test_shadowpriest_default_combo_operator_matches_physical_ledger(
+    timing_kind: str,
+    expected_operator: str,
+) -> None:
     deck = next(
         row
         for row in load_archetype_matrix()
@@ -154,11 +161,11 @@ def test_shadowpriest_default_combo_operator_matches_physical_ledger() -> None:
     ] = acquire_live_test_provenance()
     source_payload["source_documents"][0]["claims"].append(
         {
-            "claim_id": "shadowpriest-default-combo",
+            "claim_id": f"shadowpriest-default-{timing_kind}-combo",
             "claim_kind": "combo_sequence",
             "cards": ["GVG_009", "SW_446"],
             "sequence": ["GVG_009", "SW_446"],
-            "timing_kind": "same_turn",
+            "timing_kind": timing_kind,
             "values": ["10", "8"],
             "condition": "*",
             "evidence_text_short": (
@@ -218,9 +225,11 @@ def test_shadowpriest_default_combo_operator_matches_physical_ledger() -> None:
         if row["claim_id"] == combo_claim["claim_id"]
     )
 
-    assert combo_claim["operator"] == ">>"
-    assert combo["ComboList"]["values"][0]["combo"] == "GVG_009>>SW_446"
-    assert explainability_claim["operator"] == ">>"
+    assert combo_claim["operator"] == expected_operator
+    assert combo["ComboList"]["values"][0]["combo"] == (
+        f"GVG_009{expected_operator}SW_446"
+    )
+    assert explainability_claim["operator"] == expected_operator
     assert explainability_claim["emitted_runtime_files"] == ["Combo.json"]
 
 

@@ -124,3 +124,35 @@ alias/canonicalization, the Combo default, and multi-identity behavior claims.
 The affected Task-8 suite plus source-audit coverage finished with `364 passed`;
 targeted Ruff and `git diff --check` passed. No runtime, HSTuner or Desktop
 access was used.
+
+## Round 6 partial satisfaction and derived identity follow-up
+
+A claim with some, but not all, expected physical files is now
+`physical_partial`, retains an actionable `needs_runtime_surface` gap, and is
+excluded from the runtime-lowered summary count. Claim completion requires at
+least one emitted file and no missing expected files.
+
+Multi-card claims project physical results by their behavior identity and
+runtime owner. A matching `CARD_A.json` is visible only on card A; a missing or
+mismatched `CARD_B.json` remains a card-B gap. Card closure and attention follow
+that local result, while no card can treat the incomplete shared claim as
+source-backed strong. Operator-summary Strong Closure likewise ignores partial
+claim files and requires an emitted claim with no missing runtime files.
+
+Operatorless Combo audit identities now use the shared combo-sequence timing
+contract: `same_turn` defaults to `>>`, while `cross_turn` defaults to `>->`.
+The real ShadowPriest source-bundle, Combo compiler, physical ledger, audit and
+explainability path covers both defaults.
+
+GlobalValues identities can now be derived from the productive authority
+matrix. Allowed matrix rows are indexed through their claim references; the
+audit projects the concrete key or complete key set, and physical
+reconciliation requires every projected key in the ledger's changed-key set.
+This works for matrix-backed `gameplan_posture` claims rather than relying on a
+claim-kind name containing `globalvalue`.
+
+Round-6 verification observed RED for partial claims incorrectly reported as
+emitted, card-A output copied onto card B, partial Strong Closure eligibility,
+the wrong `cross_turn` default, and the absent matrix-derived GlobalValues key.
+The affected Task-8 suite finished with `366 passed`; targeted Ruff and
+`git diff --check` passed. No runtime, HSTuner or Desktop access was used.
