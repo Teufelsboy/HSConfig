@@ -183,6 +183,17 @@ def _refresh_derivation_reference(package: Path) -> None:
     write_json(operator_path, summary)
 
 
+def _assert_blocked_with_integrity_and_parity(
+    gate: dict,
+    expected_primary: dict,
+) -> None:
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0] == expected_primary
+    assert gate["reasons"][-1]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
+
+
 @pytest.mark.parametrize(
     "mode",
     [
@@ -645,13 +656,13 @@ def test_apply_gate_blocks_normal_path_optional_surfaces(tmp_path: Path, surface
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
+    _assert_blocked_with_integrity_and_parity(
+        gate,
         {
             "reason": "normal_path_optional_surface_present",
             "generated_file": f"CustomConfig\\deck\\{surface}",
-        }
-    ]
+        },
+    )
 
 
 @pytest.mark.parametrize("surface", ["Presume.json", "Concede.json", "CardBehavior.json"])
@@ -679,13 +690,13 @@ def test_apply_gate_blocks_actual_optional_surface_when_summary_is_stale(
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
+    _assert_blocked_with_integrity_and_parity(
+        gate,
         {
             "reason": "normal_path_optional_surface_present",
             "generated_file": str(package / "CustomConfig" / "deck" / surface),
-        }
-    ]
+        },
+    )
 
 
 def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
@@ -710,13 +721,13 @@ def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
+    _assert_blocked_with_integrity_and_parity(
+        gate,
         {
             "reason": "nested_runtime_file_present",
             "generated_file": str(package / "CustomConfig" / "deck" / "nested" / "Presume.json"),
-        }
-    ]
+        },
+    )
 
 
 def test_apply_gate_blocks_actual_runtime_file_missing_from_summary(tmp_path: Path):
@@ -744,13 +755,13 @@ def test_apply_gate_blocks_actual_runtime_file_missing_from_summary(tmp_path: Pa
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
+    _assert_blocked_with_integrity_and_parity(
+        gate,
         {
             "reason": "actual_runtime_file_not_in_operator_summary",
             "generated_file": str(package / "CustomConfig" / "deck" / "EX1_999.json"),
-        }
-    ]
+        },
+    )
 
 
 @pytest.mark.parametrize(
@@ -847,13 +858,13 @@ def test_apply_gate_blocks_unreported_cardid_file_but_allows_absent_cardid_files
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
+    _assert_blocked_with_integrity_and_parity(
+        gate,
         {
             "reason": "actual_runtime_file_not_in_operator_summary",
             "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
-        }
-    ]
+        },
+    )
 
 
 def test_apply_gate_blocks_missing_operator_summary(tmp_path: Path):

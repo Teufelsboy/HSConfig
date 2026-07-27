@@ -219,12 +219,13 @@ def test_declared_runtime_file_missing_from_disk_blocks(tmp_path: Path):
     gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
-        {
-            "reason": "operator_summary_runtime_file_missing",
-            "generated_file": "CustomConfig/deck/EX1_777.json",
-        }
-    ]
+    assert gate["reasons"][0] == {
+        "reason": "operator_summary_runtime_file_missing",
+        "generated_file": "CustomConfig/deck/EX1_777.json",
+    }
+    assert gate["reasons"][-1]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
 
 
 def test_summary_runtime_file_drift_blocks(tmp_path: Path):
@@ -245,12 +246,13 @@ def test_summary_runtime_file_drift_blocks(tmp_path: Path):
     gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "blocked"
-    assert gate["reasons"] == [
-        {
-            "reason": "actual_runtime_file_not_in_operator_summary",
-            "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
-        }
-    ]
+    assert gate["reasons"][0] == {
+        "reason": "actual_runtime_file_not_in_operator_summary",
+        "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
+    }
+    assert gate["reasons"][-1]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
 
 
 @pytest.mark.parametrize(

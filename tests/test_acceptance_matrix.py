@@ -203,7 +203,7 @@ def test_acceptance_matrix_obeys_shared_strict_validation_diagnostic(
     assert not (package / "reports" / "runtime_apply_receipt.json").exists()
 
 
-def test_build_acceptance_matrix_fails_when_operator_runtime_mode_is_blocked(
+def test_build_acceptance_matrix_rejects_forged_operator_runtime_mode(
     tmp_path: Path,
 ):
     package = _prepare_package(tmp_path, "ShadowPriest", SHADOWPRIEST_CODE)
@@ -219,12 +219,15 @@ def test_build_acceptance_matrix_fails_when_operator_runtime_mode_is_blocked(
     assert matrix["status"] == "failed"
     assert matrix["summary"]["valid_package_count"] == 1
     assert matrix["summary"]["validation_pass_count"] == 1
-    assert matrix["summary"]["apply_gate_allowed_count"] == 1
+    assert matrix["summary"]["apply_gate_allowed_count"] == 0
     assert matrix["summary"]["load_safe_apply_count"] == 0
-    assert matrix["summary"]["technical_hard_block_count"] == 0
+    assert matrix["summary"]["technical_hard_block_count"] == 1
     assert row["runtime_apply_mode"] == "blocked"
     assert row["validation_status"] == "passed"
-    assert row["apply_gate_allowed"] is True
+    assert row["apply_gate_allowed"] is False
+    assert row["apply_gate_reasons"][0]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
 
 
 def test_acceptance_matrix_status_is_authoritative_when_detail_fields_conflict(

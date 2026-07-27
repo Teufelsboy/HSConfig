@@ -153,7 +153,7 @@ def recompute_apply_decision(
         informational_reasons=informational_reasons,
     )
     decision = build_apply_decision(facts)
-    if not enforce_summary_core_fields or not decision.allowed:
+    if not enforce_summary_core_fields:
         return decision, facts
 
     expected_core = apply_decision_summary_projection(decision, facts)

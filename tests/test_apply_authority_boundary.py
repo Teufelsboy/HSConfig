@@ -273,6 +273,24 @@ def test_apply_gate_rejects_serialized_core_field_forgery(
     assert _first_reason_code(gate) == "operator_summary_apply_decision_mismatch"
 
 
+def test_blocked_apply_decision_audits_stale_allowed_core_fields(
+    tmp_path: Path,
+) -> None:
+    package = write_current_apply_eligible_package(tmp_path / "package")
+    next((package / "CustomConfig").glob("*/Mulligan.json")).unlink()
+
+    gate = evaluate_apply_gate(package)
+    reason_codes = [
+        str(reason.get("code") or reason.get("reason"))
+        for reason in gate["reasons"]
+    ]
+
+    assert gate["allowed"] is False
+    assert gate["mode"] == "blocked"
+    assert reason_codes[0] == "missing_required_runtime_file"
+    assert reason_codes[-1] == "operator_summary_apply_decision_mismatch"
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_reason"),
     RECEIPT_TAMPERING_CASES,
