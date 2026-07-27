@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import gc
 import json
+from copy import copy, deepcopy
 from pathlib import Path
 from types import SimpleNamespace
+from weakref import ref
 
 import pytest
 
@@ -112,6 +115,38 @@ def _acquire_zero_record_handoff(
     assert status == 0
     assert payload["source_claim_compiler_report"]["record_count"] == 0
     return args, handoff
+
+
+def _autopilot_args(
+    tmp_path: Path,
+    acquire_args: SimpleNamespace,
+    output_name: str,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        deck_name=acquire_args.deck_name,
+        deck_code=acquire_args.deck_code,
+        cards_json=acquire_args.cards_json,
+        allow_placeholder=False,
+        source_search_results_json=str(tmp_path / "unused-source-results.json"),
+        current_date="2026-07-27",
+        out=str(tmp_path / output_name),
+    )
+
+
+def _cyclic_row() -> dict:
+    row: dict = {}
+    row["self"] = row
+    return row
+
+
+def _deeply_nested_row() -> dict:
+    row: dict = {}
+    current = row
+    for _index in range(2000):
+        child: dict = {}
+        current["child"] = child
+        current = child
+    return row
 
 
 def test_prepare_rejects_caller_supplied_trusted_source_documents(
@@ -391,3 +426,180 @@ def test_source_autopilot_for_configure_rejects_invalid_handoffs(
     with pytest.raises(ValueError, match="invalid_internal_source_authority_handoff"):
         source_autopilot_for_configure(args, bad_handoff)
     assert not (tmp_path / "autopilot").exists()
+
+
+@pytest.mark.parametrize("clone_first", [False, True])
+def test_deepcopied_search_handoff_never_replays_original_authority(
+    tmp_path: Path,
+    clone_first: bool,
+) -> None:
+    acquire_args, original = _acquire_zero_record_handoff(tmp_path)
+    cloned = deepcopy(original)
+
+    if clone_first:
+        with pytest.raises(
+            ValueError,
+            match="invalid_internal_source_authority_handoff",
+        ):
+            source_autopilot_for_configure(
+                _autopilot_args(tmp_path, acquire_args, "clone-first"),
+                cloned,
+            )
+        assert not (tmp_path / "clone-first").exists()
+
+    payload, status, _document_handoff = source_autopilot_for_configure(
+        _autopilot_args(tmp_path, acquire_args, "original"),
+        original,
+    )
+    assert status == 0
+    assert payload["status"] == "OK"
+
+    if not clone_first:
+        with pytest.raises(
+            ValueError,
+            match="invalid_internal_source_authority_handoff",
+        ):
+            source_autopilot_for_configure(
+                _autopilot_args(tmp_path, acquire_args, "clone-after-original"),
+                cloned,
+            )
+        assert not (tmp_path / "clone-after-original").exists()
+
+
+def test_shallow_search_handoff_copy_shares_single_use_state(
+    tmp_path: Path,
+) -> None:
+    acquire_args, original = _acquire_zero_record_handoff(tmp_path)
+    shallow = copy(original)
+    source_autopilot_for_configure(
+        _autopilot_args(tmp_path, acquire_args, "original"),
+        original,
+    )
+
+    with pytest.raises(ValueError, match="source_authority_handoff_replayed"):
+        source_autopilot_for_configure(
+            _autopilot_args(tmp_path, acquire_args, "shallow-replay"),
+            shallow,
+        )
+    assert not (tmp_path / "shallow-replay").exists()
+
+
+@pytest.mark.parametrize("clone_first", [False, True])
+def test_deepcopied_document_handoff_never_inherits_original_authority(
+    tmp_path: Path,
+    clone_first: bool,
+) -> None:
+    acquire_args, search_handoff = _acquire_zero_record_handoff(tmp_path)
+    _payload, _status, original = source_autopilot_for_configure(
+        _autopilot_args(tmp_path, acquire_args, "autopilot"),
+        search_handoff,
+    )
+    cloned = deepcopy(original)
+
+    if clone_first:
+        with pytest.raises(
+            ValueError,
+            match="invalid_internal_source_authority_handoff",
+        ):
+            source_authority.trusted_source_documents_from_handoff(cloned)
+
+    assert source_authority.trusted_source_documents_from_handoff(original) == []
+
+    if not clone_first:
+        with pytest.raises(
+            ValueError,
+            match="invalid_internal_source_authority_handoff",
+        ):
+            source_authority.trusted_source_documents_from_handoff(cloned)
+
+
+@pytest.mark.parametrize(
+    "invalid_row",
+    [
+        pytest.param({"value": object()}, id="nonserializable-object"),
+        pytest.param(_cyclic_row(), id="cyclic-row"),
+        pytest.param(_deeply_nested_row(), id="recursive-depth"),
+    ],
+)
+def test_invalid_search_record_canonicalization_fails_before_output(
+    tmp_path: Path,
+    invalid_row: dict,
+) -> None:
+    acquire_args, handoff = _acquire_zero_record_handoff(tmp_path)
+    object.__setattr__(handoff, "search_records", (invalid_row,))
+
+    with pytest.raises(
+        ValueError,
+        match="source_authority_handoff_lineage_mismatch",
+    ):
+        source_autopilot_for_configure(
+            _autopilot_args(tmp_path, acquire_args, "invalid-search"),
+            handoff,
+        )
+    assert not (tmp_path / "invalid-search").exists()
+
+
+@pytest.mark.parametrize(
+    "invalid_document",
+    [
+        pytest.param({"value": object()}, id="nonserializable-object"),
+        pytest.param(_cyclic_row(), id="cyclic-document"),
+        pytest.param(_deeply_nested_row(), id="recursive-depth"),
+    ],
+)
+def test_invalid_document_canonicalization_fails_before_package_output(
+    tmp_path: Path,
+    invalid_document: dict,
+) -> None:
+    acquire_args, search_handoff = _acquire_zero_record_handoff(tmp_path)
+    _payload, _status, document_handoff = source_autopilot_for_configure(
+        _autopilot_args(tmp_path, acquire_args, "autopilot"),
+        search_handoff,
+    )
+    object.__setattr__(
+        document_handoff,
+        "source_documents",
+        (invalid_document,),
+    )
+    prepare_args = _build_parser().parse_args(
+        [
+            "prepare",
+            "--deck-name",
+            acquire_args.deck_name,
+            "--deck-code",
+            acquire_args.deck_code,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(tmp_path / "invalid-package"),
+            "--cards-json",
+            acquire_args.cards_json,
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source_authority_handoff_lineage_mismatch",
+    ):
+        prepare_package_payload(
+            prepare_args,
+            source_authority_handoff=document_handoff,
+        )
+    assert not (tmp_path / "invalid-package").exists()
+
+
+def test_abandoned_original_token_is_not_retained(
+    tmp_path: Path,
+) -> None:
+    _acquire_args, handoff = _acquire_zero_record_handoff(tmp_path)
+    token = handoff._token
+    nonce = token.nonce
+    token_ref = ref(token)
+    assert source_authority._ACTIVE_ORIGINAL_TOKENS.get(nonce) is token
+
+    del token
+    del handoff
+    gc.collect()
+
+    assert token_ref() is None
+    assert nonce not in source_authority._ACTIVE_ORIGINAL_TOKENS
