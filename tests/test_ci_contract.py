@@ -4,8 +4,10 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 from yaml.nodes import MappingNode, Node, SequenceNode
+from yaml.tokens import AliasToken, AnchorToken, KeyToken, ScalarToken, ValueToken
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +50,49 @@ def _uses_nodes(value: object, node: Node):
             yield from _uses_nodes(child_value, child_node)
 
 
+def _uses_token_sites(source: str):
+    tokens = list(yaml.scan(source))
+    sites = []
+    for index, token in enumerate(tokens):
+        if not isinstance(token, KeyToken) or index + 3 >= len(tokens):
+            continue
+        key_token = tokens[index + 1]
+        value_marker = tokens[index + 2]
+        if (
+            not isinstance(key_token, ScalarToken)
+            or key_token.value != "uses"
+            or not isinstance(value_marker, ValueToken)
+        ):
+            continue
+        value_index = index + 3
+        while (
+            value_index < len(tokens)
+            and isinstance(tokens[value_index], AnchorToken)
+        ):
+            value_index += 1
+        if value_index >= len(tokens):
+            sites.append(("unsupported", None, value_marker))
+            continue
+        value_token = tokens[value_index]
+        if isinstance(value_token, AliasToken):
+            sites.append(("alias", None, value_token))
+        elif isinstance(value_token, ScalarToken):
+            kind = "multiline" if value_token.style in {">", "|"} else "direct"
+            sites.append((kind, value_token.value, value_token))
+        else:
+            sites.append(("unsupported", None, value_token))
+    return sites
+
+
 def _external_action_pin_errors(path: Path) -> list[str]:
     source = path.read_text(encoding="utf-8")
-    workflow = yaml.safe_load(source)
-    root_node = yaml.compose(source)
+    try:
+        workflow = yaml.safe_load(source)
+        root_node = yaml.compose(source)
+        token_sites = _uses_token_sites(source)
+    except yaml.YAMLError as exc:
+        problem = getattr(exc, "problem", None) or str(exc)
+        return [f"{path}: invalid workflow YAML: {problem}"]
     if workflow is None or root_node is None:
         return []
 
@@ -61,11 +102,34 @@ def _external_action_pin_errors(path: Path) -> list[str]:
     version_comment = re.compile(r"#\s+v[^\s#]+\s*$")
     lines = source.splitlines()
     errors = []
-    for reference, value_node in _uses_nodes(workflow, root_node):
-        line_number = value_node.start_mark.line + 1
+    semantic_uses = [
+        reference for reference, _value_node in _uses_nodes(workflow, root_node)
+    ]
+    if len(semantic_uses) != len(token_sites):
+        return [f"{path}: ambiguous uses token mapping"]
+    for reference, (site_kind, token_value, value_token) in zip(
+        semantic_uses,
+        token_sites,
+        strict=True,
+    ):
+        line_number = value_token.start_mark.line + 1
         location = f"{path}:{line_number}"
+        if site_kind == "alias":
+            errors.append(f"{location} aliases are not allowed for uses values")
+            continue
+        if site_kind == "multiline":
+            errors.append(
+                f"{location} multiline uses values are not allowed"
+            )
+            continue
+        if site_kind != "direct":
+            errors.append(f"{location} unsupported uses value syntax")
+            continue
         if not isinstance(reference, str):
             errors.append(f"{location} uses value must be a string")
+            continue
+        if token_value != reference:
+            errors.append(f"{location} ambiguous uses value construction")
             continue
         if reference.startswith("./"):
             continue
@@ -75,8 +139,14 @@ def _external_action_pin_errors(path: Path) -> list[str]:
                 "40-character lowercase commit SHA"
             )
             continue
-        source_line = lines[value_node.end_mark.line]
-        comment_suffix = source_line[value_node.end_mark.column :]
+        if value_token.end_mark.line >= len(lines):
+            errors.append(
+                f"{location} external uses {reference!r} must keep a "
+                "trailing version comment"
+            )
+            continue
+        source_line = lines[value_token.end_mark.line]
+        comment_suffix = source_line[value_token.end_mark.column :]
         if not version_comment.search(comment_suffix):
             errors.append(
                 f"{location} external uses {reference!r} must keep a "
@@ -203,3 +273,81 @@ jobs:
     assert any("@v1" in error for error in errors)
     assert any(uppercase_sha in error for error in errors)
     assert any("version comment" in error for error in errors)
+
+
+def test_semantic_action_guard_rejects_alias_with_comment_only_at_anchor(
+    tmp_path: Path,
+):
+    sha = "c" * 40
+    workflow = tmp_path / "anchor-comment.yml"
+    workflow.write_text(
+        f"""
+anchored-action: &checkout "owner/repo/action@{sha}" # v4.0.0
+jobs:
+  build:
+    steps:
+      - uses: *checkout
+""",
+        encoding="utf-8",
+    )
+
+    errors = _external_action_pin_errors(workflow)
+
+    assert len(errors) == 1
+    assert "aliases" in errors[0]
+    assert ":6" in errors[0]
+
+
+def test_semantic_action_guard_rejects_alias_even_with_comment_at_use(
+    tmp_path: Path,
+):
+    sha = "d" * 40
+    workflow = tmp_path / "alias-comment.yml"
+    workflow.write_text(
+        f"""
+anchored-action: &checkout "owner/repo/action@{sha}"
+jobs:
+  build:
+    steps:
+      - "uses" : *checkout # v4.0.0
+""",
+        encoding="utf-8",
+    )
+
+    errors = _external_action_pin_errors(workflow)
+
+    assert len(errors) == 1
+    assert "aliases" in errors[0]
+    assert ":6" in errors[0]
+
+
+@pytest.mark.parametrize(
+    ("name", "style", "chomp"),
+    [
+        ("folded", ">", "-"),
+        ("literal", "|", "-"),
+    ],
+)
+def test_semantic_action_guard_rejects_multiline_uses_scalars(
+    tmp_path: Path,
+    name: str,
+    style: str,
+    chomp: str,
+):
+    sha = "e" * 40
+    workflow = tmp_path / f"multiline-{name}.yml"
+    workflow.write_text(
+        f"""
+jobs:
+  build:
+    steps:
+      - uses: {style}{chomp}
+          owner/repo/action@{sha}
+""",
+        encoding="utf-8",
+    )
+
+    errors = _external_action_pin_errors(workflow)
+
+    assert len(errors) == 1
+    assert "multiline" in errors[0]

@@ -205,6 +205,111 @@ def test_duplicate_selection_uses_path_as_equal_mtime_tie_breaker(
     ]
 
 
+def test_duplicate_selection_includes_newer_nested_package_file_mtime(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    nested_newer = outputs / "nested-newer"
+    nominally_newer = outputs / "nominally-newer"
+    _write_package(
+        nested_newer,
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    _write_package(
+        nominally_newer,
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_710_000_000,
+    )
+    nested_file = (
+        nested_newer
+        / "04_package"
+        / "CustomConfig"
+        / "deck"
+        / "GlobalValues.json"
+    )
+    os.utime(nested_file, (1_720_000_000, 1_720_000_000))
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory["entries"][0]["path"] == "nested-newer"
+    assert inventory["entries"][0]["modified_time"] == "2024-07-03T09:46:40Z"
+    assert [row["path"] for row in inventory["likely_duplicate_candidates"]] == [
+        "nominally-newer"
+    ]
+
+
+def test_manifest_swap_after_resolution_cannot_emit_outside_deck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outputs = tmp_path / "outputs"
+    entry = outputs / "local-entry"
+    _write_package(
+        entry,
+        deck_name="LOCAL-DECK",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    manifest = entry / "04_package" / "reports" / "input_manifest.json"
+    outside_manifest = tmp_path / "outside-manifest.json"
+    outside_manifest.write_text(
+        json.dumps({"deck_name": "OUTSIDE-PRIVATE-DECK"}),
+        encoding="utf-8",
+    )
+    original_resolve = report_output_inventory._resolve_selected
+    swapped = False
+
+    def resolve_then_swap(path: Path, root: Path) -> Path | None:
+        nonlocal swapped
+        resolved = original_resolve(path, root)
+        if path == manifest and resolved is not None and not swapped:
+            manifest.unlink()
+            try:
+                manifest.symlink_to(outside_manifest)
+            except OSError as exc:
+                pytest.skip(f"file symlinks unavailable: {exc}")
+            swapped = True
+        return resolved
+
+    monkeypatch.setattr(
+        report_output_inventory,
+        "_resolve_selected",
+        resolve_then_swap,
+    )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert swapped
+    assert inventory["entries"][0]["deck"] is None
+    assert "OUTSIDE-PRIVATE-DECK" not in json.dumps(inventory)
+
+
+def test_manifest_read_fails_closed_without_open_handle_final_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outputs = tmp_path / "outputs"
+    _write_package(
+        outputs / "entry",
+        deck_name="MUST-NOT-BE-EMITTED",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    monkeypatch.setattr(
+        report_output_inventory,
+        "_opened_final_path",
+        lambda _descriptor: None,
+    )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory["entries"][0]["deck"] is None
+    assert "MUST-NOT-BE-EMITTED" not in json.dumps(inventory)
+
+
 def test_inventory_skips_output_entry_symlink_that_escapes_root(
     tmp_path: Path,
 ) -> None:

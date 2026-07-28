@@ -5,10 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+_MAX_METADATA_DEPTH = 128
+_MAX_METADATA_NODES = 100_000
 
 
 class _UnsafePathError(Exception):
@@ -26,20 +31,100 @@ def _resolve_selected(path: Path, root: Path) -> Path | None:
     return resolved
 
 
-def _deck_name(manifest: Path | None) -> str | None:
-    if manifest is None or not manifest.is_file():
-        return None
+def _windows_opened_final_path(descriptor: int) -> Path | None:
     try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        handle = msvcrt.get_osfhandle(descriptor)
+        if handle == -1:
+            return None
+        get_final_path = ctypes.WinDLL(
+            "kernel32",
+            use_last_error=True,
+        ).GetFinalPathNameByHandleW
+        get_final_path.argtypes = [
+            wintypes.HANDLE,
+            wintypes.LPWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+        ]
+        get_final_path.restype = wintypes.DWORD
+        size = get_final_path(handle, None, 0, 0)
+        if size == 0:
+            return None
+        buffer = ctypes.create_unicode_buffer(size + 1)
+        copied = get_final_path(handle, buffer, len(buffer), 0)
+        if copied == 0 or copied >= len(buffer):
+            return None
+        final_path = buffer.value
+    except (AttributeError, ImportError, OSError, ValueError):
         return None
+
+    if final_path.startswith("\\\\?\\UNC\\"):
+        final_path = "\\\\" + final_path[8:]
+    elif final_path.startswith("\\\\?\\"):
+        final_path = final_path[4:]
+    result = Path(final_path)
+    return result if result.is_absolute() else None
+
+
+def _posix_opened_final_path(descriptor: int) -> Path | None:
+    descriptor_link = Path("/proc/self/fd") / str(descriptor)
+    try:
+        final_path = os.readlink(descriptor_link)
+    except OSError:
+        return None
+    if final_path.endswith(" (deleted)"):
+        return None
+    result = Path(final_path)
+    return result if result.is_absolute() else None
+
+
+def _opened_final_path(descriptor: int) -> Path | None:
+    if os.name == "nt":
+        return _windows_opened_final_path(descriptor)
+    if os.name == "posix":
+        return _posix_opened_final_path(descriptor)
+    return None
+
+
+def _descriptor_deck_name(
+    manifest: Path,
+    root: Path,
+) -> tuple[bool, str | None]:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    if os.name == "posix":
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(manifest, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return False, None
+        final_path = _opened_final_path(descriptor)
+        if final_path is None:
+            return False, None
+        try:
+            final_path.relative_to(root)
+        except ValueError:
+            return False, None
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = None
+            payload = json.loads(handle.read().decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False, None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
     deck_name = payload.get("deck_name") if isinstance(payload, dict) else None
     if not isinstance(deck_name, str) or not deck_name.strip():
-        return None
-    return deck_name
+        return True, None
+    return True, deck_name
 
 
-def _modified_epoch(paths: list[Path]) -> float:
+def _selected_modified_epoch(paths: list[Path]) -> float:
     modified = 0.0
     for path in paths:
         try:
@@ -49,12 +134,57 @@ def _modified_epoch(paths: list[Path]) -> float:
     return modified
 
 
+def _is_link_or_reparse(path_stat: os.stat_result) -> bool:
+    if stat.S_ISLNK(path_stat.st_mode):
+        return True
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(path_stat, "st_file_attributes", 0)
+    return bool(reparse_flag and file_attributes & reparse_flag)
+
+
+def _package_modified_epoch(package: Path, root: Path) -> float:
+    modified = _selected_modified_epoch([package])
+    stack = [(package, 0)]
+    visited: set[Path] = set()
+    inspected_nodes = 0
+    while stack and inspected_nodes < _MAX_METADATA_NODES:
+        directory, depth = stack.pop()
+        if directory in visited or depth > _MAX_METADATA_DEPTH:
+            continue
+        visited.add(directory)
+        try:
+            with os.scandir(directory) as iterator:
+                entries = sorted(iterator, key=lambda entry: entry.name.casefold())
+        except OSError:
+            continue
+        for entry in entries:
+            if inspected_nodes >= _MAX_METADATA_NODES:
+                break
+            inspected_nodes += 1
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if _is_link_or_reparse(entry_stat):
+                continue
+            entry_path = Path(entry.path)
+            try:
+                resolved = _resolve_selected(entry_path, root)
+            except _UnsafePathError:
+                continue
+            if resolved is None:
+                continue
+            modified = max(modified, entry_stat.st_mtime)
+            if stat.S_ISDIR(entry_stat.st_mode) and depth < _MAX_METADATA_DEPTH:
+                stack.append((resolved, depth + 1))
+    return modified
+
+
 def _inspect_entry(
     root: Path,
     entry: Path,
     resolved_entry: Path,
 ) -> tuple[str | None, str, float]:
-    selected = [resolved_entry]
     try:
         staged_path = entry / "04_package"
         staged = _resolve_selected(staged_path, root)
@@ -62,30 +192,44 @@ def _inspect_entry(
             raise _UnsafePathError
         package_path = staged_path if staged is not None else entry
         package = staged if staged is not None else resolved_entry
-        selected.append(package)
 
         reports = _resolve_selected(package_path / "reports", root)
         if reports is None or not reports.is_dir():
-            return None, "missing_reports", _modified_epoch(selected)
-        selected.append(reports)
+            return None, "missing_reports", _package_modified_epoch(package, root)
 
         manifest = _resolve_selected(reports / "input_manifest.json", root)
-        if manifest is None or not manifest.is_file():
-            return None, "missing_input_manifest", _modified_epoch(selected)
-        selected.append(manifest)
+        if manifest is None:
+            return (
+                None,
+                "missing_input_manifest",
+                _package_modified_epoch(package, root),
+            )
 
         custom_config = _resolve_selected(package_path / "CustomConfig", root)
         if custom_config is None or not custom_config.is_dir():
+            manifest_safe, deck_name = _descriptor_deck_name(manifest, root)
+            if not manifest_safe:
+                return (
+                    None,
+                    "package_not_found",
+                    _selected_modified_epoch([resolved_entry]),
+                )
             return (
-                _deck_name(manifest),
+                deck_name,
                 "missing_custom_config",
-                _modified_epoch(selected),
+                _package_modified_epoch(package, root),
             )
-        selected.append(custom_config)
     except _UnsafePathError:
-        return None, "package_not_found", _modified_epoch([resolved_entry])
+        return (
+            None,
+            "package_not_found",
+            _selected_modified_epoch([resolved_entry]),
+        )
 
-    return _deck_name(manifest), "complete", _modified_epoch(selected)
+    manifest_safe, deck_name = _descriptor_deck_name(manifest, root)
+    if not manifest_safe:
+        return None, "package_not_found", _selected_modified_epoch([resolved_entry])
+    return deck_name, "complete", _package_modified_epoch(package, root)
 
 
 def _utc_timestamp(epoch: float) -> str:
