@@ -14,7 +14,10 @@ import pytest
 import hsconfig.source_acquisition as source_acquisition
 from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.apply_gate import evaluate_apply_gate
-from hsconfig.card_metadata import analysis_cards_from_deck_identity
+from hsconfig.card_metadata import (
+    analysis_cards_from_deck_identity,
+    hydrate_card_metadata,
+)
 from hsconfig.cli import main
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
@@ -335,11 +338,25 @@ def test_visibility_identity_decode_overlay_is_exact_and_separate(
             for card in decoded["cards"]
             if card["dbf_id"] in VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS
         ]
+        generic_identity_only_card = {
+            "card_id": "IDENTITY_ONLY",
+            "dbf_id": 424242,
+            "count": 1,
+            "name": "Secret Identity",
+            "cost": 3,
+            "type": "SPELL",
+            "card_class": "MAGE",
+            "text": "Secret: When your opponent plays a card, draw a card.",
+            "mechanics": ["secret"],
+            "metadata_status": "source_record",
+            "deckstring_identity_only": True,
+        }
         assert identity_only_cards
         assert all(card["deckstring_identity_only"] is True for card in identity_only_cards)
         assert source_records_from_cards(
             [
                 *identity_only_cards,
+                generic_identity_only_card,
                 {
                     "card_id": "ORDINARY_SOURCE_CONTROL",
                     "name": "Ordinary Source Control",
@@ -359,6 +376,7 @@ def test_visibility_identity_decode_overlay_is_exact_and_separate(
             deck_code=deck["deck_code"],
             cards=[
                 *identity_only_cards,
+                generic_identity_only_card,
                 {
                     "card_id": "ORDINARY_SOURCE_CONTROL",
                     "dbf_id": 123456,
@@ -369,13 +387,27 @@ def test_visibility_identity_decode_overlay_is_exact_and_separate(
                 },
             ],
         )
-        assert source_records_from_cards(
-            analysis_cards_from_deck_identity(deck_identity)
-        ) == {
+        analysis_cards = analysis_cards_from_deck_identity(deck_identity)
+        source_records = source_records_from_cards(analysis_cards)
+        assert source_records == {
             "ORDINARY_SOURCE_CONTROL": {
                 "name": "Ordinary Source Control",
             }
         }
+        hydrated = hydrate_card_metadata(
+            cards=analysis_cards,
+            source_records=source_records,
+        )
+        hydrated_identity_only = next(
+            card
+            for card in hydrated["cards"]
+            if card["card_id"] == "IDENTITY_ONLY"
+        )
+        assert hydrated_identity_only["metadata_status"] == "missing_source_record"
+        assert hydrated_identity_only["source_record_key"] is None
+        assert {"secret", "secret_timing"}.isdisjoint(
+            hydrated_identity_only["mechanic_families"]
+        )
 
 
 def test_audited_dbf_snapshot_rejects_malformed_schema_or_metadata() -> None:

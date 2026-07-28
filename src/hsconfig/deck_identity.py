@@ -77,6 +77,9 @@ def _normalize_card(card: dict[str, Any]) -> dict[str, Any]:
         "dbf_id": int(dbf_id) if dbf_id is not None else None,
         "count": int(card.get("count", 1)),
     }
+    if card.get("deckstring_identity_only") is True:
+        normalized["deckstring_identity_only"] = True
+        return normalized
     name = str(card.get("name", "")).strip()
     if name:
         normalized["name"] = name

@@ -79,6 +79,55 @@ def test_build_deck_identity_preserves_sideboard_owner_identity():
     assert deck_identity["sideboards"][0]["owner_card_id"]
 
 
+@pytest.mark.parametrize("deck_zone", ["main", "sideboard"])
+def test_build_deck_identity_preserves_and_sanitizes_identity_only_provenance(
+    deck_zone,
+):
+    identity_only_card = {
+        "card_id": "IDENTITY_ONLY",
+        "dbf_id": 424242,
+        "count": 1,
+        "name": "Secret Identity",
+        "cost": 3,
+        "type": "SPELL",
+        "card_class": "MAGE",
+        "text": "Secret: When your opponent plays a card, draw a card.",
+        "mechanics": ["secret"],
+        "metadata_status": "source_record",
+        "deckstring_identity_only": True,
+    }
+    cards = [identity_only_card] if deck_zone == "main" else [
+        {"card_id": "SIDEBOARD_OWNER", "dbf_id": 434343, "count": 1}
+    ]
+    sideboards = [] if deck_zone == "main" else [
+        {
+            "sideboard_index": 1,
+            "owner_dbf_id": 434343,
+            "owner_card_id": "SIDEBOARD_OWNER",
+            "cards": [identity_only_card],
+        }
+    ]
+
+    identity = build_deck_identity(
+        deck_name="Identity Boundary",
+        deck_code="test-code",
+        cards=cards,
+        sideboards=sideboards,
+    )
+
+    normalized = (
+        identity["cards"][0]
+        if deck_zone == "main"
+        else identity["sideboards"][0]["cards"][0]
+    )
+    assert normalized == {
+        "card_id": "IDENTITY_ONLY",
+        "dbf_id": 424242,
+        "count": 1,
+        "deckstring_identity_only": True,
+    }
+
+
 def test_build_deck_identity_rejects_missing_card_id():
     with pytest.raises(ValueError, match="card_id"):
         build_deck_identity(
