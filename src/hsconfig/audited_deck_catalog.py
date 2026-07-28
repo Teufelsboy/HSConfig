@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
 
@@ -22,6 +25,13 @@ _CATALOG_ROLE_COUNTS = {"representative": 11, "supplemental": 1}
 _VISIBILITY_ONLY_DECK_NAMES = {"SecretMage", "HighlanderPriest"}
 _VISIBILITY_ONLY_PROOF_SCOPE = "supplemental_visibility_only"
 _VISIBILITY_ONLY_MATRIX_POLICY = "not_representative_visibility_only"
+
+
+@dataclass(frozen=True, slots=True)
+class AuditedDeckBuildIdentity:
+    deck_name: str
+    deck_code_sha256: str
+    deck_fingerprint: str
 
 
 def load_audited_deck_catalog(
@@ -57,6 +67,38 @@ def load_audited_deck_catalog(
     } != _CATALOG_ROLE_COUNTS:
         raise ValueError("audited_deck_catalog_invalid")
     return normalized_rows
+
+
+def load_audited_deck_build_identity(
+    deck_name: str,
+    path: str | Path = AUDITED_DECK_CATALOG_PATH,
+) -> AuditedDeckBuildIdentity:
+    normalized_name = str(deck_name).strip()
+    matches = [
+        row
+        for row in load_audited_deck_catalog(path)
+        if row["deck_name"] == normalized_name
+    ]
+    if len(matches) != 1:
+        raise ValueError("audited_deck_build_identity_invalid")
+    deck_code = str(matches[0]["deck_code"])
+    try:
+        decoded = decode_deck_code(deck_code)
+    except (TypeError, ValueError) as error:
+        raise ValueError("audited_deck_build_identity_invalid") from error
+    if (
+        decoded.get("card_count_total") != 30
+        or decoded.get("unresolved_identity_count") != 0
+    ):
+        raise ValueError("audited_deck_build_identity_invalid")
+    return AuditedDeckBuildIdentity(
+        deck_name=normalized_name,
+        deck_code_sha256=sha256(deck_code.encode("utf-8")).hexdigest(),
+        deck_fingerprint=stable_deck_fingerprint(
+            (str(card["card_id"]), int(card["count"]))
+            for card in decoded["cards"]
+        ),
+    )
 
 
 def load_audited_role_manifest(
@@ -128,6 +170,8 @@ def _nonempty_string(value: Any) -> bool:
 
 __all__ = (
     "AUDITED_DECK_CATALOG_PATH",
+    "AuditedDeckBuildIdentity",
     "load_audited_deck_catalog",
+    "load_audited_deck_build_identity",
     "load_audited_role_manifest",
 )
