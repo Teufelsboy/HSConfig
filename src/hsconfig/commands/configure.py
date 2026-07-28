@@ -125,6 +125,7 @@ def configure_payload(
     research_source_authority_handoff = None
     prepare_source_authority_handoff = None
     source_autopilot_path = None
+    mulligan_source_gaps: list[dict[str, str]] = []
     source_closure_intake_receipt_path = None
     source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
     explicit_source_urls = dedupe_acquisition_urls(
@@ -240,6 +241,20 @@ def configure_payload(
             ) = split_source_documents_handoff(source_authority_handoff)
         source_autopilot_path = autopilot_dir
         source_documents_json = autopilot_dir / "source_documents.json"
+        source_autopilot_report = _read_optional_json(
+            autopilot_dir / "source_autopilot_report.json"
+        )
+        if isinstance(source_autopilot_report, Mapping):
+            raw_source_gaps = source_autopilot_report.get(
+                "explicit_mulligan_source_gaps",
+                [],
+            )
+            if isinstance(raw_source_gaps, list):
+                mulligan_source_gaps = [
+                    dict(row)
+                    for row in raw_source_gaps
+                    if isinstance(row, Mapping)
+                ]
     elif getattr(args, "source_evidence_json", None):
         try:
             draft_args = SimpleNamespace(
@@ -316,6 +331,7 @@ def configure_payload(
             current_date=current_date,
             source_authority_handoff=prepare_source_authority_handoff,
             stage_observer=stage_observer,
+            mulligan_source_gaps=mulligan_source_gaps,
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)

@@ -840,6 +840,38 @@ def test_mulligan_plan_can_use_policy_backed_keeps_when_source_keeps_are_absent(
     assert plan["quality"]["default_only"] is False
 
 
+def test_external_source_gap_veto_suppresses_only_the_named_policy_candidate():
+    plan = build_mulligan_plan(
+        deck_name="Kingslayer",
+        claims=[],
+        card_roles={
+            "STATIC_ONLY_DRAW": {"roles": ["weapon", "draw"]},
+            "LEGITIMATE_WEAPON": {"roles": ["weapon_setup"]},
+        },
+        deck_cards={
+            "STATIC_ONLY_DRAW": {"name": "Static Only Draw", "cost": 1},
+            "LEGITIMATE_WEAPON": {"name": "Legitimate Weapon", "cost": 2},
+        },
+        allow_policy_backed=True,
+        external_policy_vetoes={
+            "STATIC_ONLY_DRAW": "explicit_source_gap_requires_resolution",
+        },
+    )
+
+    holds = {
+        row["card"]
+        for row in plan["rules"]
+        if row.get("action") == "hold"
+    }
+    assert holds == {"LEGITIMATE_WEAPON"}
+    assert {
+        "card": "STATIC_ONLY_DRAW",
+        "reason": "explicit_source_gap_requires_resolution",
+        "policy_lane": "source_veto",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in plan["suppressed_rules"]
+
+
 def test_mulligan_plan_preserves_policy_lane_metadata():
     plan = build_mulligan_plan(
         deck_name="PirateRogue",

@@ -1009,6 +1009,81 @@ def test_profile_card_missing_actions_cover_known_deck_specific_cards():
 
         assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
         assert report["first_missing_source_action_by_card"][card_id] == expected_action
+        assert report["explicit_mulligan_source_gaps"] == [
+            {
+                "card_id": card_id,
+                "first_missing_source_action": expected_action,
+                "reason": "explicit_source_gap_requires_resolution",
+            }
+        ]
+
+
+def test_exact_mulligan_source_closes_registered_explicit_gap():
+    deck_identity = {
+        "cards": [
+            {
+                "card_id": "DEEP_014",
+                "name": "Quick Pick",
+                "cost": 2,
+                "count": 2,
+            },
+            {
+                "card_id": "CARD_002",
+                "name": "Kingslayer Core Card",
+                "cost": 1,
+                "count": 2,
+            },
+        ]
+    }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card["count"])
+        for card in deck_identity["cards"]
+    )
+    bundle = build_source_autopilot_bundle(
+        deck_name="Kingslayer",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.test/kingslayer-exact",
+                "source_title": "2026 Exact Kingslayer Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2026,
+                "source_record_strength": "candidate_strong",
+                "acquisition_provenance": acquire_live_test_provenance(),
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "deck_name": "Kingslayer",
+                    "matched_card_ids": ["DEEP_014", "CARD_002"],
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": deck_identity[
+                            "deck_fingerprint"
+                        ],
+                        "candidate_deck_code_hashes": [
+                            "sha256:kingslayer-exact-source"
+                        ],
+                    },
+                },
+                "mulligan": {
+                    "keep_card_ids": ["DEEP_014"],
+                    "evidence_text_short": (
+                        "Keep Quick Pick in this exact deck."
+                    ),
+                },
+                "normalized_text": (
+                    "Mulligan: Keep Quick Pick in this exact Kingslayer deck."
+                ),
+            }
+        ],
+        current_date="2026-07-28",
+    )
+
+    assert bundle["source_autopilot_report"][
+        "explicit_mulligan_source_gaps"
+    ] == []
 
 
 def test_partial_claim_kind_action_wins_before_profile_card_fallback():
@@ -1060,6 +1135,17 @@ def test_partial_claim_kind_action_wins_before_profile_card_fallback():
         assert report["first_missing_source_action_by_card"][card_id] == (
             "add_card_specific_targeting_source"
         )
+        assert report["explicit_mulligan_source_gaps"] == [
+            {
+                "card_id": card_id,
+                "first_missing_source_action": (
+                    "add_kingslayer_quick_pick_mulligan_source"
+                    if deck_name == "Kingslayer"
+                    else "add_boarlock_fracking_mulligan_source"
+                ),
+                "reason": "explicit_source_gap_requires_resolution",
+            }
+        ]
 
 
 def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():

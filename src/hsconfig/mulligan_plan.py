@@ -37,6 +37,7 @@ def build_mulligan_plan(
     deck_cards: dict[str, Any] | list[dict[str, Any]] | None = None,
     allow_policy_backed: bool = False,
     policy_excluded_card_ids: set[str] | None = None,
+    external_policy_vetoes: dict[str, str] | None = None,
     source_claim_lifecycle_rows: list[dict[str, Any]] | None = None,
     deck_identity: dict[str, Any] | None = None,
     verified_source_receipts: list[dict[str, Any]] | None = None,
@@ -209,6 +210,7 @@ def build_mulligan_plan(
             suppressed_rules=suppressed_rules,
             card_roles=card_roles,
             extra_card_ids=policy_excluded_card_ids or set(),
+            external_policy_vetoes=external_policy_vetoes or {},
         )
         policy_result = build_policy_backed_mulligan_rules(
             deck_name=deck_name,
@@ -421,12 +423,20 @@ def _policy_veto_card_ids(
     suppressed_rules: list[dict[str, Any]],
     card_roles: dict[str, Any],
     extra_card_ids: set[str],
+    external_policy_vetoes: dict[str, str],
 ) -> dict[str, str]:
     vetoes = {
         str(card_id): "excluded_source_mulligan_intent"
         for card_id in extra_card_ids
         if str(card_id)
     }
+    vetoes.update(
+        {
+            str(card_id): str(reason)
+            for card_id, reason in external_policy_vetoes.items()
+            if str(card_id) and str(reason)
+        }
+    )
     exact_authority_cards = _exact_source_mulligan_authority_cards(rules)
     for claim in claims:
         if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:

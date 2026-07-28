@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from hsconfig.cli import main
 from hsconfig.deck_identity import build_deck_identity
@@ -12,6 +15,9 @@ from tests.helpers.verified_deck_input import (
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
+AUDITED_CATALOG = Path("docs/operator/audited-deck-catalog.json")
+AUDITED_CARD_DB = FIXTURES / "audited_deck_card_db.json"
+SOURCE_SEARCH_MATRIX = FIXTURES / "source_search_11_deck_matrix.json"
 SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
@@ -100,6 +106,120 @@ def _stub_empty_fetches(monkeypatch) -> None:
         "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
         lambda timeout=10.0: [],
     )
+
+
+def _install_audited_decoder_db(monkeypatch) -> None:
+    cards = {}
+    for row in _read_json(AUDITED_CARD_DB)["cards"]:
+        (
+            dbf_id,
+            card_id,
+            name,
+            cost,
+            card_type,
+            card_class,
+            text,
+            mechanics,
+        ) = row
+        card = SimpleNamespace(
+            card_class=card_class,
+            card_id=card_id,
+            cost=cost,
+            english_description=text,
+            english_name=name,
+            name=name,
+            type=card_type,
+        )
+        for mechanic in mechanics:
+            setattr(card, str(mechanic), True)
+        cards[int(dbf_id)] = card
+    monkeypatch.setattr(
+        "hsconfig.deckstring_decode.cardxml.load_dbf",
+        lambda: (cards, None),
+    )
+
+
+@pytest.mark.parametrize(
+    ("deck_name", "gap_card_id"),
+    [
+        ("Kingslayer", "DEEP_014"),
+        ("Boarlock", "WW_092"),
+    ],
+)
+def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallback(
+    tmp_path: Path,
+    monkeypatch,
+    deck_name: str,
+    gap_card_id: str,
+) -> None:
+    _stub_empty_fetches(monkeypatch)
+    _install_audited_decoder_db(monkeypatch)
+    deck = next(
+        row
+        for row in _read_json(AUDITED_CATALOG)["decks"]
+        if row["deck_name"] == deck_name
+    )
+    matrix = _read_json(SOURCE_SEARCH_MATRIX)
+    source_records_path = tmp_path / f"{deck_name}-source-search.json"
+    source_records_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "records": matrix["records_by_deck"][deck_name],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / deck_name
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            deck_name,
+            "--deck-code",
+            deck["deck_code"],
+            "--runtime-root",
+            str(tmp_path / "nonexistent-runtime"),
+            "--out",
+            str(out),
+            "--auto-source",
+            "--source-search-results-json",
+            str(source_records_path),
+            "--current-date",
+            "2026-07-28",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    package = out / "04_package"
+    report = _read_json(package / "reports" / "mulligan_plan_report.json")
+    holds = {
+        str(row["card"])
+        for row in report["rules"]
+        if row.get("action") == "hold"
+        and row.get("selector_kind") != "wildcard"
+    }
+    physical = _read_json(
+        next((package / "CustomConfig").glob("*/Mulligan.json"))
+    )
+    physical_holds = {
+        str(row["mulligan"])
+        for row in physical["Mulligan"]["values"]
+        if row.get("value") == "hold"
+        and row.get("mulligan") != "*"
+    }
+
+    assert gap_card_id not in holds
+    assert gap_card_id not in physical_holds
+    assert holds - {gap_card_id}
+    assert {
+        "card": gap_card_id,
+        "reason": "explicit_source_gap_requires_resolution",
+        "policy_lane": "source_veto",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in report["suppressed_rules"]
 
 
 def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulligan(

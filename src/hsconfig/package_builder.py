@@ -121,6 +121,7 @@ def prepare_package_payload(
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     stage_observer: StageObserver | None = None,
+    mulligan_source_gaps: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], int]:
     reject_caller_supplied_source_authority(args)
     operator_date = _package_current_date(args, current_date)
@@ -129,6 +130,7 @@ def prepare_package_payload(
         current_date=operator_date,
         source_authority_handoff=source_authority_handoff,
         stage_observer=stage_observer,
+        mulligan_source_gaps=mulligan_source_gaps,
     )
     payload = dict(payload)
     payload["command"] = "prepare"
@@ -150,6 +152,7 @@ def build_package_payload(
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     stage_observer: StageObserver | None = None,
+    mulligan_source_gaps: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     deck_slug = slugify_deck_name(args.deck_name)
@@ -325,6 +328,9 @@ def build_package_payload(
         allow_policy_backed=True,
         policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
             mulligan_runtime_claims
+        ),
+        external_policy_vetoes=_mulligan_source_gap_vetoes(
+            mulligan_source_gaps
         ),
         source_claim_lifecycle_rows=initial_lifecycle_rows,
         deck_identity=deck_identity,
@@ -1082,6 +1088,21 @@ def _policy_mulligan_excluded_card_ids(
             continue
         cards.update(_claim_card_ids(claim))
     return cards
+
+
+def _mulligan_source_gap_vetoes(
+    source_gaps: list[dict[str, str]] | None,
+) -> dict[str, str]:
+    vetoes: dict[str, str] = {}
+    for row in source_gaps or []:
+        card_id = str(row.get("card_id", "")).strip()
+        reason = str(row.get("reason", "")).strip()
+        if (
+            card_id
+            and reason == "explicit_source_gap_requires_resolution"
+        ):
+            vetoes[card_id] = reason
+    return vetoes
 
 
 def _claim_card_ids(claim: dict[str, Any]) -> set[str]:

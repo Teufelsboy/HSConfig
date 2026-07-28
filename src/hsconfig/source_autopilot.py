@@ -382,6 +382,13 @@ def _build_report(
         current_date=current_date,
         profile_verdict=profile_verdict,
     )
+    first_missing_source_action_by_card = _first_missing_source_action_by_card(
+        deck_name,
+        deck_identity,
+        evidence_rows,
+        current_date=current_date,
+        profile_first_missing=profile_verdict.first_missing_link,
+    )
     report = {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -405,12 +412,12 @@ def _build_report(
             profile_verdict,
         ),
         "first_missing_source_action": strong_closure_summary["first_missing_source_action"],
-        "first_missing_source_action_by_card": _first_missing_source_action_by_card(
+        "first_missing_source_action_by_card": first_missing_source_action_by_card,
+        "explicit_mulligan_source_gaps": _explicit_mulligan_source_gaps(
             deck_name,
             deck_identity,
             evidence_rows,
             current_date=current_date,
-            profile_first_missing=profile_verdict.first_missing_link,
         ),
         "first_missing_source_action_by_surface": _first_missing_source_action_by_surface(
             evidence_rows,
@@ -436,6 +443,40 @@ def _build_report(
         source_autopilot_report=report,
     )
     return report
+
+
+def _explicit_mulligan_source_gaps(
+    deck_name: str,
+    deck_identity: Mapping[str, Any],
+    evidence_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+) -> list[dict[str, str]]:
+    deck_slug = _norm(deck_name)
+    deck_card_ids = _deck_card_ids(deck_identity)
+    resolved_mulligan_card_ids = {
+        _text(card_id)
+        for row in evidence_rows
+        if _text(row.get("claim_kind", ""))
+        in {"mulligan_keep", "mulligan_discard"}
+        and _is_strong_guide_lane(row, current_date)
+        and _is_runtime_contract_candidate(row)
+        for card_id in _as_list(row.get("cards", []))
+        if _text(card_id)
+    }
+    return [
+        {
+            "card_id": card_id,
+            "first_missing_source_action": action,
+            "reason": "explicit_source_gap_requires_resolution",
+        }
+        for (profile_slug, card_id), action in sorted(
+            PROFILE_CARD_MISSING_SOURCE_ACTIONS.items()
+        )
+        if profile_slug == deck_slug
+        and card_id in deck_card_ids
+        and card_id not in resolved_mulligan_card_ids
+    ]
 
 
 def _build_strong_closure_summary(
