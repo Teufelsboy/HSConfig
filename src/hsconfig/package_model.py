@@ -26,19 +26,15 @@ from hsconfig.package_domain import (
     BotDelegationModel,
     RuntimeSurfaceDecision,
     RuntimeSurfacePlan,
+    canonical_relative_path,
 )
 
 
-def _canonical_relative_path(value: str | Path) -> str:
-    raw_path = str(value)
-    if (
-        not raw_path
-        or "\\" in raw_path
-        or Path(raw_path).is_absolute()
-        or any(part in {"", ".", ".."} for part in raw_path.split("/"))
-    ):
-        raise ValueError("package_artifact_relative_path_invalid")
-    return raw_path
+def _canonical_relative_path(value: str) -> str:
+    try:
+        return canonical_relative_path(value)
+    except ValueError as error:
+        raise ValueError("package_artifact_relative_path_invalid") from error
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -49,24 +45,41 @@ def _canonical_bytes(value: Any) -> bytes:
 
 @dataclass(frozen=True, slots=True)
 class PackageArtifact:
-    relative_path: str | Path
+    relative_path: str
     content: bytes
-    size: int = 0
-    sha256: str = ""
+    size: int
+    sha256: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.content, bytes):
             raise ValueError("package_artifact_content_must_be_bytes")
+        if not isinstance(self.relative_path, str):
+            raise ValueError("package_artifact_relative_path_invalid")
         path = _canonical_relative_path(self.relative_path)
         size = len(self.content)
         digest = hashlib.sha256(self.content).hexdigest()
-        if self.size not in {0, size}:
+        if self.size != size:
             raise ValueError("package_artifact_size_mismatch")
-        if self.sha256 not in {"", digest}:
+        if (
+            not isinstance(self.sha256, str)
+            or len(self.sha256) != 64
+            or self.sha256.lower() != self.sha256
+            or any(char not in "0123456789abcdef" for char in self.sha256)
+            or self.sha256 != digest
+        ):
             raise ValueError("package_artifact_digest_mismatch")
         object.__setattr__(self, "relative_path", path)
         object.__setattr__(self, "size", size)
         object.__setattr__(self, "sha256", digest)
+
+    @classmethod
+    def from_content(cls, *, relative_path: str, content: bytes) -> "PackageArtifact":
+        return cls(
+            relative_path=relative_path,
+            content=content,
+            size=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +95,8 @@ class PackageModel:
     def __post_init__(self) -> None:
         if not self.deck_name or not self.deck_fingerprint:
             raise ValueError("package_model_identity_invalid")
+        if self.mulligan_plan.deck_name != self.deck_name:
+            raise ValueError("package_model_mulligan_identity_mismatch")
         if any(
             fingerprint != self.deck_fingerprint
             for fingerprint in (
@@ -91,6 +106,27 @@ class PackageModel:
             )
         ):
             raise ValueError("package_model_fingerprint_mismatch")
+        if any(
+            row.deck_fingerprint != self.deck_fingerprint
+            for row in self.globalvalues_ledger.decisions
+        ) or any(
+            row.deck_fingerprint != self.deck_fingerprint
+            for row in (
+                *self.disposition_ledger.cards,
+                *self.disposition_ledger.claims,
+            )
+        ):
+            raise ValueError("package_model_row_fingerprint_mismatch")
+        if any(surface.family == "Combo" for surface in self.runtime_surface_plan.surfaces):
+            raise ValueError("combo_typed_payload_unavailable")
+        expected = build_runtime_surface_plan(
+            mulligan_plan=self.mulligan_plan,
+            globalvalues_ledger=self.globalvalues_ledger,
+            disposition_ledger=self.disposition_ledger,
+            combo_decision_ids=(),
+        )
+        if self.runtime_surface_plan != expected:
+            raise ValueError("runtime_surface_authorization_mismatch")
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +134,9 @@ class RenderedPackage:
     model: PackageModel
     artifacts: tuple[PackageArtifact, ...]
     content_root_sha256: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "artifacts", tuple(self.artifacts))
 
 
 class PackageView(Protocol):
@@ -161,6 +200,8 @@ def build_runtime_surface_plan(
     combo_decision_ids: tuple[str, ...],
 ) -> RuntimeSurfacePlan:
     combo_ids = tuple(combo_decision_ids)
+    if combo_ids:
+        raise ValueError("combo_typed_payload_unavailable")
     if tuple(sorted(set(combo_ids))) != combo_ids:
         raise ValueError("combo_decision_ids_must_be_unique_sorted")
     claim_ids = {
@@ -184,7 +225,13 @@ def build_runtime_surface_plan(
             relative_path="Mulligan.json",
             owner="mulligan",
             decision_ids=tuple(
-                f"mulligan:{index}" for index, _row in enumerate(mulligan_plan.rules)
+                sorted(
+                    {
+                        f"mulligan:{claim_id}"
+                        for rule in mulligan_plan.rules
+                        for claim_id in rule.source_claim_ids
+                    }
+                )
             ),
         ),
     ]
@@ -197,7 +244,7 @@ def build_runtime_surface_plan(
                     family="CardID",
                     relative_path=path,
                     owner="cardid",
-                    decision_ids=(f"card:{row.composite_card_key}",),
+                    decision_ids=(f"card:{row.physical_owner}",),
                 )
             )
     if combo_ids:

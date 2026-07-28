@@ -1,3 +1,5 @@
+from dataclasses import replace
+import json
 from pathlib import Path
 
 import pytest
@@ -68,7 +70,7 @@ def test_loader_rejects_a_persisted_typed_report_parity_mismatch() -> None:
     files = {artifact.relative_path: artifact.content for artifact in rendered.artifacts}
     files["reports/mulligan_plan_report.json"] = b"{}\n"
     non_manifest = tuple(
-        PackageArtifact(relative_path=path, content=content)
+        PackageArtifact.from_content(relative_path=path, content=content)
         for path, content in sorted(files.items())
         if path != "reports/package_manifest.json"
     )
@@ -96,6 +98,45 @@ def test_loader_rejects_a_persisted_typed_report_parity_mismatch() -> None:
 
     with pytest.raises(ValueError, match="typed_package_report_parity_mismatch"):
         load_package_model_from_view(_MemoryPackageView(files))
+
+
+def test_loader_rejects_unverified_manifest_size_and_digest_records() -> None:
+    rendered = render_package_model(_model())
+    files = {artifact.relative_path: artifact.content for artifact in rendered.artifacts}
+    manifest = json.loads(files["reports/package_manifest.json"])
+    manifest["artifacts"][0]["size"] = 0
+    manifest["artifacts"][0]["sha256"] = ""
+    files["reports/package_manifest.json"] = (
+        json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    )
+
+    with pytest.raises(ValueError, match="typed_package_manifest_mismatch"):
+        load_package_model_from_view(_MemoryPackageView(files))
+
+
+def test_package_writer_rejects_a_forged_render_before_writing(
+    tmp_path: Path,
+) -> None:
+    rendered = render_package_model(_model())
+    destination = tmp_path / "package"
+
+    with pytest.raises(ValueError, match="rendered_package_invalid"):
+        write_rendered_package(
+            replace(rendered, content_root_sha256="0" * 64),
+            destination,
+        )
+
+    assert not destination.exists()
+
+
+def test_package_writer_rejects_an_existing_file_destination(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "package"
+    destination.write_bytes(b"occupied")
+
+    with pytest.raises(ValueError, match="destination_must_be_empty"):
+        write_rendered_package(render_package_model(_model()), destination)
 
 
 def _model() -> PackageModel:

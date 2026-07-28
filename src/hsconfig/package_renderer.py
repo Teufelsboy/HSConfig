@@ -27,16 +27,16 @@ def _json_bytes(value: Any) -> bytes:
 def render_package_model(model: PackageModel) -> RenderedPackage:
     runtime_payloads = _runtime_payloads(model)
     artifacts = [
-        PackageArtifact(relative_path=path, content=_json_bytes(payload))
+        PackageArtifact.from_content(relative_path=path, content=_json_bytes(payload))
         for path, payload in runtime_payloads.items()
     ]
     artifacts.extend(
         (
-            PackageArtifact(
+            PackageArtifact.from_content(
                 relative_path="reports/mulligan_plan_report.json",
                 content=_json_bytes(model.mulligan_plan.to_report()),
             ),
-            PackageArtifact(
+            PackageArtifact.from_content(
                 relative_path="reports/package_model.json",
                 content=_json_bytes(package_model_document(model)),
             ),
@@ -44,7 +44,7 @@ def render_package_model(model: PackageModel) -> RenderedPackage:
     )
     content_root = content_root_sha256(tuple(artifacts))
     artifacts.append(
-        PackageArtifact(
+        PackageArtifact.from_content(
             relative_path=_MANIFEST_PATH,
             content=_json_bytes(
                 {
@@ -119,7 +119,11 @@ def _runtime_payloads(model: PackageModel) -> dict[str, Any]:
 
 
 def write_rendered_package(rendered: RenderedPackage, destination: Path) -> None:
-    if destination.exists() and any(destination.iterdir()):
+    if render_package_model(rendered.model) != rendered:
+        raise ValueError("rendered_package_invalid")
+    if destination.exists() and (
+        not destination.is_dir() or any(destination.iterdir())
+    ):
         raise ValueError("destination_must_be_empty")
     destination.mkdir(parents=True, exist_ok=True)
     for artifact in rendered.artifacts:

@@ -20,6 +20,7 @@ class ConfigureRunModel:
     stage_artifacts: tuple[PackageArtifact, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "stage_artifacts", tuple(self.stage_artifacts))
         if (
             self.deck_name != self.package.deck_name
             or self.deck_fingerprint != self.package.deck_fingerprint
@@ -37,6 +38,9 @@ class RenderedConfigureRun:
     artifacts: tuple[PackageArtifact, ...]
     content_root_sha256: str
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "artifacts", tuple(self.artifacts))
+
 
 def create_configure_run_model(
     *, package: PackageModel, stage_artifacts: Mapping[str, bytes]
@@ -44,7 +48,7 @@ def create_configure_run_model(
     artifacts = tuple(
         sorted(
             (
-                PackageArtifact(relative_path=path, content=content)
+                PackageArtifact.from_content(relative_path=path, content=content)
                 for path, content in stage_artifacts.items()
             ),
             key=lambda artifact: artifact.relative_path,
@@ -62,7 +66,7 @@ def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun
     package = render_package_model(model.package)
     slug = slugify_deck_name(model.deck_name)
     package_artifacts = tuple(
-        PackageArtifact(
+        PackageArtifact.from_content(
             relative_path=(
                 f"04_package/{artifact.relative_path}"
                 if artifact.relative_path.startswith("reports/")
@@ -74,7 +78,7 @@ def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun
     )
     all_content = (*model.stage_artifacts, *package_artifacts)
     root = content_root_sha256(tuple(all_content))
-    summary = PackageArtifact(
+    summary = PackageArtifact.from_content(
         relative_path="configure_summary.json",
         content=_json_bytes(
             {
@@ -91,7 +95,11 @@ def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun
 
 
 def write_rendered_configure_run(rendered: RenderedConfigureRun, destination: Path) -> None:
-    if destination.exists() and any(destination.iterdir()):
+    if render_configure_run_model(rendered.model) != rendered:
+        raise ValueError("rendered_configure_run_invalid")
+    if destination.exists() and (
+        not destination.is_dir() or any(destination.iterdir())
+    ):
         raise ValueError("destination_must_be_empty")
     destination.mkdir(parents=True, exist_ok=True)
     for artifact in rendered.artifacts:
@@ -108,6 +116,13 @@ def write_rendered_configure_run(rendered: RenderedConfigureRun, destination: Pa
 
 
 def _validate_required_stages(paths: tuple[str, ...]) -> None:
+    if any(
+        path == "configure_summary.json"
+        or path == "04_package"
+        or path.startswith("04_package/")
+        for path in paths
+    ):
+        raise ValueError("configure_run_reserved_path")
     required = ("01_manifest/", "03_research/")
     if any(not any(path.startswith(prefix) for path in paths) for prefix in required):
         raise ValueError("configure_run_required_stage_missing")
@@ -115,6 +130,14 @@ def _validate_required_stages(paths: tuple[str, ...]) -> None:
     acquisition_paths = [path for path in paths if path.startswith("02_source_acquisition/")]
     if bool(source_paths) == bool(acquisition_paths):
         raise ValueError("configure_run_source_stage_invalid")
+    autopilot_02 = [path for path in paths if path.startswith("02_source_autopilot/")]
+    autopilot_03 = [path for path in paths if path.startswith("03_source_autopilot/")]
+    if (
+        (autopilot_02 and autopilot_03)
+        or (source_paths and autopilot_03)
+        or (acquisition_paths and autopilot_02)
+    ):
+        raise ValueError("configure_run_autopilot_stage_invalid")
 
 
 def _unavailable_stages(artifacts: tuple[PackageArtifact, ...]) -> dict[str, str]:
@@ -130,10 +153,15 @@ def _unavailable_stages(artifacts: tuple[PackageArtifact, ...]) -> dict[str, str
             else "02_source_documents"
         ): f"{selected_source}_selected",
     }
-    if not any(path.startswith("02_source_autopilot/") for path in paths) and not any(
-        path.startswith("03_source_autopilot/") for path in paths
-    ):
+    autopilot_02 = any(path.startswith("02_source_autopilot/") for path in paths)
+    autopilot_03 = any(path.startswith("03_source_autopilot/") for path in paths)
+    if not autopilot_02 and not autopilot_03:
         unavailable["02_source_autopilot"] = "not_requested"
+        unavailable["03_source_autopilot"] = "not_requested"
+    elif autopilot_02:
+        unavailable["03_source_autopilot"] = "02_source_autopilot_selected"
+    else:
+        unavailable["02_source_autopilot"] = "03_source_autopilot_selected"
     return dict(sorted(unavailable.items()))
 
 

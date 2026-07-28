@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
@@ -26,6 +27,28 @@ def _require_stable_strings(values: tuple[str, ...], *, field: str) -> None:
         raise ValueError(f"{field}_invalid")
     if tuple(sorted(set(values))) != values:
         raise ValueError(f"{field}_must_be_unique_sorted")
+
+
+def _freeze_stable_strings(values: tuple[str, ...], *, field: str) -> tuple[str, ...]:
+    frozen = tuple(values)
+    _require_stable_strings(frozen, field=field)
+    return frozen
+
+
+def canonical_relative_path(value: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or "\x00" in value
+        or ":" in value
+        or value.startswith("/")
+        or value.startswith("//")
+        or re.match(r"^[A-Za-z]:", value) is not None
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise ValueError("runtime_surface_path_invalid")
+    return value
 
 
 class EvidenceLane(StrEnum):
@@ -79,6 +102,9 @@ class LayeredEvidenceContract:
     layered_coverage_denominator: int
     content_sha256: str
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "authorities", tuple(self.authorities))
+
 
 @dataclass(frozen=True, slots=True)
 class CardDispositionRow:
@@ -95,9 +121,27 @@ class CardDispositionRow:
     reason_code: str
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "evidence_ids",
+            _freeze_stable_strings(self.evidence_ids, field="evidence_ids"),
+        )
+        object.__setattr__(
+            self,
+            "claim_ids",
+            _freeze_stable_strings(self.claim_ids, field="claim_ids"),
+        )
+        runtime_paths = tuple(self.runtime_paths)
+        for path in runtime_paths:
+            canonical_relative_path(path)
+        object.__setattr__(self, "runtime_paths", runtime_paths)
         _canonical_json(self.official_semantics_canonical_json)
-        _require_stable_strings(self.evidence_ids, field="evidence_ids")
-        _require_stable_strings(self.claim_ids, field="claim_ids")
+        expected_runtime_paths = (f"{self.physical_owner}.json",)
+        if self.disposition is CardDisposition.RUNTIME_EMITTED:
+            if runtime_paths != expected_runtime_paths:
+                raise ValueError("card_disposition_runtime_path_mismatch")
+        elif runtime_paths:
+            raise ValueError("card_disposition_runtime_path_forbidden")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +154,12 @@ class ClaimDispositionRow:
     runtime_paths: tuple[str, ...]
     reason_code: str
 
+    def __post_init__(self) -> None:
+        runtime_paths = tuple(self.runtime_paths)
+        for path in runtime_paths:
+            canonical_relative_path(path)
+        object.__setattr__(self, "runtime_paths", runtime_paths)
+
 
 @dataclass(frozen=True, slots=True)
 class DispositionLedger:
@@ -117,6 +167,10 @@ class DispositionLedger:
     cards: tuple[CardDispositionRow, ...]
     claims: tuple[ClaimDispositionRow, ...]
     content_sha256: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cards", tuple(self.cards))
+        object.__setattr__(self, "claims", tuple(self.claims))
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,9 +185,16 @@ class GlobalValueDecision:
     reason: str
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "claim_ids",
+            _freeze_stable_strings(
+                self.claim_ids,
+                field="globalvalue_claim_ids",
+            ),
+        )
         _canonical_json(self.baseline_canonical_json)
         _canonical_json(self.emitted_canonical_json)
-        _require_stable_strings(self.claim_ids, field="globalvalue_claim_ids")
         if (
             self.kind is GlobalValueDecisionKind.COPY_BASELINE
             and self.baseline_canonical_json != self.emitted_canonical_json
@@ -147,6 +208,9 @@ class GlobalValuesDecisionLedger:
     baseline_sha256: str
     decisions: tuple[GlobalValueDecision, ...]
     content_sha256: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "decisions", tuple(self.decisions))
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +226,14 @@ class MulliganRuleModel:
     claim_id: str | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_claim_ids",
+            _freeze_stable_strings(
+                self.source_claim_ids,
+                field="mulligan_source_claim_ids",
+            ),
+        )
         if not self.card_id or not self.selector_kind or self.action not in {
             "hold",
             "discard",
@@ -169,7 +241,6 @@ class MulliganRuleModel:
             raise ValueError("mulligan_rule_invalid")
         _canonical_json(self.selector_canonical_json)
         _canonical_json(self.condition_canonical_json)
-        _require_stable_strings(self.source_claim_ids, field="mulligan_source_claim_ids")
 
     @property
     def identity(self) -> tuple[str, str, bytes, str, bytes]:
@@ -191,9 +262,16 @@ class MulliganSuppressionModel:
     claim_id: str | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_claim_ids",
+            _freeze_stable_strings(
+                self.source_claim_ids,
+                field="suppression_source_claim_ids",
+            ),
+        )
         if not self.card_id or self.action not in {"hold", "discard", "none"}:
             raise ValueError("mulligan_suppression_invalid")
-        _require_stable_strings(self.source_claim_ids, field="suppression_source_claim_ids")
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,11 +300,17 @@ class MulliganPlanModel:
     merged_duplicate_rule_count: int
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "rules", tuple(self.rules))
+        object.__setattr__(self, "suppressed", tuple(self.suppressed))
+        object.__setattr__(self, "bot_delegated", tuple(self.bot_delegated))
         identities = tuple(rule.identity for rule in self.rules)
         if len(set(identities)) != len(identities):
             raise ValueError("mulligan_duplicate_rule_identity")
         if tuple(sorted(identities)) != identities:
             raise ValueError("mulligan_rule_order_unstable")
+        suppressed = tuple(row.card_id for row in self.suppressed)
+        if len(set(suppressed)) != len(suppressed) or tuple(sorted(suppressed)) != suppressed:
+            raise ValueError("mulligan_suppression_order_unstable")
         delegated = tuple(row.card_id for row in self.bot_delegated)
         if len(set(delegated)) != len(delegated) or tuple(sorted(delegated)) != delegated:
             raise ValueError("mulligan_delegation_order_unstable")
@@ -292,17 +376,19 @@ class RuntimeSurfaceDecision:
     decision_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "decision_ids",
+            _freeze_stable_strings(
+                self.decision_ids,
+                field="runtime_surface_decision_ids",
+            ),
+        )
         if self.family not in _RUNTIME_OWNERS:
             raise ValueError("runtime_surface_family_unknown")
         if self.owner != _RUNTIME_OWNERS[self.family]:
             raise ValueError("runtime_surface_owner_unknown")
-        if not self.relative_path or "\\" in self.relative_path:
-            raise ValueError("runtime_surface_path_invalid")
-        if self.relative_path.startswith("/") or any(
-            part in {"", ".", ".."} for part in self.relative_path.split("/")
-        ):
-            raise ValueError("runtime_surface_path_invalid")
-        _require_stable_strings(self.decision_ids, field="runtime_surface_decision_ids")
+        canonical_relative_path(self.relative_path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +396,7 @@ class RuntimeSurfacePlan:
     surfaces: tuple[RuntimeSurfaceDecision, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "surfaces", tuple(self.surfaces))
         paths = tuple(surface.relative_path for surface in self.surfaces)
         if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
             raise ValueError("runtime_surface_paths_not_unique_sorted")
@@ -322,6 +409,27 @@ class RuntimeSurfacePlan:
             or core_paths["Mulligan"] != "Mulligan.json"
         ):
             raise ValueError("runtime_surface_core_path_invalid")
+        for surface in self.surfaces:
+            if surface.family == "GlobalValues" and any(
+                not decision_id.startswith("globalvalues:")
+                for decision_id in surface.decision_ids
+            ):
+                raise ValueError("runtime_surface_globalvalues_id_invalid")
+            if surface.family == "Mulligan" and any(
+                not decision_id.startswith("mulligan:")
+                for decision_id in surface.decision_ids
+            ):
+                raise ValueError("runtime_surface_mulligan_id_invalid")
+            if surface.family == "CardID":
+                expected_ids = (
+                    f"card:{surface.relative_path.removesuffix('.json')}",
+                )
+                if (
+                    "/" in surface.relative_path
+                    or not surface.relative_path.endswith(".json")
+                    or surface.decision_ids != expected_ids
+                ):
+                    raise ValueError("runtime_surface_cardid_identity_mismatch")
         forbidden = {"Presume.json", "Concede.json", "CardBehavior.json"}
         if forbidden.intersection(paths):
             raise ValueError("runtime_surface_forbidden")
