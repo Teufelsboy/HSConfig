@@ -30,24 +30,59 @@ def _workflow_commands() -> list[str]:
     return commands
 
 
-def _uses_nodes(value: object, node: Node):
+class _WorkflowStructureError(Exception):
+    pass
+
+
+def _uses_nodes(
+    value: object,
+    node: Node,
+    active: set[tuple[int, int]] | None = None,
+):
+    if active is None:
+        active = set()
+    marker = (id(value), id(node))
     if isinstance(value, dict) and isinstance(node, MappingNode):
         semantic_items = list(value.items())
         if len(semantic_items) != len(node.value):
-            raise AssertionError("workflow mappings must not use merged or duplicate keys")
-        for (key, child_value), (_key_node, child_node) in zip(
-            semantic_items,
-            node.value,
-            strict=True,
-        ):
-            if key == "uses":
-                yield child_value, child_node
-            yield from _uses_nodes(child_value, child_node)
+            raise _WorkflowStructureError(
+                "duplicate or merged mapping keys are not allowed"
+            )
+        if marker in active:
+            raise _WorkflowStructureError(
+                "recursive YAML aliases are not allowed"
+            )
+        active.add(marker)
+        try:
+            for (key, child_value), (_key_node, child_node) in zip(
+                semantic_items,
+                node.value,
+                strict=True,
+            ):
+                if key == "uses":
+                    yield child_value, child_node
+                yield from _uses_nodes(child_value, child_node, active)
+        finally:
+            active.remove(marker)
     elif isinstance(value, list) and isinstance(node, SequenceNode):
         if len(value) != len(node.value):
-            raise AssertionError("workflow sequence shape changed during YAML loading")
-        for child_value, child_node in zip(value, node.value, strict=True):
-            yield from _uses_nodes(child_value, child_node)
+            raise _WorkflowStructureError(
+                "ambiguous YAML sequence structure"
+            )
+        if marker in active:
+            raise _WorkflowStructureError(
+                "recursive YAML aliases are not allowed"
+            )
+        active.add(marker)
+        try:
+            for child_value, child_node in zip(
+                value,
+                node.value,
+                strict=True,
+            ):
+                yield from _uses_nodes(child_value, child_node, active)
+        finally:
+            active.remove(marker)
 
 
 def _uses_token_sites(source: str):
@@ -102,9 +137,15 @@ def _external_action_pin_errors(path: Path) -> list[str]:
     version_comment = re.compile(r"#\s+v[^\s#]+\s*$")
     lines = source.splitlines()
     errors = []
-    semantic_uses = [
-        reference for reference, _value_node in _uses_nodes(workflow, root_node)
-    ]
+    try:
+        semantic_uses = [
+            reference
+            for reference, _value_node in _uses_nodes(workflow, root_node)
+        ]
+    except _WorkflowStructureError as exc:
+        return [f"{path}: {exc}"]
+    except RecursionError:
+        return [f"{path}: recursive YAML aliases are not allowed"]
     if len(semantic_uses) != len(token_sites):
         return [f"{path}: ambiguous uses token mapping"]
     for reference, (site_kind, token_value, value_token) in zip(
@@ -351,3 +392,39 @@ jobs:
 
     assert len(errors) == 1
     assert "multiline" in errors[0]
+
+
+def test_semantic_action_guard_reports_duplicate_mapping_keys(
+    tmp_path: Path,
+):
+    sha = "f" * 40
+    workflow = tmp_path / "duplicate-keys.yml"
+    workflow.write_text(
+        f"""
+jobs:
+  build:
+    steps:
+      - uses: "owner/repo/action@{sha}" # v1
+        uses: "owner/repo/action@{sha}" # v1
+""",
+        encoding="utf-8",
+    )
+
+    assert _external_action_pin_errors(workflow) == [
+        f"{workflow}: duplicate or merged mapping keys are not allowed"
+    ]
+
+
+def test_semantic_action_guard_reports_recursive_aliases(tmp_path: Path):
+    workflow = tmp_path / "recursive-alias.yml"
+    workflow.write_text(
+        """
+recursive: &recursive
+  uses: *recursive
+""",
+        encoding="utf-8",
+    )
+
+    assert _external_action_pin_errors(workflow) == [
+        f"{workflow}: recursive YAML aliases are not allowed"
+    ]

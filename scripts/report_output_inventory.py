@@ -8,6 +8,7 @@ import os
 import stat
 from collections import defaultdict
 from datetime import datetime, timezone
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -146,18 +147,38 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
     modified = _selected_modified_epoch([package])
     stack = [(package, 0)]
     visited: set[Path] = set()
+    enumerated_nodes = 0
     inspected_nodes = 0
-    while stack and inspected_nodes < _MAX_METADATA_NODES:
+    while (
+        stack
+        and inspected_nodes < _MAX_METADATA_NODES
+        and enumerated_nodes <= _MAX_METADATA_NODES
+    ):
         directory, depth = stack.pop()
         if directory in visited or depth > _MAX_METADATA_DEPTH:
             continue
         visited.add(directory)
+        processing_remaining = _MAX_METADATA_NODES - inspected_nodes
+        enumeration_remaining = _MAX_METADATA_NODES + 1 - enumerated_nodes
+        take = min(processing_remaining + 1, enumeration_remaining)
+        if take <= 0:
+            break
         try:
             with os.scandir(directory) as iterator:
-                entries = sorted(iterator, key=lambda entry: entry.name.casefold())
+                entries = list(islice(iterator, take))
         except OSError:
             continue
-        for entry in entries:
+        enumerated_nodes += len(entries)
+        entries.sort(
+            key=lambda entry: (
+                entry.name.casefold(),
+                entry.name,
+                os.path.normcase(os.path.abspath(entry.path)),
+                os.path.abspath(entry.path),
+            )
+        )
+        child_directories: list[Path] = []
+        for entry in entries[:processing_remaining]:
             if inspected_nodes >= _MAX_METADATA_NODES:
                 break
             inspected_nodes += 1
@@ -176,7 +197,10 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
                 continue
             modified = max(modified, entry_stat.st_mtime)
             if stat.S_ISDIR(entry_stat.st_mode) and depth < _MAX_METADATA_DEPTH:
-                stack.append((resolved, depth + 1))
+                child_directories.append(resolved)
+        stack.extend(
+            (child, depth + 1) for child in reversed(child_directories)
+        )
     return modified
 
 

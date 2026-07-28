@@ -92,6 +92,32 @@ def _make_junction(link: Path, target: Path) -> None:
         pytest.skip(f"directory junctions unavailable: {completed.stderr}")
 
 
+class _ScandirContext:
+    def __init__(self, entries) -> None:
+        self._entries = iter(entries)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._entries)
+
+
+class _NamedDirEntry:
+    def __init__(self, path: Path, name: str) -> None:
+        self.path = str(path)
+        self.name = name
+
+    def stat(self, *, follow_symlinks: bool):
+        return os.stat(self.path, follow_symlinks=follow_symlinks)
+
+
 def test_inventory_supports_staged_and_direct_packages_without_private_fields(
     tmp_path: Path,
 ) -> None:
@@ -239,6 +265,92 @@ def test_duplicate_selection_includes_newer_nested_package_file_mtime(
     assert [row["path"] for row in inventory["likely_duplicate_candidates"]] == [
         "nominally-newer"
     ]
+
+
+def test_package_mtime_cap_bounds_scandir_consumption_and_stat_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = tmp_path / "outputs" / "entry" / "04_package"
+    package.mkdir(parents=True)
+    for index in range(10):
+        (package / f"{index:02d}.json").write_text("{}", encoding="utf-8")
+    original_scandir = os.scandir
+    consumed = 0
+    stated = 0
+
+    class CountingEntry:
+        def __init__(self, entry) -> None:
+            self._entry = entry
+            self.name = entry.name
+            self.path = entry.path
+
+        def stat(self, *, follow_symlinks: bool):
+            nonlocal stated
+            stated += 1
+            return self._entry.stat(follow_symlinks=follow_symlinks)
+
+    class CountingScandir:
+        def __init__(self, path: Path) -> None:
+            self._iterator = original_scandir(path)
+
+        def __enter__(self):
+            self._iterator.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._iterator.__exit__(*args)
+
+        def __iter__(self):
+            nonlocal consumed
+            for entry in self._iterator:
+                consumed += 1
+                yield CountingEntry(entry)
+
+    monkeypatch.setattr(report_output_inventory, "_MAX_METADATA_NODES", 3)
+    monkeypatch.setattr(os, "scandir", CountingScandir)
+
+    report_output_inventory._package_modified_epoch(
+        package.resolve(),
+        (tmp_path / "outputs").resolve(),
+    )
+
+    assert consumed == 4
+    assert stated == 3
+
+
+def test_package_mtime_casefold_tie_is_independent_of_scandir_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "outputs"
+    package = root / "entry" / "04_package"
+    package.mkdir(parents=True)
+    upper = package / "upper-source"
+    lower = package / "lower-source"
+    upper.write_text("{}", encoding="utf-8")
+    lower.write_text("{}", encoding="utf-8")
+    os.utime(package, (1_600_000_000, 1_600_000_000))
+    os.utime(upper, (1_700_000_000, 1_700_000_000))
+    os.utime(lower, (1_800_000_000, 1_800_000_000))
+    monkeypatch.setattr(report_output_inventory, "_MAX_METADATA_NODES", 1)
+
+    def measured(order: list[_NamedDirEntry]) -> float:
+        monkeypatch.setattr(
+            os,
+            "scandir",
+            lambda _path: _ScandirContext(order),
+        )
+        return report_output_inventory._package_modified_epoch(
+            package.resolve(),
+            root.resolve(),
+        )
+
+    uppercase = _NamedDirEntry(upper, "A")
+    lowercase = _NamedDirEntry(lower, "a")
+
+    assert measured([uppercase, lowercase]) == 1_700_000_000
+    assert measured([lowercase, uppercase]) == 1_700_000_000
 
 
 def test_manifest_swap_after_resolution_cannot_emit_outside_deck(
