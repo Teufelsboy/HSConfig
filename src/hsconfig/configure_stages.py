@@ -53,10 +53,8 @@ def build_verified_deck_stage(
     cards: Sequence[Mapping[str, Any]],
     input_verification: Mapping[str, Any],
 ) -> VerifiedDeckStage:
-    return cast(
-        VerifiedDeckStage,
-        _freeze_root(VerifiedDeckStage(identity, cards, input_verification), path=""),
-    )
+    stage = VerifiedDeckStage(identity, cards, input_verification)
+    return cast(VerifiedDeckStage, _freeze_root(stage, path=""))
 
 
 def build_lowered_runtime_stage(
@@ -65,10 +63,8 @@ def build_lowered_runtime_stage(
     warnings: Sequence[Mapping[str, Any]],
     source_contract: Mapping[str, Any],
 ) -> LoweredRuntimeStage:
-    return cast(
-        LoweredRuntimeStage,
-        _freeze_root(LoweredRuntimeStage(runtime_files, warnings, source_contract), path=""),
-    )
+    stage = LoweredRuntimeStage(runtime_files, warnings, source_contract)
+    return cast(LoweredRuntimeStage, _freeze_root(stage, path=""))
 
 
 def stage_digest(value: Any) -> str:
@@ -95,14 +91,7 @@ def materialize_stage_value(value: Any) -> Any:
 
 
 def _freeze_root(value: Any, *, path: str) -> Any:
-    return _freeze_value(
-        value,
-        path=path,
-        depth=0,
-        active={},
-        memo={},
-        allow_stage=True,
-    )
+    return _freeze_value(value, path=path, depth=0, active={}, memo={}, allow_stage=True)
 
 
 def _freeze_value(
@@ -111,12 +100,15 @@ def _freeze_value(
     path: str,
     depth: int,
     active: dict[int, str],
-    memo: dict[int, Any],
+    memo: dict[int, tuple[Any, int]],
     allow_stage: bool = False,
 ) -> Any:
     _check_depth(path, depth)
     value_type = type(value)
-    if value is None or value_type in {bool, int, str}:
+    if value is None or value_type in {bool, int}:
+        return value
+    if value_type is str:
+        _check_unicode_scalar_string(value, path)
         return value
     if value_type is float:
         if not math.isfinite(value):
@@ -134,9 +126,12 @@ def _freeze_value(
 
     cached = _enter_container(value, path=path, active=active, memo=memo)
     if cached is not _MISSING:
-        return cached
+        frozen, height = cast(tuple[Any, int], cached)
+        _check_depth(path, depth + height)
+        return frozen
     try:
         if is_stage:
+            field_names = _STAGE_FIELDS[value_type]
             frozen = value_type(
                 **{
                     name: _freeze_value(
@@ -146,12 +141,14 @@ def _freeze_value(
                         active=active,
                         memo=memo,
                     )
-                    for name in _STAGE_FIELDS[value_type]
+                    for name in field_names
                 }
             )
+            height = max((_memo_height(getattr(value, name), memo) for name in field_names), default=0)
             _validate_stage_shape(frozen, path=path)
         elif is_mapping:
             entries: dict[str, Any] = {}
+            height = 0
             for index, (key, item) in enumerate(value.items()):
                 if type(key) is not str:
                     raise TypeError(
@@ -159,6 +156,7 @@ def _freeze_value(
                         "exact builtins.str; "
                         f"received {_qualified_type_name(key)}"
                     )
+                _check_unicode_scalar_string(key, f"{path}[key#{index}]")
                 entries[key] = _freeze_value(
                     item,
                     path=_mapping_value_path(path, key),
@@ -166,6 +164,7 @@ def _freeze_value(
                     active=active,
                     memo=memo,
                 )
+                height = max(height, 1 + _memo_height(item, memo))
             frozen = MappingProxyType(entries)
         else:
             items = tuple(
@@ -178,10 +177,11 @@ def _freeze_value(
                 )
                 for index, item in enumerate(value)
             )
+            height = max((1 + _memo_height(item, memo) for item in value), default=0)
             frozen = items if value_type is tuple else _FrozenList(items)
     finally:
         active.pop(id(value), None)
-    memo[id(value)] = frozen
+    memo[id(value)] = (frozen, height)
     return frozen
 
 
@@ -345,7 +345,7 @@ def _enter_container(
     *,
     path: str,
     active: dict[int, str],
-    memo: dict[int, Any],
+    memo: dict[int, tuple[Any, int]],
 ) -> Any:
     identity = id(value)
     if identity in active:
@@ -359,11 +359,26 @@ def _enter_container(
     return _MISSING
 
 
+def _memo_height(value: Any, memo: dict[int, tuple[Any, int]]) -> int:
+    completed = memo.get(id(value))
+    return 0 if completed is None else completed[1]
+
+
 def _check_depth(path: str, depth: int) -> None:
     if depth > _MAX_STAGE_DEPTH:
         raise ValueError(
             f"Stage value exceeds maximum depth {_MAX_STAGE_DEPTH} at {path}"
         )
+
+
+def _check_unicode_scalar_string(value: str, path: str) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        codepoint = ord(value[error.start])
+        message = (f"Stage string at {path} contains invalid Unicode surrogate "
+                   f"U+{codepoint:04X} at index {error.start}")
+        raise ValueError(message) from None
 
 
 def _stage_field_path(path: str, field_name: str) -> str:

@@ -323,6 +323,76 @@ def test_stage_depth_is_bounded_before_python_recursion_limit(
     assert messages[0] == messages[1]
 
 
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_shared_subtree_cannot_bypass_depth_limit_through_completed_memo(
+    boundary: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    variants = []
+    for deep_first, shared in ((False, True), (True, True), (False, False)):
+        shallow = _nested_list(10)
+        deep_leaf = shallow if shared else _nested_list(10)
+        deep = _nested_wrapper(deep_leaf, 120)
+        entries = (
+            (("deep", deep), ("shallow", shallow))
+            if deep_first
+            else (("shallow", shallow), ("deep", deep))
+        )
+        variants.append(dict(entries))
+
+    for value in variants:
+        with pytest.raises(
+            ValueError,
+            match=r"Stage value exceeds maximum depth 128 at ",
+        ):
+            if boundary == "construction":
+                build_verified_deck_stage(
+                    identity=value,
+                    cards=[],
+                    input_verification={"status": "verified"},
+                )
+            elif boundary == "digest":
+                stage_digest(value)
+            else:
+                materialize_stage_value(value)
+
+
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_depth_limit_has_exact_root_and_stage_wrapper_semantics(
+    boundary: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    if boundary == "construction":
+        build_verified_deck_stage(
+            identity={"edge": _nested_list(127)},
+            cards=[],
+            input_verification={"status": "verified"},
+        )
+        with pytest.raises(ValueError):
+            build_verified_deck_stage(
+                identity={"edge": _nested_list(128)},
+                cards=[],
+                input_verification={"status": "verified"},
+            )
+    else:
+        operation = (
+            stage_digest if boundary == "digest" else materialize_stage_value
+        )
+        operation(_nested_list(128))
+        with pytest.raises(ValueError):
+            operation(_nested_list(129))
+
+
 _NON_FINITE_FLOATS = [
     pytest.param(
         struct.unpack(">d", bytes.fromhex("7ff8000000000001"))[0],
@@ -380,6 +450,78 @@ def test_non_string_nan_mapping_keys_use_the_mapping_key_domain_error() -> None:
             ),
         ):
             stage_digest(value)
+
+
+@pytest.mark.parametrize(
+    ("value", "codepoint"),
+    [
+        pytest.param("\ud800", "D800", id="high-surrogate"),
+        pytest.param("\udfff", "DFFF", id="low-surrogate"),
+    ],
+)
+@pytest.mark.parametrize("position", ["value", "key"])
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_lone_surrogates_are_rejected_early_with_stable_paths(
+    value: str,
+    codepoint: str,
+    position: str,
+    boundary: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    if boundary == "construction":
+        candidate = {"unsafe": value} if position == "value" else {value: "unsafe"}
+        expected_path = "identity.unsafe" if position == "value" else "identity[key#0]"
+    else:
+        candidate = value if position == "value" else {value: "unsafe"}
+        expected_path = "$" if position == "value" else "$[key#0]"
+    messages = []
+    for _attempt in range(2):
+        with pytest.raises(ValueError) as error:
+            if boundary == "construction":
+                build_verified_deck_stage(
+                    identity=candidate,
+                    cards=[],
+                    input_verification={"status": "verified"},
+                )
+            elif boundary == "digest":
+                stage_digest(candidate)
+            else:
+                materialize_stage_value(candidate)
+        messages.append(str(error.value))
+
+    assert messages == [
+        (
+            f"Stage string at {expected_path} contains invalid Unicode "
+            f"surrogate U+{codepoint} at index 0"
+        )
+    ] * 2
+
+
+def test_valid_supplementary_unicode_is_materialized_and_digested_deterministically() -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    key = "emoji-\U0001f600"
+    value = "deseret-\U00010437"
+    left = {key: value, "plain": "ok"}
+    right = {"plain": "ok", key: value}
+    stage = build_verified_deck_stage(
+        identity=left,
+        cards=[],
+        input_verification={"status": "verified"},
+    )
+
+    assert materialize_stage_value(stage.identity) == left
+    assert stage_digest(left) == stage_digest(right)
+    assert stage_digest(left) == stage_digest(left)
 
 
 def test_finite_float_canonicalization_preserves_binary_distinctions() -> None:
@@ -601,6 +743,12 @@ def _self_referential_mapping() -> dict[str, Any]:
 
 def _nested_list(depth: int) -> Any:
     value: Any = "leaf"
+    for _index in range(depth):
+        value = [value]
+    return value
+
+
+def _nested_wrapper(value: Any, depth: int) -> Any:
     for _index in range(depth):
         value = [value]
     return value
