@@ -2158,6 +2158,7 @@ def test_config_quality_flags_darkbishop_mulligan_keep_drift(tmp_path: Path):
         "seen": True,
         "mulligan_keep_present": True,
         "effect_runtime_present": True,
+        "runtime_owner_card_id": "SW_448",
         "explicit_mulligan_keep_evidence_present": False,
     }
     assert {
@@ -2276,6 +2277,7 @@ def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evi
         "seen": True,
         "mulligan_keep_present": True,
         "effect_runtime_present": True,
+        "runtime_owner_card_id": "SW_448",
         "explicit_mulligan_keep_evidence_present": True,
     }
     assert not any(
@@ -2523,6 +2525,7 @@ def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
         "seen": True,
         "mulligan_keep_present": False,
         "effect_runtime_present": True,
+        "runtime_owner_card_id": "SW_448",
         "explicit_mulligan_keep_evidence_present": False,
     }
     assert report["problems"] == []

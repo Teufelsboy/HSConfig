@@ -5,6 +5,11 @@ import pytest
 
 from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.io import write_json
+from hsconfig.package_derivation_receipt import build_package_derivation_receipt
+from hsconfig.runtime_surface_ledger import (
+    rederive_runtime_surface_ledger_from_package,
+)
 
 
 SHADOWPRIEST_DECK_CODE = (
@@ -159,6 +164,7 @@ def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
 
     quality = build_config_quality_report(package_root)
     check = quality["checks"]["visionai_semantic_surface"]
+    darkbishop = quality["checks"]["darkbishop_boundary"]
 
     assert check["status"] == "attention"
     assert check["non_targeted_battlecry_target_rows"] == []
@@ -175,3 +181,61 @@ def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
     assert quality["semantic_handoff_status"] == "attention"
     assert quality["semantic_handoff_reasons"] == check["attention"]
     assert reports["operator_summary"]["runtime_apply_allowed"] is False
+    assert darkbishop == {
+        "seen": True,
+        "mulligan_keep_present": False,
+        "effect_runtime_present": True,
+        "runtime_owner_card_id": "EX1_625t",
+        "explicit_mulligan_keep_evidence_present": False,
+    }
+
+
+def test_shadowpriest_darkbishop_diagnostic_requires_linked_owner_receipt(
+    shadowpriest_package,
+):
+    package_root, _reports = shadowpriest_package
+    (package_root / "package_derivation_receipt.json").unlink()
+
+    quality = build_config_quality_report(package_root)
+
+    assert quality["checks"]["darkbishop_boundary"] == {
+        "seen": False,
+        "mulligan_keep_present": False,
+        "effect_runtime_present": False,
+        "runtime_owner_card_id": "SW_448",
+        "explicit_mulligan_keep_evidence_present": False,
+    }
+
+
+def test_shadowpriest_darkbishop_diagnostic_ignores_unrelated_runtime_owner(
+    shadowpriest_package,
+):
+    package_root, _reports = shadowpriest_package
+    deck_dir = package_root / "CustomConfig" / "shadowpriest"
+    owner_path = deck_dir / "EX1_625t.json"
+    unrelated_path = deck_dir / "SW_444.json"
+    owner_payload = json.loads(owner_path.read_text(encoding="utf-8"))
+    unrelated_payload = json.loads(unrelated_path.read_text(encoding="utf-8"))
+    unrelated_payload["BeforeUseHeroPowerBonus"] = owner_payload.pop(
+        "BeforeUseHeroPowerBonus"
+    )
+    write_json(owner_path, owner_payload)
+    write_json(unrelated_path, unrelated_payload)
+    write_json(
+        package_root / "reports" / "runtime_surface_ledger.json",
+        rederive_runtime_surface_ledger_from_package(package_root),
+    )
+    write_json(
+        package_root / "package_derivation_receipt.json",
+        build_package_derivation_receipt(package_root),
+    )
+
+    quality = build_config_quality_report(package_root)
+
+    assert quality["checks"]["darkbishop_boundary"] == {
+        "seen": False,
+        "mulligan_keep_present": False,
+        "effect_runtime_present": False,
+        "runtime_owner_card_id": "EX1_625t",
+        "explicit_mulligan_keep_evidence_present": False,
+    }
