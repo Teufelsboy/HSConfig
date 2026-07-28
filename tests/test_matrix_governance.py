@@ -1,6 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from hsconfig.audited_deck_catalog import (
+    load_audited_deck_catalog,
+    load_audited_role_manifest,
+)
 from hsconfig.input_loading import fixture_row_for
 
 
@@ -9,6 +15,105 @@ SUPPLEMENTAL = Path("docs/operator/supplemental-proof-decks.json")
 SOURCE_CANDIDATES = Path("docs/operator/source-candidate-proof-decks.json")
 CATALOG = Path("docs/operator/audited-deck-catalog.json")
 IDENTITY_FIELDS = {"deck_code", "hs_id", "hdt_deck_id", "matrix_role"}
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wrong_schema_version",
+        "wrong_row_count",
+        "missing_required_field",
+        "empty_required_field",
+        "invalid_role",
+        "wrong_role_counts",
+    ],
+)
+def test_audited_catalog_rejects_malformed_contract(
+    tmp_path: Path,
+    mutation: str,
+):
+    payload = json.loads(CATALOG.read_text(encoding="utf-8"))
+    if mutation == "wrong_schema_version":
+        payload["schema_version"] = 2
+    elif mutation == "wrong_row_count":
+        payload["decks"].pop()
+    elif mutation == "missing_required_field":
+        payload["decks"][0].pop("hs_id")
+    elif mutation == "empty_required_field":
+        payload["decks"][0]["deck_code"] = " "
+    elif mutation == "invalid_role":
+        payload["decks"][0]["matrix_role"] = "visibility_only"
+    elif mutation == "wrong_role_counts":
+        payload["decks"][0]["matrix_role"] = "supplemental"
+    path = tmp_path / "catalog.json"
+    _write_json(path, payload)
+
+    with pytest.raises(ValueError):
+        load_audited_deck_catalog(path)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["deck_name", "deck_code", "hs_id", "hdt_deck_id"],
+)
+def test_audited_catalog_rejects_duplicate_identity_fields(
+    tmp_path: Path,
+    field: str,
+):
+    payload = json.loads(CATALOG.read_text(encoding="utf-8"))
+    payload["decks"][1][field] = payload["decks"][0][field]
+    path = tmp_path / "catalog.json"
+    _write_json(path, payload)
+
+    with pytest.raises(ValueError):
+        load_audited_deck_catalog(path)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "duplicate_reference",
+        "missing_deck_name",
+        "empty_deck_name",
+        "unknown_audited_reference",
+        "visibility_name_typo",
+        "visibility_marker_missing",
+        "visibility_deck_code_missing",
+    ],
+)
+def test_role_manifest_rejects_unresolved_or_ambiguous_identity(
+    tmp_path: Path,
+    mutation: str,
+):
+    catalog_path = tmp_path / "audited-deck-catalog.json"
+    manifest_path = tmp_path / "supplemental-proof-decks.json"
+    _write_json(
+        catalog_path,
+        json.loads(CATALOG.read_text(encoding="utf-8")),
+    )
+    payload = json.loads(SUPPLEMENTAL.read_text(encoding="utf-8"))
+    if mutation == "duplicate_reference":
+        payload["decks"].append(dict(payload["decks"][0]))
+    elif mutation == "missing_deck_name":
+        payload["decks"][0].pop("deck_name")
+    elif mutation == "empty_deck_name":
+        payload["decks"][0]["deck_name"] = " "
+    elif mutation == "unknown_audited_reference":
+        payload["decks"][0]["deck_name"] = "CuteWarriorTypo"
+    elif mutation == "visibility_name_typo":
+        payload["decks"][1]["deck_name"] = "SecretMageTypo"
+    elif mutation == "visibility_marker_missing":
+        payload["decks"][1].pop("proof_scope")
+    elif mutation == "visibility_deck_code_missing":
+        payload["decks"][1].pop("deck_code")
+    _write_json(manifest_path, payload)
+
+    with pytest.raises(ValueError):
+        load_audited_role_manifest(manifest_path)
 
 
 def test_role_manifests_reference_catalog_without_duplicating_identity():

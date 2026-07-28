@@ -138,7 +138,6 @@ def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], i
     )
     source_candidate_plan = build_source_candidate_plan(
         deck_name=args.deck_name,
-        deck_code=args.deck_code,
         deck_identity=deck_identity,
         candidate_archetypes=candidate_archetypes,
         explicit_source_urls=list(getattr(args, "source_url", []) or []),

@@ -39,7 +39,6 @@ _NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
 def build_source_candidate_plan(
     *,
     deck_name: str,
-    deck_code: str,
     deck_identity: Mapping[str, Any],
     candidate_archetypes: Mapping[str, Any],
     explicit_source_urls: Sequence[str] = (),

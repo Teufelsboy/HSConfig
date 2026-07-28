@@ -128,7 +128,6 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     source_candidate_plan = _load_source_candidate_plan(
         source_candidate_plan_path,
         deck_name=args.deck_name,
-        deck_code=args.deck_code,
         explicit_source_urls=explicit_source_urls,
         current_date=current_date,
     )
@@ -1412,7 +1411,6 @@ def _load_source_candidate_plan(
     path: Path,
     *,
     deck_name: str,
-    deck_code: str,
     explicit_source_urls: list[str],
     current_date: date | None,
 ) -> dict[str, Any]:
@@ -1422,14 +1420,12 @@ def _load_source_candidate_plan(
     except (FileNotFoundError, ValueError, TypeError):
         return _rebuild_source_candidate_plan(
             deck_name=deck_name,
-            deck_code=deck_code,
             explicit_source_urls=explicit_source_urls,
             current_date=current_date,
         )
     if not _source_candidate_plan_is_usable(payload, explicit_source_urls):
         return _rebuild_source_candidate_plan(
             deck_name=deck_name,
-            deck_code=deck_code,
             explicit_source_urls=explicit_source_urls,
             current_date=current_date,
         )
@@ -1439,13 +1435,11 @@ def _load_source_candidate_plan(
 def _rebuild_source_candidate_plan(
     *,
     deck_name: str,
-    deck_code: str,
     explicit_source_urls: list[str],
     current_date: date | None,
 ) -> dict[str, Any]:
     return build_source_candidate_plan(
         deck_name=deck_name,
-        deck_code=deck_code,
         deck_identity={"deck_name": deck_name, "cards": []},
         candidate_archetypes={},
         explicit_source_urls=explicit_source_urls,

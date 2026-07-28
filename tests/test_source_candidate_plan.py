@@ -1,12 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
 from hsconfig.source_candidate_plan import build_source_candidate_plan
-
-
-SHADOWPRIEST_CODE = (
-    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
-    "KgG17oG1cEGAAA="
-)
 
 
 def shadowpriest_identity() -> dict:
@@ -49,10 +45,21 @@ def unknown_identity() -> dict:
     }
 
 
+def test_source_candidate_plan_rejects_stale_deck_code_argument():
+    with pytest.raises(TypeError):
+        build_source_candidate_plan(
+            deck_name="ShadowPriest",
+            deck_code="stale-deck-code",
+            deck_identity=shadowpriest_identity(),
+            candidate_archetypes={
+                "primary_archetype": "wild_aggro_shadow_priest"
+            },
+        )
+
+
 def test_source_candidate_plan_is_diagnostic_and_non_blocking_for_shadowpriest():
     plan = build_source_candidate_plan(
         deck_name="ShadowPriest",
-        deck_code=SHADOWPRIEST_CODE,
         deck_identity=shadowpriest_identity(),
         candidate_archetypes={"primary_archetype": "wild_aggro_shadow_priest"},
         explicit_source_urls=[],
@@ -100,7 +107,6 @@ def test_source_candidate_plan_is_diagnostic_and_non_blocking_for_shadowpriest()
 def test_source_candidate_plan_keeps_darkbishop_effect_separate_from_mulligan():
     plan = build_source_candidate_plan(
         deck_name="ShadowPriest",
-        deck_code=SHADOWPRIEST_CODE,
         deck_identity=shadowpriest_identity(),
         candidate_archetypes={"primary_archetype": "wild_aggro_shadow_priest"},
         explicit_source_urls=[],
@@ -118,7 +124,6 @@ def test_source_candidate_plan_keeps_darkbishop_effect_separate_from_mulligan():
 def test_source_candidate_plan_for_unknown_deck_suggests_queries_without_blocking():
     plan = build_source_candidate_plan(
         deck_name="UnknownDeck",
-        deck_code="AAEBA-placeholder",
         deck_identity=unknown_identity(),
         candidate_archetypes={"primary_archetype": "generic_low_confidence"},
         explicit_source_urls=[],
@@ -140,7 +145,6 @@ def test_source_candidate_plan_for_unknown_deck_with_explicit_source_fetches_it(
     explicit = ["https://example.com/manual-guide"]
     plan = build_source_candidate_plan(
         deck_name="UnknownDeck",
-        deck_code="AAEBA-placeholder",
         deck_identity=unknown_identity(),
         candidate_archetypes={"primary_archetype": "generic_low_confidence"},
         explicit_source_urls=explicit,
@@ -157,7 +161,6 @@ def test_source_candidate_plan_for_unknown_deck_with_explicit_source_fetches_it(
 def test_source_candidate_plan_filters_invalid_explicit_source_urls():
     plan = build_source_candidate_plan(
         deck_name="UnknownDeck",
-        deck_code="AAEBA-placeholder",
         deck_identity=unknown_identity(),
         candidate_archetypes={"primary_archetype": "generic_low_confidence"},
         explicit_source_urls=[
@@ -176,7 +179,6 @@ def test_source_candidate_plan_keeps_explicit_urls_before_registry_urls():
     explicit = ["https://example.com/manual-guide"]
     plan = build_source_candidate_plan(
         deck_name="ShadowPriest",
-        deck_code=SHADOWPRIEST_CODE,
         deck_identity=shadowpriest_identity(),
         candidate_archetypes={"primary_archetype": "wild_aggro_shadow_priest"},
         explicit_source_urls=explicit,

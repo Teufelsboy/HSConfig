@@ -556,7 +556,7 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
     fixture_map.write_text(json.dumps({source_url: str(thin_page)}), encoding="utf-8")
     monkeypatch.setattr(
         "hsconfig.source_candidate_plan.source_candidates_for_deck",
-        lambda deck_name, deck_code=None: [
+        lambda deck_name: [
             SourceCandidate(
                 url=source_url,
                 source_family="guide",
@@ -631,7 +631,7 @@ def test_configure_online_source_uses_explicit_urls_before_registry_urls(
     )
     monkeypatch.setattr(
         "hsconfig.source_candidate_plan.source_candidates_for_deck",
-        lambda deck_name, deck_code=None: [
+        lambda deck_name: [
             SourceCandidate(
                 url=registry_url,
                 source_family="guide",
@@ -714,7 +714,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
     )
     monkeypatch.setattr(
         "hsconfig.source_candidate_plan.source_candidates_for_deck",
-        lambda deck_name, deck_code=None: [
+        lambda deck_name: [
             SourceCandidate(
                 url=registry_url,
                 source_family="guide",
@@ -840,7 +840,7 @@ def test_configure_online_source_filters_invalid_explicit_source_url_before_acqu
     )
     monkeypatch.setattr(
         "hsconfig.source_candidate_plan.source_candidates_for_deck",
-        lambda deck_name, deck_code=None: [
+        lambda deck_name: [
             SourceCandidate(
                 url=registry_url,
                 source_family="guide",
