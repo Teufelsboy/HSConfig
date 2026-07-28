@@ -208,12 +208,14 @@ The audited acceptance suite also names one stable semantic boundary for every
 deck. These checks pin meaning, not warning totals or generated-file order.
 Negative boundaries follow the exact suppressed source claim and reason, or an
 explicit unsupported condition. They do not reject an otherwise supported row
-merely because the same CardID also exposes a warning-only mechanic:
+merely because the same CardID also exposes a warning-only mechanic. For a
+mapping condition, `unsupported_semantic` remains authoritative even when the
+row carries additional context fields:
 
 | Deck | Audited semantic boundary |
 | --- | --- |
 | ShadowPriest | Darkbishop's linked hero-power owner and the two source-backed board engines emit on their documented owners; reciprocal burn stays report-only. |
-| CtAPaladin | Secret timing remains visible as warning-only, with no invented timing or target row in CardID runtime JSON. |
+| CtAPaladin | Secret timing remains visible as warning-only, including Sword of the Fallen trigger-owner claims, with no invented timing or target row in CardID runtime JSON. |
 | PirateRogue | No ordered Combo is inferred; Dredge, Combo-count/target, and hand-placement semantics remain visible and absent from runtime JSON. |
 | BigShaman | No ordered Combo is inferred; location activation and any detected board-position behavior remain warning-only unless an explicit supported source contract exists. |
 | Discolock | No legacy `InHandPlayPriority` row is emitted, and the empty GlobalValues overlay remains authority-matched. |

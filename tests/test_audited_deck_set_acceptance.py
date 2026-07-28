@@ -981,11 +981,11 @@ def _assert_forbidden_semantic_conditions_absent(
     behavior = read_json(
         Path(package["out"]) / "reports" / "card_behavior_plan_report.json"
     )
-    forbidden_conditions = [
-        {"unsupported_semantic": mechanic} for mechanic in mechanics
-    ]
     assert all(
-        row.get("condition") not in forbidden_conditions
+        not (
+            isinstance(row.get("condition"), Mapping)
+            and row["condition"].get("unsupported_semantic") in mechanics
+        )
         for row in behavior["rows"]
     )
 
@@ -1008,6 +1008,7 @@ def _assert_ctapaladin_semantic_boundary(package: Mapping[str, Any]) -> None:
         expected_by_reason={
             "semantic_surface_not_proven": {"DMF_236", "EX1_136"},
             "semantic_surface_not_expressible": {"GIL_903"},
+            "trigger_owner_does_not_attack": {"BAR_875"},
         },
     )
     _assert_forbidden_semantic_conditions_absent(
@@ -1332,6 +1333,45 @@ def _insert_unrelated_control_surface(
     write_json(card_path, payload)
 
 
+def _insert_custom_semantic_row(
+    package: Mapping[str, Any],
+    *,
+    card_id: str,
+    condition: Mapping[str, Any],
+    source_claim_ids: list[str],
+    source_refs: list[str],
+) -> None:
+    reports = Path(package["out"]) / "reports"
+    behavior_path = reports / "card_behavior_plan_report.json"
+    behavior = read_json(behavior_path)
+    behavior["rows"].append(
+        {
+            "behavior_block": "BeforePlayCardBonus",
+            "card_id": card_id,
+            "condition": dict(condition),
+            "link_kind": "self",
+            "meaningful_runtime_surface": True,
+            "runtime_card_id": card_id,
+            "source_card_id": card_id,
+            "source_claim_ids": source_claim_ids,
+            "source_refs": source_refs,
+            "value": 23,
+        }
+    )
+    write_json(behavior_path, behavior)
+
+    card_path = _deck_dir(package) / f"{card_id}.json"
+    payload = read_json(card_path)
+    block = payload.setdefault("BeforePlayCardBonus", {"values": []})
+    block["values"].append(
+        {
+            "condition": dict(condition),
+            "value": 23,
+        }
+    )
+    write_json(card_path, payload)
+
+
 @pytest.mark.parametrize(
     ("deck_name", "card_id", "mechanic", "suppression_reason"),
     [
@@ -1455,6 +1495,72 @@ def test_piratedh_boundary_rejects_each_forbidden_legacy_surface(
 
     with pytest.raises(AssertionError):
         _assert_piratedh_semantic_boundary(package)
+
+
+def test_ctapaladin_boundary_rejects_bar875_secret_trigger_claim(
+    tmp_path: Path,
+    read_only_isolation: dict[str, list[str]],
+) -> None:
+    del read_only_isolation
+    deck = next(
+        row for row in audited_decks() if row["deck_name"] == "CtAPaladin"
+    )
+    package = _prepare_audited_deck(tmp_path, deck)
+    assert package["exit_code"] == 0
+    reports = Path(package["out"]) / "reports"
+    behavior = read_json(reports / "card_behavior_plan_report.json")
+    suppressed = next(
+        row
+        for row in behavior["suppressed"]
+        if row.get("reason") == "trigger_owner_does_not_attack"
+        and "BAR_875" in row.get("cards", [])
+    )
+    _insert_custom_semantic_row(
+        package,
+        card_id="BAR_875",
+        condition={"supported_semantic": "unrelated_control_surface"},
+        source_claim_ids=[str(suppressed["claim_id"])],
+        source_refs=list(suppressed["source_refs"]),
+    )
+    _assert_cardid_report_contract(
+        read_json(reports / "semantic_enrichment_report.json"),
+        read_json(reports / "card_behavior_plan_report.json"),
+        _card_payloads(package),
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_ctapaladin_semantic_boundary(package)
+
+
+def test_ctapaladin_boundary_rejects_extended_unsupported_condition(
+    tmp_path: Path,
+    read_only_isolation: dict[str, list[str]],
+) -> None:
+    del read_only_isolation
+    deck = next(
+        row for row in audited_decks() if row["deck_name"] == "CtAPaladin"
+    )
+    package = _prepare_audited_deck(tmp_path, deck)
+    assert package["exit_code"] == 0
+    reports = Path(package["out"]) / "reports"
+    _insert_custom_semantic_row(
+        package,
+        card_id="EX1_136",
+        condition={
+            "unsupported_semantic": "secret_timing",
+            "context": "opponent_trigger",
+        },
+        source_claim_ids=["control:extended_unsupported_condition"],
+        source_refs=["control:extended_unsupported_condition"],
+    )
+    _assert_cardid_report_contract(
+        read_json(reports / "semantic_enrichment_report.json"),
+        read_json(reports / "card_behavior_plan_report.json"),
+        _card_payloads(package),
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_ctapaladin_semantic_boundary(package)
 
 
 @pytest.mark.parametrize(
