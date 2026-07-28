@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -75,3 +76,30 @@ def test_ci_runs_lint_full_suite_and_contract_sentinels():
     assert "python -m pytest -p no:cacheprovider" in workflows
     assert "check_contract_guardrails.py" in workflows
     assert "contract-spine-sentinel --json" in workflows
+
+
+def test_external_workflow_actions_use_immutable_sha_with_version_comment():
+    action_line = re.compile(
+        r"^\s*-\s+uses:\s+([^@\s]+)@([0-9a-f]{40})\s+#\s+v[^\s]+\s*$"
+    )
+    external_uses: list[tuple[Path, int, str]] = []
+    workflow_paths = sorted(
+        path
+        for path in (ROOT / ".github" / "workflows").iterdir()
+        if path.suffix in {".yml", ".yaml"}
+    )
+    for path in workflow_paths:
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(),
+            start=1,
+        ):
+            if re.match(r"^\s*-\s+uses:", line) and "uses: ./" not in line:
+                external_uses.append((path, line_number, line))
+
+    assert external_uses
+    for path, line_number, line in external_uses:
+        assert action_line.match(line), (
+            f"{path.relative_to(ROOT)}:{line_number} must pin the external "
+            "action to a 40-character lowercase commit SHA and keep a "
+            "trailing version comment"
+        )

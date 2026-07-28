@@ -6,6 +6,11 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
+Repository history is indexed in [`docs/history/README.md`](../history/README.md).
+Ignored local output maintenance follows the
+[`output retention policy`](output-retention-policy.md). Maintenance and
+inventory are never apply authority.
+
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
