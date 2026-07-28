@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.deck_input_verification import verify_deck_input
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
@@ -181,10 +182,8 @@ def fixture_row_for(deck_name: str) -> dict[str, Any] | None:
     matrix_path = Path(__file__).resolve().parents[2] / "docs" / "operator" / "archetype-fixture-matrix.json"
     if not matrix_path.exists():
         return None
-    payload = read_json(matrix_path)
-    rows = payload.get("decks", []) if isinstance(payload, dict) else []
-    for row in rows:
-        if isinstance(row, dict) and str(row.get("deck_name", "")) == deck_name:
+    for row in load_audited_role_manifest(matrix_path):
+        if str(row.get("deck_name", "")) == deck_name:
             return dict(row)
     return None
 

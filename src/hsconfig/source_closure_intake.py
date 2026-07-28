@@ -78,7 +78,7 @@ def build_source_closure_intake_receipt(
     rows = (
         list(candidate_rows)
         if candidate_rows is not None
-        else source_candidates_for_deck(deck_name, deck_code)
+        else source_candidates_for_deck(deck_name)
     )
     receipt_rows = tuple(_candidate_to_receipt_row(row) for row in rows)
     return SourceClosureIntakeReceipt(

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.cli import main
 
 
@@ -8,8 +9,9 @@ SUPPLEMENTAL_PATH = Path("docs/operator/supplemental-proof-decks.json")
 
 
 def test_supplemental_fixtures_separate_load_safety_from_apply_authority():
-    manifest = json.loads(SUPPLEMENTAL_PATH.read_text(encoding="utf-8"))
-    rows = {row["deck_name"]: row for row in manifest["decks"]}
+    rows = {
+        row["deck_name"]: row for row in load_audited_role_manifest(SUPPLEMENTAL_PATH)
+    }
 
     assert set(rows) == {"CuteWarrior", "SecretMage", "HighlanderPriest"}
     for row in rows.values():
@@ -27,8 +29,15 @@ def test_cute_warrior_supplemental_prepare_path_is_load_safe(
     capsys,
     monkeypatch,
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     out = tmp_path / "CuteWarrior"
+    cute_warrior = next(
+        row
+        for row in load_audited_role_manifest(SUPPLEMENTAL_PATH)
+        if row["deck_name"] == "CuteWarrior"
+    )
 
     code = main(
         [
@@ -36,7 +45,7 @@ def test_cute_warrior_supplemental_prepare_path_is_load_safe(
             "--deck-name",
             "CuteWarrior",
             "--deck-code",
-            "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
+            cute_warrior["deck_code"],
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -46,7 +55,9 @@ def test_cute_warrior_supplemental_prepare_path_is_load_safe(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    operator = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
+    operator = json.loads(
+        (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
     custom_config_dirs = list((out / "CustomConfig").iterdir())
     deck_dir = custom_config_dirs[0]
     card_files = [

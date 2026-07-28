@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.deck_identity import build_deck_identity, stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -161,10 +162,13 @@ def _fixture(name: str) -> dict:
 
 
 def _matrix_deck_identity(deck_name: str) -> dict:
-    matrix = json.loads(
-        Path("docs/operator/archetype-fixture-matrix.json").read_text(encoding="utf-8")
+    deck = next(
+        row
+        for row in load_audited_role_manifest(
+            Path("docs/operator/archetype-fixture-matrix.json")
+        )
+        if row["deck_name"] == deck_name
     )
-    deck = next(row for row in matrix["decks"] if row["deck_name"] == deck_name)
     decoded = decode_deck_code(deck["deck_code"])
     return build_deck_identity(
         deck_name=deck["deck_name"],

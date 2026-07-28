@@ -561,6 +561,12 @@ Source-informed apply is still not `SOURCE_BACKED_STRONG`; close the remaining `
 
 ## Fixture Matrix
 
+`docs/operator/audited-deck-catalog.json` is the single identity source for the
+twelve audited user decks. It owns each exact `deck_name`, `deck_code`, `hs_id`,
+and `hdt_deck_id`: eleven rows have the `representative` role and CuteWarrior
+has the `supplemental` role. The role manifests below reference this catalog by
+`deck_name`; do not copy audited identity fields into them.
+
 `docs/operator/archetype-fixture-matrix.json` is the representative 11-deck HSConfig proof set.
 
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link. Close existing matrix gaps before adding more representative decks.
@@ -591,8 +597,12 @@ warning-only.
 manifest rows with the supplemental CuteWarrior row without copying deck codes
 or promoting CuteWarrior into the representative matrix. A catalog guard
 requires exactly eleven representative rows, exactly one supplemental
-CuteWarrior row, exactly twelve audited rows, and unique deck names and deck
-codes. It prepares packages only under pytest temporary directories. The test
+CuteWarrior row, exactly twelve audited rows, and unique deck names, deck
+codes, Hearthstone IDs, and HDT deck IDs. Every exact deck code must decode to
+30 main-deck cards with no unresolved DBF IDs. MechPala additionally preserves
+its three decoded Zilliax sideboard modules under `TOY_330`; every other audited
+deck has no sideboard cards. It prepares packages only under pytest temporary
+directories. The test
 uses a frozen local DBF snapshot for the twelve audited deckstrings. The
 snapshot pins HearthstoneJSON build `247416`, its immutable `CardDefs.xml` URL,
 capture timestamp, upstream raw digest, and a canonical snapshot digest. Its
@@ -643,6 +653,8 @@ in-client execution, gameplay improvement, matchup quality, or optimality.
 `docs/operator/source-candidate-proof-decks.json` is the separate 12-deck
 source-candidate proof set. It proves that each user-supplied Wild deck has
 either a registry candidate or an explicit first missing source action.
+Candidate registry lookup is keyed only by `deck_name`; callers must not pass
+or silently discard a deck code.
 This proof set does not widen the representative fixture matrix and does not change runtime apply authority.
 
 `docs/operator/supplemental-proof-decks.json` lists decks that prove narrow command,
@@ -655,4 +667,6 @@ current eleven representative rows can exercise.
 SecretMage and HighlanderPriest are supplemental visibility-only decks. They
 prove that current Wild secret/highlander/location control surfaces still
 produce load-safe packages, but they do not widen the representative matrix and
-do not close Boarlock or Kingslayer source-depth stop conditions.
+do not close Boarlock or Kingslayer source-depth stop conditions. Their
+manifest-local deck codes are intentionally outside the audited twelve-deck
+identity catalog.

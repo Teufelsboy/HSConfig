@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 import hsconfig.source_acquisition as source_acquisition
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
@@ -22,6 +23,7 @@ from tests.helpers.fixture_prepare import prepare_fixture_deck, read_json
 
 MATRIX_PATH = Path("docs/operator/archetype-fixture-matrix.json")
 SUPPLEMENTAL_PATH = Path("docs/operator/supplemental-proof-decks.json")
+AUDITED_CATALOG_PATH = Path("docs/operator/audited-deck-catalog.json")
 AUDITED_CARD_DB_PATH = Path("tests/fixtures/audited_deck_card_db.json")
 DIAGNOSTIC_APPLY_REASON = "diagnostic_source_not_apply_eligible"
 CARD_METADATA_KEYS = {"ConfigComment", "GameCardId"}
@@ -41,6 +43,128 @@ AUDITED_CARD_DB_METADATA = {
         "sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4"
     ),
 }
+EXPECTED_AUDITED_DECK_CATALOG = [
+    {
+        "deck_name": "ShadowPriest",
+        "deck_code": (
+            "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+            "KgG17oG1cEGAAA="
+        ),
+        "hs_id": "2737726722",
+        "hdt_deck_id": "c4c8b6b9-1d8e-4c07-a6cd-1c0de84f7602",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "CtAPaladin",
+        "deck_code": (
+            "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQF"
+            "hY4GmY4G9ZUGmvwHAAA="
+        ),
+        "hs_id": "2737744316",
+        "hdt_deck_id": "f9b54950-ca24-48cf-805e-bf620eab47a0",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "PirateRogue",
+        "deck_code": (
+            "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQ"
+            "b8qAatxQYAAA=="
+        ),
+        "hs_id": "2740734095",
+        "hdt_deck_id": "c1e87d43-5802-460b-b955-31ae458eb41a",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "BigShaman",
+        "deck_code": (
+            "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmA"
+            "bGpgakpwb44gas/QYAAA=="
+        ),
+        "hs_id": "2737735409",
+        "hdt_deck_id": "6b26f907-6f1e-44c8-a4e4-d14e9d51f819",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "Discolock",
+        "deck_code": (
+            "AAEBAf0GBM4Hj4ID8aEG9qEGDbW5A9XRA9DhA5iSBauSBZXKBteXB4SZB6StB8"
+            "ayB9a+B9m+B8+/BwAA"
+        ),
+        "hs_id": "2740357533",
+        "hdt_deck_id": "55241397-ac74-4d46-a662-089e5858839c",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "TreantDruid",
+        "deck_code": (
+            "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+g"
+            "XZ/wXJ0Aat4gYAAA=="
+        ),
+        "hs_id": "2740360895",
+        "hdt_deck_id": "a120a28b-1840-4032-a3c9-2da4c51338ed",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "ImbueMage",
+        "deck_code": (
+            "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94"
+            "EHs4cHwIcH7o0HAAA="
+        ),
+        "hs_id": "2740361888",
+        "hdt_deck_id": "49c05560-8b30-4d06-b3a2-a8b0ff36d005",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "MechPala",
+        "deck_code": (
+            "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Q"
+            "bi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA=="
+        ),
+        "hs_id": "2740734214",
+        "hdt_deck_id": "8f011f55-8ae2-436c-b53a-315f280e8833",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "Kingslayer",
+        "deck_code": (
+            "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/K"
+            "UG/KgGs8EG6sQGrcUGAAA="
+        ),
+        "hs_id": "2740733989",
+        "hdt_deck_id": "1292ff02-8ebe-47a5-90b1-9a1899acd6aa",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "Boarlock",
+        "deck_code": (
+            "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBY"
+            "SeBpWzBpTKBoSZB4adBwAA"
+        ),
+        "hs_id": "2740361505",
+        "hdt_deck_id": "7727c718-c93c-47ca-a766-5612c3806f0f",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "PirateDH",
+        "deck_code": (
+            "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqg"
+            "X8qAbYwAb2wAatxQax6wYAAA=="
+        ),
+        "hs_id": "2737737281",
+        "hdt_deck_id": "2bc184ed-b59a-4420-900d-b0ed3d153979",
+        "matrix_role": "representative",
+    },
+    {
+        "deck_name": "CuteWarrior",
+        "deck_code": (
+            "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFov"
+            "oF/KgGltMGtI8HAAA="
+        ),
+        "hs_id": "2750150375",
+        "hdt_deck_id": "a753f091-b770-4a06-8da8-59f1d5269f6b",
+        "matrix_role": "supplemental",
+    },
+]
 
 
 def test_network_fence_denies_direct_source_acquisition_aliases(
@@ -95,9 +219,7 @@ def test_audited_dbf_snapshot_metadata_and_exact_set_are_pinned() -> None:
         "snapshot_sha256": AUDITED_CARD_DB_SNAPSHOT_SHA256,
         "source_build": 247416,
         "source_identifier": "HearthstoneJSON:247416:CardDefs.xml",
-        "source_url": (
-            "https://api.hearthstonejson.com/v1/247416/CardDefs.xml"
-        ),
+        "source_url": ("https://api.hearthstonejson.com/v1/247416/CardDefs.xml"),
         "upstream_raw_sha256": (
             "sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4"
         ),
@@ -249,9 +371,7 @@ def _validate_audited_card_db_payload(
     if not isinstance(metadata, Mapping):
         raise ValueError("snapshot_metadata_invalid")
     metadata_without_hash = {
-        str(key): value
-        for key, value in metadata.items()
-        if key != "snapshot_sha256"
+        str(key): value for key, value in metadata.items() if key != "snapshot_sha256"
     }
     expected_without_hash = {
         key: value
@@ -419,9 +539,43 @@ def read_only_isolation(
 
 def _catalog_payloads() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return (
-        deepcopy(read_json(MATRIX_PATH)["decks"]),
-        deepcopy(read_json(SUPPLEMENTAL_PATH)["decks"]),
+        deepcopy(load_audited_role_manifest(MATRIX_PATH)),
+        deepcopy(load_audited_role_manifest(SUPPLEMENTAL_PATH)),
     )
+
+
+def test_audited_deck_catalog_is_the_unique_exact_identity_source() -> None:
+    payload = read_json(AUDITED_CATALOG_PATH)
+    rows = payload["decks"]
+
+    assert payload["schema_version"] == 1
+    assert rows == EXPECTED_AUDITED_DECK_CATALOG
+    assert len(rows) == 12
+    for field in ("deck_name", "deck_code", "hs_id", "hdt_deck_id"):
+        values = [str(row[field]) for row in rows]
+        assert all(values)
+        assert len(set(values)) == 12
+    assert [row["matrix_role"] for row in rows].count("representative") == 11
+    assert [row["matrix_role"] for row in rows].count("supplemental") == 1
+
+    for row in rows:
+        decoded = decode_deck_code(str(row["deck_code"]))
+        assert decoded["card_count"] == 30
+        assert decoded["card_count_total"] == 30
+        assert decoded["unresolved_card_count"] == 0
+        if row["deck_name"] == "MechPala":
+            assert decoded["sideboard_count"] == 3
+            assert len(decoded["sideboards"]) == 1
+            sideboard = decoded["sideboards"][0]
+            assert sideboard["owner_card_id"] == "TOY_330"
+            assert {card["card_id"] for card in sideboard["cards"]} == {
+                "TOY_330t95",
+                "TOY_330t98",
+                "TOY_330t11",
+            }
+        else:
+            assert decoded["sideboard_count"] == 0
+            assert decoded["sideboards"] == []
 
 
 def test_audited_catalog_requires_exact_manifest_membership() -> None:
@@ -628,8 +782,8 @@ def _validate_audited_deck_catalog(
 
 
 def audited_decks() -> list[dict[str, Any]]:
-    matrix = read_json(MATRIX_PATH)["decks"]
-    supplemental = read_json(SUPPLEMENTAL_PATH)["decks"]
+    matrix = load_audited_role_manifest(MATRIX_PATH)
+    supplemental = load_audited_role_manifest(SUPPLEMENTAL_PATH)
     return _validate_audited_deck_catalog(matrix, supplemental)
 
 
@@ -833,8 +987,7 @@ def _assert_cardid_report_contract(
     report_rows = [
         row
         for row in behavior.get("rows", [])
-        if isinstance(row, Mapping)
-        and row.get("meaningful_runtime_surface") is True
+        if isinstance(row, Mapping) and row.get("meaningful_runtime_surface") is True
     ]
 
     report_counter = Counter(
@@ -957,9 +1110,7 @@ def _assert_suppressed_card_semantics_absent(
             row for row in behavior["suppressed"] if row.get("reason") == reason
         ]
         visible_card_ids = {
-            str(card_id)
-            for row in matching_rows
-            for card_id in row.get("cards", [])
+            str(card_id) for row in matching_rows for card_id in row.get("cards", [])
         }
         suppressed_claim_ids = {
             str(row["claim_id"])
@@ -1179,13 +1330,9 @@ def _assert_deck_specific_invariants(
             if row.get("reason") == "reciprocal_burn_report_only"
         ]
         assert reciprocal
-        assert "GVG_009" in {
-            card for row in reciprocal for card in row["cards"]
-        }
+        assert "GVG_009" in {card for row in reciprocal for card in row["cards"]}
         reciprocal_claims = {
-            str(claim_id)
-            for row in reciprocal
-            for claim_id in row["source_claim_ids"]
+            str(claim_id) for row in reciprocal for claim_id in row["source_claim_ids"]
         }
         emitted_claims = {
             str(claim_id)
@@ -1226,9 +1373,7 @@ def _assert_deck_specific_invariants(
         return
 
     if deck_name == "Discolock":
-        assert all(
-            "InHandPlayPriority" not in payload for payload in payloads.values()
-        )
+        assert all("InHandPlayPriority" not in payload for payload in payloads.values())
         profile = read_json(reports / "globalvalues_profile.json")
         assert profile["authority_parity"] == {
             "authorized_overlay_keys": [],
@@ -1267,8 +1412,7 @@ def _insert_forbidden_semantic_row(
     suppressed = next(
         row
         for row in behavior["suppressed"]
-        if row.get("reason") == suppression_reason
-        and card_id in row.get("cards", [])
+        if row.get("reason") == suppression_reason and card_id in row.get("cards", [])
     )
     row = {
         "behavior_block": "BeforePlayCardBonus",
@@ -1422,9 +1566,7 @@ def test_named_deck_boundary_rejects_invented_semantic_row(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == deck_name
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == deck_name)
     package = _prepare_audited_deck(tmp_path, deck)
     assert package["exit_code"] == 0
 
@@ -1459,9 +1601,7 @@ def test_named_deck_boundary_allows_unrelated_control_surface(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == deck_name
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == deck_name)
     package = _prepare_audited_deck(tmp_path, deck)
     assert package["exit_code"] == 0
 
@@ -1486,9 +1626,7 @@ def test_piratedh_boundary_rejects_each_forbidden_legacy_surface(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == "PirateDH"
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == "PirateDH")
     package = _prepare_audited_deck(tmp_path, deck)
     assert package["exit_code"] == 0
     write_json(_deck_dir(package) / surface_name, {})
@@ -1502,9 +1640,7 @@ def test_ctapaladin_boundary_rejects_bar875_secret_trigger_claim(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == "CtAPaladin"
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == "CtAPaladin")
     package = _prepare_audited_deck(tmp_path, deck)
     assert package["exit_code"] == 0
     reports = Path(package["out"]) / "reports"
@@ -1537,9 +1673,7 @@ def test_ctapaladin_boundary_rejects_extended_unsupported_condition(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == "CtAPaladin"
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == "CtAPaladin")
     package = _prepare_audited_deck(tmp_path, deck)
     assert package["exit_code"] == 0
     reports = Path(package["out"]) / "reports"
@@ -1618,9 +1752,7 @@ def test_exact_live_verified_fixture_requires_strict_validation_for_eligibility(
     read_only_isolation: dict[str, list[str]],
 ) -> None:
     del read_only_isolation
-    deck = next(
-        row for row in audited_decks() if row["deck_name"] == "ShadowPriest"
-    )
+    deck = next(row for row in audited_decks() if row["deck_name"] == "ShadowPriest")
     html = f"""
     <html>
       <head><title>ShadowPriest exact deck guide</title></head>

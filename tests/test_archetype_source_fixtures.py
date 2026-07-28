@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.combo_plan import build_combo_plan
@@ -47,7 +48,9 @@ def _documents(path: Path) -> list[dict]:
 
 
 def _matrix() -> dict:
-    return json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+    payload = json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+    payload["decks"] = load_audited_role_manifest(MATRIX_PATH)
+    return payload
 
 
 def _core_matrix_rows() -> list[dict]:

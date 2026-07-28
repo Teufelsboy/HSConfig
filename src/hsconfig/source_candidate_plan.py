@@ -45,7 +45,7 @@ def build_source_candidate_plan(
     explicit_source_urls: Sequence[str] = (),
     current_date: str | date | None = None,
 ) -> dict[str, Any]:
-    candidates = source_candidates_for_deck(deck_name, deck_code)
+    candidates = source_candidates_for_deck(deck_name)
     registry_urls = dedupe_acquisition_urls(candidate_urls(candidates))
     explicit_urls = dedupe_acquisition_urls(explicit_source_urls)
     source_urls = dedupe_acquisition_urls([*explicit_urls, *registry_urls])

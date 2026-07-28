@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.source_candidate_registry import source_candidates_for_deck
 
 
@@ -12,22 +14,12 @@ PROOF_PATH = (
     / "operator"
     / "source-candidate-proof-decks.json"
 )
-
-
-DECKS = {
-    "ShadowPriest": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
-    "CtAPaladin": "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
-    "PirateRogue": "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==",
-    "BigShaman": "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
-    "Discolock": "AAEBAf0GBM4Hj4ID8aEG9qEGDbW5A9XRA9DhA5iSBauSBZXKBteXB4SZB6StB8ayB9a+B9m+B8+/BwAA",
-    "TreantDruid": "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==",
-    "ImbueMage": "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=",
-    "MechPala": "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
-    "Kingslayer": "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=",
-    "Boarlock": "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA",
-    "PirateDH": "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==",
-    "CuteWarrior": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
+CATALOG_PATH = PROOF_PATH.with_name("audited-deck-catalog.json")
+AUDITED_DECKS_BY_NAME = {
+    row["deck_name"]: row
+    for row in json.loads(CATALOG_PATH.read_text(encoding="utf-8"))["decks"]
 }
+AUDITED_DECK_NAMES = tuple(AUDITED_DECKS_BY_NAME)
 
 
 EXPECTED_STRENGTH = {
@@ -61,19 +53,29 @@ EXPECTED_STRONG_PROMOTION_STATUS = {
 }
 
 
+def test_source_candidate_registry_accepts_deck_name_only():
+    with pytest.raises(TypeError):
+        source_candidates_for_deck(
+            "ShadowPriest",
+            AUDITED_DECKS_BY_NAME["ShadowPriest"]["deck_code"],
+        )
+
+    assert source_candidates_for_deck("ShadowPriest")
+
+
 def test_source_candidate_registry_covers_user_supplied_wild_decks():
     missing = [
         deck_name
-        for deck_name, deck_code in DECKS.items()
-        if not source_candidates_for_deck(deck_name, deck_code)
+        for deck_name in AUDITED_DECK_NAMES
+        if not source_candidates_for_deck(deck_name)
     ]
 
     assert missing == []
 
 
 def test_candidate_strength_ceiling_is_explicit_for_every_user_deck():
-    for deck_name, deck_code in DECKS.items():
-        candidates = source_candidates_for_deck(deck_name, deck_code)
+    for deck_name in AUDITED_DECK_NAMES:
+        candidates = source_candidates_for_deck(deck_name)
         assert candidates, deck_name
         assert candidates[0].strength_ceiling == EXPECTED_STRENGTH[deck_name]
         assert candidates[0].strength_ceiling in {
@@ -85,8 +87,8 @@ def test_candidate_strength_ceiling_is_explicit_for_every_user_deck():
 
 
 def test_context_only_candidates_do_not_claim_none_missing_action():
-    for deck_name, deck_code in DECKS.items():
-        for candidate in source_candidates_for_deck(deck_name, deck_code):
+    for deck_name in AUDITED_DECK_NAMES:
+        for candidate in source_candidates_for_deck(deck_name):
             if candidate.strength_ceiling == "context_only":
                 assert candidate.first_missing_source_action != "none", candidate.url
                 assert candidate.expected_claim_kinds == (), candidate.url
@@ -110,7 +112,8 @@ def test_source_closure_wave_cta_support_seed_is_registered():
 
 def test_live_source_refresh_treant_supplemental_candidate_is_partial():
     treant_candidates = {
-        candidate.url: candidate for candidate in source_candidates_for_deck("TreantDruid")
+        candidate.url: candidate
+        for candidate in source_candidates_for_deck("TreantDruid")
     }
     treant_url = (
         "https://www.reddit.com/r/CompetitiveHS/comments/1oty3l8/"
@@ -135,7 +138,9 @@ def test_live_source_refresh_mechpala_current_mulligan_source_stays_partial():
     assert mech_url in mech_candidates
     current_source = mech_candidates[mech_url]
     assert current_source.strength_ceiling == "candidate_partial"
-    assert current_source.first_missing_source_action == "add_card_specific_source_claim"
+    assert (
+        current_source.first_missing_source_action == "add_card_specific_source_claim"
+    )
     assert {
         "gameplan_posture",
         "mulligan_keep",
@@ -219,7 +224,7 @@ def test_source_candidate_proof_doc_matches_registry_expectations():
 
     assert set(rows) == set(EXPECTED_STRENGTH)
     for deck_name, expected_strength in EXPECTED_STRENGTH.items():
-        candidates = source_candidates_for_deck(deck_name, DECKS[deck_name])
+        candidates = source_candidates_for_deck(deck_name)
         assert rows[deck_name]["expected_strength_ceiling"] == expected_strength
         assert rows[deck_name]["expected_runtime_generation_status"] == (
             "load_safe_no_default_only"
@@ -235,15 +240,18 @@ def test_source_candidate_proof_doc_matches_registry_expectations():
             + rows[deck_name].get("context_seed_urls", [])
         )
         assert documented_urls == [candidate.url for candidate in candidates]
-        assert rows[deck_name]["expected_strong_promotion_status"] == (
-            EXPECTED_STRONG_PROMOTION_STATUS[deck_name]
+        assert (
+            rows[deck_name]["expected_strong_promotion_status"]
+            == (EXPECTED_STRONG_PROMOTION_STATUS[deck_name])
         )
 
 
 def test_source_candidate_proof_rows_match_registry_contract():
     proof = json.loads(PROOF_PATH.read_text(encoding="utf-8"))
 
-    assert proof["strongness_policy"].startswith("Candidate URLs are source acquisition seeds")
+    assert proof["strongness_policy"].startswith(
+        "Candidate URLs are source acquisition seeds"
+    )
 
     for row in proof["decks"]:
         deck_name = row["deck_name"]
@@ -258,15 +266,18 @@ def test_source_candidate_proof_rows_match_registry_contract():
         assert support_seed_urls <= urls, deck_name
         assert context_seed_urls <= urls, deck_name
         assert {
-            candidate.strength_ceiling for candidate in candidates
+            candidate.strength_ceiling
+            for candidate in candidates
             if candidate.url in expected_urls
         } == {row["expected_strength_ceiling"]}, deck_name
         assert {
-            candidate.strength_ceiling for candidate in candidates
+            candidate.strength_ceiling
+            for candidate in candidates
             if candidate.url in support_seed_urls
         } <= {"candidate_partial", "context_only"}, deck_name
         assert {
-            candidate.strength_ceiling for candidate in candidates
+            candidate.strength_ceiling
+            for candidate in candidates
             if candidate.url in context_seed_urls
         } <= {"context_only"}, deck_name
 
@@ -289,13 +300,19 @@ def test_context_only_candidates_cannot_declare_runtime_claim_kinds():
     for deck_name in ["MechPala", "Discolock", "Boarlock", "CuteWarrior"]:
         candidates = source_candidates_for_deck(deck_name)
         context_candidates = [
-            candidate for candidate in candidates
+            candidate
+            for candidate in candidates
             if candidate.strength_ceiling == "context_only"
         ]
 
         assert context_candidates
-        assert all(candidate.expected_claim_kinds == () for candidate in context_candidates)
-        assert all(candidate.first_missing_source_action != "none" for candidate in context_candidates)
+        assert all(
+            candidate.expected_claim_kinds == () for candidate in context_candidates
+        )
+        assert all(
+            candidate.first_missing_source_action != "none"
+            for candidate in context_candidates
+        )
 
 
 def test_candidate_rows_do_not_promote_from_context_only_sources():
@@ -315,8 +332,8 @@ def test_candidate_rows_do_not_promote_from_context_only_sources():
 
 
 def test_runtime_claims_possible_candidates_declare_claim_kinds():
-    for deck_name, deck_code in DECKS.items():
-        candidates = source_candidates_for_deck(deck_name, deck_code)
+    for deck_name in AUDITED_DECK_NAMES:
+        candidates = source_candidates_for_deck(deck_name)
         runtime_candidates = [
             candidate
             for candidate in candidates

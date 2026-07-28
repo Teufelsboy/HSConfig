@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.cli import main
 
 
@@ -36,12 +37,11 @@ EXPECTED_REPRESENTATIVE_DECK_NAMES = {
 
 
 def _representative_decks() -> list[dict]:
-    matrix = json.loads(
-        Path("docs/operator/archetype-fixture-matrix.json").read_text(encoding="utf-8")
-    )
     return [
         row
-        for row in matrix["decks"]
+        for row in load_audited_role_manifest(
+            Path("docs/operator/archetype-fixture-matrix.json")
+        )
         if row["fixture_stage"] in {"core_source_backed_fixture", "source_informed_valid_fixture"}
     ]
 

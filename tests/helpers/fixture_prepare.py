@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.cli import main
 
 
@@ -15,8 +16,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def load_archetype_matrix() -> list[dict[str, Any]]:
-    payload = read_json(MATRIX)
-    return list(payload["decks"])
+    return load_audited_role_manifest(MATRIX)
 
 
 def fixture_path_for(deck: dict[str, Any]) -> Path:

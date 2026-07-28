@@ -1,13 +1,11 @@
 {
   "schema_version": 1,
   "purpose": "Decks used as supplemental HSConfig proof inputs without widening the representative source-depth closure matrix.",
+  "identity_catalog": "audited-deck-catalog.json",
   "policy": "Supplemental decks may prove expected load safety, command acceptance, syntax coverage, or narrow regression behavior. They are diagnostic-only fixtures, cannot authorize a current package apply, and do not replace closing existing representative source-informed rows.",
   "decks": [
     {
       "deck_name": "CuteWarrior",
-      "deck_code": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
-      "hs_id": "2750150375",
-      "hdt_deck_id": "a753f091-b770-4a06-8da8-59f1d5269f6b",
       "proof_role": "supplemental_load_safe_prepare_proof",
       "proof_scope": "supplemental_load_safe_only",
       "representative_output_competence": false,

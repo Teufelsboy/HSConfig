@@ -460,9 +460,7 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
 
 def source_candidates_for_deck(
     deck_name: str,
-    deck_code: str | None = None,
 ) -> list[SourceCandidate]:
-    del deck_code
     candidates = list(_KNOWN_CANDIDATES.get(_slug(deck_name), ()))
     candidates.sort(key=lambda candidate: (-candidate.priority, candidate.url))
     return candidates

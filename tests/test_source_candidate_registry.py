@@ -4,14 +4,14 @@ from hsconfig.source_candidate_registry import source_candidates_for_deck
 
 
 def test_source_candidate_registry_returns_shadowpriest_current_guide():
-    candidates = source_candidates_for_deck(
-        "ShadowPriest",
-        "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
-    )
+    candidates = source_candidates_for_deck("ShadowPriest")
 
     assert candidates
     first = candidates[0]
-    assert first.url == "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    assert (
+        first.url
+        == "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    )
     assert first.source_family == "guide"
     assert first.priority == 10
     assert first.expected_strength == "guide_current_deck_match"
@@ -21,10 +21,7 @@ def test_source_candidate_registry_returns_shadowpriest_current_guide():
 
 
 def test_source_candidate_registry_marks_bigshaman_current_seed_before_stale_support():
-    candidates = source_candidates_for_deck(
-        "BigShaman",
-        "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
-    )
+    candidates = source_candidates_for_deck("BigShaman")
 
     assert candidates
     current = candidates[0]
@@ -37,7 +34,10 @@ def test_source_candidate_registry_marks_bigshaman_current_seed_before_stale_sup
     assert current.first_missing_source_action == "none"
 
     stale_support = candidates[1]
-    assert stale_support.url == "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
+    assert (
+        stale_support.url
+        == "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
+    )
     assert stale_support.expected_strength == "guide_stale_archetype_partial"
     assert stale_support.evergreen_wild_archetype is False
     assert stale_support.strength_ceiling == "candidate_partial"
@@ -47,14 +47,11 @@ def test_source_candidate_registry_marks_bigshaman_current_seed_before_stale_sup
 
 
 def test_source_candidate_registry_is_empty_for_unknown_decks():
-    assert source_candidates_for_deck("UnknownDeck", "AAEBA-placeholder") == []
+    assert source_candidates_for_deck("UnknownDeck") == []
 
 
 def test_source_candidate_metadata_is_seed_not_authority():
-    candidates = source_candidates_for_deck(
-        "ShadowPriest",
-        "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
-    )
+    candidates = source_candidates_for_deck("ShadowPriest")
 
     assert candidates
     first = candidates[0]

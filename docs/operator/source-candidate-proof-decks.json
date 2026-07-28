@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "purpose": "User-supplied 12-deck source candidate proof set for HSConfig online-source coverage. This does not replace the representative archetype fixture matrix.",
+  "identity_catalog": "audited-deck-catalog.json",
   "strongness_policy": "Candidate URLs are source acquisition seeds only. SOURCE_BACKED_STRONG requires fetched full-text claims that pass source evidence policy, claim-kind normalization, surface gates, and closure profile checks.",
   "decks": [
     {
