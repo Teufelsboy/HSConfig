@@ -406,3 +406,174 @@ def _semantic_tree_digest(tree: dict[str, object]) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
+def _gap_identity(
+    *,
+    deck_name: str = "Kingslayer",
+    card_id: str = "DEEP_014",
+    fingerprint: str = "kingslayer-fingerprint",
+    deck_code_hash: str = "kingslayer-code-hash",
+) -> dict:
+    return {
+        "deck_name": deck_name,
+        "deck_fingerprint": fingerprint,
+        "deck_code_hash": deck_code_hash,
+        "cards": [{"card_id": card_id, "count": 1}],
+    }
+
+
+def _gap_row(
+    *,
+    deck_name: str = "Kingslayer",
+    card_id: str = "DEEP_014",
+    action: str = "add_kingslayer_quick_pick_mulligan_source",
+    reason: str = "explicit_source_gap_requires_resolution",
+    fingerprint: str = "kingslayer-fingerprint",
+    deck_code_hash: str = "kingslayer-code-hash",
+) -> dict[str, str]:
+    return {
+        "target_deck_name": deck_name,
+        "target_deck_fingerprint": fingerprint,
+        "target_deck_code_hash": deck_code_hash,
+        "card_id": card_id,
+        "first_missing_source_action": action,
+        "reason": reason,
+    }
+
+
+@pytest.mark.parametrize(
+    ("rows", "deck_name", "identity"),
+    [
+        ([_gap_row()], "UnknownDeck", _gap_identity(deck_name="UnknownDeck")),
+        (
+            [_gap_row(deck_name="Boarlock")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [_gap_row(card_id="UNKNOWN_CARD")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [_gap_row()],
+            "Kingslayer",
+            _gap_identity(card_id="OTHER_CARD"),
+        ),
+        (
+            [_gap_row(action="add_unrelated_source")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [_gap_row(reason="excluded_source_mulligan_intent")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [
+                {
+                    key: value
+                    for key, value in _gap_row().items()
+                    if key != "target_deck_fingerprint"
+                }
+            ],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [_gap_row(fingerprint="wrong-fingerprint")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [_gap_row(deck_code_hash="wrong-code-hash")],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+        (
+            [
+                _gap_row(
+                    deck_name="Boarlock",
+                    card_id="WW_092",
+                    action="add_boarlock_fracking_mulligan_source",
+                    fingerprint="boarlock-fingerprint",
+                    deck_code_hash="boarlock-code-hash",
+                )
+            ],
+            "Kingslayer",
+            _gap_identity(),
+        ),
+    ],
+)
+def test_package_boundary_ignores_unbound_or_unregistered_mulligan_gap_rows(
+    rows: list[dict[str, str]],
+    deck_name: str,
+    identity: dict,
+) -> None:
+    assert package_builder._mulligan_source_gap_vetoes(
+        rows,
+        deck_name=deck_name,
+        deck_identity=identity,
+    ) == {}
+
+
+@pytest.mark.parametrize(
+    ("deck_name", "identity", "row", "expected_card"),
+    [
+        (
+            "Kingslayer",
+            _gap_identity(),
+            _gap_row(),
+            "DEEP_014",
+        ),
+        (
+            "Boarlock",
+            _gap_identity(
+                deck_name="Boarlock",
+                card_id="WW_092",
+                fingerprint="boarlock-fingerprint",
+                deck_code_hash="boarlock-code-hash",
+            ),
+            _gap_row(
+                deck_name="Boarlock",
+                card_id="WW_092",
+                action="add_boarlock_fracking_mulligan_source",
+                fingerprint="boarlock-fingerprint",
+                deck_code_hash="boarlock-code-hash",
+            ),
+            "WW_092",
+        ),
+    ],
+)
+def test_package_boundary_accepts_only_exact_registered_bound_mulligan_gap(
+    deck_name: str,
+    identity: dict,
+    row: dict[str, str],
+    expected_card: str,
+) -> None:
+    assert package_builder._mulligan_source_gap_vetoes(
+        [row],
+        deck_name=deck_name,
+        deck_identity=identity,
+    ) == {expected_card: "explicit_source_gap_requires_resolution"}
+
+
+def test_package_boundary_deduplicates_valid_gap_and_ignores_conflicts() -> None:
+    valid = _gap_row()
+    conflict = _gap_row(action="add_unrelated_source")
+
+    assert package_builder._mulligan_source_gap_vetoes(
+        [conflict, valid, dict(valid), conflict],
+        deck_name="Kingslayer",
+        deck_identity=_gap_identity(),
+    ) == {"DEEP_014": "explicit_source_gap_requires_resolution"}
+
+
+def test_package_boundary_absent_gap_field_is_backward_compatible() -> None:
+    assert package_builder._mulligan_source_gap_vetoes(
+        None,
+        deck_name="Kingslayer",
+        deck_identity=_gap_identity(),
+    ) == {}

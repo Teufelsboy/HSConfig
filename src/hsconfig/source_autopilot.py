@@ -16,6 +16,10 @@ from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_readiness_preview import build_source_readiness_preview
 from hsconfig.source_text_claim_extractor import extract_text_claims
 from hsconfig.strong_closure_profiles import ClosureProfileVerdict, evaluate_closure_profile
+from hsconfig.mulligan_source_gap_registry import (
+    build_bound_mulligan_source_gap_rows,
+    registered_mulligan_source_gap,
+)
 
 GUIDE_FAMILIES = {
     "guide",
@@ -34,12 +38,6 @@ STATIC_FAMILIES = {
     "metadata",
     "card_text",
 }
-PROFILE_CARD_MISSING_SOURCE_ACTIONS = {
-    ("kingslayer", "DEEP_014"): "add_kingslayer_quick_pick_mulligan_source",
-    ("boarlock", "WW_092"): "add_boarlock_fracking_mulligan_source",
-}
-
-
 def rank_public_sources(
     *,
     deck_name: str,
@@ -452,7 +450,6 @@ def _explicit_mulligan_source_gaps(
     *,
     current_date: str | date | None,
 ) -> list[dict[str, str]]:
-    deck_slug = _norm(deck_name)
     deck_card_ids = _deck_card_ids(deck_identity)
     resolved_mulligan_card_ids = {
         _text(card_id)
@@ -464,19 +461,16 @@ def _explicit_mulligan_source_gaps(
         for card_id in _as_list(row.get("cards", []))
         if _text(card_id)
     }
-    return [
-        {
-            "card_id": card_id,
-            "first_missing_source_action": action,
-            "reason": "explicit_source_gap_requires_resolution",
-        }
-        for (profile_slug, card_id), action in sorted(
-            PROFILE_CARD_MISSING_SOURCE_ACTIONS.items()
-        )
-        if profile_slug == deck_slug
-        and card_id in deck_card_ids
-        and card_id not in resolved_mulligan_card_ids
-    ]
+    unresolved_card_ids = {
+        card_id
+        for card_id in deck_card_ids
+        if card_id not in resolved_mulligan_card_ids
+    }
+    return build_bound_mulligan_source_gap_rows(
+        deck_name=deck_name,
+        deck_identity=deck_identity,
+        unresolved_card_ids=unresolved_card_ids,
+    )
 
 
 def _build_strong_closure_summary(
@@ -815,10 +809,10 @@ def _card_missing_action_from_profile(
 ) -> str:
     card_id = _text(card.get("card_id"))
     card_name = _text(card.get("name")).lower()
-    deck_slug = _norm(deck_name)
 
-    if action := PROFILE_CARD_MISSING_SOURCE_ACTIONS.get((deck_slug, card_id)):
-        return action
+    registration = registered_mulligan_source_gap(deck_name, card_id)
+    if registration is not None:
+        return registration.first_missing_source_action
     if "mulligan_keep|mulligan_discard" in profile_first_missing:
         return "add_exact_mulligan_keep_or_discard_source"
     if "quick pick" in card_name:

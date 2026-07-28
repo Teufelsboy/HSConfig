@@ -40,6 +40,9 @@ from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
+from hsconfig.mulligan_source_gap_registry import (
+    validated_mulligan_source_gap_vetoes,
+)
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
@@ -330,7 +333,9 @@ def build_package_payload(
             mulligan_runtime_claims
         ),
         external_policy_vetoes=_mulligan_source_gap_vetoes(
-            mulligan_source_gaps
+            mulligan_source_gaps,
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
         ),
         source_claim_lifecycle_rows=initial_lifecycle_rows,
         deck_identity=deck_identity,
@@ -1092,17 +1097,15 @@ def _policy_mulligan_excluded_card_ids(
 
 def _mulligan_source_gap_vetoes(
     source_gaps: list[dict[str, str]] | None,
+    *,
+    deck_name: str,
+    deck_identity: dict[str, Any],
 ) -> dict[str, str]:
-    vetoes: dict[str, str] = {}
-    for row in source_gaps or []:
-        card_id = str(row.get("card_id", "")).strip()
-        reason = str(row.get("reason", "")).strip()
-        if (
-            card_id
-            and reason == "explicit_source_gap_requires_resolution"
-        ):
-            vetoes[card_id] = reason
-    return vetoes
+    return validated_mulligan_source_gap_vetoes(
+        source_gaps,
+        deck_name=deck_name,
+        deck_identity=deck_identity,
+    )
 
 
 def _claim_card_ids(claim: dict[str, Any]) -> set[str]:

@@ -967,24 +967,32 @@ def test_profile_card_missing_actions_cover_known_deck_specific_cards():
     ]
 
     for deck_name, card_id, card_name, expected_action in cases:
+        deck_identity = {
+            "deck_code_hash": f"{deck_name.lower()}-code-hash",
+            "cards": [
+                {
+                    "card_id": card_id,
+                    "name": card_name,
+                    "cost": 2,
+                    "count": 1,
+                    "text": "Fixture card needing exact source closure.",
+                },
+                {
+                    "card_id": "CARD_002",
+                    "name": f"{deck_name} Core Card",
+                    "cost": 1,
+                    "count": 1,
+                    "text": "",
+                },
+            ],
+        }
+        deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+            (card["card_id"], card["count"])
+            for card in deck_identity["cards"]
+        )
         bundle = build_source_autopilot_bundle(
             deck_name=deck_name,
-            deck_identity={
-                "cards": [
-                    {
-                        "card_id": card_id,
-                        "name": card_name,
-                        "cost": 2,
-                        "text": "Fixture card needing exact source closure.",
-                    },
-                    {
-                        "card_id": "CARD_002",
-                        "name": f"{deck_name} Core Card",
-                        "cost": 1,
-                        "text": "",
-                    },
-                ]
-            },
+            deck_identity=deck_identity,
             source_search_records=[
                 {
                     "source_url": f"https://example.test/{deck_name.lower()}",
@@ -1014,12 +1022,16 @@ def test_profile_card_missing_actions_cover_known_deck_specific_cards():
                 "card_id": card_id,
                 "first_missing_source_action": expected_action,
                 "reason": "explicit_source_gap_requires_resolution",
+                "target_deck_code_hash": deck_identity["deck_code_hash"],
+                "target_deck_fingerprint": deck_identity["deck_fingerprint"],
+                "target_deck_name": deck_name,
             }
         ]
 
 
 def test_exact_mulligan_source_closes_registered_explicit_gap():
     deck_identity = {
+        "deck_code_hash": "kingslayer-exact-code-hash",
         "cards": [
             {
                 "card_id": "DEEP_014",
@@ -1093,18 +1105,25 @@ def test_partial_claim_kind_action_wins_before_profile_card_fallback():
     ]
 
     for deck_name, card_id, card_name in cases:
+        deck_identity = {
+            "deck_code_hash": f"{deck_name.lower()}-partial-code-hash",
+            "cards": [
+                {
+                    "card_id": card_id,
+                    "name": card_name,
+                    "cost": 2,
+                    "count": 1,
+                    "text": "Fixture card with a partial targeting claim.",
+                }
+            ],
+        }
+        deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+            (card["card_id"], card["count"])
+            for card in deck_identity["cards"]
+        )
         bundle = build_source_autopilot_bundle(
             deck_name=deck_name,
-            deck_identity={
-                "cards": [
-                    {
-                        "card_id": card_id,
-                        "name": card_name,
-                        "cost": 2,
-                        "text": "Fixture card with a partial targeting claim.",
-                    }
-                ]
-            },
+            deck_identity=deck_identity,
             source_search_records=[
                 {
                     "source_url": f"https://example.test/{deck_name.lower()}-partial",
@@ -1144,6 +1163,9 @@ def test_partial_claim_kind_action_wins_before_profile_card_fallback():
                     else "add_boarlock_fracking_mulligan_source"
                 ),
                 "reason": "explicit_source_gap_requires_resolution",
+                "target_deck_code_hash": deck_identity["deck_code_hash"],
+                "target_deck_fingerprint": deck_identity["deck_fingerprint"],
+                "target_deck_name": deck_name,
             }
         ]
 

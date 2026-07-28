@@ -194,6 +194,10 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
 
     assert code == 0
     package = out / "04_package"
+    autopilot = _read_json(
+        out / "02_source_autopilot" / "source_autopilot_report.json"
+    )
+    identity = _read_json(package / "reports" / "deck_identity.json")
     report = _read_json(package / "reports" / "mulligan_plan_report.json")
     holds = {
         str(row["card"])
@@ -214,6 +218,14 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
     assert gap_card_id not in holds
     assert gap_card_id not in physical_holds
     assert holds - {gap_card_id}
+    gap = next(
+        row
+        for row in autopilot["explicit_mulligan_source_gaps"]
+        if row["card_id"] == gap_card_id
+    )
+    assert gap["target_deck_name"] == deck_name
+    assert gap["target_deck_fingerprint"] == identity["deck_fingerprint"]
+    assert gap["target_deck_code_hash"] == identity["deck_code_hash"]
     assert {
         "card": gap_card_id,
         "reason": "explicit_source_gap_requires_resolution",
