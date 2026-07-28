@@ -14,8 +14,11 @@ import pytest
 import hsconfig.source_acquisition as source_acquisition
 from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.apply_gate import evaluate_apply_gate
+from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.cli import main
+from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
+from hsconfig.input_loading import source_records_from_cards
 from hsconfig.io import write_json
 from hsconfig.strict_package_validation import validate_complete_package
 from tests.helpers.fixture_prepare import prepare_fixture_deck, read_json
@@ -327,6 +330,52 @@ def test_visibility_identity_decode_overlay_is_exact_and_separate(
         assert decoded["sideboard_count"] == (
             3 if deck["deck_name"] == "HighlanderPriest" else 0
         )
+        identity_only_cards = [
+            card
+            for card in decoded["cards"]
+            if card["dbf_id"] in VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS
+        ]
+        assert identity_only_cards
+        assert all(card["deckstring_identity_only"] is True for card in identity_only_cards)
+        assert source_records_from_cards(
+            [
+                *identity_only_cards,
+                {
+                    "card_id": "ORDINARY_SOURCE_CONTROL",
+                    "name": "Ordinary Source Control",
+                    "type": "MINION",
+                    "text": "Battlecry: Draw a card.",
+                },
+            ]
+        ) == {
+            "ORDINARY_SOURCE_CONTROL": {
+                "name": "Ordinary Source Control",
+                "type": "MINION",
+                "text": "Battlecry: Draw a card.",
+            }
+        }
+        deck_identity = build_deck_identity(
+            deck_name=deck["deck_name"],
+            deck_code=deck["deck_code"],
+            cards=[
+                *identity_only_cards,
+                {
+                    "card_id": "ORDINARY_SOURCE_CONTROL",
+                    "dbf_id": 123456,
+                    "count": 1,
+                    "name": "Ordinary Source Control",
+                    "type": "MINION",
+                    "text": "Battlecry: Draw a card.",
+                },
+            ],
+        )
+        assert source_records_from_cards(
+            analysis_cards_from_deck_identity(deck_identity)
+        ) == {
+            "ORDINARY_SOURCE_CONTROL": {
+                "name": "Ordinary Source Control",
+            }
+        }
 
 
 def test_audited_dbf_snapshot_rejects_malformed_schema_or_metadata() -> None:
@@ -574,6 +623,7 @@ def _visibility_identity_decode_only_card_db() -> dict[int, SimpleNamespace]:
             english_name=card_id,
             name=card_id,
             type="VISIBILITY_IDENTITY_ONLY",
+            deckstring_identity_only=True,
         )
         for dbf_id, card_id in VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS.items()
     }

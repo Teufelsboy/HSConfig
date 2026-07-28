@@ -118,7 +118,7 @@ def _valid_visibility_only_identity(row: Mapping[str, Any]) -> bool:
         return False
     return (
         decoded.get("card_count_total") == 30
-        and decoded.get("unresolved_card_count") == 0
+        and decoded.get("unresolved_identity_count") == 0
     )
 
 

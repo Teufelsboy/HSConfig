@@ -438,6 +438,8 @@ def source_records_from_cards(cards: list[dict[str, Any]]) -> dict[str, dict[str
     records: dict[str, dict[str, Any]] = {}
     metadata_keys = {"name", "cost", "type", "text", "mechanics", "card_class", "class"}
     for card in cards:
+        if card.get("deckstring_identity_only") is True:
+            continue
         source = {key: card[key] for key in metadata_keys if key in card}
         if source:
             records[str(card["card_id"])] = source

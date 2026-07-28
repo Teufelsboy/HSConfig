@@ -2,13 +2,14 @@ import json
 from pathlib import Path
 
 import pytest
+from hearthstone.deckstrings import write_deckstring
 
 import hsconfig.audited_deck_catalog as audited_deck_catalog
 from hsconfig.audited_deck_catalog import (
     load_audited_deck_catalog,
     load_audited_role_manifest,
 )
-from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
 from hsconfig.input_loading import fixture_row_for
 
 
@@ -187,6 +188,58 @@ def test_visibility_only_identity_requires_thirty_resolved_main_deck_cards(
 
     with pytest.raises(ValueError, match="audited_role_manifest_invalid"):
         load_audited_role_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    "identity_surface",
+    ["sideboard_card", "sideboard_owner", "hero"],
+)
+def test_visibility_only_identity_rejects_unresolved_non_main_surface(
+    tmp_path: Path,
+    identity_surface: str,
+):
+    catalog_path = tmp_path / "audited-deck-catalog.json"
+    manifest_path = tmp_path / "supplemental-proof-decks.json"
+    _write_json(
+        catalog_path,
+        json.loads(CATALOG.read_text(encoding="utf-8")),
+    )
+    payload = json.loads(SUPPLEMENTAL.read_text(encoding="utf-8"))
+    highlander = next(
+        row for row in payload["decks"] if row["deck_name"] == "HighlanderPriest"
+    )
+    parsed = _parse_deckstring(highlander["deck_code"])
+    heroes = list(parsed["heroes"])
+    sideboards = list(parsed["sideboards"])
+    if identity_surface == "hero":
+        heroes = [999999]
+    elif identity_surface == "sideboard_owner":
+        card_dbf_id, count, _owner_dbf_id = sideboards[0]
+        sideboards[0] = (card_dbf_id, count, 999999)
+    else:
+        _card_dbf_id, count, owner_dbf_id = sideboards[0]
+        sideboards[0] = (999999, count, owner_dbf_id)
+    highlander["deck_code"] = write_deckstring(
+        list(parsed["cards"]),
+        heroes,
+        parsed["format"],
+        sideboards,
+    )
+    _write_json(manifest_path, payload)
+
+    with pytest.raises(ValueError, match="audited_role_manifest_invalid"):
+        load_audited_role_manifest(manifest_path)
+
+
+def test_visibility_only_highlander_valid_three_card_sideboard_resolves():
+    rows = load_audited_role_manifest(SUPPLEMENTAL)
+    highlander = next(row for row in rows if row["deck_name"] == "HighlanderPriest")
+
+    decoded = decode_deck_code(highlander["deck_code"])
+
+    assert decoded["card_count_total"] == 30
+    assert decoded["sideboard_count"] == 3
+    assert decoded["unresolved_identity_count"] == 0
 
 
 def test_role_manifests_reference_catalog_without_duplicating_identity():

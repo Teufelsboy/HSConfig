@@ -1,6 +1,7 @@
 import pytest
+from hearthstone.deckstrings import write_deckstring
 
-from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
 
 
 SHADOWPRIEST_CODE = (
@@ -17,6 +18,29 @@ PIRATEDH_CODE = (
     "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQ"
     "ax6wYAAA=="
 )
+
+
+def _identity_mutation_code(surface: str) -> str:
+    base_code = MECHPALA_CODE if surface.startswith("sideboard") else SHADOWPRIEST_CODE
+    parsed = _parse_deckstring(base_code)
+    cards = list(parsed["cards"])
+    heroes = list(parsed["heroes"])
+    sideboards = list(parsed["sideboards"])
+
+    if surface == "hero":
+        heroes = [999999]
+    elif surface == "main_deck":
+        _dbf_id, count = cards[0]
+        cards[0] = (999999, count)
+    elif surface == "sideboard_owner":
+        card_dbf_id, count, _owner_dbf_id = sideboards[0]
+        sideboards[0] = (card_dbf_id, count, 999999)
+    elif surface == "sideboard_card":
+        _card_dbf_id, count, owner_dbf_id = sideboards[0]
+        sideboards[0] = (999999, count, owner_dbf_id)
+    else:
+        raise AssertionError(f"unsupported test surface: {surface}")
+    return write_deckstring(cards, heroes, parsed["format"], sideboards)
 
 
 def test_decode_shadowpriest_deck_code_to_exact_cardids():
@@ -85,6 +109,32 @@ def test_decode_mechpala_sideboards_from_hearthsim_triplets():
         "TOY_330t98",
         "TOY_330t11",
     }
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ["hero", "main_deck", "sideboard_owner", "sideboard_card"],
+)
+def test_decode_reports_unresolved_identity_across_every_deckstring_surface(
+    surface: str,
+):
+    decoded = decode_deck_code(_identity_mutation_code(surface))
+
+    assert decoded["unresolved_identity_count"] == 1
+    assert decoded["unresolved_identities"] == [
+        {
+            "identity_surface": surface,
+            "dbf_id": 999999,
+            "count": 2 if surface == "main_deck" else 1,
+        }
+    ]
+    assert decoded["deckstring_decode_receipt"]["unresolved_identity_count"] == 1
+    assert decoded["deckstring_decode_receipt"]["unresolved_identities"] == (
+        decoded["unresolved_identities"]
+    )
+    assert decoded["unresolved_card_count"] == (
+        1 if surface == "main_deck" else 0
+    )
 
 
 @pytest.mark.parametrize("deck_code", [MECHPALA_CODE, PIRATEDH_CODE])
