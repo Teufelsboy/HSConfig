@@ -501,36 +501,27 @@ def build_package_payload(
     lowered_runtime_stage = build_lowered_runtime_stage(
         runtime_files=runtime_files,
         warnings=[
-            *[
-                row
-                for row in mulligan_plan.get("suppressed_rules", [])
-                if isinstance(row, dict)
-            ],
-            *[
-                row
-                for row in card_behavior_plan.get("suppressed", [])
-                if isinstance(row, dict)
-            ],
-            *[
-                row
-                for row in combo_plan.get("suppressed", [])
-                if isinstance(row, dict)
-            ],
-            *[
-                row
-                for row in global_values_authority_matrix.get(
-                    "blocked_until_runtime_evidence",
-                    [],
-                )
-                if isinstance(row, dict)
-            ],
+            row
+            for row in mulligan_plan.get("suppressed_rules", [])
+            if isinstance(row, dict)
         ],
         source_contract=gameplan_contract,
     )
     observe_stage(stage_observer, "lowered_runtime", lowered_runtime_stage)
+    lowered_runtime_warnings = materialize_stage_value(
+        lowered_runtime_stage.warnings
+    )
+    mulligan_plan = {
+        **mulligan_plan,
+        "suppressed_rules": lowered_runtime_warnings,
+    }
     gameplan_contract = materialize_stage_value(
         lowered_runtime_stage.source_contract
     )
+    gameplan_contract = {
+        **gameplan_contract,
+        "mulligan_plan": mulligan_plan,
+    }
 
     _reset_generated_package_dirs(deck_dir, reports_dir)
     derivation_receipt_path = out / DERIVATION_RECEIPT_PATH

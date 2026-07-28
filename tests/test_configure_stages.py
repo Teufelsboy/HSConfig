@@ -1,8 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from collections.abc import Mapping
+from dataclasses import FrozenInstanceError, dataclass, make_dataclass
 
 import pytest
+
+
+@dataclass
+class MutableNestedStageValue:
+    labels: list[str]
+    payload: dict[str, list[int]]
 
 
 def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
@@ -46,7 +53,7 @@ def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
     ]
     assert dict(stage.input_verification) == {"status": "verified"}
     assert stage_digest(stage) == (
-        "sha256:f04454d0a3b145f867370082792623c500ebb9127e35b211501049ee831c9c57"
+        "sha256:af1cc6c05a641b5ebc29e6622a938bc9bfdd608b380b6040345f696aa5cbe5bd"
     )
     with pytest.raises(TypeError):
         stage.identity["deck_name"] = "mutated"
@@ -54,6 +61,111 @@ def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
         stage.cards[0]["count"] = 99
     with pytest.raises(FrozenInstanceError):
         stage.identity = {}
+
+
+def test_stage_recursively_freezes_nested_dataclass_and_list_aliases() -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    nested = MutableNestedStageValue(
+        labels=["alpha"],
+        payload={"values": [1, 2]},
+    )
+    stage = build_verified_deck_stage(
+        identity={"nested": nested},
+        cards=[],
+        input_verification={"status": "verified"},
+    )
+    original_digest = stage_digest(stage)
+
+    nested.labels.append("external-mutation")
+    nested.payload["values"][0] = 99
+
+    frozen_nested = stage.identity["nested"]
+    assert isinstance(frozen_nested, Mapping)
+    assert materialize_stage_value(frozen_nested) == {
+        "labels": ["alpha"],
+        "payload": {"values": [1, 2]},
+    }
+    assert stage_digest(stage) == original_digest
+    materialized = materialize_stage_value(frozen_nested)
+    materialized["labels"].append("materialized-mutation")
+    materialized["payload"]["values"][0] = 101
+    assert materialize_stage_value(frozen_nested) == {
+        "labels": ["alpha"],
+        "payload": {"values": [1, 2]},
+    }
+    assert stage_digest(stage) == original_digest
+    with pytest.raises(AttributeError):
+        frozen_nested["labels"].append("stage-mutation")
+    with pytest.raises(TypeError):
+        frozen_nested["payload"]["values"][0] = 99
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ({1: "value"}, {"1": "value"}),
+        ({"value": [1, 2]}, {"value": (1, 2)}),
+        (True, 1),
+        (1, 1.0),
+        (None, "null"),
+        (1.0, "1.0"),
+    ],
+)
+def test_stage_digest_preserves_canonical_value_types(left, right) -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    assert stage_digest(left) != stage_digest(right)
+
+
+def test_stage_digest_supports_mixed_mapping_key_types_deterministically() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    left = {
+        7: "integer",
+        "7": "string",
+        None: "null",
+        2.5: "float",
+    }
+    right = {
+        2.5: "float",
+        None: "null",
+        "7": "string",
+        7: "integer",
+    }
+
+    assert stage_digest(left) == stage_digest(right)
+
+
+def test_stage_digest_includes_fully_qualified_dataclass_type() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    first_type = make_dataclass("TwinStageValue", [("value", int)])
+    second_type = make_dataclass("TwinStageValue", [("value", int)])
+    first_type.__module__ = "tests.stage_type_a"
+    second_type.__module__ = "tests.stage_type_b"
+
+    assert stage_digest(first_type(1)) != stage_digest(second_type(1))
+
+
+def test_stage_digest_includes_dataclass_field_definition_order() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    first_type = make_dataclass(
+        "OrderedStageValue",
+        [("left", int), ("right", int)],
+    )
+    second_type = make_dataclass(
+        "OrderedStageValue",
+        [("right", int), ("left", int)],
+    )
+    first_type.__module__ = second_type.__module__ = "tests.stage_layout"
+
+    assert stage_digest(first_type(1, 2)) != stage_digest(second_type(2, 1))
 
 
 def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
@@ -88,7 +200,7 @@ def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
     assert [dict(warning) for warning in stage.warnings] == [{"reason": "thin"}]
     assert dict(stage.source_contract) == {"status": "closed"}
     assert stage_digest(stage) == (
-        "sha256:9137543001e2452a00cb7005983e832e742a3c2971a3159d058705777912dd10"
+        "sha256:f2e1d4e7035dc967e9348d3701935cfae730128f00d472e17433c7813e9f96fd"
     )
     with pytest.raises(TypeError):
         stage.runtime_files["GlobalValues.json"]["A"] = 2

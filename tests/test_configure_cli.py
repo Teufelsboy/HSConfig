@@ -341,9 +341,13 @@ def test_configure_exposes_package_stage_digests_without_changing_summary(
     )
     observed_stages: list[tuple[str, str]] = []
 
+    def diagnostic_observer(name: str, digest: str) -> None:
+        observed_stages.append((name, digest))
+        raise SystemExit("diagnostic observer failure")
+
     payload, status = configure_payload(
         args,
-        stage_observer=lambda name, digest: observed_stages.append((name, digest)),
+        stage_observer=diagnostic_observer,
     )
 
     assert status == 0

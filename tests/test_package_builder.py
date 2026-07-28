@@ -1,11 +1,24 @@
+import hashlib
 import json
+from copy import deepcopy
 from datetime import date
 from pathlib import Path
 
+import pytest
+
+import hsconfig.package_builder as package_builder
 from hsconfig.cli import main
 from hsconfig.cli_parser import build_parser
 from hsconfig.package_builder import build_package_payload
 from tests.helpers.verified_deck_input import deck_code_for_cards
+
+
+# Extracted from the f83248f package builder; see the Task 12 report for the
+# in-memory git-show oracle method and path normalization.
+PRE_REFACTOR_PACKAGE_FILE_COUNT = 56
+PRE_REFACTOR_PACKAGE_TREE_DIGEST = (
+    "sha256:30f4c3a0f81d39eb796ddc8ac6a2de18473549e092acad6c7496795aecc8af0f"
+)
 
 
 def test_imported_card_behavior_conflicts_remain_diagnostic_only(
@@ -202,6 +215,126 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    observed_stages: list[tuple[str, str]] = []
+    package, observed_payload, observed_status = _build_stage_fixture(
+        tmp_path,
+        monkeypatch,
+        stage_observer=lambda name, digest: observed_stages.append((name, digest)),
+    )
+    observed_tree = _semantic_tree(package)
+
+    assert observed_status == 0
+    assert observed_payload["status"] == "passed"
+    assert len(observed_tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
+    assert _semantic_tree_digest(observed_tree) == PRE_REFACTOR_PACKAGE_TREE_DIGEST
+    assert observed_stages == [
+        (
+            "verified_deck",
+            "sha256:de9d762e6a756c750fdc42cab9c3f589aa103fc6daca66570ed0d70f8d76e4ca",
+        ),
+        (
+            "normalized_source",
+            "sha256:51119be297e4c5506e522cb11b7744a25b2a7990430b95a955b64faa4c607b03",
+        ),
+        (
+            "claim_surfaces",
+            "sha256:43211635a9c191d3f64c84417e7cbb71ef04a7bb310ce28c6e8c206d225479f9",
+        ),
+        (
+            "lowered_runtime",
+            "sha256:1ed777663a789cfb06d36576134d6aa96c7436e166c484df9a31b84d5b2bf9c5",
+        ),
+        (
+            "validated_authority",
+            "sha256:1f174aa72cc22dfb24f4f30b27bedbdbe1caf6d1cc47f0f1e5330ad4ce1e0b98",
+        ),
+        (
+            "artifact_writing",
+            "sha256:715c9d8871cc98bb75b482ae543d98dc0c8dbc1fd70fae356c5eb44763b2638b",
+        ),
+    ]
+
+
+@pytest.mark.parametrize("failure_type", [RuntimeError, SystemExit])
+def test_package_stage_observer_failures_are_diagnostic_only_at_every_boundary(
+    tmp_path: Path,
+    monkeypatch,
+    failure_type: type[BaseException],
+) -> None:
+    observed_names: list[str] = []
+
+    def failing_observer(name: str, digest: str) -> None:
+        observed_names.append(name)
+        assert digest.startswith("sha256:")
+        raise failure_type("diagnostic observer failure")
+
+    package, payload, status = _build_stage_fixture(
+        tmp_path,
+        monkeypatch,
+        stage_observer=failing_observer,
+    )
+    tree = _semantic_tree(package)
+
+    assert status == 0
+    assert payload["status"] == "passed"
+    assert observed_names == [
+        "verified_deck",
+        "normalized_source",
+        "claim_surfaces",
+        "lowered_runtime",
+        "validated_authority",
+        "artifact_writing",
+    ]
+    assert len(tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
+    assert _semantic_tree_digest(tree) == PRE_REFACTOR_PACKAGE_TREE_DIGEST
+
+
+def test_lowered_runtime_warnings_feed_public_outputs_and_break_parity_oracle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sentinel_warning = {
+        "reason": "lowered_runtime_warning_sentinel",
+        "card_id": "SENTINEL",
+    }
+    original_builder = package_builder.build_lowered_runtime_stage
+
+    def build_perturbed_stage(**kwargs):
+        return original_builder(
+            **{
+                **kwargs,
+                "warnings": [*kwargs["warnings"], sentinel_warning],
+            }
+        )
+
+    monkeypatch.setattr(
+        package_builder,
+        "build_lowered_runtime_stage",
+        build_perturbed_stage,
+    )
+    package, payload, status = _build_stage_fixture(tmp_path, monkeypatch)
+    tree = _semantic_tree(package)
+
+    assert status == 0
+    assert sentinel_warning in tree["reports/mulligan_plan_report.json"][
+        "suppressed_rules"
+    ]
+    assert sentinel_warning in tree["reports/operator_summary.json"]["warnings"]
+    assert sentinel_warning in payload["operator_summary"]["warnings"]
+    assert any(
+        blocker.get("reason") == "unsupported_conditions_present"
+        for blocker in tree["reports/operator_summary.json"]["semantic_blockers"]
+    )
+    assert len(tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
+    assert _semantic_tree_digest(tree) != PRE_REFACTOR_PACKAGE_TREE_DIGEST
+
+
+def _build_stage_fixture(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    stage_observer=None,
+) -> tuple[Path, dict[str, object], int]:
     roster = [
         {
             "card_id": "SW_448",
@@ -237,51 +370,16 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
         ]
     )
     monkeypatch.setattr(
-        "hsconfig.package_builder.fetch_latest_cards",
+        package_builder,
+        "fetch_latest_cards",
         lambda timeout=10.0: [],
     )
-
-    baseline_payload, baseline_status = build_package_payload(
+    payload, status = build_package_payload(
         args,
         current_date=date(2026, 7, 28),
+        stage_observer=stage_observer,
     )
-    baseline_tree = _semantic_tree(package)
-    observed_stages: list[tuple[str, str]] = []
-    observed_payload, observed_status = build_package_payload(
-        args,
-        current_date=date(2026, 7, 28),
-        stage_observer=lambda name, digest: observed_stages.append((name, digest)),
-    )
-
-    assert baseline_status == observed_status == 0
-    assert observed_payload == baseline_payload
-    assert _semantic_tree(package) == baseline_tree
-    assert observed_stages == [
-        (
-            "verified_deck",
-            "sha256:db4d8624abb96a9539e322cf70f2eb62694aa06cebc8f0a57266e4a959b6a651",
-        ),
-        (
-            "normalized_source",
-            "sha256:830fc856a4057967bf598bb0ba0c09c70dbf0148af1e1795c1ef0f738bfde933",
-        ),
-        (
-            "claim_surfaces",
-            "sha256:08fdd14c9e752f5ed6569cc5eaf2824e9750256a62c9c463770e6e87891aad59",
-        ),
-        (
-            "lowered_runtime",
-            "sha256:01ca388e8ea1c766bcfd64e20a713449ad4358bf090cc1550c6111d6f54844f7",
-        ),
-        (
-            "validated_authority",
-            "sha256:8d7ea863dc8a9d6bd7ed4a9b4eb54e0147fab9e96f58e6b7f5d8a6984e6cd797",
-        ),
-        (
-            "artifact_writing",
-            "sha256:4a2d7cdb8bc5db26bda3b81a4637a2ed4f3a3f9bc4f37ef94724c2286e39eddd",
-        ),
-    ]
+    return package, payload, status
 
 
 def _semantic_tree(root: Path) -> dict[str, object]:
@@ -293,3 +391,18 @@ def _semantic_tree(root: Path) -> dict[str, object]:
         else:
             tree[relative] = path.read_text(encoding="utf-8")
     return tree
+
+
+def _semantic_tree_digest(tree: dict[str, object]) -> str:
+    normalized = deepcopy(tree)
+    input_manifest = normalized["reports/input_manifest.json"]
+    assert isinstance(input_manifest, dict)
+    input_manifest["cards_json"] = "<CARDS_JSON>"
+    input_manifest["runtime_root"] = "<RUNTIME_ROOT>"
+    canonical = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
