@@ -5,6 +5,7 @@ import pytest
 from hsconfig.io import write_json
 from hsconfig.runtime_package_match import (
     RuntimePackageMismatchError,
+    _deck_name_from_manifest,
     assert_runtime_matches_package,
     build_runtime_package_match_report,
 )
@@ -20,8 +21,63 @@ def _write_deck(root: Path, config_dir: str, files: dict[str, object]) -> None:
 def _write_manifest(package: Path, deck_name: str) -> None:
     write_json(
         package / "reports" / "input_manifest.json",
-        {"deck_name": deck_name},
+        {
+            "deck_name": deck_name,
+            "deck_code": "fixture",
+            "runtime_root": "unused",
+        },
     )
+
+
+def test_runtime_deck_identity_requires_existing_input_manifest(tmp_path: Path):
+    with pytest.raises(ValueError, match="requires input manifest"):
+        _deck_name_from_manifest(tmp_path / "package")
+
+
+@pytest.mark.parametrize(
+    ("manifest", "message"),
+    [
+        (["ShadowPriest"], "must be a JSON object"),
+        (
+            {"deck_name": "ShadowPriest"},
+            "requires non-empty deck_name, deck_code, and runtime_root",
+        ),
+        (
+            {
+                "deck_name": "",
+                "deck_code": "fixture",
+                "runtime_root": "unused",
+            },
+            "requires non-empty deck_name, deck_code, and runtime_root",
+        ),
+        (
+            {
+                "deck_name": "ShadowPriest",
+                "deck_code": "",
+                "runtime_root": "unused",
+            },
+            "requires non-empty deck_name, deck_code, and runtime_root",
+        ),
+        (
+            {
+                "deck_name": "ShadowPriest",
+                "deck_code": "fixture",
+                "runtime_root": "",
+            },
+            "requires non-empty deck_name, deck_code, and runtime_root",
+        ),
+    ],
+)
+def test_runtime_deck_identity_rejects_unverified_input_manifest(
+    tmp_path: Path,
+    manifest: object,
+    message: str,
+):
+    package = tmp_path / "package"
+    write_json(package / "reports" / "input_manifest.json", manifest)
+
+    with pytest.raises(ValueError, match=message):
+        _deck_name_from_manifest(package)
 
 
 def test_runtime_package_match_rejects_right_directory_for_wrong_deck_name(

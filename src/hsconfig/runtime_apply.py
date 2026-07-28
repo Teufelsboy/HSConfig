@@ -77,7 +77,7 @@ def apply_package(
     )
     deck_dir_name = config_dir or _single_config_dir(package)
     _validate_config_dir(deck_dir_name)
-    mapped_deck_name = _deck_name_from_manifest(package, fallback=deck_dir_name)
+    mapped_deck_name = _deck_name_from_manifest(package)
 
     source_dir = package / "CustomConfig" / deck_dir_name
     if not source_dir.is_dir():

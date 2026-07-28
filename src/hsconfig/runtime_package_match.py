@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.io import read_json
+from hsconfig.models import InputManifest
 
 
 @dataclass(frozen=True)
@@ -70,20 +71,40 @@ def _json_files(path: Path) -> dict[str, Any]:
     }
 
 
-def _deck_name_from_manifest(package_root: Path, *, fallback: str) -> str:
+def _deck_name_from_manifest(package_root: Path) -> str:
     manifest_path = package_root / "reports" / "input_manifest.json"
-    if not manifest_path.exists():
-        return fallback
-    manifest = read_json(manifest_path)
+    if not manifest_path.is_file():
+        raise ValueError(
+            f"Runtime identity requires input manifest: {manifest_path}"
+        )
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"Runtime identity requires a valid input manifest: {manifest_path}"
+        ) from exc
     if not isinstance(manifest, dict):
-        return fallback
-    deck_name = str(manifest.get("deck_name") or "").strip()
+        raise ValueError(
+            f"Runtime identity input manifest must be a JSON object: {manifest_path}"
+        )
+    required_fields = ("deck_name", "deck_code", "runtime_root")
+    if any(
+        not isinstance(manifest.get(field), str)
+        or not str(manifest[field]).strip()
+        for field in required_fields
+    ):
+        raise ValueError(
+            "Runtime identity requires non-empty deck_name, deck_code, and "
+            f"runtime_root in input manifest: {manifest_path}"
+        )
+    input_manifest = InputManifest.from_dict(manifest)
+    deck_name = input_manifest.deck_name.strip()
     if any(char in deck_name for char in "\r\n="):
         raise ValueError(
             "Deck name is not safe for deck_config.ini mapping: "
             f"{deck_name!r}"
         )
-    return deck_name or fallback
+    return deck_name
 
 
 def _mapping_lines_for_deck_name(
@@ -177,10 +198,7 @@ def build_runtime_package_match_report(
     package_dir = package / "CustomConfig" / resolved_config_dir
     runtime_dir = runtime / "CustomConfig" / resolved_config_dir
     deck_config_ini = runtime / "CustomConfig" / "deck_config.ini"
-    expected_deck_name = _deck_name_from_manifest(
-        package,
-        fallback=resolved_config_dir,
-    )
+    expected_deck_name = _deck_name_from_manifest(package)
 
     package_files = _json_files(package_dir)
     runtime_files = _json_files(runtime_dir)
