@@ -6,7 +6,7 @@ from hsconfig.source_status_resolver import (
     first_missing_chain_from_report,
     resolve_source_status,
 )
-from hsconfig.visionai_registry import NORMAL_PATH_FORBIDDEN_SURFACES
+from hsconfig.visionai_registry import FORBIDDEN_RUNTIME_SURFACES
 
 
 def build_strong_promotion_report(
@@ -123,7 +123,7 @@ def _normal_path_surface_blockers(operator_summary: dict[str, Any]) -> list[dict
     for path in generated_files:
         normalized_path = str(path).replace("\\", "/")
         filename = normalized_path.rsplit("/", 1)[-1]
-        if filename not in NORMAL_PATH_FORBIDDEN_SURFACES:
+        if filename not in FORBIDDEN_RUNTIME_SURFACES:
             continue
         blockers.append(
             {

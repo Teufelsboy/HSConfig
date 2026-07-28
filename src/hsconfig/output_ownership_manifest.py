@@ -5,63 +5,20 @@ from typing import Any
 
 from hsconfig.report_ownership import build_report_ownership
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
+from hsconfig.visionai_registry import (
+    CARDID_SURFACE_FAMILY,
+    DIAGNOSTIC_REPORT_PATHS,
+    FORBIDDEN_RUNTIME_SURFACES,
+    NORMAL_APPLY_AUTHORITY,
+    NORMAL_SPECIAL_RUNTIME_SURFACES,
+    RESEARCH_REPORT_PATHS,
+    runtime_surface_spec,
+)
 
 
-KNOWN_DIAGNOSTIC_REPORT_FILES = frozenset(
-    {
-        "reports/card_behavior_plan_report.json",
-        "reports/card_behavior_suppression_report.json",
-        "reports/card_id_map.json",
-        "reports/card_semantic_audit.md",
-        "reports/candidate_archetypes.json",
-        "reports/claim_conflict_report.json",
-        "reports/claim_coverage_report.json",
-        "reports/combo_plan_report.json",
-        "reports/combo_suppression_report.json",
-        "reports/deck_fingerprint.json",
-        "reports/deck_identity.json",
-        "reports/deckstring_decode_receipt.json",
-        "reports/fake_apply_receipt.json",
-        "reports/gameplan_contract.json",
-        "reports/global_values_blocked_changes.json",
-        "reports/global_values_key_profile_report.json",
-        "reports/globalvalues_baseline.json",
-        "reports/globalvalues_baseline_receipt.json",
-        "reports/globalvalues_profile.json",
-        "reports/guide_builder_receipt.json",
-        "reports/guide_claim_bundle.json",
-        "reports/guide_sources.json",
-        "reports/identity_gap_report.json",
-        "reports/identity_graph_report.json",
-        "reports/input_manifest.json",
-        "reports/mulligan_plan_report.json",
-        "reports/plan_input_diagnostics.json",
-        "reports/runtime_apply_receipt.json",
-        "reports/semantic_enrichment_report.json",
-        "reports/source_contract_audit.md",
-        "reports/source_evidence_closure.json",
-        "reports/source_evidence_index.json",
-        "reports/source_evidence_verification_report.json",
-        "reports/source_bundle.json",
-        "reports/surface_intent.json",
-        "reports/unsupported_claims_report.json",
-        "reports/validation_report.json",
-    }
-)
-KNOWN_RESEARCH_REPORT_FILES = frozenset(
-    {
-        "reports/research/archetype_research.json",
-        "reports/research/card_role_map.json",
-        "reports/research/card_usage_expectations.json",
-        "reports/research/claims.json",
-        "reports/research/coverage_summary.json",
-        "reports/research/globalvalue_intent.json",
-        "reports/research/guide_claim_bundle.json",
-        "reports/research/known_bad_patterns.json",
-        "reports/research/mulligan_anchor_map.json",
-    }
-)
-LEGACY_NON_NORMAL_SURFACES = frozenset({"Presume.json", "Concede.json"})
+# Compatibility projections for existing diagnostics and sentinel imports.
+KNOWN_DIAGNOSTIC_REPORT_FILES = DIAGNOSTIC_REPORT_PATHS
+KNOWN_RESEARCH_REPORT_FILES = RESEARCH_REPORT_PATHS
 
 
 def build_output_ownership_manifest(
@@ -112,7 +69,7 @@ def build_output_ownership_manifest(
     return {
         "schema_version": 1,
         "authority": "diagnostic_manifest",
-        "operator_gate": "reports/operator_summary.json",
+        "operator_gate": NORMAL_APPLY_AUTHORITY,
         "summary": {
             "generated_file_count": len(files),
             "unclassified_file_count": len(unclassified),
@@ -236,7 +193,7 @@ def _legacy_non_normal_surface(path: str) -> str | None:
     if not path.startswith("CustomConfig/") or not path.endswith(".json"):
         return None
     filename = path.rsplit("/", 1)[-1]
-    if filename in LEGACY_NON_NORMAL_SURFACES:
+    if filename in FORBIDDEN_RUNTIME_SURFACES:
         return "legacy_non_normal_surface"
     return None
 
@@ -245,6 +202,9 @@ def _runtime_surface(path: str) -> str | None:
     if not path.startswith("CustomConfig/") or not path.endswith(".json"):
         return None
     filename = path.rsplit("/", 1)[-1]
-    if filename in {"GlobalValues.json", "Mulligan.json", "Combo.json"}:
-        return filename
-    return "CARDID.json"
+    surface = (
+        filename
+        if filename in NORMAL_SPECIAL_RUNTIME_SURFACES
+        else CARDID_SURFACE_FAMILY
+    )
+    return runtime_surface_spec(surface).file_name

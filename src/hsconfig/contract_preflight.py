@@ -8,6 +8,7 @@ import subprocess
 from typing import Any
 
 from hsconfig.skill_sync_status import build_installed_skill_sync_status
+from hsconfig.visionai_registry import NORMAL_APPLY_AUTHORITY
 
 
 REQUIRED_REFERENCE_FILES = (
@@ -393,7 +394,7 @@ def _configure_acceptance_route_visible(combined: str) -> bool:
             "next_report_to_open",
             "<out>/configure_summary.json.config_quality_summary",
             "config_quality_summary",
-            "reports/operator_summary.json",
+            NORMAL_APPLY_AUTHORITY,
         )
     )
 
@@ -510,7 +511,7 @@ def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
         "documentation_path": "docs/operator/source-builder-workflow.md",
         "operator_entrypoint_path": "docs/operator/README.md",
         "implementation_path": "src/hsconfig/source_candidate_plan.py",
-        "runtime_apply_authority": "reports/operator_summary.json",
+        "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
         "source_status_apply_blocking": False,
         "apply_blocking": False,
         "runtime_write_performed": False,
@@ -596,7 +597,7 @@ def _source_readiness_preview_contract_payload(visible: bool) -> dict[str, objec
             "src/hsconfig/source_autopilot.py",
             "src/hsconfig/commands/configure.py",
         ],
-        "runtime_apply_authority": "reports/operator_summary.json",
+        "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
         "source_status_apply_blocking": False,
         "apply_blocking": False,
         "runtime_write_performed": False,
@@ -619,7 +620,7 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
         return None
 
     package_path = Path(package)
-    normal_authority = "reports/operator_summary.json"
+    normal_authority = NORMAL_APPLY_AUTHORITY
     base_notes = (
         "Package contract preflight is diagnostic only.",
         "reports/operator_summary.json remains the only normal apply authority.",
@@ -1020,7 +1021,7 @@ def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPr
         current_truth_index_path.exists()
         and index_payload.get("authority") == "evidence_index_only"
         and index_payload.get("operator_gate_impact") == "diagnostic_only"
-        and index_payload.get("normal_apply_authority") == "reports/operator_summary.json"
+        and index_payload.get("normal_apply_authority") == NORMAL_APPLY_AUTHORITY
     )
     historical_outlines_apply_authority = False
     sync_policy = index_payload.get("research_snapshot_sync_policy")
@@ -1049,7 +1050,7 @@ def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPr
         operator_gate_impact=str(index_payload.get("operator_gate_impact") or "missing"),
         normal_apply_authority=str(
             index_payload.get("normal_apply_authority")
-            or "reports/operator_summary.json"
+            or NORMAL_APPLY_AUTHORITY
         ),
         recommended_research_entrypoint="docs/research/current-truth.md",
         historical_outline_count=len(historical_outline_paths),
@@ -1173,7 +1174,7 @@ def build_contract_preflight(
             installed_skill_sync.get("matches_repo_skill") is True
             and installed_skill_sync.get("diagnostic_only") is True
             and installed_skill_sync.get("runtime_apply_authority")
-            == "reports/operator_summary.json"
+            == NORMAL_APPLY_AUTHORITY
         ),
         "reference_files_present": all(
             (skill_root / relative_path).exists()
@@ -1259,7 +1260,7 @@ def build_contract_preflight(
             and research_context.machine_evidence_index_present
             and research_context.authority == "evidence_index_only"
             and research_context.operator_gate_impact == "diagnostic_only"
-            and research_context.normal_apply_authority == "reports/operator_summary.json"
+            and research_context.normal_apply_authority == NORMAL_APPLY_AUTHORITY
             and research_context.source_status_apply_blocking is False
         ),
         "research_result_contract_sentinel_visible": (
@@ -1296,7 +1297,7 @@ def build_contract_preflight(
                 source_readiness_preview_visible
             )
         ),
-        "runtime_apply_authority": "reports/operator_summary.json",
+        "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
         "source_status_apply_blocking": False,
         "diagnostic_only": True,
     }

@@ -26,6 +26,12 @@ from hsconfig.strong_closure_profiles import (
     evaluate_closure_profile,
     lane_can_satisfy_strong_closure,
 )
+from hsconfig.visionai_registry import (
+    NORMAL_APPLY_AUTHORITY,
+    NORMAL_SPECIAL_RUNTIME_SURFACES,
+    SURFACE_FAMILY_RUNTIME_FILES,
+    report_spec,
+)
 
 
 SOURCE_BACKED_STRONG_REQUIREMENTS = [
@@ -96,12 +102,6 @@ SURFACE_REJECTION_REASONS = {
     "claim_kind_not_combo_surface",
     "claim_kind_not_cardid_surface",
 }
-SURFACE_RUNTIME_FILES = {
-    "mulligan": {"Mulligan.json"},
-    "globalvalues": {"GlobalValues.json"},
-    "combo": {"Combo.json"},
-}
-CARDID_NON_SURFACE_FILES = {"Mulligan.json", "GlobalValues.json", "Combo.json"}
 DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES = {
     "policy_backed_autonomous_mulligan",
 }
@@ -467,7 +467,7 @@ def build_operator_summary(
         **semantic_handoff,
         "configuration_assurance": configuration_assurance,
         "runtime_apply_contract": {
-            "apply_authority": "reports/operator_summary.json",
+            "apply_authority": NORMAL_APPLY_AUTHORITY,
             "authority_scope": "current_package_operator_gate",
         },
         "primary_blockers": primary_blockers,
@@ -770,7 +770,9 @@ def _no_default_only_verdict(
             "default_only_runtime_surface_count": 0,
             "runtime_permission_impact": "none",
             "blocking": False,
-            "next_report_to_open": "reports/validation_report.json",
+            "next_report_to_open": report_spec(
+                "reports/validation_report.json"
+            ).relative_path,
         }
     if not surfaces:
         return {
@@ -778,14 +780,14 @@ def _no_default_only_verdict(
             "default_only_runtime_surface_count": 0,
             "runtime_permission_impact": "none",
             "blocking": False,
-            "next_report_to_open": "reports/operator_summary.json",
+            "next_report_to_open": NORMAL_APPLY_AUTHORITY,
         }
     return {
         "status": "visible_warning",
         "default_only_runtime_surface_count": len(surfaces),
         "runtime_permission_impact": "none",
         "blocking": False,
-        "next_report_to_open": "reports/operator_summary.json",
+        "next_report_to_open": NORMAL_APPLY_AUTHORITY,
     }
 
 
@@ -910,16 +912,18 @@ def _surface_ledger_next_report(surface: object, status: str) -> str:
         "static_semantics_backed",
         "default_only",
     }:
-        return "reports/operator_summary.json"
+        return NORMAL_APPLY_AUTHORITY
     if surface == "mulligan":
-        return "reports/mulligan_plan_report.json"
+        return report_spec("reports/mulligan_plan_report.json").relative_path
     if surface == "globalvalues":
-        return "reports/global_values_key_profile_report.json"
+        return report_spec(
+            "reports/global_values_key_profile_report.json"
+        ).relative_path
     if surface == "cardid_behavior":
-        return "reports/card_behavior_plan_report.json"
+        return report_spec("reports/card_behavior_plan_report.json").relative_path
     if surface == "combo":
-        return "reports/combo_plan_report.json"
-    return "reports/operator_summary.json"
+        return report_spec("reports/combo_plan_report.json").relative_path
+    return NORMAL_APPLY_AUTHORITY
 
 
 def _runtime_surfaces_from_closure(row: dict[str, Any]) -> set[str]:
@@ -942,8 +946,8 @@ def _closure_matches_surface(row: dict[str, Any], surface: str) -> bool:
         cardid_files = {
             filename for filename in runtime_files if filename.endswith(".json")
         }
-        return bool(cardid_files - CARDID_NON_SURFACE_FILES)
-    expected_files = SURFACE_RUNTIME_FILES.get(surface, set())
+        return bool(cardid_files - NORMAL_SPECIAL_RUNTIME_SURFACES)
+    expected_files = SURFACE_FAMILY_RUNTIME_FILES[surface]
     return bool(runtime_files.intersection(expected_files))
 
 
@@ -1122,7 +1126,7 @@ def _strong_promotion_evidence_blockers(
                     "reason": "default_only_surface_not_strong_evidence",
                     "surface": str(surface),
                     "blocking_strength": "blocks_source_backed_strong",
-                    "report": "reports/operator_summary.json",
+                    "report": NORMAL_APPLY_AUTHORITY,
                 }
             )
 
@@ -1139,7 +1143,7 @@ def _strong_promotion_evidence_blockers(
                 "surface": str(surface),
                 "count": max(1, policy_claim_count),
                 "blocking_strength": "blocks_source_backed_strong",
-                "report": "reports/operator_summary.json",
+                "report": NORMAL_APPLY_AUTHORITY,
             }
         )
     return blockers

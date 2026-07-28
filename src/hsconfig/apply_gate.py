@@ -29,11 +29,11 @@ from hsconfig.strict_package_validation import (
     strict_validation_passed,
     validate_complete_package,
 )
-from hsconfig.visionai_registry import NORMAL_PATH_FORBIDDEN_SURFACES
-
-
-NORMAL_PATH_FORBIDDEN_SURFACE_NAMES = tuple(sorted(NORMAL_PATH_FORBIDDEN_SURFACES))
-REQUIRED_RUNTIME_FILES = ("GlobalValues.json", "Mulligan.json")
+from hsconfig.visionai_registry import (
+    FORBIDDEN_RUNTIME_SURFACES,
+    NORMAL_APPLY_AUTHORITY,
+    REQUIRED_RUNTIME_SURFACES,
+)
 
 
 def evaluate_apply_gate(
@@ -44,7 +44,7 @@ def evaluate_apply_gate(
     # Backward-compatible no-op; there is one recomputed decision path.
     del allow_source_informed
     package = Path(package_root)
-    operator_path = package / "reports" / "operator_summary.json"
+    operator_path = package / NORMAL_APPLY_AUTHORITY
     if not operator_path.is_file():
         return _decision_gate(
             operator_path,
@@ -407,7 +407,7 @@ def _required_package_structure_reasons(
         ]
 
     deck_dir = deck_dirs[0]
-    for filename in REQUIRED_RUNTIME_FILES:
+    for filename in sorted(REQUIRED_RUNTIME_SURFACES):
         required = deck_dir / filename
         if not required.is_file():
             return [
@@ -418,7 +418,7 @@ def _required_package_structure_reasons(
             ]
 
     summary_files = _summary_generated_file_set(summary)
-    for filename in REQUIRED_RUNTIME_FILES:
+    for filename in sorted(REQUIRED_RUNTIME_SURFACES):
         key = _normalize_generated_file_path((deck_dir / filename).relative_to(package))
         if key not in summary_files:
             return [
@@ -437,7 +437,7 @@ def _summary_optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str,
     reasons: list[dict[str, str]] = []
     for item in generated:
         generated_file = str(item)
-        if generated_file.endswith(NORMAL_PATH_FORBIDDEN_SURFACE_NAMES):
+        if generated_file.endswith(tuple(sorted(FORBIDDEN_RUNTIME_SURFACES))):
             reasons.append(
                 {
                     "reason": "normal_path_optional_surface_present",
@@ -462,7 +462,7 @@ def _actual_optional_surface_reasons(package: Path) -> list[dict[str, str]]:
                 }
             )
             continue
-        if path.name in NORMAL_PATH_FORBIDDEN_SURFACES:
+        if path.name in FORBIDDEN_RUNTIME_SURFACES:
             reasons.append(
                 {
                     "reason": "normal_path_optional_surface_present",
@@ -485,7 +485,7 @@ def _actual_files_missing_from_summary_reasons(
         path
         for path in sorted(path for path in custom_config.rglob("*") if path.is_file())
         if len(path.relative_to(custom_config).parts) == 2
-        and path.name not in NORMAL_PATH_FORBIDDEN_SURFACES
+        and path.name not in FORBIDDEN_RUNTIME_SURFACES
     ]
     if actual_files and not summary_files:
         return [
@@ -523,7 +523,10 @@ def _summary_files_missing_from_actual_reasons(
     }
     reasons: list[dict[str, str]] = []
     for generated_file in sorted(_summary_generated_file_set(summary)):
-        if generated_file.replace("\\", "/").rsplit("/", 1)[-1] in NORMAL_PATH_FORBIDDEN_SURFACES:
+        if (
+            generated_file.replace("\\", "/").rsplit("/", 1)[-1]
+            in FORBIDDEN_RUNTIME_SURFACES
+        ):
             continue
         if generated_file not in actual_files:
             reasons.append(
@@ -543,7 +546,7 @@ def _actual_runtime_json_reasons(package: Path) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
     for path in sorted(path for path in custom_config.rglob("*") if path.is_file()):
         relative_parts = path.relative_to(custom_config).parts
-        if len(relative_parts) != 2 or path.name in NORMAL_PATH_FORBIDDEN_SURFACES:
+        if len(relative_parts) != 2 or path.name in FORBIDDEN_RUNTIME_SURFACES:
             continue
         try:
             read_json(path)

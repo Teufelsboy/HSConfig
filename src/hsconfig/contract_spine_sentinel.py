@@ -16,6 +16,11 @@ from hsconfig.source_claim_family_registry import build_claim_family_registry_re
 from hsconfig.source_contract_conformance import build_source_contract_conformance_snapshot
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.visionai_registry import (
+    CARDID_SURFACE_FAMILY,
+    NORMAL_APPLY_AUTHORITY,
+    NORMAL_RUNTIME_SURFACES,
+)
 
 
 FORBIDDEN_APPLY_AUTHORITY_FIELDS = {
@@ -51,11 +56,11 @@ CRITICAL_CLAIM_KINDS = (
 )
 
 EXPECTED_RESEARCH_REPORT_FILES = tuple(sorted(KNOWN_RESEARCH_REPORT_FILES))
-EXPECTED_RUNTIME_SURFACE_FILES = (
-    "CustomConfig/deck/CARDID.json",
-    "CustomConfig/deck/Combo.json",
-    "CustomConfig/deck/GlobalValues.json",
-    "CustomConfig/deck/Mulligan.json",
+EXPECTED_RUNTIME_SURFACE_FILES = tuple(
+    f"CustomConfig/deck/{file_name}"
+    for file_name in sorted(NORMAL_RUNTIME_SURFACES)
+    if file_name == CARDID_SURFACE_FAMILY
+    or file_name.endswith(".json")
 )
 EXPECTED_EMITTED_PACKAGE_FILES = tuple(
     sorted(
@@ -413,7 +418,7 @@ def _lifecycle_gate_files() -> list[str]:
     return sorted(
         str(row.get("file", ""))
         for row in build_report_ownership()
-        if row.get("file") != "reports/operator_summary.json"
+        if row.get("file") != NORMAL_APPLY_AUTHORITY
         and row.get("classification") in {"gate", "operator_gate"}
         and _is_lifecycle_ownership_row(row)
     )
@@ -482,7 +487,7 @@ def _contract_invariants(
             "start_of_game_mulligan_suppression",
         )
 
-    if checks.get("report_ownership_gate_files") != ["reports/operator_summary.json"]:
+    if checks.get("report_ownership_gate_files") != [NORMAL_APPLY_AUTHORITY]:
         _append_invariant_failure(
             invariants,
             "single_apply_authority",
@@ -545,7 +550,7 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
             }
         )
 
-    if checks.get("report_ownership_gate_files") != ["reports/operator_summary.json"]:
+    if checks.get("report_ownership_gate_files") != [NORMAL_APPLY_AUTHORITY]:
         problems.append(
             {
                 "check": "report_ownership_gate_files",

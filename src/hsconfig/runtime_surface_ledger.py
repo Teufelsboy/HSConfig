@@ -12,11 +12,17 @@ from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.io import read_json
 from hsconfig.mulligan_selector import normalize_mulligan_selector
-from hsconfig.visionai_registry import is_supported_card_behavior_block
+from hsconfig.visionai_registry import (
+    COMBO_RUNTIME_FILE,
+    GLOBALVALUES_RUNTIME_FILE,
+    LEGACY_RUNTIME_SURFACES,
+    MULLIGAN_RUNTIME_FILE,
+    NORMAL_SPECIAL_RUNTIME_SURFACES,
+    is_supported_card_behavior_block,
+)
 
 COMBO_SEPARATORS = (">->", ">>")
 _METADATA_KEYS = {"GameCardId", "ConfigComment"}
-_SPECIAL_SURFACE_FILES = {"Concede.json", "Presume.json"}
 
 
 def build_runtime_surface_ledger(
@@ -53,7 +59,7 @@ def build_runtime_surface_ledger(
     special_surfaces = sorted(
         filename
         for filename in compiled_cardid_files
-        if filename in _SPECIAL_SURFACE_FILES
+        if filename in LEGACY_RUNTIME_SURFACES
     )
     validated_linked_owners = [
         owner
@@ -88,9 +94,9 @@ def build_runtime_surface_ledger(
     unexpected: list[dict[str, str]] = []
     for card_id, record in cards.items():
         if card_id in mulligan_cards:
-            _add_surface(record, "Mulligan.json")
+            _add_surface(record, MULLIGAN_RUNTIME_FILE)
         if card_id in combo_cards:
-            _add_surface(record, "Combo.json")
+            _add_surface(record, COMBO_RUNTIME_FILE)
         if card_id in cardid_payloads:
             _add_surface(record, f"{card_id}.json")
         if not record["runtime_eligible"] and record["runtime_surfaces"]:
@@ -210,7 +216,7 @@ def _valid_cardid_payloads(
     valid: dict[str, Mapping[str, Any]] = {}
     errors: list[str] = []
     for filename, payload in files.items():
-        if filename in _SPECIAL_SURFACE_FILES:
+        if filename in LEGACY_RUNTIME_SURFACES:
             continue
         card_id = _filename_card_id(filename)
         if (
@@ -347,14 +353,14 @@ def rederive_runtime_surface_ledger_from_package(package: str | Path) -> dict[st
     }
     return build_runtime_surface_ledger(
         deck_identity=deck_identity,
-        compiled_mulligan=payloads.get("Mulligan.json", {}),
-        compiled_globalvalues=payloads.get("GlobalValues.json", {}),
+        compiled_mulligan=payloads.get(MULLIGAN_RUNTIME_FILE, {}),
+        compiled_globalvalues=payloads.get(GLOBALVALUES_RUNTIME_FILE, {}),
         globalvalues_baseline=baseline,
-        compiled_combo=payloads.get("Combo.json"),
+        compiled_combo=payloads.get(COMBO_RUNTIME_FILE),
         compiled_cardid_files={
             name: payload
             for name, payload in payloads.items()
-            if name not in {"Mulligan.json", "GlobalValues.json", "Combo.json"}
+            if name not in NORMAL_SPECIAL_RUNTIME_SURFACES
         },
         linked_runtime_owners=[
             {

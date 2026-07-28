@@ -11,14 +11,14 @@ from hsconfig.mechanic_support import (
 )
 from hsconfig.io import slugify_deck_name
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
-from hsconfig.visionai_registry import is_supported_card_behavior_block
-
-
-RUNTIME_SURFACE_MULLIGAN = "Mulligan.json"
-RUNTIME_SURFACE_COMBO = "Combo.json"
-RUNTIME_SURFACE_GLOBALVALUES = "GlobalValues.json"
-CARDID_SURFACE_FAMILY = "CARDID.json"
-CARDID_SURFACE_ALIASES = {"CARDID.json", "CardID.json"}
+from hsconfig.visionai_registry import (
+    CARDID_SURFACE_ALIASES,
+    CARDID_SURFACE_FAMILY,
+    COMBO_RUNTIME_FILE,
+    GLOBALVALUES_RUNTIME_FILE,
+    MULLIGAN_RUNTIME_FILE,
+    is_supported_card_behavior_block,
+)
 
 LANES = (
     "runtime_emitted",
@@ -315,7 +315,7 @@ def _physical_lane(
     # intent only and cannot promote an empty physical surface to a runtime
     # lane.  A real mulligan keep is intentionally sufficient even if a
     # separate CardID lowering was suppressed.
-    if RUNTIME_SURFACE_MULLIGAN in runtime_surfaces:
+    if MULLIGAN_RUNTIME_FILE in runtime_surfaces:
         return "mulligan_only", "none"
     # A physical CardID file does not erase a known semantic suppression for
     # that CardID lowering.  This keeps the suppression visible while never
@@ -323,9 +323,9 @@ def _physical_lane(
     if semantic_suppression is not None:
         return "report_only_supported", semantic_suppression[0]
     if any(surface.endswith(".json") and surface not in {
-        RUNTIME_SURFACE_MULLIGAN,
-        RUNTIME_SURFACE_COMBO,
-        RUNTIME_SURFACE_GLOBALVALUES,
+        MULLIGAN_RUNTIME_FILE,
+        COMBO_RUNTIME_FILE,
+        GLOBALVALUES_RUNTIME_FILE,
     } for surface in runtime_surfaces):
         return "runtime_emitted", "none"
     if any(
@@ -335,7 +335,7 @@ def _physical_lane(
         for row in linked_runtime_entities.values()
     ):
         return "linked_runtime_source", "none"
-    if RUNTIME_SURFACE_COMBO in runtime_surfaces:
+    if COMBO_RUNTIME_FILE in runtime_surfaces:
         return "runtime_emitted", "none"
     return "report_only_supported", "needs_runtime_surface"
 
@@ -625,11 +625,11 @@ def _runtime_surfaces(
     if card_id in linked_runtime_sources:
         surfaces.append(linked_runtime_sources[card_id])
     if card_id in mulligan_cards:
-        surfaces.append(RUNTIME_SURFACE_MULLIGAN)
+        surfaces.append(MULLIGAN_RUNTIME_FILE)
     if card_id in combo_cards:
-        surfaces.append(RUNTIME_SURFACE_COMBO)
+        surfaces.append(COMBO_RUNTIME_FILE)
     if card_id in globalvalue_cards:
-        surfaces.append(RUNTIME_SURFACE_GLOBALVALUES)
+        surfaces.append(GLOBALVALUES_RUNTIME_FILE)
     return surfaces
 
 

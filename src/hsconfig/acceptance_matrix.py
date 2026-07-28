@@ -6,15 +6,17 @@ from typing import Any, Sequence
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import read_json
 from hsconfig.strict_package_validation import validate_complete_package
+from hsconfig.visionai_registry import (
+    COMBO_RUNTIME_FILE,
+    CONCEDE_RUNTIME_FILE,
+    GLOBALVALUES_RUNTIME_FILE,
+    MULLIGAN_RUNTIME_FILE,
+    NORMAL_APPLY_AUTHORITY,
+    PRESUME_RUNTIME_FILE,
+    SERIALIZED_SPECIAL_RUNTIME_SURFACES,
+)
 
 
-SPECIAL_RUNTIME_FILES = {
-    "Combo.json",
-    "GlobalValues.json",
-    "Mulligan.json",
-    "Presume.json",
-    "Concede.json",
-}
 DIAGNOSTIC_SOURCE_APPLY_REASON = "diagnostic_source_not_apply_eligible"
 DIAGNOSTIC_SOURCE_NEXT_ACTION = "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
 
@@ -107,7 +109,7 @@ def _matrix_row_failure_reasons(row: dict[str, Any]) -> list[str]:
 
 
 def _inspect_package(package: Path) -> dict[str, Any]:
-    operator_path = package / "reports" / "operator_summary.json"
+    operator_path = package / NORMAL_APPLY_AUTHORITY
     if not operator_path.is_file():
         return _missing_operator_summary_row(package, operator_path)
 
@@ -175,11 +177,11 @@ def _inspect_package(package: Path) -> dict[str, Any]:
         "warning_boundary_count": len(warning_boundaries),
         "runtime_file_count": len(runtime_files),
         "cardid_file_count": _cardid_file_count(runtime_files),
-        "has_globalvalues": "GlobalValues.json" in runtime_files,
-        "has_mulligan": "Mulligan.json" in runtime_files,
-        "has_combo": "Combo.json" in runtime_files,
-        "has_presume": "Presume.json" in runtime_files,
-        "has_concede": "Concede.json" in runtime_files,
+        "has_globalvalues": GLOBALVALUES_RUNTIME_FILE in runtime_files,
+        "has_mulligan": MULLIGAN_RUNTIME_FILE in runtime_files,
+        "has_combo": COMBO_RUNTIME_FILE in runtime_files,
+        "has_presume": PRESUME_RUNTIME_FILE in runtime_files,
+        "has_concede": CONCEDE_RUNTIME_FILE in runtime_files,
     }
 
 
@@ -248,7 +250,11 @@ def _runtime_files(deck_dir: Path | None) -> set[str]:
 
 
 def _cardid_file_count(runtime_files: set[str]) -> int:
-    return sum(1 for filename in runtime_files if filename not in SPECIAL_RUNTIME_FILES)
+    return sum(
+        1
+        for filename in runtime_files
+        if filename not in SERIALIZED_SPECIAL_RUNTIME_SURFACES
+    )
 
 
 def _warning_boundaries(operator: dict[str, Any]) -> list[dict[str, str]]:

@@ -15,22 +15,19 @@ from hsconfig.condition_format import classify_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
+    COMBO_RUNTIME_FILE,
+    CONCEDE_RUNTIME_FILE,
+    GLOBALVALUES_RUNTIME_FILE,
+    MULLIGAN_RUNTIME_FILE,
+    PRESUME_RUNTIME_FILE,
+    REQUIRED_RUNTIME_SURFACES,
+    SERIALIZED_SPECIAL_RUNTIME_SURFACES,
     expected_game_card_id,
+    runtime_row_keys,
     supported_surface,
 )
 
 
-SPECIAL_SURFACE_NAMES = {
-    "GlobalValues.json",
-    "Mulligan.json",
-    "Combo.json",
-    "Presume.json",
-    "Concede.json",
-}
-
-RUNTIME_VALUE_ROW_KEYS = {"comment", "condition", "value"}
-MULLIGAN_ROW_KEYS = {"comment", "condition", "mulligan", "value"}
-COMBO_ROW_KEYS = {"comment", "condition", "combo", "value"}
 CARD_ID_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+[A-Za-z0-9]*$")
 NUMERIC_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$")
 
@@ -108,10 +105,11 @@ def validate_config_package(
 
 def _validate_required_package_files(deck_dir: Path) -> list[str]:
     errors = []
-    if not (deck_dir / "GlobalValues.json").is_file():
-        errors.append(f"{deck_dir}: missing required runtime file GlobalValues.json")
-    if not (deck_dir / "Mulligan.json").is_file():
-        errors.append(f"{deck_dir}: missing required runtime file Mulligan.json")
+    for file_name in sorted(REQUIRED_RUNTIME_SURFACES):
+        if not (deck_dir / file_name).is_file():
+            errors.append(
+                f"{deck_dir}: missing required runtime file {file_name}"
+            )
     return errors
 
 
@@ -137,15 +135,15 @@ def _validate_blocks(
     globalvalues_authority_matrix: dict[str, Any] | None,
     require_globalvalues_profile: bool,
 ) -> list[str]:
-    if path.name == "Mulligan.json":
+    if path.name == MULLIGAN_RUNTIME_FILE:
         return _validate_mulligan(path, data)
-    if path.name == "Combo.json":
+    if path.name == COMBO_RUNTIME_FILE:
         return _validate_combo(path, data)
-    if path.name == "Presume.json":
+    if path.name == PRESUME_RUNTIME_FILE:
         return _validate_named_values_blocks(path, data, {"PresumeOppInHandCard"})
-    if path.name == "Concede.json":
+    if path.name == CONCEDE_RUNTIME_FILE:
         return _validate_named_values_blocks(path, data, {"ExtraConcdeSettings"})
-    if path.name == "GlobalValues.json":
+    if path.name == GLOBALVALUES_RUNTIME_FILE:
         return _validate_globalvalues(
             path,
             data,
@@ -154,7 +152,7 @@ def _validate_blocks(
             globalvalues_authority_matrix,
             require_profile=require_globalvalues_profile,
         )
-    if path.name in SPECIAL_SURFACE_NAMES:
+    if path.name in SERIALIZED_SPECIAL_RUNTIME_SURFACES:
         return _validate_values_blocks(path, data)
     return _validate_card_behavior_blocks(path, data)
 
@@ -222,7 +220,7 @@ def _validate_globalvalues_rows(path: Path, data: dict[str, Any]) -> list[str]:
                     path,
                     f"GlobalValues block {key} row {index}",
                     row,
-                    RUNTIME_VALUE_ROW_KEYS,
+                    runtime_row_keys(GLOBALVALUES_RUNTIME_FILE),
                 )
             )
     return errors
@@ -249,7 +247,12 @@ def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
             errors.append(f"{path}: Mulligan row {index} must be an object")
             continue
         errors.extend(
-            _validate_row_keys(path, f"Mulligan row {index}", row, MULLIGAN_ROW_KEYS)
+            _validate_row_keys(
+                path,
+                f"Mulligan row {index}",
+                row,
+                runtime_row_keys(MULLIGAN_RUNTIME_FILE),
+            )
         )
         selector_info: dict[str, Any] | None = None
         if not row.get("mulligan"):
@@ -686,7 +689,7 @@ def _validate_combo_row(path: Path, index: int, row: Any) -> list[str]:
         return [f"{path}: ComboList row {index} must be an object"]
     errors = [
         f"{path}: ComboList row {index} unsupported ComboList row key {key}"
-        for key in sorted(set(row) - COMBO_ROW_KEYS)
+        for key in sorted(set(row) - runtime_row_keys(COMBO_RUNTIME_FILE))
     ]
     if "condition" not in row:
         errors.append(f"{path}: ComboList row {index} missing condition")
@@ -730,7 +733,14 @@ def _validate_runtime_value_rows(path: Path, label: str, values: list[Any]) -> l
         if not isinstance(row, Mapping):
             errors.append(f"{path}: {row_label} must be an object")
             continue
-        errors.extend(_validate_row_keys(path, row_label, row, RUNTIME_VALUE_ROW_KEYS))
+        errors.extend(
+            _validate_row_keys(
+                path,
+                row_label,
+                row,
+                runtime_row_keys(path.name),
+            )
+        )
         if "condition" not in row:
             errors.append(f"{path}: {row_label} missing condition")
         else:

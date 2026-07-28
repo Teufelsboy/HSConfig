@@ -24,45 +24,15 @@ from hsconfig.runtime_surface_ledger import (
     rederive_runtime_surface_ledger_from_package,
 )
 from hsconfig.source_document_model import claim_can_lower_to_runtime
-
-
-FORBIDDEN_LEGACY_RUNTIME_SURFACES = {
-    "CardBehavior.json",
-    "Concede.json",
-    "Presume.json",
-}
-
-CARDID_RUNTIME_VALUE_ROW_KEYS = {"comment", "condition", "value"}
-SPECIAL_RUNTIME_VALUE_ROW_KEYS = {
-    "GlobalValues.json": {"comment", "condition", "value"},
-    "Mulligan.json": {"comment", "condition", "mulligan", "value"},
-    "Combo.json": {"comment", "condition", "combo", "value"},
-}
-RUNTIME_VALUE_ROW_KEYS = CARDID_RUNTIME_VALUE_ROW_KEYS
-SPECIAL_RUNTIME_FILES = {
-    "Combo.json",
-    "GlobalValues.json",
-    "Mulligan.json",
-}
-NORMAL_RUNTIME_SURFACE_BOUNDARY = [
-    "GlobalValues.json",
-    "Mulligan.json",
-    "per-card <CARDID>.json",
-    "Combo.json",
-]
-NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
-STANDARD_SURFACE_ALIASES = {
-    "globalvalues": "GlobalValues.json",
-    "global_values": "GlobalValues.json",
-    "GlobalValues.json": "GlobalValues.json",
-    "mulligan": "Mulligan.json",
-    "Mulligan.json": "Mulligan.json",
-    "combo": "Combo.json",
-    "Combo.json": "Combo.json",
-    "cardid": "per-card <CARDID>.json",
-    "cardid_behavior": "per-card <CARDID>.json",
-    "CARDID.json": "per-card <CARDID>.json",
-}
+from hsconfig.visionai_registry import (
+    CARDID_SURFACE_FAMILY,
+    FORBIDDEN_RUNTIME_SURFACES,
+    NORMAL_APPLY_AUTHORITY,
+    NORMAL_RUNTIME_SURFACE_BOUNDARY,
+    NORMAL_SPECIAL_RUNTIME_SURFACES,
+    RUNTIME_SURFACE_ALIASES,
+    runtime_row_keys,
+)
 INTENTIONAL_OPERATOR_LEDGER_STATUSES = {
     "emitted",
     "source_backed",
@@ -480,7 +450,7 @@ def _looks_like_cardid_surface(surface: str) -> bool:
         return True
     if not surface.endswith(".json"):
         return False
-    return Path(surface).name not in SPECIAL_RUNTIME_FILES
+    return Path(surface).name not in NORMAL_SPECIAL_RUNTIME_SURFACES
 
 
 def _numeric_value_out_of_runtime_range(value: Any) -> bool:
@@ -764,15 +734,18 @@ def _runtime_owner_card_id(row: Mapping[str, Any]) -> str:
 
 def _file_card_id(value: Any) -> str:
     name = Path(str(value or "")).name
-    if not name.endswith(".json") or name in SPECIAL_RUNTIME_FILES:
+    if not name.endswith(".json") or name in NORMAL_SPECIAL_RUNTIME_SURFACES:
         return ""
     return name[:-5]
 
 
 def _runtime_value_row_keys(file_name: str) -> set[str]:
-    return set(
-        SPECIAL_RUNTIME_VALUE_ROW_KEYS.get(file_name, CARDID_RUNTIME_VALUE_ROW_KEYS)
+    surface = (
+        file_name
+        if file_name in NORMAL_SPECIAL_RUNTIME_SURFACES
+        else CARDID_SURFACE_FAMILY
     )
+    return set(runtime_row_keys(surface))
 
 
 def _expected_cardid_runtime_files(
@@ -962,7 +935,7 @@ def _surface_intent_projection_check(
     malformed_rows = [
         _surface_intent_row_summary(row)
         for row in rows
-        if str(row.get("surface") or "") not in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+        if str(row.get("surface") or "") not in FORBIDDEN_RUNTIME_SURFACES
         and not _is_canonical_surface_intent_row(surface_intent, row)
     ]
 
@@ -1131,8 +1104,8 @@ def _runtime_cardid_value_rows(package: Path) -> list[dict[str, str]]:
     for deck_dir in _custom_config_deck_dirs(package):
         for path in sorted(deck_dir.glob("*.json")):
             if (
-                path.name in SPECIAL_RUNTIME_FILES
-                or path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+                path.name in NORMAL_SPECIAL_RUNTIME_SURFACES
+                or path.name in FORBIDDEN_RUNTIME_SURFACES
             ):
                 continue
             card_id = _file_card_id(path.name)
@@ -1555,9 +1528,9 @@ def _runtime_json_check(
     stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:
         for path in sorted(deck_dir.glob("*.json")):
-            if path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
+            if path.name in FORBIDDEN_RUNTIME_SURFACES:
                 continue
-            if path.name not in SPECIAL_RUNTIME_FILES:
+            if path.name not in NORMAL_SPECIAL_RUNTIME_SURFACES:
                 file_card_id = _file_card_id(path.name)
                 if file_card_id and file_card_id not in expected_card_ids:
                     stray_cardid_files.append(_relative(path, package))
@@ -1603,7 +1576,7 @@ def _legacy_surface_check(package: Path) -> dict[str, Any]:
     if not custom_config.is_dir():
         return {"present": present}
     for path in sorted(custom_config.rglob("*.json")):
-        if path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
+        if path.name in FORBIDDEN_RUNTIME_SURFACES:
             present.append(_relative(path, package))
     return {"present": present}
 
@@ -1972,7 +1945,7 @@ def _config_intent_self_audit_check(
     unsupported_runtime_files = [
         item
         for item in runtime_files
-        if Path(item).name in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+        if Path(item).name in FORBIDDEN_RUNTIME_SURFACES
     ]
 
     runtime_files_without_intent: list[str] = []
@@ -2034,7 +2007,7 @@ def _config_intent_self_audit_check(
         "status": "clean" if not attention else "attention",
         "normal_apply_authority": _normal_apply_authority(operator),
         "normal_apply_authority_drift": normal_apply_authority_drift,
-        "runtime_surface_boundary": NORMAL_RUNTIME_SURFACE_BOUNDARY,
+        "runtime_surface_boundary": list(NORMAL_RUNTIME_SURFACE_BOUNDARY),
         "runtime_files_total": len(runtime_files),
         "runtime_files_without_intent": runtime_files_without_intent,
         "unsupported_runtime_files": unsupported_runtime_files,
@@ -2158,7 +2131,7 @@ def _is_canonical_surface_intent_row(
         not surface
         or surface != Path(surface).name
         or surface not in required_surfaces | optional_surfaces
-        or surface in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+        or surface in FORBIDDEN_RUNTIME_SURFACES
     ):
         return False
 
@@ -2239,7 +2212,7 @@ def _standard_surface_name(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    return STANDARD_SURFACE_ALIASES.get(text, text)
+    return RUNTIME_SURFACE_ALIASES.get(text, text)
 
 
 def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
