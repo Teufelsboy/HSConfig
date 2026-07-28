@@ -113,6 +113,34 @@ def test_run_guardrails_stops_at_first_failure(tmp_path, capsys):
     assert "FAILED: installed skill sync" in captured.err
 
 
+def test_run_guardrails_rejects_production_assert_before_commands(tmp_path, capsys):
+    production_root = tmp_path / "src" / "hsconfig"
+    production_root.mkdir(parents=True)
+    invalid_module = production_root / "invalid_contract.py"
+    invalid_module.write_text(
+        "def validate_contract(value):\n"
+        "    assert value\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(tuple(argv))
+        return subprocess.CompletedProcess(argv, 0)
+
+    exit_code = run_guardrails(
+        tmp_path,
+        tmp_path / "skills",
+        runner=fake_runner,
+    )
+
+    assert exit_code != 0
+    assert calls == []
+    captured = capsys.readouterr()
+    assert "FAILED: production assert guardrail" in captured.err
+    assert "src/hsconfig/invalid_contract.py:2" in captured.err.replace("\\", "/")
+
+
 def test_run_guardrails_runs_all_commands_when_successful(tmp_path, capsys):
     repo_root = tmp_path
     skill_root = tmp_path / "skills"

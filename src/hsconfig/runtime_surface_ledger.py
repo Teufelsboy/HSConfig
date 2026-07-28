@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,24 @@ from hsconfig.visionai_registry import (
 
 COMBO_SEPARATORS = (">->", ">>")
 _METADATA_KEYS = {"GameCardId", "ConfigComment"}
+
+
+class SurfaceLedgerMismatchError(ValueError):
+    """Raised when contract projections disagree about the surface ledger."""
+
+
+def require_surface_ledger_parity(
+    *,
+    expected: Collection[str],
+    observed: Collection[str],
+) -> None:
+    expected_values = tuple(sorted(expected))
+    observed_values = tuple(sorted(observed))
+    if expected_values != observed_values:
+        raise SurfaceLedgerMismatchError(
+            "runtime_surface_ledger_mismatch: "
+            f"expected={expected_values!r}; observed={observed_values!r}"
+        )
 
 
 def build_runtime_surface_ledger(

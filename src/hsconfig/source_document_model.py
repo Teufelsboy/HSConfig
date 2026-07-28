@@ -25,6 +25,11 @@ from hsconfig.source_acquisition_provenance import (
 )
 from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
 
+
+class SourceDocumentContractError(ValueError):
+    """Raised when an internal source-document invariant is violated."""
+
+
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
     {
         "archetype",
@@ -779,7 +784,11 @@ def strategic_source_receipt_provenance(
     value = claim.get("acquisition_provenance")
     if not strategic_source_provenance_is_verified(value):
         return None
-    assert isinstance(value, Mapping)
+    if not isinstance(value, Mapping):
+        raise SourceDocumentContractError(
+            "source_document_contract_invalid: "
+            "verified acquisition provenance is not a mapping"
+        )
     return {
         "mode": str(value["mode"]),
         "content_sha256": str(value["content_sha256"]),

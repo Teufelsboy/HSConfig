@@ -45,7 +45,10 @@ from hsconfig.mulligan_source_gap_registry import (
 )
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
-from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
+from hsconfig.runtime_surface_ledger import (
+    build_runtime_surface_ledger,
+    require_surface_ledger_parity,
+)
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     build_package_authority_context,
@@ -744,11 +747,15 @@ def build_package_payload(
             "operator_summary": operator_summary,
         },
     )
-    assert operator_summary["surface_ledger_sha256"] == config_readiness_report[
-        "surface_ledger_sha256"
-    ]
-    assert config_readiness_report["surface_ledger_sha256"] == (
-        source_to_runtime_explainability_report["surface_ledger_sha256"]
+    require_surface_ledger_parity(
+        expected=(operator_summary["surface_ledger_sha256"],),
+        observed=(config_readiness_report["surface_ledger_sha256"],),
+    )
+    require_surface_ledger_parity(
+        expected=(config_readiness_report["surface_ledger_sha256"],),
+        observed=(
+            source_to_runtime_explainability_report["surface_ledger_sha256"],
+        ),
     )
     (reports_dir / "card_semantic_audit.md").write_text(
         render_semantic_audit_markdown(

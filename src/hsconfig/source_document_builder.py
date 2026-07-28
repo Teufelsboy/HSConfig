@@ -10,6 +10,7 @@ from hsconfig.source_document_model import (
     REQUIRED_CLAIM_KEYS,
     REQUIRED_SOURCE_KEYS,
     SUPPORTED_ATOMIC_CLAIM_KINDS,
+    SourceDocumentContractError,
     claim_can_lower_to_runtime,
     source_claim_signature,
     strategic_provenance_diagnostic,
@@ -139,7 +140,12 @@ def build_source_document_bundle(
             if unsupported is not None:
                 unsupported_claims.append(unsupported)
                 continue
-            assert normalized is not None
+            if normalized is None:
+                raise SourceDocumentContractError(
+                    "source_document_contract_invalid: "
+                    f"{source_ref} claim {claim_index} normalization returned "
+                    "neither a claim nor an unsupported reason"
+                )
             claims.append(normalized)
             receipt = _canonical_source_receipt(
                 normalized,

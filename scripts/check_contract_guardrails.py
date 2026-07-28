@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -50,6 +51,23 @@ class GuardrailCommand:
     argv: tuple[str, ...]
 
 
+def production_assert_violations(repo_root: Path) -> tuple[str, ...]:
+    production_root = repo_root / "src" / "hsconfig"
+    if not production_root.is_dir():
+        return ()
+
+    violations: list[str] = []
+    for path in sorted(production_root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        relative_path = path.relative_to(repo_root).as_posix()
+        violations.extend(
+            f"{relative_path}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assert)
+        )
+    return tuple(violations)
+
+
 def guardrail_commands(
     repo_root: Path,
     skill_install_root: Path,
@@ -94,6 +112,14 @@ def run_guardrails(
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> int:
+    assert_violations = production_assert_violations(repo_root)
+    if assert_violations:
+        print("FAILED: production assert guardrail", file=sys.stderr)
+        for violation in assert_violations:
+            print(f"  {violation}", file=sys.stderr)
+        return 1
+    print("OK: production assert guardrail")
+
     for command in guardrail_commands(repo_root, skill_install_root):
         result = runner(command.argv, cwd=repo_root)
         if result.returncode != 0:
