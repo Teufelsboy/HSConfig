@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Any, Mapping
+
+
 MULLIGAN_CONTEXT_MARKERS = ("mulligan", "opening hand", "opening-hand")
 BOILERPLATE_MARKERS = (
     "follow us on twitter",
@@ -13,8 +16,20 @@ EXPLICIT_COMBO_MARKERS = ("combo sequence", "combo:", "sequence:")
 ORDERED_CONNECTORS = (" then ", " into ", " followed by ", " + ", " -> ")
 
 
+def normalized(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def claim_text(claim: Mapping[str, Any]) -> str:
+    return " ".join(
+        str(claim[key])
+        for key in ("evidence_text_short", "claim", "text", "operator_meaning")
+        if claim.get(key)
+    )
+
+
 def has_explicit_mulligan_context(text: str) -> bool:
-    lowered = " ".join(text.lower().split())
+    lowered = normalized(text)
     return any(marker in lowered for marker in MULLIGAN_CONTEXT_MARKERS)
 
 

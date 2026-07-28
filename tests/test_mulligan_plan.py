@@ -20,6 +20,7 @@ def build_mulligan_plan(**kwargs):
             "mulligan_keep",
             "mulligan_discard",
         }:
+            claim.setdefault("context", "mulligan")
             claim.setdefault("source_family", "guide")
             claim.setdefault("deck_match_scope", "exact_deck_matched")
             claim.setdefault("promotion_eligible", True)

@@ -35,6 +35,7 @@ def _authorized_mulligan_claim(
         "claim_id": claim_id,
         "claim_kind": "mulligan_keep",
         "cards": [card_id],
+        "context": "mulligan",
         "source_confidence": "guide_backed",
         "source_family": "guide",
         "deck_match_scope": "exact_deck_matched",

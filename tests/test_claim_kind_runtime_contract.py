@@ -15,6 +15,7 @@ from hsconfig.source_document_model import (
     can_lower_to_mulligan,
     qualify_source_claim,
     runtime_claim_kind,
+    source_claim_signature,
     surface_gate_decision,
 )
 from hsconfig.source_claim_lifecycle import (
@@ -639,6 +640,96 @@ def test_public_guide_mulligan_with_exact_authority_can_lower():
         bundle["claims"][0],
         deck_identity=deck_identity,
         verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+@pytest.mark.parametrize(
+    "evidence_text_short",
+    [
+        pytest.param(
+            "Play Fixture One on curve to pressure the opponent.",
+            id="ordinary-card-role-prose",
+        ),
+        pytest.param(
+            "Fixture One is useful at the start of the game.",
+            id="start-of-game-prose",
+        ),
+        pytest.param(
+            "At the start, use Fixture One to set up the Hero Power.",
+            id="at-the-start-hero-power-setup",
+        ),
+        pytest.param(
+            "Fixture One supports the deck's Hero Power setup.",
+            id="hero-power-setup",
+        ),
+        pytest.param(
+            "Keep pressure on the opponent with Fixture One.",
+            id="keep-outside-opening-hand-instruction",
+        ),
+    ],
+)
+def test_exact_public_guide_claim_requires_explicit_opening_hand_context(
+    evidence_text_short,
+):
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        claim_overrides={"evidence_text_short": evidence_text_short},
+    )
+
+    decision = can_lower_to_mulligan(
+        bundle["claims"][0],
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_explicit_opening_hand_context"
+
+
+def test_exact_public_guide_explicit_mulligan_prose_can_lower():
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        claim_overrides={"evidence_text_short": "Mulligan: keep Fixture One."},
+    )
+
+    decision = can_lower_to_mulligan(
+        bundle["claims"][0],
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("timing", "mulligan", id="timing-mulligan"),
+        pytest.param("timing", "opening_hand", id="timing-opening-hand"),
+        pytest.param("qualifier", "mulligan", id="qualifier-mulligan"),
+        pytest.param("qualifier", "opening_hand", id="qualifier-opening-hand"),
+        pytest.param("context", "mulligan", id="context-mulligan"),
+        pytest.param("context", "opening_hand", id="context-opening-hand"),
+    ],
+)
+def test_exact_public_guide_structured_mulligan_context_can_lower(field, value):
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        claim_overrides={
+            "evidence_text_short": "Play Fixture One on curve for pressure."
+        },
+    )
+    claim = {**bundle["claims"][0], field: value}
+    receipt = {
+        **bundle["canonical_source_receipts"][0],
+        "claim_signature": source_claim_signature(claim),
+    }
+
+    decision = can_lower_to_mulligan(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=[receipt],
     )
 
     assert decision.allowed is True

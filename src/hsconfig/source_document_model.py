@@ -11,6 +11,11 @@ from hsconfig.role_tokens import (
     card_role_tokens,
     has_explicit_opening_hand_mulligan_intent,
 )
+from hsconfig.source_claim_context import (
+    claim_text,
+    has_explicit_mulligan_context,
+    normalized,
+)
 from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_acquisition_provenance import (
     STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
@@ -339,6 +344,24 @@ def _normalized_text(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def claim_has_explicit_mulligan_context(claim: Mapping[str, Any]) -> bool:
+    structured = {
+        normalized(claim.get("timing")),
+        normalized(claim.get("qualifier")),
+        normalized(claim.get("context")),
+    }
+    semantic_qualifiers = claim.get("semantic_qualifiers")
+    if isinstance(semantic_qualifiers, Mapping):
+        structured.update(
+            normalized(semantic_qualifiers.get(key))
+            for key in ("timing", "qualifier", "context")
+        )
+    return bool(
+        structured & {"mulligan", "opening_hand", "opening hand"}
+        or has_explicit_mulligan_context(claim_text(claim))
+    )
+
+
 def is_public_guide_claim(claim: Mapping[str, Any]) -> bool:
     """Return whether any accepted provenance representation identifies a public guide."""
     return any(
@@ -578,6 +601,13 @@ def can_lower_to_mulligan(
         return SurfaceGateDecision(
             False,
             "start_of_game_effect_does_not_require_opening_hand",
+            claim_kind,
+            "mulligan",
+        )
+    if not claim_has_explicit_mulligan_context(claim):
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_explicit_opening_hand_context",
             claim_kind,
             "mulligan",
         )

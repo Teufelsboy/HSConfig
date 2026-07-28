@@ -79,7 +79,7 @@ def _verified_posture_bundle(claim_id: str = "posture_claim") -> dict:
 
 def _verified_mulligan_bundle(*claims: dict) -> tuple[dict, dict]:
     return build_canonical_mulligan_bundle(
-        claims,
+        [{"timing": "mulligan", **claim} for claim in claims],
         deck_fingerprint="fixture-deck-fingerprint",
     )
 
