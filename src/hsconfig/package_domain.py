@@ -1,0 +1,331 @@
+"""Immutable domain values for the typed pre-run package boundary."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any, Literal
+
+
+def _canonical_json(value: bytes) -> bytes:
+    try:
+        decoded = json.loads(value)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("canonical_json_invalid") from error
+    canonical = json.dumps(
+        decoded, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    if value != canonical:
+        raise ValueError("canonical_json_required")
+    return canonical
+
+
+def _require_stable_strings(values: tuple[str, ...], *, field: str) -> None:
+    if any(not value or value != value.strip() for value in values):
+        raise ValueError(f"{field}_invalid")
+    if tuple(sorted(set(values))) != values:
+        raise ValueError(f"{field}_must_be_unique_sorted")
+
+
+class EvidenceLane(StrEnum):
+    OFFICIAL_CARD_DATA = "A"
+    EXACT_LIVE_GUIDE = "B"
+    ARCHETYPE_OR_MECHANIC_GUIDE = "C"
+    VERSIONED_INTERNAL_POLICY = "D"
+    BOT_DELEGATION = "E"
+
+
+class CardDisposition(StrEnum):
+    RUNTIME_EMITTED = "runtime_emitted"
+    BOT_DELEGATED = "bot_delegated"
+    SUPPRESSED_UNSUPPORTED_SURFACE = "suppressed_unsupported_surface"
+    SUPPRESSED_INSUFFICIENT_AUTHORITY = "suppressed_insufficient_authority"
+    ANALYSIS_ONLY_SIDEBOARD = "analysis_only_sideboard"
+
+
+class ClaimDisposition(StrEnum):
+    RUNTIME_EMITTED = "runtime_emitted"
+    CONTRACT_ONLY = "contract_only"
+    BOT_DELEGATED = "bot_delegated"
+    SUPPRESSED_UNSUPPORTED_SURFACE = "suppressed_unsupported_surface"
+    SUPPRESSED_INSUFFICIENT_AUTHORITY = "suppressed_insufficient_authority"
+
+
+class GlobalValueDecisionKind(StrEnum):
+    COPY_BASELINE = "copy_baseline"
+    AUTHORIZED_OVERLAY = "authorized_overlay"
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceAuthority:
+    lane: EvidenceLane
+    authority_id: str
+    source_identity: str
+    as_of_date: str
+    claim_kind: str
+    content_sha256: str
+    exact_deck_fingerprint: str | None
+    runtime_authorized: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class LayeredEvidenceContract:
+    deck_fingerprint: str
+    authorities: tuple[EvidenceAuthority, ...]
+    exact_guide_authority: bool
+    layered_coverage_numerator: int
+    layered_coverage_denominator: int
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class CardDispositionRow:
+    deck_fingerprint: str
+    composite_card_key: str
+    zone: Literal["main_deck", "sideboard_module"]
+    official_semantics_canonical_json: bytes
+    authority_lane: EvidenceLane
+    evidence_ids: tuple[str, ...]
+    claim_ids: tuple[str, ...]
+    physical_owner: str
+    disposition: CardDisposition
+    runtime_paths: tuple[str, ...]
+    reason_code: str
+
+    def __post_init__(self) -> None:
+        _canonical_json(self.official_semantics_canonical_json)
+        _require_stable_strings(self.evidence_ids, field="evidence_ids")
+        _require_stable_strings(self.claim_ids, field="claim_ids")
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimDispositionRow:
+    deck_fingerprint: str
+    claim_id: str
+    claim_kind: str
+    evidence_id: str
+    disposition: ClaimDisposition
+    runtime_paths: tuple[str, ...]
+    reason_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class DispositionLedger:
+    deck_fingerprint: str
+    cards: tuple[CardDispositionRow, ...]
+    claims: tuple[ClaimDispositionRow, ...]
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalValueDecision:
+    deck_fingerprint: str
+    key: str
+    kind: GlobalValueDecisionKind
+    baseline_canonical_json: bytes
+    emitted_canonical_json: bytes
+    authority_id: str
+    claim_ids: tuple[str, ...]
+    reason: str
+
+    def __post_init__(self) -> None:
+        _canonical_json(self.baseline_canonical_json)
+        _canonical_json(self.emitted_canonical_json)
+        _require_stable_strings(self.claim_ids, field="globalvalue_claim_ids")
+        if (
+            self.kind is GlobalValueDecisionKind.COPY_BASELINE
+            and self.baseline_canonical_json != self.emitted_canonical_json
+        ):
+            raise ValueError("globalvalue_copy_baseline_mismatch")
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalValuesDecisionLedger:
+    deck_fingerprint: str
+    baseline_sha256: str
+    decisions: tuple[GlobalValueDecision, ...]
+    content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class MulliganRuleModel:
+    card_id: str
+    selector_kind: str
+    selector_canonical_json: bytes
+    action: Literal["hold", "discard"]
+    condition_canonical_json: bytes
+    reason: str
+    confidence: str
+    source_claim_ids: tuple[str, ...]
+    claim_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.card_id or not self.selector_kind or self.action not in {
+            "hold",
+            "discard",
+        }:
+            raise ValueError("mulligan_rule_invalid")
+        _canonical_json(self.selector_canonical_json)
+        _canonical_json(self.condition_canonical_json)
+        _require_stable_strings(self.source_claim_ids, field="mulligan_source_claim_ids")
+
+    @property
+    def identity(self) -> tuple[str, str, bytes, str, bytes]:
+        return (
+            self.card_id,
+            self.selector_kind,
+            self.selector_canonical_json,
+            self.action,
+            self.condition_canonical_json,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MulliganSuppressionModel:
+    card_id: str
+    action: Literal["hold", "discard", "none"]
+    reason_code: str
+    source_claim_ids: tuple[str, ...]
+    claim_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.card_id or self.action not in {"hold", "discard", "none"}:
+            raise ValueError("mulligan_suppression_invalid")
+        _require_stable_strings(self.source_claim_ids, field="suppression_source_claim_ids")
+
+
+@dataclass(frozen=True, slots=True)
+class BotDelegationModel:
+    card_id: str
+    evidence_lane: Literal["E"]
+    policy_id: Literal["BOT_NATIVE_PRE_RUN"]
+    reason_code: str
+
+    def __post_init__(self) -> None:
+        if (
+            not self.card_id
+            or self.evidence_lane != "E"
+            or self.policy_id != "BOT_NATIVE_PRE_RUN"
+            or not self.reason_code
+        ):
+            raise ValueError("bot_delegation_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class MulliganPlanModel:
+    deck_name: str
+    rules: tuple[MulliganRuleModel, ...]
+    suppressed: tuple[MulliganSuppressionModel, ...]
+    bot_delegated: tuple[BotDelegationModel, ...]
+    merged_duplicate_rule_count: int
+
+    def __post_init__(self) -> None:
+        identities = tuple(rule.identity for rule in self.rules)
+        if len(set(identities)) != len(identities):
+            raise ValueError("mulligan_duplicate_rule_identity")
+        if tuple(sorted(identities)) != identities:
+            raise ValueError("mulligan_rule_order_unstable")
+        delegated = tuple(row.card_id for row in self.bot_delegated)
+        if len(set(delegated)) != len(delegated) or tuple(sorted(delegated)) != delegated:
+            raise ValueError("mulligan_delegation_order_unstable")
+        exact_cards = {rule.card_id for rule in self.rules if rule.selector_kind == "card"}
+        if exact_cards.intersection(delegated):
+            raise ValueError("mulligan_card_ruled_and_delegated")
+        if self.merged_duplicate_rule_count < 0:
+            raise ValueError("mulligan_merged_duplicate_count_invalid")
+
+    def to_report(self) -> dict[str, Any]:
+        return {
+            "deck_name": self.deck_name,
+            "rules": [
+                {
+                    "card": rule.card_id,
+                    "selector_kind": rule.selector_kind,
+                    "selector": json.loads(rule.selector_canonical_json),
+                    "action": rule.action,
+                    "condition": json.loads(rule.condition_canonical_json),
+                    "reason": rule.reason,
+                    "confidence": rule.confidence,
+                    "source_claim_ids": list(rule.source_claim_ids),
+                    **({"claim_id": rule.claim_id} if rule.claim_id else {}),
+                }
+                for rule in self.rules
+            ],
+            "suppressed_rules": [
+                {
+                    "card": row.card_id,
+                    "action": row.action,
+                    "reason": row.reason_code,
+                    "source_claim_ids": list(row.source_claim_ids),
+                    **({"claim_id": row.claim_id} if row.claim_id else {}),
+                }
+                for row in self.suppressed
+            ],
+            "bot_delegated": [
+                {
+                    "card_id": row.card_id,
+                    "evidence_lane": row.evidence_lane,
+                    "policy_id": row.policy_id,
+                    "reason_code": row.reason_code,
+                }
+                for row in self.bot_delegated
+            ],
+            "merged_duplicate_rule_count": self.merged_duplicate_rule_count,
+        }
+
+
+_RUNTIME_OWNERS = {
+    "GlobalValues": "globalvalues",
+    "Mulligan": "mulligan",
+    "CardID": "cardid",
+    "Combo": "combo",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSurfaceDecision:
+    family: Literal["GlobalValues", "Mulligan", "CardID", "Combo"]
+    relative_path: str
+    owner: str
+    decision_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.family not in _RUNTIME_OWNERS:
+            raise ValueError("runtime_surface_family_unknown")
+        if self.owner != _RUNTIME_OWNERS[self.family]:
+            raise ValueError("runtime_surface_owner_unknown")
+        if not self.relative_path or "\\" in self.relative_path:
+            raise ValueError("runtime_surface_path_invalid")
+        if self.relative_path.startswith("/") or any(
+            part in {"", ".", ".."} for part in self.relative_path.split("/")
+        ):
+            raise ValueError("runtime_surface_path_invalid")
+        _require_stable_strings(self.decision_ids, field="runtime_surface_decision_ids")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSurfacePlan:
+    surfaces: tuple[RuntimeSurfaceDecision, ...]
+
+    def __post_init__(self) -> None:
+        paths = tuple(surface.relative_path for surface in self.surfaces)
+        if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
+            raise ValueError("runtime_surface_paths_not_unique_sorted")
+        families = tuple(surface.family for surface in self.surfaces)
+        if families.count("GlobalValues") != 1 or families.count("Mulligan") != 1:
+            raise ValueError("runtime_surface_core_missing_or_duplicate")
+        core_paths = {surface.family: surface.relative_path for surface in self.surfaces}
+        if (
+            core_paths["GlobalValues"] != "GlobalValues.json"
+            or core_paths["Mulligan"] != "Mulligan.json"
+        ):
+            raise ValueError("runtime_surface_core_path_invalid")
+        forbidden = {"Presume.json", "Concede.json", "CardBehavior.json"}
+        if forbidden.intersection(paths):
+            raise ValueError("runtime_surface_forbidden")
+
+    @property
+    def expected_files(self) -> tuple[str, ...]:
+        return tuple(surface.relative_path for surface in self.surfaces)
