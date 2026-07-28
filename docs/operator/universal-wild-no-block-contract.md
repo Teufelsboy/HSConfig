@@ -205,7 +205,10 @@ The universal matrix test covers:
 - CuteWarrior
 
 The audited acceptance suite also names one stable semantic boundary for every
-deck. These checks pin meaning, not warning totals or generated-file order:
+deck. These checks pin meaning, not warning totals or generated-file order.
+Negative boundaries follow the exact suppressed source claim and reason, or an
+explicit unsupported condition. They do not reject an otherwise supported row
+merely because the same CardID also exposes a warning-only mechanic:
 
 | Deck | Audited semantic boundary |
 | --- | --- |
@@ -219,7 +222,7 @@ deck. These checks pin meaning, not warning totals or generated-file order:
 | MechPala | Zilliax modules remain sideboard analysis entities, own no runtime surfaces, and do not become Mulligan keeps. |
 | Kingslayer | `DEEP_014` is not an inferred keep, and unsupported attack timing is not emitted for the audited Pirate cards. |
 | Boarlock | No inferred Fracking keep, Combo sequence, or hero-power value is emitted. |
-| PirateDH | Outcast/hand-position and location activation remain visible but absent from runtime JSON; forbidden legacy surfaces remain absent. |
+| PirateDH | Outcast/hand-position and location activation remain visible but absent from runtime JSON; aggregate `CardBehavior.json`, `Presume.json`, and `Concede.json` remain absent. |
 | CuteWarrior | The deck remains supplemental, load-safe, and non-authoritative; unresolved Choose One or placement behavior is not emitted. |
 
 Each deck must produce `VALID_PACKAGE`, `runtime_load_safe=true`,
