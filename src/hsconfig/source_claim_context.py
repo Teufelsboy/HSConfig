@@ -5,8 +5,8 @@ from typing import Any, Mapping
 
 
 MULLIGAN_CONTEXT_PATTERNS = (
-    re.compile(r"\bmulligan\b"),
-    re.compile(r"\bopening[ -]hand\b"),
+    re.compile(r"\bmulligan(?:ing)?\b"),
+    re.compile(r"\bopening[ -]hand(?![\w-])"),
 )
 BOILERPLATE_MARKERS = (
     "follow us on twitter",

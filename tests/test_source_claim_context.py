@@ -11,6 +11,8 @@ from hsconfig.source_claim_context import has_explicit_mulligan_context
         "Fixture One changes the Hero Power at the start of the game.",
         "Use premulligan planning for Fixture One.",
         "Fixture One supports the opening handrail setup.",
+        "Use an opening hand-off with Fixture One.",
+        "Follow the opening hand-written plan for Fixture One.",
     ],
 )
 def test_ordinary_strategy_text_has_no_explicit_mulligan_context(text):
@@ -21,6 +23,7 @@ def test_ordinary_strategy_text_has_no_explicit_mulligan_context(text):
     "text",
     [
         "Mulligan: keep Fixture One.",
+        "When mulliganing, keep Fixture One.",
         "Keep Fixture One in the opening hand.",
         "Keep Fixture One in the opening-hand.",
     ],

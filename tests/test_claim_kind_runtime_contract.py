@@ -677,6 +677,14 @@ def test_public_guide_mulligan_with_exact_authority_can_lower():
             "Fixture One supports the opening handrail setup.",
             id="opening-hand-substring-without-phrase-boundary",
         ),
+        pytest.param(
+            "Use an opening hand-off with Fixture One.",
+            id="opening-hand-off-hyphen-suffix",
+        ),
+        pytest.param(
+            "Follow the opening hand-written plan for Fixture One.",
+            id="opening-hand-written-hyphen-suffix",
+        ),
     ],
 )
 def test_exact_public_guide_claim_requires_explicit_opening_hand_context(
@@ -696,9 +704,24 @@ def test_exact_public_guide_claim_requires_explicit_opening_hand_context(
     assert decision.reason == "mulligan_requires_explicit_opening_hand_context"
 
 
-def test_exact_public_guide_explicit_mulligan_prose_can_lower():
+@pytest.mark.parametrize(
+    "evidence_text_short",
+    [
+        pytest.param(
+            "Mulligan: keep Fixture One.",
+            id="mulligan-token",
+        ),
+        pytest.param(
+            "When mulliganing, keep Fixture One.",
+            id="mulliganing-grammatical-form",
+        ),
+    ],
+)
+def test_exact_public_guide_explicit_mulligan_prose_can_lower(
+    evidence_text_short,
+):
     bundle, deck_identity = _canonical_mulligan_receipt_bundle(
-        claim_overrides={"evidence_text_short": "Mulligan: keep Fixture One."},
+        claim_overrides={"evidence_text_short": evidence_text_short},
     )
 
     decision = can_lower_to_mulligan(
