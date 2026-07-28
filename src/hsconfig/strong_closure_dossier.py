@@ -10,8 +10,8 @@ from hsconfig.io import read_json
 from hsconfig.research_result_contract import classify_research_result_contract
 from hsconfig.research_result_validator import validate_research_result_payload
 from hsconfig.strong_promotion_report import build_strong_promotion_report
+from hsconfig.visionai_registry import NORMAL_APPLY_AUTHORITY
 
-NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
 DIAGNOSTIC_AUTHORITY = "diagnostic_only"
 
 

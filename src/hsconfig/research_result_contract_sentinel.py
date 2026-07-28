@@ -12,8 +12,8 @@ from hsconfig.research_result_validator import (
     validate_fields_yaml_payload,
     validate_research_result_payload,
 )
+from hsconfig.visionai_registry import NORMAL_APPLY_AUTHORITY
 
-NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
 DIAGNOSTIC_AUTHORITY = "diagnostic_only"
 
 
