@@ -70,7 +70,27 @@ def _json_files(path: Path) -> dict[str, Any]:
     }
 
 
-def _matching_mapping_lines(path: Path, config_dir: str) -> list[str]:
+def _deck_name_from_manifest(package_root: Path, *, fallback: str) -> str:
+    manifest_path = package_root / "reports" / "input_manifest.json"
+    if not manifest_path.exists():
+        return fallback
+    manifest = read_json(manifest_path)
+    if not isinstance(manifest, dict):
+        return fallback
+    deck_name = str(manifest.get("deck_name") or "").strip()
+    if any(char in deck_name for char in "\r\n="):
+        raise ValueError(
+            "Deck name is not safe for deck_config.ini mapping: "
+            f"{deck_name!r}"
+        )
+    return deck_name or fallback
+
+
+def _mapping_lines_for_deck_name(
+    path: Path,
+    *,
+    expected_deck_name: str,
+) -> list[str]:
     if not path.is_file():
         return []
     matched_lines = []
@@ -78,10 +98,26 @@ def _matching_mapping_lines(path: Path, config_dir: str) -> list[str]:
         stripped = line.strip()
         if not stripped or stripped.startswith(("#", ";")) or "=" not in stripped:
             continue
-        _, value = stripped.split("=", 1)
-        if value.strip() == config_dir:
+        key, _ = stripped.split("=", 1)
+        if key.strip() == expected_deck_name:
             matched_lines.append(line)
     return matched_lines
+
+
+def _matching_mapping_lines(
+    path: Path,
+    *,
+    expected_deck_name: str,
+    config_dir: str,
+) -> list[str]:
+    return [
+        line
+        for line in _mapping_lines_for_deck_name(
+            path,
+            expected_deck_name=expected_deck_name,
+        )
+        if line.split("=", 1)[1].strip() == config_dir
+    ]
 
 
 def _compare_json(package_value: Any, runtime_value: Any) -> _JsonComparison:
@@ -141,6 +177,10 @@ def build_runtime_package_match_report(
     package_dir = package / "CustomConfig" / resolved_config_dir
     runtime_dir = runtime / "CustomConfig" / resolved_config_dir
     deck_config_ini = runtime / "CustomConfig" / "deck_config.ini"
+    expected_deck_name = _deck_name_from_manifest(
+        package,
+        fallback=resolved_config_dir,
+    )
 
     package_files = _json_files(package_dir)
     runtime_files = _json_files(runtime_dir)
@@ -166,7 +206,17 @@ def build_runtime_package_match_report(
                 }
             )
 
-    matched_lines = _matching_mapping_lines(deck_config_ini, resolved_config_dir)
+    matched_lines = _matching_mapping_lines(
+        deck_config_ini,
+        expected_deck_name=expected_deck_name,
+        config_dir=resolved_config_dir,
+    )
+    deck_name_mapping_lines = _mapping_lines_for_deck_name(
+        deck_config_ini,
+        expected_deck_name=expected_deck_name,
+    )
+    matching_mapping_count = len(matched_lines)
+    mapping_ambiguous = len(deck_name_mapping_lines) > 1
     mentions_config_dir = bool(matched_lines)
     status = "matched"
     if (
@@ -175,7 +225,8 @@ def build_runtime_package_match_report(
         or missing_in_runtime
         or extra_in_runtime
         or semantic_mismatches
-        or not mentions_config_dir
+        or matching_mapping_count != 1
+        or mapping_ambiguous
     ):
         status = "mismatch"
 
@@ -187,6 +238,9 @@ def build_runtime_package_match_report(
         "package_root": str(package),
         "runtime_root": str(runtime),
         "config_dir": resolved_config_dir,
+        "expected_deck_name": expected_deck_name,
+        "matching_mapping_count": matching_mapping_count,
+        "mapping_ambiguous": mapping_ambiguous,
         "package_config_path": str(package_dir),
         "runtime_config_path": str(runtime_dir),
         "package_config_exists": package_dir.is_dir(),

@@ -13,6 +13,14 @@ def test_runtime_match_cli_reports_matched_package(tmp_path: Path, capsys):
         deck.mkdir(parents=True)
         write_json(deck / "GlobalValues.json", {"GameCardId": "GlobalValues"})
         write_json(deck / "Mulligan.json", {"Mulligan": {"values": []}})
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": "fixture",
+            "runtime_root": "unused",
+        },
+    )
     (runtime / "CustomConfig" / "deck_config.ini").write_text(
         "ShadowPriest=shadowpriest\n",
         encoding="utf-8",

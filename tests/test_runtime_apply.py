@@ -1647,6 +1647,9 @@ def test_apply_package_receipt_includes_runtime_package_match(tmp_path: Path):
     assert receipt["runtime_package_match"]["status"] == "matched"
     assert receipt["runtime_package_match"]["runtime_write_performed"] is False
     assert receipt["runtime_package_match"]["runtime_permission_impact"] == "none"
+    assert receipt["runtime_package_match"]["expected_deck_name"] == "Gate Deck"
+    assert receipt["runtime_package_match"]["matching_mapping_count"] == 1
+    assert receipt["runtime_package_match"]["mapping_ambiguous"] is False
 
 
 def test_apply_package_rolls_back_when_runtime_package_match_fails(

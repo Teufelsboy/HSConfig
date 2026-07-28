@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.apply_gate import evaluate_apply_gate
-from hsconfig.io import file_sha256, read_json, write_json
+from hsconfig.io import file_sha256, write_json
 from hsconfig.runtime_apply_receipts import (
     build_fake_apply_receipt,
     runtime_snapshot,
@@ -14,7 +14,10 @@ from hsconfig.runtime_apply_receipts import (
     write_fake_apply_receipt,
     write_runtime_write_history,
 )
-from hsconfig.runtime_package_match import assert_runtime_matches_package
+from hsconfig.runtime_package_match import (
+    _deck_name_from_manifest,
+    assert_runtime_matches_package,
+)
 from hsconfig.strict_package_validation import (
     LINKED_RUNTIME_OWNER_EVIDENCE_INVALID,
     LINKED_RUNTIME_OWNER_EVIDENCE_MISSING,
@@ -349,18 +352,6 @@ def _restore_runtime_target_snapshot(
         shutil.copy2(backup_deck_config, deck_config)
     elif deck_config.exists():
         deck_config.unlink()
-
-
-def _deck_name_from_manifest(package_root: Path, *, fallback: str) -> str:
-    manifest_path = package_root / "reports" / "input_manifest.json"
-    if not manifest_path.exists():
-        return fallback
-    manifest = read_json(manifest_path)
-    if not isinstance(manifest, dict):
-        return fallback
-    deck_name = str(manifest.get("deck_name") or "").strip()
-    _validate_ini_key(deck_name)
-    return deck_name or fallback
 
 
 def _update_deck_config_ini(
