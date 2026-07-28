@@ -16,6 +16,10 @@ PYTHON_WORKFLOWS = (
     "contract-spine.yml",
     "full-test-suite.yml",
 )
+DEPENDABOT_VERSION_UPDATE_CONFIGS = (
+    ROOT / ".github" / "dependabot.yml",
+    ROOT / ".github" / "dependabot.yaml",
+)
 
 
 def _workflow_commands() -> list[str]:
@@ -202,6 +206,19 @@ def test_runtime_dependencies_declare_yaml_parser():
     assert any(
         dependency.lower().startswith("pyyaml")
         for dependency in project["project"]["dependencies"]
+    )
+
+
+def test_sole_main_policy_disables_dependabot_version_update_configuration():
+    present_configs = [
+        path.relative_to(ROOT).as_posix()
+        for path in DEPENDABOT_VERSION_UPDATE_CONFIGS
+        if path.exists()
+    ]
+
+    assert present_configs == [], (
+        "Dependabot version updates create branches and pull requests, which "
+        "violates the repository's sole-main policy"
     )
 
 

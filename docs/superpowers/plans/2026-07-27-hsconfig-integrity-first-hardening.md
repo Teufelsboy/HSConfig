@@ -871,7 +871,7 @@ refactor: extract immutable configure stages
 - Create: `tests/test_output_inventory.py`
 - Create: `SECURITY.md`
 - Create: `CONTRIBUTING.md`
-- Create: `.github/dependabot.yml`
+- Modify: `tests/test_ci_contract.py`
 - Modify: `.github/workflows/contract-guardrails.yml`
 - Modify: `.github/workflows/contract-spine.yml`
 - Modify: `.github/workflows/full-test-suite.yml`
@@ -903,7 +903,13 @@ Document a recommended one-current-package-per-deck convention and use the inven
 
 - [ ] **Step 5: Add repository maintenance files**
 
-`SECURITY.md` documents private reporting and explicitly excludes runtime logs/replays from issues. `CONTRIBUTING.md` documents TDD, no raw runtime evidence, the single operator authority, and required verification. Dependabot covers GitHub Actions and pip monthly.
+`SECURITY.md` documents private reporting and explicitly excludes runtime
+logs/replays from issues. `CONTRIBUTING.md` documents TDD, no raw runtime
+evidence, the single operator authority, and required verification.
+Dependency maintenance uses immutable GitHub Actions pins, `pip-audit`, and
+deliberate manual updates. While the sole-main policy is active, do not add a
+Dependabot version-update configuration or other automation that creates
+dependency-update branches or pull requests.
 
 - [ ] **Step 6: Pin actions immutably**
 
