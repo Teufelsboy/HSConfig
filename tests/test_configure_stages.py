@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import math
+import struct
 from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, dataclass, make_dataclass
+from typing import Any
 
 import pytest
 
@@ -10,6 +13,15 @@ import pytest
 class MutableNestedStageValue:
     labels: list[str]
     payload: dict[str, list[int]]
+
+
+class MutableUnsupported(list):
+    pass
+
+
+@dataclass
+class CyclicStageValue:
+    child: Any = None
 
 
 def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
@@ -103,6 +115,152 @@ def test_stage_recursively_freezes_nested_dataclass_and_list_aliases() -> None:
         frozen_nested["labels"].append("stage-mutation")
     with pytest.raises(TypeError):
         frozen_nested["payload"]["values"][0] = 99
+
+
+def test_stage_construction_rejects_unsupported_mutable_list_subclass() -> None:
+    from hsconfig.configure_stages import build_verified_deck_stage
+
+    unsafe = MutableUnsupported(["aliased"])
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage values must use supported canonical types at "
+            r"identity\.unsafe; received "
+            r"tests\.test_configure_stages\.MutableUnsupported"
+        ),
+    ):
+        build_verified_deck_stage(
+            identity={"unsafe": unsafe},
+            cards=[],
+            input_verification={"status": "verified"},
+        )
+
+
+@pytest.mark.parametrize(
+    "cycle_factory",
+    [
+        pytest.param(lambda: _self_referential_list(), id="list"),
+        pytest.param(lambda: _self_referential_mapping(), id="mapping"),
+        pytest.param(lambda: _self_referential_dataclass(), id="dataclass"),
+    ],
+)
+@pytest.mark.parametrize("boundary", ["construction", "digest"])
+def test_stage_cycles_fail_explicitly_and_deterministically(
+    cycle_factory,
+    boundary: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        stage_digest,
+    )
+
+    messages = []
+    for _attempt in range(2):
+        cyclic = cycle_factory()
+        with pytest.raises(
+            ValueError,
+            match=r"Stage values must be acyclic; cycle detected at ",
+        ) as error:
+            if boundary == "construction":
+                build_verified_deck_stage(
+                    identity={"cyclic": cyclic},
+                    cards=[],
+                    input_verification={"status": "verified"},
+                )
+            else:
+                stage_digest(cyclic)
+        messages.append(str(error.value))
+
+    assert messages[0] == messages[1]
+
+
+_NON_FINITE_FLOATS = [
+    pytest.param(
+        struct.unpack(">d", bytes.fromhex("7ff8000000000001"))[0],
+        id="nan-payload-1",
+    ),
+    pytest.param(
+        struct.unpack(">d", bytes.fromhex("7ff8000000000002"))[0],
+        id="nan-payload-2",
+    ),
+    pytest.param(float("inf"), id="positive-infinity"),
+    pytest.param(float("-inf"), id="negative-infinity"),
+]
+
+
+@pytest.mark.parametrize("value", _NON_FINITE_FLOATS)
+@pytest.mark.parametrize("position", ["scalar", "mapping-value", "mapping-key"])
+def test_non_finite_floats_are_rejected_at_stage_boundaries(
+    value: float,
+    position: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        stage_digest,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"Stage values must use finite floats at ",
+    ):
+        if position == "scalar":
+            stage_digest(value)
+        elif position == "mapping-value":
+            build_verified_deck_stage(
+                identity={"unsafe": value},
+                cards=[],
+                input_verification={"status": "verified"},
+            )
+        else:
+            build_verified_deck_stage(
+                identity={value: "unsafe"},
+                cards=[],
+                input_verification={"status": "verified"},
+            )
+
+
+def test_distinct_nan_keys_are_rejected_independent_of_insertion_order() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    first_nan = struct.unpack(">d", bytes.fromhex("7ff8000000000001"))[0]
+    second_nan = struct.unpack(">d", bytes.fromhex("7ff8000000000002"))[0]
+    left = {first_nan: "first", second_nan: "second"}
+    right = {second_nan: "second", first_nan: "first"}
+
+    for value in (left, right):
+        with pytest.raises(
+            ValueError,
+            match=r"Stage values must use finite floats at ",
+        ):
+            stage_digest(value)
+
+
+def test_finite_float_canonicalization_preserves_binary_distinctions() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    assert stage_digest(0.0) != stage_digest(-0.0)
+    assert stage_digest(1.0) != stage_digest(math.nextafter(1.0, 2.0))
+
+
+def test_acyclic_shared_references_do_not_trigger_false_cycle_detection() -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+    )
+
+    shared = [{"value": 1}]
+    stage = build_verified_deck_stage(
+        identity={"left": shared, "right": shared},
+        cards=[],
+        input_verification={"status": "verified"},
+    )
+    shared[0]["value"] = 99
+
+    assert materialize_stage_value(stage.identity) == {
+        "left": [{"value": 1}],
+        "right": [{"value": 1}],
+    }
 
 
 @pytest.mark.parametrize(
@@ -208,3 +366,21 @@ def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
         stage.warnings[0]["reason"] = "mutated"
     with pytest.raises(FrozenInstanceError):
         stage.runtime_files = {}
+
+
+def _self_referential_list() -> list[Any]:
+    value: list[Any] = []
+    value.append(value)
+    return value
+
+
+def _self_referential_mapping() -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    value["self"] = value
+    return value
+
+
+def _self_referential_dataclass() -> CyclicStageValue:
+    value = CyclicStageValue()
+    value.child = value
+    return value

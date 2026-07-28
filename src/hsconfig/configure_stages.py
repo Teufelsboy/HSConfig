@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass
 from types import MappingProxyType
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 
 StageObserver = Callable[[str, str], None]
+_MAPPING_PROXY_TYPE = type(MappingProxyType({}))
 
 
 class _FrozenList(tuple):
@@ -58,9 +61,15 @@ def build_verified_deck_stage(
     input_verification: Mapping[str, Any],
 ) -> VerifiedDeckStage:
     return VerifiedDeckStage(
-        identity=_freeze_mapping(identity),
-        cards=tuple(_freeze_mapping(card) for card in cards),
-        input_verification=_freeze_mapping(input_verification),
+        identity=_freeze_mapping(identity, path="identity"),
+        cards=tuple(
+            _freeze_mapping(card, path=f"cards[{index}]")
+            for index, card in enumerate(cards)
+        ),
+        input_verification=_freeze_mapping(
+            input_verification,
+            path="input_verification",
+        ),
     )
 
 
@@ -71,15 +80,22 @@ def build_lowered_runtime_stage(
     source_contract: Mapping[str, Any],
 ) -> LoweredRuntimeStage:
     return LoweredRuntimeStage(
-        runtime_files=_freeze_mapping(runtime_files),
-        warnings=tuple(_freeze_mapping(warning) for warning in warnings),
-        source_contract=_freeze_mapping(source_contract),
+        runtime_files=_freeze_mapping(runtime_files, path="runtime_files"),
+        warnings=tuple(
+            _freeze_mapping(warning, path=f"warnings[{index}]")
+            for index, warning in enumerate(warnings)
+        ),
+        source_contract=_freeze_mapping(
+            source_contract,
+            path="source_contract",
+        ),
     )
 
 
 def stage_digest(value: Any) -> str:
+    frozen_value = _freeze_value(value, path="$", active={})
     canonical = json.dumps(
-        _typed_canonical_value(value),
+        _typed_canonical_value(frozen_value),
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -102,63 +118,210 @@ def observe_stage(
 
 
 def materialize_stage_value(value: Any) -> Any:
+    return _materialize_frozen_value(
+        _freeze_value(value, path="$", active={})
+    )
+
+
+def _materialize_frozen_value(value: Any) -> Any:
     if isinstance(value, _FrozenDataclass):
         return {
-            field_name: materialize_stage_value(item)
+            field_name: _materialize_frozen_value(item)
             for field_name, item in value.field_values
         }
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            field.name: materialize_stage_value(getattr(value, field.name))
+            field.name: _materialize_frozen_value(getattr(value, field.name))
             for field in fields(value)
         }
     if isinstance(value, Mapping):
         return {
-            key: materialize_stage_value(item)
+            key: _materialize_frozen_value(item)
             for key, item in value.items()
         }
     if isinstance(value, (tuple, list)):
-        return [materialize_stage_value(item) for item in value]
+        return [_materialize_frozen_value(item) for item in value]
     if isinstance(value, (set, frozenset)):
         return sorted(
-            (materialize_stage_value(item) for item in value),
+            (_materialize_frozen_value(item) for item in value),
             key=_canonical_sort_key,
         )
     return value
 
 
-def _freeze_mapping(value: Mapping[Any, Any]) -> Mapping[Any, Any]:
-    return MappingProxyType(
-        {
-            key: _freeze_value(item)
-            for key, item in value.items()
-        }
+def _freeze_mapping(
+    value: Mapping[Any, Any],
+    *,
+    path: str,
+) -> Mapping[Any, Any]:
+    frozen = _freeze_value(value, path=path, active={})
+    if not isinstance(frozen, Mapping):
+        raise TypeError(
+            f"Stage value at {path} must be a supported mapping; "
+            f"received {_qualified_type_name(value)}"
+        )
+    return frozen
+
+
+def _freeze_value(
+    value: Any,
+    *,
+    path: str,
+    active: dict[int, str],
+) -> Any:
+    value_type = type(value)
+    if value is None or value_type in {bool, int, str, bytes}:
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise ValueError(
+                f"Stage values must use finite floats at {path}; "
+                f"received {value.hex()}"
+            )
+        return value
+    if isinstance(value, _FrozenDataclass):
+        with _active_value(value, path=path, active=active):
+            return _FrozenDataclass(
+                qualified_type=value.qualified_type,
+                field_values=tuple(
+                    (
+                        field_name,
+                        _freeze_value(
+                            item,
+                            path=f"{path}.{field_name}",
+                            active=active,
+                        ),
+                    )
+                    for field_name, item in value.field_values
+                ),
+            )
+    if is_dataclass(value) and not isinstance(value, type):
+        with _active_value(value, path=path, active=active):
+            return _FrozenDataclass(
+                qualified_type=_qualified_type_name(value),
+                field_values=tuple(
+                    (
+                        field.name,
+                        _freeze_value(
+                            getattr(value, field.name),
+                            path=f"{path}.{field.name}",
+                            active=active,
+                        ),
+                    )
+                    for field in fields(value)
+                ),
+            )
+    if value_type in {dict, _MAPPING_PROXY_TYPE}:
+        with _active_value(value, path=path, active=active):
+            frozen_entries = []
+            for index, (key, item) in enumerate(value.items()):
+                frozen_key = _freeze_value(
+                    key,
+                    path=f"{path}[key#{index}]",
+                    active=active,
+                )
+                frozen_item = _freeze_value(
+                    item,
+                    path=_mapping_value_path(path, key, index),
+                    active=active,
+                )
+                frozen_entries.append((frozen_key, frozen_item))
+            return MappingProxyType(dict(frozen_entries))
+    if value_type is list:
+        with _active_value(value, path=path, active=active):
+            return _FrozenList(
+                _freeze_value(
+                    item,
+                    path=f"{path}[{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    if value_type is _FrozenList:
+        with _active_value(value, path=path, active=active):
+            return _FrozenList(
+                _freeze_value(
+                    item,
+                    path=f"{path}[{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    if value_type is tuple:
+        with _active_value(value, path=path, active=active):
+            return tuple(
+                _freeze_value(
+                    item,
+                    path=f"{path}[{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    if value_type is set:
+        with _active_value(value, path=path, active=active):
+            return _FrozenSet(
+                _freeze_value(
+                    item,
+                    path=f"{path}[item#{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    if value_type is _FrozenSet:
+        with _active_value(value, path=path, active=active):
+            return _FrozenSet(
+                _freeze_value(
+                    item,
+                    path=f"{path}[item#{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    if value_type is frozenset:
+        with _active_value(value, path=path, active=active):
+            return frozenset(
+                _freeze_value(
+                    item,
+                    path=f"{path}[item#{index}]",
+                    active=active,
+                )
+                for index, item in enumerate(value)
+            )
+    raise TypeError(
+        f"Stage values must use supported canonical types at {path}; "
+        f"received {_qualified_type_name(value)}"
     )
 
 
-def _freeze_value(value: Any) -> Any:
-    if isinstance(value, _FrozenDataclass):
-        return value
-    if is_dataclass(value) and not isinstance(value, type):
-        value_type = type(value)
-        return _FrozenDataclass(
-            qualified_type=f"{value_type.__module__}.{value_type.__qualname__}",
-            field_values=tuple(
-                (field.name, _freeze_value(getattr(value, field.name)))
-                for field in fields(value)
-            ),
+@contextmanager
+def _active_value(
+    value: Any,
+    *,
+    path: str,
+    active: dict[int, str],
+) -> Iterator[None]:
+    identity = id(value)
+    if identity in active:
+        raise ValueError(
+            "Stage values must be acyclic; "
+            f"cycle detected at {path} (already active at {active[identity]})"
         )
-    if isinstance(value, Mapping):
-        return _freeze_mapping(value)
-    if isinstance(value, list):
-        return _FrozenList(_freeze_value(item) for item in value)
-    if isinstance(value, tuple):
-        return tuple(_freeze_value(item) for item in value)
-    if isinstance(value, set):
-        return _FrozenSet(_freeze_value(item) for item in value)
-    if isinstance(value, frozenset):
-        return frozenset(_freeze_value(item) for item in value)
-    return value
+    active[identity] = path
+    try:
+        yield
+    finally:
+        active.pop(identity, None)
+
+
+def _mapping_value_path(path: str, key: Any, index: int) -> str:
+    if type(key) is str and key.isidentifier():
+        return f"{path}.{key}"
+    return f"{path}[value#{index}]"
+
+
+def _qualified_type_name(value: Any) -> str:
+    value_type = type(value)
+    return f"{value_type.__module__}.{value_type.__qualname__}"
 
 
 def _typed_canonical_value(value: Any) -> dict[str, Any]:
@@ -231,6 +394,11 @@ def _typed_canonical_value(value: Any) -> dict[str, Any]:
     if isinstance(value, int):
         return {"kind": "int", "value": str(value)}
     if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(
+                "Stage values must use finite floats at canonical digest; "
+                f"received {value.hex()}"
+            )
         return {"kind": "float", "value": value.hex()}
     if isinstance(value, str):
         return {"kind": "string", "value": value}
@@ -252,4 +420,5 @@ def _encoded_typed_value(value: dict[str, Any]) -> str:
 
 
 def _canonical_sort_key(value: Any) -> str:
-    return _encoded_typed_value(_typed_canonical_value(value))
+    frozen_value = _freeze_value(value, path="$", active={})
+    return _encoded_typed_value(_typed_canonical_value(frozen_value))
