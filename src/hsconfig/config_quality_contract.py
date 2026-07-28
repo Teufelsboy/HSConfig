@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from hsconfig.compile_cardid import _is_effect_only_start_of_game_card
 from hsconfig.default_only_runtime_surfaces import (
@@ -139,6 +139,11 @@ SEMANTIC_FALLBACK_SOURCE_LANES = {
     "source_unclassified",
     "statistical_enrichment",
 }
+
+
+class _LinkedRuntimeOwnerEvidence(NamedTuple):
+    runtime_owner_card_id: str
+    runtime_emitted: bool
 
 
 def semantic_handoff_projection(report: Mapping[str, Any]) -> dict[str, Any]:
@@ -1606,9 +1611,14 @@ def _legacy_surface_check(package: Path) -> dict[str, Any]:
 def _darkbishop_boundary_check(package: Path) -> dict[str, Any]:
     mulligan_keep_present = False
     effect_runtime_present = False
-    runtime_owner_card_id = _validated_linked_runtime_owner_card_id(
+    linked_owner_evidence = _validated_linked_runtime_owner_evidence(
         package,
         DARKBISHOP_CARD_ID,
+    )
+    runtime_owner_card_id = (
+        linked_owner_evidence.runtime_owner_card_id
+        if linked_owner_evidence is not None
+        else DARKBISHOP_CARD_ID
     )
     explicit_mulligan_keep_evidence_present = (
         _has_explicit_mulligan_keep_evidence(package, DARKBISHOP_CARD_ID)
@@ -1621,9 +1631,13 @@ def _darkbishop_boundary_check(package: Path) -> dict[str, Any]:
             DARKBISHOP_CARD_ID,
         )
 
-        darkbishop_runtime = _read_json(
-            deck_dir / f"{runtime_owner_card_id}.json"
-        )
+        if linked_owner_evidence is None:
+            runtime_path = deck_dir / f"{DARKBISHOP_CARD_ID}.json"
+        elif linked_owner_evidence.runtime_emitted:
+            runtime_path = deck_dir / f"{runtime_owner_card_id}.json"
+        else:
+            continue
+        darkbishop_runtime = _read_json(runtime_path)
         if isinstance(darkbishop_runtime, Mapping):
             effect_runtime_present = (
                 effect_runtime_present or _has_runtime_effect_rows(darkbishop_runtime)
@@ -1640,33 +1654,33 @@ def _darkbishop_boundary_check(package: Path) -> dict[str, Any]:
     }
 
 
-def _validated_linked_runtime_owner_card_id(
+def _validated_linked_runtime_owner_evidence(
     package: Path,
     source_card_id: str,
-) -> str:
+) -> _LinkedRuntimeOwnerEvidence | None:
     receipt = _read_json(package / "package_derivation_receipt.json")
     ledger = _read_json(package / "reports" / "runtime_surface_ledger.json")
     if not isinstance(receipt, Mapping) or not isinstance(ledger, Mapping):
-        return source_card_id
+        return None
 
     receipt_verified, _reasons = verify_package_derivation_receipt(
         package,
         receipt,
     )
     if not receipt_verified:
-        return source_card_id
+        return None
 
     try:
         rederived_ledger = rederive_runtime_surface_ledger_from_package(package)
     except (OSError, TypeError, ValueError):
-        return source_card_id
+        return None
     if dict(ledger) != rederived_ledger:
-        return source_card_id
+        return None
 
     relations = receipt.get("linked_runtime_owners")
     linked_entities = ledger.get("linked_runtime_entities")
     if not isinstance(relations, list) or not isinstance(linked_entities, Mapping):
-        return source_card_id
+        return None
 
     source_relations = [
         relation
@@ -1675,25 +1689,47 @@ def _validated_linked_runtime_owner_card_id(
         and relation.get("source_card_id") == source_card_id
     ]
     if len(source_relations) != 1:
-        return source_card_id
+        return None
 
     relation = source_relations[0]
     runtime_card_id = str(relation.get("runtime_card_id", ""))
     link_kind = str(relation.get("link_kind", ""))
-    linked_entity = linked_entities.get(runtime_card_id)
+    source_entities = [
+        (str(runtime_id), entity)
+        for runtime_id, entity in linked_entities.items()
+        if isinstance(entity, Mapping)
+        and entity.get("source_card_id") == source_card_id
+    ]
+    if len(source_entities) != 1:
+        return None
+
+    ledger_runtime_card_id, linked_entity = source_entities[0]
+    runtime_emitted = linked_entity.get("runtime_emitted")
+    receipt_relation = (
+        source_card_id,
+        runtime_card_id,
+        link_kind,
+        f"{runtime_card_id}.json",
+    )
+    ledger_relation = (
+        linked_entity.get("source_card_id"),
+        linked_entity.get("runtime_card_id"),
+        linked_entity.get("link_kind"),
+        linked_entity.get("runtime_surface"),
+    )
     if (
         not runtime_card_id
         or runtime_card_id == source_card_id
         or not link_kind
-        or not isinstance(linked_entity, Mapping)
-        or linked_entity.get("source_card_id") != source_card_id
-        or linked_entity.get("runtime_card_id") != runtime_card_id
-        or linked_entity.get("link_kind") != link_kind
-        or linked_entity.get("runtime_surface") != f"{runtime_card_id}.json"
-        or not isinstance(linked_entity.get("runtime_emitted"), bool)
+        or ledger_runtime_card_id != runtime_card_id
+        or ledger_relation != receipt_relation
+        or not isinstance(runtime_emitted, bool)
     ):
-        return source_card_id
-    return runtime_card_id
+        return None
+    return _LinkedRuntimeOwnerEvidence(
+        runtime_owner_card_id=runtime_card_id,
+        runtime_emitted=runtime_emitted,
+    )
 
 
 def _custom_config_deck_dirs(package: Path) -> list[Path]:

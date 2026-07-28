@@ -6,7 +6,10 @@ import pytest
 from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.io import write_json
-from hsconfig.package_derivation_receipt import build_package_derivation_receipt
+from hsconfig.package_derivation_receipt import (
+    build_package_derivation_receipt,
+    verify_package_derivation_receipt,
+)
 from hsconfig.runtime_surface_ledger import (
     rederive_runtime_surface_ledger_from_package,
 )
@@ -229,6 +232,95 @@ def test_shadowpriest_darkbishop_diagnostic_ignores_unrelated_runtime_owner(
         package_root / "package_derivation_receipt.json",
         build_package_derivation_receipt(package_root),
     )
+
+    quality = build_config_quality_report(package_root)
+
+    assert quality["checks"]["darkbishop_boundary"] == {
+        "seen": False,
+        "mulligan_keep_present": False,
+        "effect_runtime_present": False,
+        "runtime_owner_card_id": "EX1_625t",
+        "explicit_mulligan_keep_evidence_present": False,
+    }
+
+
+def test_shadowpriest_darkbishop_diagnostic_rejects_extra_same_source_owner(
+    shadowpriest_package,
+):
+    package_root, _reports = shadowpriest_package
+    deck_dir = package_root / "CustomConfig" / "shadowpriest"
+    behavior_plan_path = (
+        package_root / "reports" / "card_behavior_plan_report.json"
+    )
+    behavior_plan = json.loads(behavior_plan_path.read_text(encoding="utf-8"))
+    behavior_plan["rows"].append(
+        {
+            "card_id": "SW_448",
+            "source_card_id": "SW_448",
+            "runtime_card_id": "UNRELATED_001",
+            "link_kind": "unrelated_transform",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+            "meaningful_runtime_surface": True,
+        }
+    )
+    write_json(behavior_plan_path, behavior_plan)
+
+    owner_payload = json.loads(
+        (deck_dir / "EX1_625t.json").read_text(encoding="utf-8")
+    )
+    owner_payload["GameCardId"] = "UNRELATED_001"
+    write_json(deck_dir / "UNRELATED_001.json", owner_payload)
+    ledger = rederive_runtime_surface_ledger_from_package(package_root)
+    same_source_entities = {
+        runtime_card_id
+        for runtime_card_id, entity in ledger["linked_runtime_entities"].items()
+        if entity["source_card_id"] == "SW_448"
+    }
+    assert same_source_entities == {"EX1_625t", "UNRELATED_001"}
+    write_json(
+        package_root / "reports" / "runtime_surface_ledger.json",
+        ledger,
+    )
+    receipt = build_package_derivation_receipt(package_root)
+    assert verify_package_derivation_receipt(package_root, receipt) == (True, [])
+    write_json(package_root / "package_derivation_receipt.json", receipt)
+
+    quality = build_config_quality_report(package_root)
+
+    assert quality["checks"]["darkbishop_boundary"] == {
+        "seen": False,
+        "mulligan_keep_present": False,
+        "effect_runtime_present": False,
+        "runtime_owner_card_id": "SW_448",
+        "explicit_mulligan_keep_evidence_present": False,
+    }
+
+
+def test_shadowpriest_darkbishop_diagnostic_requires_emitted_owner_surface(
+    shadowpriest_package,
+):
+    package_root, _reports = shadowpriest_package
+    owner_path = (
+        package_root
+        / "CustomConfig"
+        / "shadowpriest"
+        / "EX1_625t.json"
+    )
+    owner_payload = json.loads(owner_path.read_text(encoding="utf-8"))
+    owner_payload["GameCardId"] = "WRONG_OWNER"
+    write_json(owner_path, owner_payload)
+    ledger = rederive_runtime_surface_ledger_from_package(package_root)
+    assert (
+        ledger["linked_runtime_entities"]["EX1_625t"]["runtime_emitted"]
+        is False
+    )
+    write_json(
+        package_root / "reports" / "runtime_surface_ledger.json",
+        ledger,
+    )
+    receipt = build_package_derivation_receipt(package_root)
+    assert verify_package_derivation_receipt(package_root, receipt) == (True, [])
+    write_json(package_root / "package_derivation_receipt.json", receipt)
 
     quality = build_config_quality_report(package_root)
 
