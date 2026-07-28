@@ -253,10 +253,10 @@ CLAIM_SURFACE_REGISTRY: Mapping[str, ClaimSurfaceRule] = MappingProxyType(
 GLOBALVALUES_KEY_REGISTRY: Mapping[str, GlobalValueKeySpec] = MappingProxyType(
     {
         "GameCardId": GlobalValueKeySpec(
-            "GameCardId", "metadata", "metadata", False
+            "GameCardId", "metadata", "copy_baseline", False
         ),
         "ConfigComment": GlobalValueKeySpec(
-            "ConfigComment", "metadata", "metadata", False
+            "ConfigComment", "metadata", "copy_baseline", False
         ),
         "FirstTurnValueWeight": GlobalValueKeySpec(
             "FirstTurnValueWeight",

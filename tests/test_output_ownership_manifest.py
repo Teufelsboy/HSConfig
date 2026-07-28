@@ -1,6 +1,35 @@
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 
 
+def test_unknown_custom_config_json_names_are_unclassified_not_cardid_surfaces():
+    paths = (
+        "CustomConfig/deck/FutureOptionalSurface.json",
+        "CustomConfig/deck/notes.json",
+    )
+
+    manifest = build_output_ownership_manifest(paths)
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    for path in paths:
+        assert by_file[path]["classification"] == "unclassified"
+        assert by_file[path]["runtime_surface"] is None
+    assert manifest["summary"]["unclassified_file_count"] == 2
+    assert manifest["summary"]["runtime_surface_count"] == 0
+
+
+def test_historical_synthetic_cardid_name_remains_diagnostic_only():
+    path = "CustomConfig/discover_deck/DISCOVER_CARD.json"
+
+    manifest = build_output_ownership_manifest([path])
+    row = manifest["files"][0]
+
+    assert row["classification"] == "diagnostic"
+    assert row["runtime_surface"] is None
+    assert row["diagnostic_only"] is True
+    assert manifest["summary"]["unclassified_file_count"] == 0
+    assert manifest["summary"]["runtime_surface_count"] == 0
+
+
 def test_package_derivation_receipt_is_integrity_authority_not_second_human_gate():
     manifest = build_output_ownership_manifest(
         [

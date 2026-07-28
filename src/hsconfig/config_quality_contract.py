@@ -29,8 +29,9 @@ from hsconfig.visionai_registry import (
     FORBIDDEN_RUNTIME_SURFACES,
     NORMAL_APPLY_AUTHORITY,
     NORMAL_RUNTIME_SURFACE_BOUNDARY,
-    NORMAL_SPECIAL_RUNTIME_SURFACES,
     RUNTIME_SURFACE_ALIASES,
+    classify_runtime_surface,
+    expected_game_card_id,
     runtime_row_keys,
 )
 INTENTIONAL_OPERATOR_LEDGER_STATUSES = {
@@ -446,11 +447,10 @@ def _is_meaningful_cardid_row(row: Mapping[str, Any]) -> bool:
 
 
 def _looks_like_cardid_surface(surface: str) -> bool:
-    if surface == "CARDID.json":
-        return True
-    if not surface.endswith(".json"):
+    try:
+        return classify_runtime_surface(surface) == "conditional_card_surface"
+    except KeyError:
         return False
-    return Path(surface).name not in NORMAL_SPECIAL_RUNTIME_SURFACES
 
 
 def _numeric_value_out_of_runtime_range(value: Any) -> bool:
@@ -734,18 +734,43 @@ def _runtime_owner_card_id(row: Mapping[str, Any]) -> str:
 
 def _file_card_id(value: Any) -> str:
     name = Path(str(value or "")).name
-    if not name.endswith(".json") or name in NORMAL_SPECIAL_RUNTIME_SURFACES:
+    try:
+        if classify_runtime_surface(name) != "conditional_card_surface":
+            return ""
+    except KeyError:
         return ""
-    return name[:-5]
+    return expected_game_card_id(name) or ""
 
 
 def _runtime_value_row_keys(file_name: str) -> set[str]:
-    surface = (
-        file_name
-        if file_name in NORMAL_SPECIAL_RUNTIME_SURFACES
-        else CARDID_SURFACE_FAMILY
-    )
-    return set(runtime_row_keys(surface))
+    return set(runtime_row_keys(file_name))
+
+
+_HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES = frozenset(
+    {"CARD_DEFAULT.json"}
+)
+
+
+def _diagnostic_card_id(value: Any) -> str:
+    card_id = _file_card_id(value)
+    if card_id:
+        return card_id
+    name = Path(str(value or "")).name
+    if name in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES:
+        return name.removesuffix(".json")
+    return ""
+
+
+def _diagnostic_runtime_value_row_keys(file_name: str) -> set[str]:
+    try:
+        return _runtime_value_row_keys(file_name)
+    except KeyError:
+        if (
+            Path(file_name).name
+            not in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES
+        ):
+            raise
+        return set(runtime_row_keys(CARDID_SURFACE_FAMILY))
 
 
 def _expected_cardid_runtime_files(
@@ -1103,12 +1128,7 @@ def _runtime_cardid_value_rows(package: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for deck_dir in _custom_config_deck_dirs(package):
         for path in sorted(deck_dir.glob("*.json")):
-            if (
-                path.name in NORMAL_SPECIAL_RUNTIME_SURFACES
-                or path.name in FORBIDDEN_RUNTIME_SURFACES
-            ):
-                continue
-            card_id = _file_card_id(path.name)
+            card_id = _diagnostic_card_id(path.name)
             if not card_id:
                 continue
             payload = _read_json(path)
@@ -1528,9 +1548,18 @@ def _runtime_json_check(
     stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:
         for path in sorted(deck_dir.glob("*.json")):
-            if path.name in FORBIDDEN_RUNTIME_SURFACES:
+            try:
+                classification = classify_runtime_surface(path.name)
+            except KeyError:
+                if (
+                    path.name
+                    not in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES
+                ):
+                    continue
+                classification = "diagnostic_only"
+            if classification == "forbidden":
                 continue
-            if path.name not in NORMAL_SPECIAL_RUNTIME_SURFACES:
+            if classification == "conditional_card_surface":
                 file_card_id = _file_card_id(path.name)
                 if file_card_id and file_card_id not in expected_card_ids:
                     stray_cardid_files.append(_relative(path, package))
@@ -1552,7 +1581,8 @@ def _runtime_json_check(
                     if not isinstance(value_row, Mapping):
                         continue
                     extra_keys = sorted(
-                        set(value_row) - _runtime_value_row_keys(path.name)
+                        set(value_row)
+                        - _diagnostic_runtime_value_row_keys(path.name)
                     )
                     if extra_keys:
                         metadata_leaks.append(
@@ -1942,14 +1972,21 @@ def _config_intent_self_audit_check(
         for surface in operator.get("default_only_runtime_surfaces", [])
         if str(surface)
     ]
-    unsupported_runtime_files = [
-        item
-        for item in runtime_files
-        if Path(item).name in FORBIDDEN_RUNTIME_SURFACES
-    ]
+    unsupported_runtime_files: list[str] = []
+    for item in runtime_files:
+        try:
+            classification = classify_runtime_surface(Path(item).name)
+        except KeyError:
+            unsupported_runtime_files.append(item)
+            continue
+        if classification == "forbidden":
+            unsupported_runtime_files.append(item)
+    unsupported_runtime_file_set = set(unsupported_runtime_files)
 
     runtime_files_without_intent: list[str] = []
     for runtime_file in runtime_files:
+        if runtime_file in unsupported_runtime_file_set:
+            continue
         basename = Path(runtime_file).name
         card_id = _file_card_id(basename)
         if basename in {"GlobalValues.json", "Mulligan.json"}:

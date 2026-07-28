@@ -6,11 +6,9 @@ from typing import Any
 from hsconfig.report_ownership import build_report_ownership
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.visionai_registry import (
-    CARDID_SURFACE_FAMILY,
     DIAGNOSTIC_REPORT_PATHS,
     FORBIDDEN_RUNTIME_SURFACES,
     NORMAL_APPLY_AUTHORITY,
-    NORMAL_SPECIAL_RUNTIME_SURFACES,
     RESEARCH_REPORT_PATHS,
     runtime_surface_spec,
 )
@@ -19,6 +17,9 @@ from hsconfig.visionai_registry import (
 # Compatibility projections for existing diagnostics and sentinel imports.
 KNOWN_DIAGNOSTIC_REPORT_FILES = DIAGNOSTIC_REPORT_PATHS
 KNOWN_RESEARCH_REPORT_FILES = RESEARCH_REPORT_PATHS
+_HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_PATHS = frozenset(
+    {"CustomConfig/discover_deck/DISCOVER_CARD.json"}
+)
 
 
 def build_output_ownership_manifest(
@@ -153,6 +154,16 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
             "runtime_surface": legacy_surface,
             "diagnostic_only": True,
         }
+    if path in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_PATHS:
+        return {
+            "file": path,
+            "producer": "prepare",
+            "classification": "diagnostic",
+            "authority": "historical_synthetic_cardid_diagnostic",
+            "can_block_apply": False,
+            "runtime_surface": None,
+            "diagnostic_only": True,
+        }
     runtime_surface = _runtime_surface(path)
     if runtime_surface:
         return {
@@ -202,9 +213,7 @@ def _runtime_surface(path: str) -> str | None:
     if not path.startswith("CustomConfig/") or not path.endswith(".json"):
         return None
     filename = path.rsplit("/", 1)[-1]
-    surface = (
-        filename
-        if filename in NORMAL_SPECIAL_RUNTIME_SURFACES
-        else CARDID_SURFACE_FAMILY
-    )
-    return runtime_surface_spec(surface).file_name
+    try:
+        return runtime_surface_spec(filename).file_name
+    except KeyError:
+        return None

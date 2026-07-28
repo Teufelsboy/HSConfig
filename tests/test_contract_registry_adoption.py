@@ -12,21 +12,6 @@ from hsconfig.visionai_registry import (
 )
 
 
-PRODUCTION_MODULES = (
-    "apply_gate.py",
-    "acceptance_matrix.py",
-    "config_readiness.py",
-    "config_quality_contract.py",
-    "operator_summary.py",
-    "output_ownership_manifest.py",
-    "report_ownership.py",
-    "validate_package.py",
-    "strong_promotion_report.py",
-    "runtime_surface_ledger.py",
-    "contract_preflight.py",
-    "contract_spine_sentinel.py",
-)
-
 FORBIDDEN_REGISTRY_DEFINITIONS = {
     "NORMAL_APPLY_AUTHORITY",
     "REQUIRED_RUNTIME_SURFACES",
@@ -55,6 +40,17 @@ FORBIDDEN_CONSUMER_TABLE_NAMES = {
     "SPECIAL_RUNTIME_VALUE_ROW_KEYS",
     "SPECIAL_SURFACE_NAMES",
     "SURFACE_RUNTIME_FILES",
+}
+
+# Plan 02 Task 1 did not migrate these pre-existing research-only consumers.
+# Keep the whole production tree guarded while naming the exact legacy
+# definition each out-of-scope module is temporarily allowed to retain.
+ALLOWED_EXISTING_DEFINITION_EXCEPTIONS = {
+    "research_result_contract_sentinel.py": frozenset(
+        {"NORMAL_APPLY_AUTHORITY"}
+    ),
+    "research_status_sync.py": frozenset({"NORMAL_APPLY_AUTHORITY"}),
+    "strong_closure_dossier.py": frozenset({"NORMAL_APPLY_AUTHORITY"}),
 }
 
 
@@ -161,6 +157,42 @@ def _duplicate_contract_literals(tree: ast.AST) -> list[tuple[int, Any]]:
     return duplicates
 
 
+def _duplicate_claim_classification_literals(
+    tree: ast.AST,
+) -> list[tuple[int, str, str]]:
+    registry_projection = {
+        claim_kind: {
+            "lane": rule.required_authority_lanes[0],
+            "allowed_surfaces": tuple(
+                surface.removesuffix(".json").lower()
+                for surface in rule.allowed_surfaces
+            ),
+        }
+        for claim_kind, rule in CLAIM_SURFACE_REGISTRY.items()
+        if len(rule.required_authority_lanes) == 1
+    }
+    duplicates: list[tuple[int, str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        value = _literal_value(node)
+        if not isinstance(value, dict):
+            continue
+        for claim_kind, row in value.items():
+            if (
+                claim_kind not in registry_projection
+                or not isinstance(row, dict)
+            ):
+                continue
+            expected = registry_projection[claim_kind]
+            for field in ("lane", "allowed_surfaces"):
+                if field in row and _normalized_literal(row[field]) == (
+                    _normalized_literal(expected[field])
+                ):
+                    duplicates.append((node.lineno, str(claim_kind), field))
+    return duplicates
+
+
 def _is_projection_subset(
     candidate: dict[Any, Any],
     projection: dict[Any, Any],
@@ -172,22 +204,43 @@ def _is_projection_subset(
     )
 
 
-def test_listed_consumers_do_not_redefine_registry_contracts():
+def test_production_tree_does_not_redefine_registry_contracts():
     package_root = Path(__file__).parents[1] / "src" / "hsconfig"
     problems: list[str] = []
-    for module_name in PRODUCTION_MODULES:
-        path = package_root / module_name
+    production_modules = sorted(
+        path
+        for path in package_root.rglob("*.py")
+        if path.name != "visionai_registry.py"
+    )
+    assert production_modules
+    for path in production_modules:
+        module_name = path.relative_to(package_root).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         assigned = _assignment_names(tree)
         duplicate_names = sorted(
-            assigned
-            & (FORBIDDEN_REGISTRY_DEFINITIONS | FORBIDDEN_CONSUMER_TABLE_NAMES)
+            (
+                assigned
+                & (
+                    FORBIDDEN_REGISTRY_DEFINITIONS
+                    | FORBIDDEN_CONSUMER_TABLE_NAMES
+                )
+            )
+            - ALLOWED_EXISTING_DEFINITION_EXCEPTIONS.get(
+                module_name, frozenset()
+            )
         )
         if duplicate_names:
             problems.append(f"{module_name}: duplicate definitions {duplicate_names}")
         for line_number, literal in _duplicate_contract_literals(tree):
             problems.append(
                 f"{module_name}:{line_number}: duplicate contract literal {literal!r}"
+            )
+        for line_number, claim_kind, field in (
+            _duplicate_claim_classification_literals(tree)
+        ):
+            problems.append(
+                f"{module_name}:{line_number}: duplicate {field} "
+                f"classification for {claim_kind!r}"
             )
 
     assert problems == []
@@ -207,3 +260,22 @@ GLOBALVALUE_KEY_CLASSES = {
     duplicates = _duplicate_contract_literals(ast.parse(source))
 
     assert len(duplicates) == 6
+
+
+def test_adoption_guard_detects_claim_lane_and_surface_redefinitions():
+    source = """
+CLAIM_POLICY = {
+    "mulligan_keep": {
+        "lane": "runtime_lowerable",
+        "allowed_surfaces": ("mulligan",),
+        "operator_meaning": "supplemental metadata may remain local",
+    }
+}
+"""
+
+    duplicates = _duplicate_claim_classification_literals(ast.parse(source))
+
+    assert duplicates == [
+        (2, "mulligan_keep", "lane"),
+        (2, "mulligan_keep", "allowed_surfaces"),
+    ]

@@ -5,6 +5,8 @@ import pytest
 
 from hsconfig.commands.configure import _compact_config_quality_summary
 from hsconfig.config_quality_contract import (
+    _file_card_id,
+    _runtime_value_row_keys,
     build_config_quality_report,
     semantic_handoff_projection,
 )
@@ -2556,6 +2558,50 @@ def test_config_quality_exposes_clean_config_intent_self_audit(tmp_path: Path):
     assert audit["source_status_apply_blocking"] is False
     assert audit["attention"] == []
     assert audit["first_attention"] is None
+
+
+@pytest.mark.parametrize(
+    "file_name",
+    ("FutureOptionalSurface.json", "notes.json"),
+)
+def test_config_quality_runtime_helpers_fail_closed_for_unknown_json_names(
+    file_name: str,
+):
+    assert _file_card_id(file_name) == ""
+    with pytest.raises(KeyError):
+        _runtime_value_row_keys(file_name)
+
+
+def test_config_quality_reports_unknown_json_names_as_unsupported(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    unknown_paths = [
+        package / "CustomConfig" / DECK_SLUG / "FutureOptionalSurface.json",
+        package / "CustomConfig" / DECK_SLUG / "notes.json",
+    ]
+    for path in unknown_paths:
+        write_json(
+            path,
+            {
+                "GameCardId": path.stem,
+                "BeforePlayCardBonus": {
+                    "values": [{"condition": "*", "value": "6"}]
+                },
+            },
+        )
+
+    report = build_config_quality_report(package)
+    audit = report["checks"]["config_intent_self_audit"]
+
+    assert audit["unsupported_runtime_files"] == [
+        "CustomConfig/shadowpriest/FutureOptionalSurface.json",
+        "CustomConfig/shadowpriest/notes.json",
+    ]
+    assert {
+        "check": "config_intent_unsupported_runtime_files",
+        "value": audit["unsupported_runtime_files"],
+    } in report["problems"]
 
 
 def test_config_quality_accepts_surface_intent_for_special_runtime_file_intent(

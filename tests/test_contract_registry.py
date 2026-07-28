@@ -1,7 +1,11 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
+from types import MappingProxyType
 
 import pytest
 
+import hsconfig.globalvalues_key_authority as globalvalues_key_authority
+import hsconfig.source_contract_matrix as source_contract_matrix
+from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 from hsconfig.visionai_registry import (
     CLAIM_SURFACE_REGISTRY,
     FORBIDDEN_RUNTIME_SURFACES,
@@ -99,4 +103,72 @@ def test_registry_entries_repeat_their_lookup_identity():
     )
     assert all(
         spec.key == key for key, spec in GLOBALVALUES_KEY_REGISTRY.items()
+    )
+
+
+def test_every_supported_claim_policy_classification_matches_the_registry():
+    policy = source_contract_matrix.source_contract_policy_by_claim_kind()
+
+    assert set(policy) == set(SUPPORTED_ATOMIC_CLAIM_KINDS)
+    assert set(policy) == set(CLAIM_SURFACE_REGISTRY)
+    for claim_kind, rule in CLAIM_SURFACE_REGISTRY.items():
+        assert len(rule.required_authority_lanes) == 1
+        assert policy[claim_kind]["lane"] == rule.required_authority_lanes[0]
+        assert policy[claim_kind]["semantic_lane"] == rule.required_authority_lanes[0]
+        assert policy[claim_kind]["allowed_surfaces"] == tuple(
+            surface.removesuffix(".json").lower()
+            for surface in rule.allowed_surfaces
+        )
+
+
+def test_source_contract_policy_reads_claim_classification_from_registry(
+    monkeypatch,
+):
+    claim_kind = "mulligan_keep"
+    original = CLAIM_SURFACE_REGISTRY[claim_kind]
+    mutated = {
+        **CLAIM_SURFACE_REGISTRY,
+        claim_kind: replace(
+            original,
+            allowed_surfaces=(),
+            required_authority_lanes=("report_only",),
+        ),
+    }
+    monkeypatch.setattr(
+        source_contract_matrix,
+        "CLAIM_SURFACE_REGISTRY",
+        MappingProxyType(mutated),
+        raising=False,
+    )
+
+    row = source_contract_matrix.source_contract_policy_by_claim_kind()[claim_kind]
+
+    assert row["lane"] == "report_only"
+    assert row["semantic_lane"] == "report_only"
+    assert row["allowed_surfaces"] == ()
+
+
+def test_every_classified_globalvalues_key_authority_matches_the_registry():
+    for key, spec in GLOBALVALUES_KEY_REGISTRY.items():
+        assert globalvalues_key_authority.authority_for_key(key)["category"] == (
+            spec.key_class
+        )
+
+
+def test_globalvalues_key_authority_reads_key_class_from_registry(monkeypatch):
+    key = "FirstTurnValueWeight"
+    original = GLOBALVALUES_KEY_REGISTRY[key]
+    mutated = {
+        **GLOBALVALUES_KEY_REGISTRY,
+        key: replace(original, key_class="runtime_evidence_required"),
+    }
+    monkeypatch.setattr(
+        globalvalues_key_authority,
+        "GLOBALVALUES_KEY_REGISTRY",
+        MappingProxyType(mutated),
+        raising=False,
+    )
+
+    assert globalvalues_key_authority.authority_for_key(key)["category"] == (
+        "runtime_evidence_required"
     )
