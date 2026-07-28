@@ -138,6 +138,9 @@ def build_authorized_combo_case(*, deck_cards, case_id):
         "combo-marker-unordered-list",
         "combo-undirected-sentence",
         "combo-exact-decklist-coexistence",
+        "combo-prefix-collision",
+        "combo-effect-clause-then",
+        "combo-effect-clause-into",
     ],
 )
 def test_exact_source_combo_claim_without_directed_evidence_is_suppressed(case_id):
@@ -152,6 +155,39 @@ def test_exact_source_combo_claim_without_directed_evidence_is_suppressed(case_i
             "claim_id": case_id,
             "cards": ["CARD_A", "CARD_B"],
             "reason": "combo_requires_directed_source_evidence",
+        }
+    ]
+
+
+def test_every_gap_in_exact_source_three_card_combo_requires_directed_evidence():
+    result = build_authorized_combo_case(
+        deck_cards={"CARD_A", "CARD_B", "CARD_C"},
+        case_id="combo-three-step-effect-clause",
+    )
+
+    assert result["combos"] == []
+    assert result["suppressed"] == [
+        {
+            "claim_id": "combo-three-step-effect-clause",
+            "cards": ["CARD_A", "CARD_B", "CARD_C"],
+            "reason": "combo_requires_directed_source_evidence",
+        }
+    ]
+
+
+def test_combo_deck_membership_reason_precedes_directed_evidence_reason():
+    result = build_authorized_combo_case(
+        deck_cards={"CARD_A"},
+        case_id="claim-missing-undirected",
+    )
+
+    assert result["combos"] == []
+    assert result["suppressed"] == [
+        {
+            "claim_id": "claim-missing-undirected",
+            "cards": ["CARD_A", "CARD_MISSING"],
+            "reason": "card_not_in_deck",
+            "missing_cards": ["CARD_MISSING"],
         }
     ]
 

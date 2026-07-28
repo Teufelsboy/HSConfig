@@ -42,6 +42,9 @@ def test_opening_hand_or_mulligan_text_has_explicit_context(text):
         "Combo:\n- Card A\n- Card B",
         "Use Card A with Card B in this deck.",
         "Exact deck list: Card A, Card B.",
+        "CARD_AX then CARD_B.",
+        "Card A draws one, then discards one; Card B remains available.",
+        "Card A shuffles junk into your deck while Card B remains available.",
     ],
 )
 def test_combo_coexistence_without_directed_connector_is_not_explicit(text):
@@ -55,6 +58,7 @@ def test_combo_coexistence_without_directed_connector_is_not_explicit(text):
         "Card A into Card B",
         "Card A followed by Card B",
         "Card A -> Card B",
+        "Card A,\nthen Card B",
     ],
 )
 def test_supported_directed_connector_is_explicit_combo_evidence(text):
@@ -66,3 +70,30 @@ def test_combo_card_order_must_match_textual_left_to_right_order():
 
     assert is_explicit_combo_sentence(text, ["Card B", "Card A"]) is True
     assert is_explicit_combo_sentence(text, ["Card A", "Card B"]) is False
+
+
+def test_short_card_id_alias_does_not_match_longer_token():
+    assert (
+        is_explicit_combo_sentence(
+            "CARD_AX then CARD_B.",
+            ["CARD_A", "CARD_B"],
+        )
+        is False
+    )
+
+
+def test_every_gap_in_three_card_combo_must_be_a_directed_connector():
+    assert (
+        is_explicit_combo_sentence(
+            "Card A then Card B -> Card C.",
+            ["Card A", "Card B", "Card C"],
+        )
+        is True
+    )
+    assert (
+        is_explicit_combo_sentence(
+            "Card A then Card B draws one, then discards one; Card C remains.",
+            ["Card A", "Card B", "Card C"],
+        )
+        is False
+    )

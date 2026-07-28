@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 MULLIGAN_CONTEXT_PATTERNS = (
@@ -17,7 +17,10 @@ BOILERPLATE_MARKERS = (
     "like us on facebook",
 )
 EXPLICIT_COMBO_MARKERS = ("combo sequence", "combo:", "sequence:")
-ORDERED_CONNECTORS = (" then ", " into ", " followed by ", " -> ")
+ORDERED_CONNECTORS = ("then", "into", "followed by", "->")
+ORDERED_CONNECTOR_GAP_PATTERN = re.compile(
+    r"\s*,?\s*(?:then|into|followed\s+by|->)\s*",
+)
 
 
 def normalized(value: Any) -> str:
@@ -93,18 +96,30 @@ def claim_has_directed_combo_evidence(
     return _has_connectors_between_mentions(lowered, spans)
 
 
+def bounded_mention_spans(
+    text: str,
+    aliases: Iterable[str],
+) -> list[tuple[int, int]]:
+    lowered = normalized(text)
+    spans: set[tuple[int, int]] = set()
+    for alias in aliases:
+        alias_lowered = normalized(alias)
+        if not alias_lowered:
+            continue
+        pattern = re.compile(
+            rf"(?<![\w-]){re.escape(alias_lowered)}(?![\w-])",
+        )
+        spans.update(match.span() for match in pattern.finditer(lowered))
+    return sorted(spans)
+
+
 def _ordered_mention_spans(
     lowered: str,
     mention_groups: list[list[str]],
 ) -> list[tuple[int, int]] | None:
     spans: list[tuple[int, int]] = []
     for aliases in mention_groups:
-        candidates = [
-            (start, start + len(alias_lowered))
-            for alias in aliases
-            if (alias_lowered := normalized(alias))
-            and (start := lowered.find(alias_lowered)) >= 0
-        ]
+        candidates = bounded_mention_spans(lowered, aliases)
         if not candidates:
             return None
         span = min(candidates)
@@ -119,7 +134,7 @@ def _has_connectors_between_mentions(
     spans: list[tuple[int, int]],
 ) -> bool:
     for left, right in zip(spans, spans[1:]):
-        between = f" {lowered[left[1]:right[0]].strip()} "
-        if not any(connector in between for connector in ORDERED_CONNECTORS):
+        between = lowered[left[1]:right[0]]
+        if ORDERED_CONNECTOR_GAP_PATTERN.fullmatch(between) is None:
             return False
     return True

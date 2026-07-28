@@ -6,9 +6,11 @@ import re
 from typing import Any, Mapping, Sequence
 
 from hsconfig.source_claim_context import (
+    bounded_mention_spans,
     has_explicit_mulligan_context,
     is_content_evidence,
     is_explicit_combo_sentence,
+    normalized,
 )
 
 GUIDE_FAMILIES = {
@@ -273,8 +275,14 @@ def _compile_combo_sequence_claims(
         sequence = _card_sequence_in_sentence(deck_identity, sentence)
         if len(sequence) < 2:
             continue
-        mentioned_card_names = [card_names_by_id[card_id] for card_id in sequence]
-        if not is_explicit_combo_sentence(sentence, mentioned_card_names):
+        mentioned_card_aliases = [
+            _first_mentioned_alias(
+                sentence,
+                (card_names_by_id[card_id], card_id),
+            )
+            for card_id in sequence
+        ]
+        if not is_explicit_combo_sentence(sentence, mentioned_card_aliases):
             continue
         compiled["claims"].append(
             _claim(
@@ -325,20 +333,30 @@ def _card_sequence_in_sentence(
     deck_identity: Mapping[str, Any],
     sentence: str,
 ) -> list[str]:
-    lowered = sentence.lower()
-    found: list[tuple[int, str]] = []
+    lowered = normalized(sentence)
+    found: list[tuple[int, int, str]] = []
     seen: set[str] = set()
     for card in _deck_cards(deck_identity):
         name = _text(card.get("name", ""))
         card_id = _text(card.get("card_id", ""))
-        if not name or not card_id or card_id in seen:
+        if not card_id or card_id in seen:
             continue
-        index = lowered.find(name.lower())
-        if index < 0:
+        spans = bounded_mention_spans(lowered, (name, card_id))
+        if not spans:
             continue
         seen.add(card_id)
-        found.append((index, card_id))
-    return [card_id for _, card_id in sorted(found)]
+        start, end = spans[0]
+        found.append((start, end, card_id))
+    return [card_id for _, _, card_id in sorted(found)]
+
+
+def _first_mentioned_alias(sentence: str, aliases: Sequence[str]) -> str:
+    candidates = [
+        (span[0], span[1], alias)
+        for alias in aliases
+        for span in bounded_mention_spans(sentence, (alias,))
+    ]
+    return min(candidates)[2] if candidates else ""
 
 
 def _combo_timing(sentence: str) -> str | None:

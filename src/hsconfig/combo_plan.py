@@ -5,6 +5,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.combo_sequence_contract import build_combo_sequence_contract
+from hsconfig.source_claim_context import claim_has_directed_combo_evidence
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_combo, normalized_claim_kind
 
@@ -47,6 +48,16 @@ def build_combo_plan(
             if "missing_cards" in contract:
                 row["missing_cards"] = [str(card) for card in contract["missing_cards"]]
             suppressed.append(row)
+            continue
+
+        if not claim_has_directed_combo_evidence(claim, deck_identity):
+            suppressed.append(
+                _suppression(
+                    claim,
+                    [str(card) for card in contract.get("cards", [])],
+                    "combo_requires_directed_source_evidence",
+                )
+            )
             continue
 
         row = {key: value for key, value in contract.items() if key != "emittable"}

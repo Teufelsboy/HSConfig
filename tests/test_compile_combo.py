@@ -110,3 +110,77 @@ def test_source_combo_compiler_preserves_directed_text_order_without_inferred_ti
     assert len(combo_claims) == 1
     assert combo_claims[0]["sequence"] == ["CARD_A", "CARD_B"]
     assert "timing" not in combo_claims[0]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Card AX then Card B.",
+        "Card A draws one, then discards one; Card B remains available.",
+        "Card A shuffles junk into your deck while Card B remains available.",
+        "Card A then Card B draws one, then discards one; Card C remains available.",
+    ],
+)
+def test_source_combo_compiler_rejects_prefix_and_effect_clause_false_positives(text):
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "name": "Card A"},
+            {"card_id": "CARD_B", "name": "Card B"},
+            {"card_id": "CARD_C", "name": "Card C"},
+        ],
+    }
+
+    payload = compile_source_search_records(
+        deck_name="Fixture",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_url": "https://example.test/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "normalized_text": text,
+            }
+        ],
+        current_date="2026-07-28",
+    )
+
+    assert [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "combo_sequence"
+    ] == []
+
+
+def test_source_combo_compiler_resolves_boundary_safe_card_ids():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "name": "Fixture Alpha"},
+            {"card_id": "CARD_B", "name": "Fixture Beta"},
+        ],
+    }
+
+    payload = compile_source_search_records(
+        deck_name="Fixture",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_url": "https://example.test/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "normalized_text": "CARD_A then CARD_B.",
+            }
+        ],
+        current_date="2026-07-28",
+    )
+
+    combo_claims = [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "combo_sequence"
+    ]
+    assert len(combo_claims) == 1
+    assert combo_claims[0]["sequence"] == ["CARD_A", "CARD_B"]
