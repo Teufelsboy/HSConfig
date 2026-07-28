@@ -4,40 +4,19 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
-from contextlib import contextmanager
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, cast
 
 
 StageObserver = Callable[[str, str], None]
 _MAPPING_PROXY_TYPE = type(MappingProxyType({}))
+_MAX_STAGE_DEPTH = 128
+_MISSING = object()
 
 
 class _FrozenList(tuple):
     """Immutable list representation that retains the source collection type."""
-
-
-class _FrozenSet(frozenset):
-    """Immutable set representation that remains distinct from frozenset."""
-
-
-@dataclass(frozen=True)
-class _FrozenDataclass(Mapping[str, Any]):
-    qualified_type: str
-    field_values: tuple[tuple[str, Any], ...]
-
-    def __getitem__(self, key: str) -> Any:
-        for field_name, value in self.field_values:
-            if field_name == key:
-                return value
-        raise KeyError(key)
-
-    def __iter__(self):
-        return (field_name for field_name, _value in self.field_values)
-
-    def __len__(self) -> int:
-        return len(self.field_values)
 
 
 @dataclass(frozen=True)
@@ -54,22 +33,29 @@ class LoweredRuntimeStage:
     source_contract: Mapping[str, Any]
 
 
+_STAGE_FIELDS = {
+    VerifiedDeckStage: ("identity", "cards", "input_verification"),
+    LoweredRuntimeStage: ("runtime_files", "warnings", "source_contract"),
+}
+_STAGE_MAPPING_FIELDS = {
+    VerifiedDeckStage: ("identity", "input_verification"),
+    LoweredRuntimeStage: ("runtime_files", "source_contract"),
+}
+_STAGE_MAPPING_SEQUENCE_FIELDS = {
+    VerifiedDeckStage: ("cards",),
+    LoweredRuntimeStage: ("warnings",),
+}
+
+
 def build_verified_deck_stage(
     *,
     identity: Mapping[str, Any],
     cards: Sequence[Mapping[str, Any]],
     input_verification: Mapping[str, Any],
 ) -> VerifiedDeckStage:
-    return VerifiedDeckStage(
-        identity=_freeze_mapping(identity, path="identity"),
-        cards=tuple(
-            _freeze_mapping(card, path=f"cards[{index}]")
-            for index, card in enumerate(cards)
-        ),
-        input_verification=_freeze_mapping(
-            input_verification,
-            path="input_verification",
-        ),
+    return cast(
+        VerifiedDeckStage,
+        _freeze_root(VerifiedDeckStage(identity, cards, input_verification), path=""),
     )
 
 
@@ -79,28 +65,15 @@ def build_lowered_runtime_stage(
     warnings: Sequence[Mapping[str, Any]],
     source_contract: Mapping[str, Any],
 ) -> LoweredRuntimeStage:
-    return LoweredRuntimeStage(
-        runtime_files=_freeze_mapping(runtime_files, path="runtime_files"),
-        warnings=tuple(
-            _freeze_mapping(warning, path=f"warnings[{index}]")
-            for index, warning in enumerate(warnings)
-        ),
-        source_contract=_freeze_mapping(
-            source_contract,
-            path="source_contract",
-        ),
+    return cast(
+        LoweredRuntimeStage,
+        _freeze_root(LoweredRuntimeStage(runtime_files, warnings, source_contract), path=""),
     )
 
 
 def stage_digest(value: Any) -> str:
-    frozen_value = _freeze_value(value, path="$", active={})
-    canonical = json.dumps(
-        _typed_canonical_value(frozen_value),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+    frozen = _freeze_root(value, path="$")
+    return f"sha256:{_typed_canonical_value(frozen)}"
 
 
 def observe_stage(
@@ -118,59 +91,32 @@ def observe_stage(
 
 
 def materialize_stage_value(value: Any) -> Any:
-    return _materialize_frozen_value(
-        _freeze_value(value, path="$", active={})
+    return _materialize_frozen_value(_freeze_root(value, path="$"))
+
+
+def _freeze_root(value: Any, *, path: str) -> Any:
+    return _freeze_value(
+        value,
+        path=path,
+        depth=0,
+        active={},
+        memo={},
+        allow_stage=True,
     )
-
-
-def _materialize_frozen_value(value: Any) -> Any:
-    if isinstance(value, _FrozenDataclass):
-        return {
-            field_name: _materialize_frozen_value(item)
-            for field_name, item in value.field_values
-        }
-    if is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: _materialize_frozen_value(getattr(value, field.name))
-            for field in fields(value)
-        }
-    if isinstance(value, Mapping):
-        return {
-            key: _materialize_frozen_value(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, (tuple, list)):
-        return [_materialize_frozen_value(item) for item in value]
-    if isinstance(value, (set, frozenset)):
-        return sorted(
-            (_materialize_frozen_value(item) for item in value),
-            key=_canonical_sort_key,
-        )
-    return value
-
-
-def _freeze_mapping(
-    value: Mapping[Any, Any],
-    *,
-    path: str,
-) -> Mapping[Any, Any]:
-    frozen = _freeze_value(value, path=path, active={})
-    if not isinstance(frozen, Mapping):
-        raise TypeError(
-            f"Stage value at {path} must be a supported mapping; "
-            f"received {_qualified_type_name(value)}"
-        )
-    return frozen
 
 
 def _freeze_value(
     value: Any,
     *,
     path: str,
+    depth: int,
     active: dict[int, str],
+    memo: dict[int, Any],
+    allow_stage: bool = False,
 ) -> Any:
+    _check_depth(path, depth)
     value_type = type(value)
-    if value is None or value_type in {bool, int, str, bytes}:
+    if value is None or value_type in {bool, int, str}:
         return value
     if value_type is float:
         if not math.isfinite(value):
@@ -179,144 +125,262 @@ def _freeze_value(
                 f"received {value.hex()}"
             )
         return value
-    if isinstance(value, _FrozenDataclass):
-        with _active_value(value, path=path, active=active):
-            return _FrozenDataclass(
-                qualified_type=value.qualified_type,
-                field_values=tuple(
-                    (
-                        field_name,
-                        _freeze_value(
-                            item,
-                            path=f"{path}.{field_name}",
-                            active=active,
-                        ),
+
+    is_stage = allow_stage and value_type in _STAGE_FIELDS
+    is_mapping = value_type in {dict, _MAPPING_PROXY_TYPE}
+    is_sequence = value_type in {list, tuple, _FrozenList}
+    if not (is_stage or is_mapping or is_sequence):
+        _raise_unsupported_value(value, path)
+
+    cached = _enter_container(value, path=path, active=active, memo=memo)
+    if cached is not _MISSING:
+        return cached
+    try:
+        if is_stage:
+            frozen = value_type(
+                **{
+                    name: _freeze_value(
+                        getattr(value, name),
+                        path=_stage_field_path(path, name),
+                        depth=depth,
+                        active=active,
+                        memo=memo,
                     )
-                    for field_name, item in value.field_values
-                ),
+                    for name in _STAGE_FIELDS[value_type]
+                }
             )
-    if is_dataclass(value) and not isinstance(value, type):
-        with _active_value(value, path=path, active=active):
-            return _FrozenDataclass(
-                qualified_type=_qualified_type_name(value),
-                field_values=tuple(
-                    (
-                        field.name,
-                        _freeze_value(
-                            getattr(value, field.name),
-                            path=f"{path}.{field.name}",
-                            active=active,
-                        ),
-                    )
-                    for field in fields(value)
-                ),
-            )
-    if value_type in {dict, _MAPPING_PROXY_TYPE}:
-        with _active_value(value, path=path, active=active):
-            frozen_entries = []
+            _validate_stage_shape(frozen, path=path)
+        elif is_mapping:
+            entries: dict[str, Any] = {}
             for index, (key, item) in enumerate(value.items()):
-                frozen_key = _freeze_value(
-                    key,
-                    path=f"{path}[key#{index}]",
-                    active=active,
-                )
-                frozen_item = _freeze_value(
+                if type(key) is not str:
+                    raise TypeError(
+                        f"Stage mapping key at {path}[key#{index}] must be "
+                        "exact builtins.str; "
+                        f"received {_qualified_type_name(key)}"
+                    )
+                entries[key] = _freeze_value(
                     item,
-                    path=_mapping_value_path(path, key, index),
+                    path=_mapping_value_path(path, key),
+                    depth=depth + 1,
                     active=active,
+                    memo=memo,
                 )
-                frozen_entries.append((frozen_key, frozen_item))
-            return MappingProxyType(dict(frozen_entries))
-    if value_type is list:
-        with _active_value(value, path=path, active=active):
-            return _FrozenList(
+            frozen = MappingProxyType(entries)
+        else:
+            items = tuple(
                 _freeze_value(
                     item,
                     path=f"{path}[{index}]",
+                    depth=depth + 1,
                     active=active,
+                    memo=memo,
                 )
                 for index, item in enumerate(value)
             )
-    if value_type is _FrozenList:
-        with _active_value(value, path=path, active=active):
-            return _FrozenList(
-                _freeze_value(
-                    item,
-                    path=f"{path}[{index}]",
-                    active=active,
-                )
-                for index, item in enumerate(value)
-            )
-    if value_type is tuple:
-        with _active_value(value, path=path, active=active):
-            return tuple(
-                _freeze_value(
-                    item,
-                    path=f"{path}[{index}]",
-                    active=active,
-                )
-                for index, item in enumerate(value)
-            )
-    if value_type is set:
-        with _active_value(value, path=path, active=active):
-            return _FrozenSet(
-                _freeze_value(
-                    item,
-                    path=f"{path}[item#{index}]",
-                    active=active,
-                )
-                for index, item in enumerate(value)
-            )
-    if value_type is _FrozenSet:
-        with _active_value(value, path=path, active=active):
-            return _FrozenSet(
-                _freeze_value(
-                    item,
-                    path=f"{path}[item#{index}]",
-                    active=active,
-                )
-                for index, item in enumerate(value)
-            )
-    if value_type is frozenset:
-        with _active_value(value, path=path, active=active):
-            return frozenset(
-                _freeze_value(
-                    item,
-                    path=f"{path}[item#{index}]",
-                    active=active,
-                )
-                for index, item in enumerate(value)
-            )
-    raise TypeError(
-        f"Stage values must use supported canonical types at {path}; "
-        f"received {_qualified_type_name(value)}"
-    )
+            frozen = items if value_type is tuple else _FrozenList(items)
+    finally:
+        active.pop(id(value), None)
+    memo[id(value)] = frozen
+    return frozen
 
 
-@contextmanager
-def _active_value(
+def _validate_stage_shape(value: Any, *, path: str) -> None:
+    value_type = type(value)
+    for name in _STAGE_MAPPING_FIELDS[value_type]:
+        item = getattr(value, name)
+        if type(item) is not _MAPPING_PROXY_TYPE:
+            _raise_unsupported_value(item, _stage_field_path(path, name))
+    for name in _STAGE_MAPPING_SEQUENCE_FIELDS[value_type]:
+        item = getattr(value, name)
+        item_path = _stage_field_path(path, name)
+        if type(item) not in {tuple, _FrozenList}:
+            _raise_unsupported_value(item, item_path)
+        for index, row in enumerate(item):
+            if type(row) is not _MAPPING_PROXY_TYPE:
+                _raise_unsupported_value(row, f"{item_path}[{index}]")
+    if value_type is LoweredRuntimeStage:
+        for key, item in value.runtime_files.items():
+            if type(item) is not _MAPPING_PROXY_TYPE:
+                _raise_unsupported_value(
+                    item,
+                    _mapping_value_path(
+                        _stage_field_path(path, "runtime_files"),
+                        key,
+                    ),
+                )
+
+
+def _materialize_frozen_value(
+    value: Any,
+    *,
+    path: str = "$",
+    depth: int = 0,
+    memo: dict[int, Any] | None = None,
+) -> Any:
+    if memo is None:
+        memo = {}
+    _check_depth(path, depth)
+    value_type = type(value)
+    if value is None or value_type in {bool, int, float, str}:
+        return value
+    cached = memo.get(id(value), _MISSING)
+    if cached is not _MISSING:
+        return cached
+    if value_type in _STAGE_FIELDS:
+        result = {
+            name: _materialize_frozen_value(
+                getattr(value, name),
+                path=_stage_field_path(path, name),
+                depth=depth,
+                memo=memo,
+            )
+            for name in _STAGE_FIELDS[value_type]
+        }
+    elif value_type is _MAPPING_PROXY_TYPE:
+        result = {
+            key: _materialize_frozen_value(
+                item,
+                path=_mapping_value_path(path, key),
+                depth=depth + 1,
+                memo=memo,
+            )
+            for key, item in value.items()
+        }
+    elif value_type in {_FrozenList, tuple}:
+        result = [
+            _materialize_frozen_value(
+                item,
+                path=f"{path}[{index}]",
+                depth=depth + 1,
+                memo=memo,
+            )
+            for index, item in enumerate(value)
+        ]
+    else:
+        _raise_unsupported_value(value, path)
+    memo[id(value)] = result
+    return result
+
+
+def _typed_canonical_value(
+    value: Any,
+    *,
+    path: str = "$",
+    depth: int = 0,
+    memo: dict[int, str] | None = None,
+) -> str:
+    if memo is None:
+        memo = {}
+    _check_depth(path, depth)
+    value_type = type(value)
+    if value is None:
+        return _digest_record({"kind": "null"})
+    if value_type is bool:
+        return _digest_record({"kind": "bool", "value": value})
+    if value_type is int:
+        return _digest_record({"kind": "int", "value": str(value)})
+    if value_type is float:
+        return _digest_record({"kind": "float", "value": value.hex()})
+    if value_type is str:
+        return _digest_record({"kind": "string", "value": value})
+    cached = memo.get(id(value))
+    if cached is not None:
+        return cached
+    if value_type in _STAGE_FIELDS:
+        record = {
+            "kind": "stage",
+            "type": _qualified_type_name(value),
+            "fields": [
+                {
+                    "name": name,
+                    "digest": _typed_canonical_value(
+                        getattr(value, name),
+                        path=_stage_field_path(path, name),
+                        depth=depth,
+                        memo=memo,
+                    ),
+                }
+                for name in _STAGE_FIELDS[value_type]
+            ],
+        }
+    elif value_type is _MAPPING_PROXY_TYPE:
+        record = {
+            "kind": "mapping",
+            "entries": [
+                {
+                    "key": key,
+                    "digest": _typed_canonical_value(
+                        value[key],
+                        path=_mapping_value_path(path, key),
+                        depth=depth + 1,
+                        memo=memo,
+                    ),
+                }
+                for key in sorted(value)
+            ],
+        }
+    elif value_type in {_FrozenList, tuple}:
+        record = {
+            "kind": "list" if value_type is _FrozenList else "tuple",
+            "items": [
+                _typed_canonical_value(
+                    item,
+                    path=f"{path}[{index}]",
+                    depth=depth + 1,
+                    memo=memo,
+                )
+                for index, item in enumerate(value)
+            ],
+        }
+    else:
+        _raise_unsupported_value(value, path)
+    digest = _digest_record(record)
+    memo[id(value)] = digest
+    return digest
+
+
+def _enter_container(
     value: Any,
     *,
     path: str,
     active: dict[int, str],
-) -> Iterator[None]:
+    memo: dict[int, Any],
+) -> Any:
     identity = id(value)
     if identity in active:
         raise ValueError(
             "Stage values must be acyclic; "
             f"cycle detected at {path} (already active at {active[identity]})"
         )
+    if identity in memo:
+        return memo[identity]
     active[identity] = path
-    try:
-        yield
-    finally:
-        active.pop(identity, None)
+    return _MISSING
 
 
-def _mapping_value_path(path: str, key: Any, index: int) -> str:
-    if type(key) is str and key.isidentifier():
+def _check_depth(path: str, depth: int) -> None:
+    if depth > _MAX_STAGE_DEPTH:
+        raise ValueError(
+            f"Stage value exceeds maximum depth {_MAX_STAGE_DEPTH} at {path}"
+        )
+
+
+def _stage_field_path(path: str, field_name: str) -> str:
+    return field_name if not path else f"{path}.{field_name}"
+
+
+def _mapping_value_path(path: str, key: str) -> str:
+    if key.isidentifier():
         return f"{path}.{key}"
-    return f"{path}[value#{index}]"
+    return f"{path}[{json.dumps(key, ensure_ascii=False)}]"
+
+
+def _raise_unsupported_value(value: Any, path: str) -> None:
+    raise TypeError(
+        f"Stage value at {path} must use exact stage-domain types; "
+        f"received {_qualified_type_name(value)}"
+    )
 
 
 def _qualified_type_name(value: Any) -> str:
@@ -324,101 +388,8 @@ def _qualified_type_name(value: Any) -> str:
     return f"{value_type.__module__}.{value_type.__qualname__}"
 
 
-def _typed_canonical_value(value: Any) -> dict[str, Any]:
-    if isinstance(value, _FrozenDataclass):
-        return {
-            "kind": "dataclass",
-            "type": value.qualified_type,
-            "fields": [
-                {
-                    "name": field_name,
-                    "value": _typed_canonical_value(item),
-                }
-                for field_name, item in value.field_values
-            ],
-        }
-    if is_dataclass(value) and not isinstance(value, type):
-        value_type = type(value)
-        return {
-            "kind": "dataclass",
-            "type": f"{value_type.__module__}.{value_type.__qualname__}",
-            "fields": [
-                {
-                    "name": field.name,
-                    "value": _typed_canonical_value(getattr(value, field.name)),
-                }
-                for field in fields(value)
-            ],
-        }
-    if isinstance(value, Mapping):
-        entries = [
-            {
-                "key": _typed_canonical_value(key),
-                "value": _typed_canonical_value(item),
-            }
-            for key, item in value.items()
-        ]
-        entries.sort(key=lambda entry: _encoded_typed_value(entry["key"]))
-        return {"kind": "mapping", "entries": entries}
-    if isinstance(value, _FrozenList):
-        return {
-            "kind": "list",
-            "items": [_typed_canonical_value(item) for item in value],
-        }
-    if isinstance(value, tuple):
-        return {
-            "kind": "tuple",
-            "items": [_typed_canonical_value(item) for item in value],
-        }
-    if isinstance(value, list):
-        return {
-            "kind": "list",
-            "items": [_typed_canonical_value(item) for item in value],
-        }
-    if isinstance(value, _FrozenSet):
-        items = [_typed_canonical_value(item) for item in value]
-        items.sort(key=_encoded_typed_value)
-        return {"kind": "set", "items": items}
-    if isinstance(value, frozenset):
-        items = [_typed_canonical_value(item) for item in value]
-        items.sort(key=_encoded_typed_value)
-        return {"kind": "frozenset", "items": items}
-    if isinstance(value, set):
-        items = [_typed_canonical_value(item) for item in value]
-        items.sort(key=_encoded_typed_value)
-        return {"kind": "set", "items": items}
-    if value is None:
-        return {"kind": "null"}
-    if isinstance(value, bool):
-        return {"kind": "bool", "value": value}
-    if isinstance(value, int):
-        return {"kind": "int", "value": str(value)}
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError(
-                "Stage values must use finite floats at canonical digest; "
-                f"received {value.hex()}"
-            )
-        return {"kind": "float", "value": value.hex()}
-    if isinstance(value, str):
-        return {"kind": "string", "value": value}
-    if isinstance(value, bytes):
-        return {"kind": "bytes", "value": value.hex()}
-    raise TypeError(
-        "Stage values must use supported canonical types; "
-        f"received {type(value).__module__}.{type(value).__qualname__}"
-    )
-
-
-def _encoded_typed_value(value: dict[str, Any]) -> str:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-
-
-def _canonical_sort_key(value: Any) -> str:
-    frozen_value = _freeze_value(value, path="$", active={})
-    return _encoded_typed_value(_typed_canonical_value(frozen_value))
+def _digest_record(record: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        record, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()

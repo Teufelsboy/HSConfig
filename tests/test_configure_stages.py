@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import math
 import struct
-from collections.abc import Mapping
-from dataclasses import FrozenInstanceError, dataclass, make_dataclass
+from dataclasses import FrozenInstanceError, dataclass
+from decimal import Decimal
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -15,13 +17,42 @@ class MutableNestedStageValue:
     payload: dict[str, list[int]]
 
 
+@dataclass
+class DataclassList(list):
+    label: str
+
+
+@dataclass(eq=False)
+class IdentityDataclass:
+    payload: object
+
+
 class MutableUnsupported(list):
     pass
 
 
-@dataclass
-class CyclicStageValue:
-    child: Any = None
+class DictSubclass(dict):
+    pass
+
+
+class TupleSubclass(tuple):
+    pass
+
+
+class StringSubclass(str):
+    pass
+
+
+class IntegerSubclass(int):
+    pass
+
+
+class FloatSubclass(float):
+    pass
+
+
+class ExampleEnum(Enum):
+    VALUE = "value"
 
 
 def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
@@ -65,7 +96,7 @@ def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
     ]
     assert dict(stage.input_verification) == {"status": "verified"}
     assert stage_digest(stage) == (
-        "sha256:af1cc6c05a641b5ebc29e6622a938bc9bfdd608b380b6040345f696aa5cbe5bd"
+        "sha256:3ed8d402c162f5547f61c7e2a8fe23fda0f678b35d6137861f54ca95f6b89fb4"
     )
     with pytest.raises(TypeError):
         stage.identity["deck_name"] = "mutated"
@@ -75,7 +106,10 @@ def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
         stage.identity = {}
 
 
-def test_stage_recursively_freezes_nested_dataclass_and_list_aliases() -> None:
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_nested_dataclasses_are_rejected_at_every_stage_boundary(
+    boundary: str,
+) -> None:
     from hsconfig.configure_stages import (
         build_verified_deck_stage,
         materialize_stage_value,
@@ -86,55 +120,135 @@ def test_stage_recursively_freezes_nested_dataclass_and_list_aliases() -> None:
         labels=["alpha"],
         payload={"values": [1, 2]},
     )
-    stage = build_verified_deck_stage(
-        identity={"nested": nested},
-        cards=[],
-        input_verification={"status": "verified"},
-    )
-    original_digest = stage_digest(stage)
-
-    nested.labels.append("external-mutation")
-    nested.payload["values"][0] = 99
-
-    frozen_nested = stage.identity["nested"]
-    assert isinstance(frozen_nested, Mapping)
-    assert materialize_stage_value(frozen_nested) == {
-        "labels": ["alpha"],
-        "payload": {"values": [1, 2]},
-    }
-    assert stage_digest(stage) == original_digest
-    materialized = materialize_stage_value(frozen_nested)
-    materialized["labels"].append("materialized-mutation")
-    materialized["payload"]["values"][0] = 101
-    assert materialize_stage_value(frozen_nested) == {
-        "labels": ["alpha"],
-        "payload": {"values": [1, 2]},
-    }
-    assert stage_digest(stage) == original_digest
-    with pytest.raises(AttributeError):
-        frozen_nested["labels"].append("stage-mutation")
-    with pytest.raises(TypeError):
-        frozen_nested["payload"]["values"][0] = 99
-
-
-def test_stage_construction_rejects_unsupported_mutable_list_subclass() -> None:
-    from hsconfig.configure_stages import build_verified_deck_stage
-
-    unsafe = MutableUnsupported(["aliased"])
 
     with pytest.raises(
         TypeError,
         match=(
-            r"Stage values must use supported canonical types at "
-            r"identity\.unsafe; received "
-            r"tests\.test_configure_stages\.MutableUnsupported"
+            r"Stage value at (identity\.nested|\$) must use exact "
+            r"stage-domain types; received "
+            r"tests\.test_configure_stages\.MutableNestedStageValue"
         ),
     ):
-        build_verified_deck_stage(
-            identity={"unsafe": unsafe},
-            cards=[],
-            input_verification={"status": "verified"},
-        )
+        if boundary == "construction":
+            build_verified_deck_stage(
+                identity={"nested": nested},
+                cards=[],
+                input_verification={"status": "verified"},
+            )
+        elif boundary == "digest":
+            stage_digest(nested)
+        else:
+            materialize_stage_value(nested)
+
+
+def test_dataclass_list_content_collision_is_rejected() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    left = DataclassList("same")
+    left.extend([1])
+    right = DataclassList("same")
+    right.extend([2])
+
+    for value in (left, right):
+        with pytest.raises(
+            TypeError,
+            match=(
+                r"Stage value at \$ must use exact stage-domain types; "
+                r"received tests\.test_configure_stages\.DataclassList"
+            ),
+        ):
+            stage_digest(value)
+
+
+def test_identity_dataclass_set_and_mapping_collapse_are_rejected() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    first = IdentityDataclass("same")
+    second = IdentityDataclass("same")
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage value at \$ must use exact stage-domain types; "
+            r"received builtins\.set"
+        ),
+    ):
+        stage_digest({first, second})
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage mapping key at \$\[key#0\] must be exact builtins\.str; "
+            r"received tests\.test_configure_stages\.IdentityDataclass"
+        ),
+    ):
+        stage_digest({first: "first", second: "second"})
+
+
+def test_unhashable_frozen_dataclass_key_uses_domain_error_not_raw_typeerror() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    key = IdentityDataclass({"nested": 1})
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage mapping key at \$\[key#0\] must be exact builtins\.str; "
+            r"received tests\.test_configure_stages\.IdentityDataclass"
+        ),
+    ):
+        stage_digest({key: "value"})
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(b"bytes", id="bytes"),
+        pytest.param({1, 2}, id="set"),
+        pytest.param(frozenset({1, 2}), id="frozenset"),
+        pytest.param(Path("unsafe"), id="path"),
+        pytest.param(ExampleEnum.VALUE, id="enum"),
+        pytest.param(Decimal("1.5"), id="decimal"),
+        pytest.param(MutableUnsupported(["unsafe"]), id="list-subclass"),
+        pytest.param(DictSubclass(value=1), id="dict-subclass"),
+        pytest.param(TupleSubclass((1, 2)), id="tuple-subclass"),
+        pytest.param(IntegerSubclass(1), id="int-subclass"),
+        pytest.param(FloatSubclass(1.0), id="float-subclass"),
+        pytest.param(StringSubclass("unsafe"), id="str-subclass"),
+    ],
+)
+def test_values_outside_the_exact_stage_domain_are_rejected(value: Any) -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage value at \$ must use exact stage-domain types; received "
+        ),
+    ):
+        stage_digest(value)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param(1, id="integer"),
+        pytest.param(1.5, id="float"),
+        pytest.param(True, id="boolean"),
+        pytest.param(None, id="null"),
+        pytest.param(StringSubclass("key"), id="string-subclass"),
+    ],
+)
+def test_mapping_keys_must_be_exact_strings(key: Any) -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage mapping key at \$\[key#0\] must be exact builtins\.str; "
+            r"received "
+        ),
+    ):
+        stage_digest({key: "value"})
 
 
 @pytest.mark.parametrize(
@@ -142,16 +256,16 @@ def test_stage_construction_rejects_unsupported_mutable_list_subclass() -> None:
     [
         pytest.param(lambda: _self_referential_list(), id="list"),
         pytest.param(lambda: _self_referential_mapping(), id="mapping"),
-        pytest.param(lambda: _self_referential_dataclass(), id="dataclass"),
     ],
 )
-@pytest.mark.parametrize("boundary", ["construction", "digest"])
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
 def test_stage_cycles_fail_explicitly_and_deterministically(
     cycle_factory,
     boundary: str,
 ) -> None:
     from hsconfig.configure_stages import (
         build_verified_deck_stage,
+        materialize_stage_value,
         stage_digest,
     )
 
@@ -168,8 +282,42 @@ def test_stage_cycles_fail_explicitly_and_deterministically(
                     cards=[],
                     input_verification={"status": "verified"},
                 )
-            else:
+            elif boundary == "digest":
                 stage_digest(cyclic)
+            else:
+                materialize_stage_value(cyclic)
+        messages.append(str(error.value))
+
+    assert messages[0] == messages[1]
+
+
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_stage_depth_is_bounded_before_python_recursion_limit(
+    boundary: str,
+) -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    messages = []
+    for _attempt in range(2):
+        deep_value = _nested_list(1500)
+        with pytest.raises(
+            ValueError,
+            match=r"Stage value exceeds maximum depth 128 at ",
+        ) as error:
+            if boundary == "construction":
+                build_verified_deck_stage(
+                    identity={"deep": deep_value},
+                    cards=[],
+                    input_verification={"status": "verified"},
+                )
+            elif boundary == "digest":
+                stage_digest(deep_value)
+            else:
+                materialize_stage_value(deep_value)
         messages.append(str(error.value))
 
     assert messages[0] == messages[1]
@@ -190,7 +338,7 @@ _NON_FINITE_FLOATS = [
 
 
 @pytest.mark.parametrize("value", _NON_FINITE_FLOATS)
-@pytest.mark.parametrize("position", ["scalar", "mapping-value", "mapping-key"])
+@pytest.mark.parametrize("position", ["scalar", "mapping-value"])
 def test_non_finite_floats_are_rejected_at_stage_boundaries(
     value: float,
     position: str,
@@ -206,32 +354,30 @@ def test_non_finite_floats_are_rejected_at_stage_boundaries(
     ):
         if position == "scalar":
             stage_digest(value)
-        elif position == "mapping-value":
+        else:
             build_verified_deck_stage(
                 identity={"unsafe": value},
                 cards=[],
                 input_verification={"status": "verified"},
             )
-        else:
-            build_verified_deck_stage(
-                identity={value: "unsafe"},
-                cards=[],
-                input_verification={"status": "verified"},
-            )
 
 
-def test_distinct_nan_keys_are_rejected_independent_of_insertion_order() -> None:
+def test_non_string_nan_mapping_keys_use_the_mapping_key_domain_error() -> None:
     from hsconfig.configure_stages import stage_digest
 
     first_nan = struct.unpack(">d", bytes.fromhex("7ff8000000000001"))[0]
     second_nan = struct.unpack(">d", bytes.fromhex("7ff8000000000002"))[0]
-    left = {first_nan: "first", second_nan: "second"}
-    right = {second_nan: "second", first_nan: "first"}
 
-    for value in (left, right):
+    for value in (
+        {first_nan: "first", second_nan: "second"},
+        {second_nan: "second", first_nan: "first"},
+    ):
         with pytest.raises(
-            ValueError,
-            match=r"Stage values must use finite floats at ",
+            TypeError,
+            match=(
+                r"Stage mapping key at \$\[key#0\] must be exact "
+                r"builtins\.str; received builtins\.float"
+            ),
         ):
             stage_digest(value)
 
@@ -243,10 +389,11 @@ def test_finite_float_canonicalization_preserves_binary_distinctions() -> None:
     assert stage_digest(1.0) != stage_digest(math.nextafter(1.0, 2.0))
 
 
-def test_acyclic_shared_references_do_not_trigger_false_cycle_detection() -> None:
+def test_acyclic_shared_references_are_reused_immutably() -> None:
     from hsconfig.configure_stages import (
         build_verified_deck_stage,
         materialize_stage_value,
+        stage_digest,
     )
 
     shared = [{"value": 1}]
@@ -257,16 +404,41 @@ def test_acyclic_shared_references_do_not_trigger_false_cycle_detection() -> Non
     )
     shared[0]["value"] = 99
 
+    assert stage.identity["left"] is stage.identity["right"]
     assert materialize_stage_value(stage.identity) == {
         "left": [{"value": 1}],
         "right": [{"value": 1}],
     }
+    materialized = materialize_stage_value(stage.identity)
+    assert materialized["left"] is materialized["right"]
+    materialized["left"][0]["value"] = 101
+    assert materialize_stage_value(stage.identity)["left"][0]["value"] == 1
+    assert stage_digest(
+        {"left": shared, "right": shared}
+    ) == stage_digest(
+        {
+            "left": [{"value": 99}],
+            "right": [{"value": 99}],
+        }
+    )
+
+
+def test_stage_digest_ignores_mapping_insertion_and_sharing_topology() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    shared = {"value": [1, 2]}
+    shared_tree = {"alpha": shared, "beta": shared}
+    duplicated_tree = {
+        "beta": {"value": [1, 2]},
+        "alpha": {"value": [1, 2]},
+    }
+
+    assert stage_digest(shared_tree) == stage_digest(duplicated_tree)
 
 
 @pytest.mark.parametrize(
     ("left", "right"),
     [
-        ({1: "value"}, {"1": "value"}),
         ({"value": [1, 2]}, {"value": (1, 2)}),
         (True, 1),
         (1, 1.0),
@@ -274,56 +446,103 @@ def test_acyclic_shared_references_do_not_trigger_false_cycle_detection() -> Non
         (1.0, "1.0"),
     ],
 )
-def test_stage_digest_preserves_canonical_value_types(left, right) -> None:
+def test_stage_digest_preserves_allowed_value_types(left, right) -> None:
     from hsconfig.configure_stages import stage_digest
 
     assert stage_digest(left) != stage_digest(right)
 
 
-def test_stage_digest_supports_mixed_mapping_key_types_deterministically() -> None:
-    from hsconfig.configure_stages import stage_digest
+@pytest.mark.parametrize("boundary", ["construction", "digest", "materialization"])
+def test_shared_dag_processing_scales_with_unique_nodes(
+    boundary: str,
+    monkeypatch,
+) -> None:
+    import hsconfig.configure_stages as configure_stages
 
-    left = {
-        7: "integer",
-        "7": "string",
-        None: "null",
-        2.5: "float",
-    }
-    right = {
-        2.5: "float",
-        None: "null",
-        "7": "string",
-        7: "integer",
-    }
+    original_freeze = configure_stages._freeze_value
+    original_digest = configure_stages._typed_canonical_value
+    original_materialize = configure_stages._materialize_frozen_value
+    visits = 0
 
-    assert stage_digest(left) == stage_digest(right)
+    def counted_freeze(*args, **kwargs):
+        nonlocal visits
+        visits += 1
+        return original_freeze(*args, **kwargs)
 
+    def counted_digest(*args, **kwargs):
+        nonlocal visits
+        visits += 1
+        return original_digest(*args, **kwargs)
 
-def test_stage_digest_includes_fully_qualified_dataclass_type() -> None:
-    from hsconfig.configure_stages import stage_digest
+    def counted_materialize(*args, **kwargs):
+        nonlocal visits
+        visits += 1
+        return original_materialize(*args, **kwargs)
 
-    first_type = make_dataclass("TwinStageValue", [("value", int)])
-    second_type = make_dataclass("TwinStageValue", [("value", int)])
-    first_type.__module__ = "tests.stage_type_a"
-    second_type.__module__ = "tests.stage_type_b"
-
-    assert stage_digest(first_type(1)) != stage_digest(second_type(1))
-
-
-def test_stage_digest_includes_dataclass_field_definition_order() -> None:
-    from hsconfig.configure_stages import stage_digest
-
-    first_type = make_dataclass(
-        "OrderedStageValue",
-        [("left", int), ("right", int)],
+    monkeypatch.setattr(configure_stages, "_freeze_value", counted_freeze)
+    monkeypatch.setattr(
+        configure_stages,
+        "_typed_canonical_value",
+        counted_digest,
     )
-    second_type = make_dataclass(
-        "OrderedStageValue",
-        [("right", int), ("left", int)],
+    monkeypatch.setattr(
+        configure_stages,
+        "_materialize_frozen_value",
+        counted_materialize,
     )
-    first_type.__module__ = second_type.__module__ = "tests.stage_layout"
 
-    assert stage_digest(first_type(1, 2)) != stage_digest(second_type(2, 1))
+    observed_visits = []
+    for depth in (11, 14, 17):
+        visits = 0
+        dag = _shared_dag(depth)
+        if boundary == "construction":
+            configure_stages.build_verified_deck_stage(
+                identity={"dag": dag},
+                cards=[],
+                input_verification={"status": "verified"},
+            )
+        elif boundary == "digest":
+            configure_stages.stage_digest(dag)
+        else:
+            configure_stages.materialize_stage_value(dag)
+        observed_visits.append(visits)
+        assert visits <= 12 * depth + 24
+
+    assert observed_visits == sorted(observed_visits)
+
+
+def test_only_exact_public_stage_dataclasses_are_accepted_at_the_root() -> None:
+    from hsconfig.configure_stages import (
+        VerifiedDeckStage,
+        build_verified_deck_stage,
+        stage_digest,
+    )
+
+    class VerifiedDeckStageSubclass(VerifiedDeckStage):
+        pass
+
+    stage = build_verified_deck_stage(
+        identity={"deck_name": "ShadowPriest"},
+        cards=[],
+        input_verification={"status": "verified"},
+    )
+    derived = VerifiedDeckStageSubclass(
+        identity=stage.identity,
+        cards=stage.cards,
+        input_verification=stage.input_verification,
+    )
+
+    assert stage_digest(stage).startswith("sha256:")
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"Stage value at \$ must use exact stage-domain types; received "
+            r"tests\.test_configure_stages\."
+            r"test_only_exact_public_stage_dataclasses_are_accepted_at_the_root"
+            r"\.<locals>\.VerifiedDeckStageSubclass"
+        ),
+    ):
+        stage_digest(derived)
 
 
 def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
@@ -358,7 +577,7 @@ def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
     assert [dict(warning) for warning in stage.warnings] == [{"reason": "thin"}]
     assert dict(stage.source_contract) == {"status": "closed"}
     assert stage_digest(stage) == (
-        "sha256:f2e1d4e7035dc967e9348d3701935cfae730128f00d472e17433c7813e9f96fd"
+        "sha256:b8a35c5837ee0c2f9c10ea8c7f6d909d0f932e9c94cdfaaf000e8a46eed5afd5"
     )
     with pytest.raises(TypeError):
         stage.runtime_files["GlobalValues.json"]["A"] = 2
@@ -380,7 +599,15 @@ def _self_referential_mapping() -> dict[str, Any]:
     return value
 
 
-def _self_referential_dataclass() -> CyclicStageValue:
-    value = CyclicStageValue()
-    value.child = value
+def _nested_list(depth: int) -> Any:
+    value: Any = "leaf"
+    for _index in range(depth):
+        value = [value]
+    return value
+
+
+def _shared_dag(depth: int) -> dict[str, Any]:
+    value: dict[str, Any] = {"leaf": "value"}
+    for _index in range(depth):
+        value = {"left": value, "right": value}
     return value
