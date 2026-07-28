@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 import yaml
+from yaml.nodes import MappingNode, Node, SequenceNode
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,63 @@ def _workflow_commands() -> list[str]:
                 if isinstance(run, str):
                     commands.append(run)
     return commands
+
+
+def _uses_nodes(value: object, node: Node):
+    if isinstance(value, dict) and isinstance(node, MappingNode):
+        semantic_items = list(value.items())
+        if len(semantic_items) != len(node.value):
+            raise AssertionError("workflow mappings must not use merged or duplicate keys")
+        for (key, child_value), (_key_node, child_node) in zip(
+            semantic_items,
+            node.value,
+            strict=True,
+        ):
+            if key == "uses":
+                yield child_value, child_node
+            yield from _uses_nodes(child_value, child_node)
+    elif isinstance(value, list) and isinstance(node, SequenceNode):
+        if len(value) != len(node.value):
+            raise AssertionError("workflow sequence shape changed during YAML loading")
+        for child_value, child_node in zip(value, node.value, strict=True):
+            yield from _uses_nodes(child_value, child_node)
+
+
+def _external_action_pin_errors(path: Path) -> list[str]:
+    source = path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(source)
+    root_node = yaml.compose(source)
+    if workflow is None or root_node is None:
+        return []
+
+    external_ref = re.compile(
+        r"^[^/@\s]+/[^/@\s]+(?:/[^/@\s]+)*@[0-9a-f]{40}$"
+    )
+    version_comment = re.compile(r"#\s+v[^\s#]+\s*$")
+    lines = source.splitlines()
+    errors = []
+    for reference, value_node in _uses_nodes(workflow, root_node):
+        line_number = value_node.start_mark.line + 1
+        location = f"{path}:{line_number}"
+        if not isinstance(reference, str):
+            errors.append(f"{location} uses value must be a string")
+            continue
+        if reference.startswith("./"):
+            continue
+        if not external_ref.fullmatch(reference):
+            errors.append(
+                f"{location} external uses {reference!r} must pin a "
+                "40-character lowercase commit SHA"
+            )
+            continue
+        source_line = lines[value_node.end_mark.line]
+        comment_suffix = source_line[value_node.end_mark.column :]
+        if not version_comment.search(comment_suffix):
+            errors.append(
+                f"{location} external uses {reference!r} must keep a "
+                "trailing version comment"
+            )
+    return errors
 
 
 def test_runtime_dependencies_declare_yaml_parser():
@@ -79,27 +137,69 @@ def test_ci_runs_lint_full_suite_and_contract_sentinels():
 
 
 def test_external_workflow_actions_use_immutable_sha_with_version_comment():
-    action_line = re.compile(
-        r"^\s*-\s+uses:\s+([^@\s]+)@([0-9a-f]{40})\s+#\s+v[^\s]+\s*$"
-    )
-    external_uses: list[tuple[Path, int, str]] = []
     workflow_paths = sorted(
         path
         for path in (ROOT / ".github" / "workflows").iterdir()
         if path.suffix in {".yml", ".yaml"}
     )
-    for path in workflow_paths:
-        for line_number, line in enumerate(
-            path.read_text(encoding="utf-8").splitlines(),
-            start=1,
-        ):
-            if re.match(r"^\s*-\s+uses:", line) and "uses: ./" not in line:
-                external_uses.append((path, line_number, line))
 
-    assert external_uses
-    for path, line_number, line in external_uses:
-        assert action_line.match(line), (
-            f"{path.relative_to(ROOT)}:{line_number} must pin the external "
-            "action to a 40-character lowercase commit SHA and keep a "
-            "trailing version comment"
-        )
+    assert workflow_paths
+    assert [
+        error
+        for path in workflow_paths
+        for error in _external_action_pin_errors(path)
+    ] == []
+
+
+def test_semantic_action_guard_handles_yaml_syntax_and_reusable_workflows(
+    tmp_path: Path,
+):
+    sha = "a" * 40
+    workflow = tmp_path / "semantic.yml"
+    workflow.write_text(
+        f"""
+jobs:
+  local:
+    "uses" : "./.github/workflows/local.yml"
+  reusable:
+    uses : "owner/repo/.github/workflows/reuse.yml@{sha}" # v1.2.3
+  build:
+    steps:
+      - {{ "uses" : "owner/repo/action/subpath@{sha}" }} # v2.0.0
+      - run: 'echo "# uses: ./comment-is-not-an-action"'
+""",
+        encoding="utf-8",
+    )
+
+    assert _external_action_pin_errors(workflow) == []
+
+
+def test_semantic_action_guard_rejects_mutable_uppercase_and_uncommented_refs(
+    tmp_path: Path,
+):
+    uppercase_sha = "A" * 40
+    lowercase_sha = "b" * 40
+    workflow = tmp_path / "unsafe.yml"
+    workflow.write_text(
+        f"""
+# uses: ./spoof-comment
+jobs:
+  mutable:
+    uses : "owner/repo/.github/workflows/reuse.yml@v1" # v1
+  uppercase:
+    "uses": "owner/repo/action@{uppercase_sha}" # v2
+  missing-comment:
+    steps:
+      - {{uses: "owner/repo/action@{lowercase_sha}"}}
+  local:
+    uses: "./.github/workflows/local.yml"
+""",
+        encoding="utf-8",
+    )
+
+    errors = _external_action_pin_errors(workflow)
+
+    assert len(errors) == 3
+    assert any("@v1" in error for error in errors)
+    assert any(uppercase_sha in error for error in errors)
+    assert any("version comment" in error for error in errors)

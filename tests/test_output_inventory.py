@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts import report_output_inventory
 
 
@@ -69,6 +71,25 @@ def _snapshot_tree(root: Path) -> dict[str, tuple[bytes, int]]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def _make_directory_symlink(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+
+
+def _make_junction(link: Path, target: Path) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows junction coverage")
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        pytest.skip(f"directory junctions unavailable: {completed.stderr}")
 
 
 def test_inventory_supports_staged_and_direct_packages_without_private_fields(
@@ -136,6 +157,147 @@ def test_inventory_supports_staged_and_direct_packages_without_private_fields(
     assert "PRIVATE-DECK-CODE" not in json.dumps(inventory)
     assert "runtime_apply_allowed" not in json.dumps(inventory)
     assert "VALID_PACKAGE" not in json.dumps(inventory)
+
+
+def test_duplicate_selection_uses_mtime_before_display_case(tmp_path: Path) -> None:
+    outputs = tmp_path / "outputs"
+    _write_package(
+        outputs / "uppercase-old",
+        deck_name="SHADOWPRIEST",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    _write_package(
+        outputs / "lowercase-new",
+        deck_name="shadowpriest",
+        staged=True,
+        modified_time=1_710_000_000,
+    )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert [row["path"] for row in inventory["likely_duplicate_candidates"]] == [
+        "uppercase-old"
+    ]
+
+
+def test_duplicate_selection_uses_path_as_equal_mtime_tie_breaker(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    _write_package(
+        outputs / "z-candidate",
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    _write_package(
+        outputs / "a-current",
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert [row["path"] for row in inventory["likely_duplicate_candidates"]] == [
+        "z-candidate"
+    ]
+
+
+def test_inventory_skips_output_entry_symlink_that_escapes_root(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    external = tmp_path / "external-package"
+    _write_package(
+        external,
+        deck_name="EXTERNAL-PRIVATE-DECK",
+        staged=False,
+        modified_time=1_700_000_000,
+    )
+    _make_directory_symlink(outputs / "escaped", external)
+    before = _snapshot_tree(tmp_path)
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory == {"entries": [], "likely_duplicate_candidates": []}
+    assert "EXTERNAL-PRIVATE-DECK" not in json.dumps(inventory)
+    assert _snapshot_tree(tmp_path) == before
+
+
+def test_inventory_skips_output_entry_junction_that_escapes_root(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    external = tmp_path / "junction-target"
+    _write_package(
+        external,
+        deck_name="EXTERNAL-JUNCTION-DECK",
+        staged=False,
+        modified_time=1_700_000_000,
+    )
+    _make_junction(outputs / "escaped-junction", external)
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory == {"entries": [], "likely_duplicate_candidates": []}
+    assert "EXTERNAL-JUNCTION-DECK" not in json.dumps(inventory)
+
+
+@pytest.mark.parametrize("linked_component", ["04_package", "reports"])
+def test_inventory_does_not_read_nested_package_links_that_escape_root(
+    tmp_path: Path,
+    linked_component: str,
+) -> None:
+    outputs = tmp_path / "outputs"
+    entry = outputs / "local-entry"
+    external = tmp_path / "external-package"
+    _write_package(
+        external,
+        deck_name="EXTERNAL-NESTED-DECK",
+        staged=False,
+        modified_time=1_700_000_000,
+    )
+    if linked_component == "04_package":
+        entry.mkdir(parents=True)
+        _make_directory_symlink(entry / "04_package", external)
+    else:
+        package = entry / "04_package"
+        (package / "CustomConfig").mkdir(parents=True)
+        _make_directory_symlink(
+            package / "reports",
+            external / "reports",
+        )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory["entries"] == [
+        {
+            "deck": None,
+            "path": "local-entry",
+            "modified_time": inventory["entries"][0]["modified_time"],
+            "package_status": "package_not_found",
+        }
+    ]
+    assert inventory["likely_duplicate_candidates"] == []
+    assert "EXTERNAL-NESTED-DECK" not in json.dumps(inventory)
+
+
+def test_inventory_treats_broken_nested_package_link_as_not_found(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    entry = outputs / "broken-entry"
+    entry.mkdir(parents=True)
+    _make_directory_symlink(entry / "04_package", tmp_path / "missing-package")
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory["entries"][0]["deck"] is None
+    assert inventory["entries"][0]["package_status"] == "package_not_found"
 
 
 def test_inventory_is_read_only_and_cli_writes_only_stdout(tmp_path: Path) -> None:
