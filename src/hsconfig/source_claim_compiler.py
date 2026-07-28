@@ -265,15 +265,15 @@ def _compile_combo_sequence_claims(
     deck_identity: Mapping[str, Any],
     text: str,
 ) -> None:
+    card_names_by_id = {
+        _text(card.get("card_id", "")): _text(card.get("name", ""))
+        for card in _deck_cards(deck_identity)
+    }
     for sentence in _sentences(text):
         sequence = _card_sequence_in_sentence(deck_identity, sentence)
         if len(sequence) < 2:
             continue
-        mentioned_card_names = [
-            _text(card.get("name", ""))
-            for card in _deck_cards(deck_identity)
-            if _text(card.get("card_id", "")) in sequence
-        ]
+        mentioned_card_names = [card_names_by_id[card_id] for card_id in sequence]
         if not is_explicit_combo_sentence(sentence, mentioned_card_names):
             continue
         compiled["claims"].append(
@@ -341,11 +341,13 @@ def _card_sequence_in_sentence(
     return [card_id for _, card_id in sorted(found)]
 
 
-def _combo_timing(sentence: str) -> str:
+def _combo_timing(sentence: str) -> str | None:
     lowered = sentence.lower()
     if "next turn" in lowered or "following turn" in lowered or "turn after" in lowered:
         return "cross_turn"
-    return "same_turn"
+    if "same turn" in lowered or "this turn" in lowered:
+        return "same_turn"
+    return None
 
 
 def _first_mentioned_marker(text: str, markers: Sequence[str]) -> str:

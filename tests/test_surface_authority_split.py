@@ -110,7 +110,9 @@ def _canonical_combo_bundle():
                         "timing_kind": "same_turn",
                         "operator": ">>",
                         "values": ["7", "9"],
-                        "evidence_text_short": "Play First Combo Card before Second Combo Card.",
+                        "evidence_text_short": (
+                            "Play EX1_001 followed by EX1_002 in the same turn."
+                        ),
                         "source_confidence": "high",
                         "promotion_eligible": True,
                     }

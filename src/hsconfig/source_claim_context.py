@@ -17,7 +17,7 @@ BOILERPLATE_MARKERS = (
     "like us on facebook",
 )
 EXPLICIT_COMBO_MARKERS = ("combo sequence", "combo:", "sequence:")
-ORDERED_CONNECTORS = (" then ", " into ", " followed by ", " + ", " -> ")
+ORDERED_CONNECTORS = (" then ", " into ", " followed by ", " -> ")
 
 
 def normalized(value: Any) -> str:
@@ -46,13 +46,80 @@ def is_explicit_combo_sentence(sentence: str, card_names: list[str]) -> bool:
     lowered = " ".join(sentence.lower().split())
     if len(lowered) > 500 or not is_content_evidence(lowered):
         return False
-    positions = sorted(
-        lowered.find(name.lower())
-        for name in card_names
-        if name and lowered.find(name.lower()) >= 0
+    spans = _ordered_mention_spans(
+        lowered,
+        [[name] for name in card_names],
     )
-    if len(positions) < 2:
+    if spans is None:
         return False
-    if any(marker in lowered for marker in EXPLICIT_COMBO_MARKERS):
-        return True
-    return any(connector in lowered for connector in ORDERED_CONNECTORS)
+    return _has_connectors_between_mentions(lowered, spans)
+
+
+def claim_has_directed_combo_evidence(
+    claim: Mapping[str, Any],
+    deck_identity: Mapping[str, Any] | None,
+) -> bool:
+    sequence = claim.get("sequence", claim.get("cards", []))
+    if isinstance(sequence, str):
+        sequence = [sequence]
+    ordered_card_ids = [str(card_id) for card_id in sequence if str(card_id)]
+    if len(ordered_card_ids) < 2:
+        return False
+
+    cards = (
+        deck_identity.get("cards", [])
+        if isinstance(deck_identity, Mapping)
+        else []
+    )
+    names_by_card_id = {
+        str(card.get("card_id", "")): str(card.get("name", ""))
+        for card in cards
+        if isinstance(card, Mapping) and card.get("card_id")
+    }
+    mention_groups = [
+        [
+            alias
+            for alias in (names_by_card_id.get(card_id, ""), card_id)
+            if alias
+        ]
+        for card_id in ordered_card_ids
+    ]
+    lowered = normalized(claim_text(claim))
+    if len(lowered) > 500 or not is_content_evidence(lowered):
+        return False
+    spans = _ordered_mention_spans(lowered, mention_groups)
+    if spans is None:
+        return False
+    return _has_connectors_between_mentions(lowered, spans)
+
+
+def _ordered_mention_spans(
+    lowered: str,
+    mention_groups: list[list[str]],
+) -> list[tuple[int, int]] | None:
+    spans: list[tuple[int, int]] = []
+    for aliases in mention_groups:
+        candidates = [
+            (start, start + len(alias_lowered))
+            for alias in aliases
+            if (alias_lowered := normalized(alias))
+            and (start := lowered.find(alias_lowered)) >= 0
+        ]
+        if not candidates:
+            return None
+        span = min(candidates)
+        if spans and span[0] < spans[-1][1]:
+            return None
+        spans.append(span)
+    return spans if len(spans) >= 2 else None
+
+
+def _has_connectors_between_mentions(
+    lowered: str,
+    spans: list[tuple[int, int]],
+) -> bool:
+    for left, right in zip(spans, spans[1:]):
+        between = f" {lowered[left[1]:right[0]].strip()} "
+        if not any(connector in between for connector in ORDERED_CONNECTORS):
+            return False
+    return True

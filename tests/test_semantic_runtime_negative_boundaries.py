@@ -131,6 +131,31 @@ def build_authorized_combo_case(*, deck_cards, case_id):
     )
 
 
+@pytest.mark.parametrize(
+    "case_id",
+    [
+        "combo-plus-coexistence",
+        "combo-marker-unordered-list",
+        "combo-undirected-sentence",
+        "combo-exact-decklist-coexistence",
+    ],
+)
+def test_exact_source_combo_claim_without_directed_evidence_is_suppressed(case_id):
+    result = build_authorized_combo_case(
+        deck_cards={"CARD_A", "CARD_B"},
+        case_id=case_id,
+    )
+
+    assert result["combos"] == []
+    assert result["suppressed"] == [
+        {
+            "claim_id": case_id,
+            "cards": ["CARD_A", "CARD_B"],
+            "reason": "combo_requires_directed_source_evidence",
+        }
+    ]
+
+
 def test_start_of_game_hero_power_transform_does_not_lower_to_mulligan_keep():
     claim = {
         "claim_id": "darkbishop_wrong_keep",

@@ -169,7 +169,12 @@ def test_shadowpriest_default_combo_operator_matches_physical_ledger(
             "values": ["10", "8"],
             "condition": "*",
             "evidence_text_short": (
-                "Play Shadowbomber before Voidtouched Attendant."
+                "Play Shadowbomber then Voidtouched Attendant in the same turn."
+                if timing_kind == "same_turn"
+                else (
+                    "Play Shadowbomber followed by Voidtouched Attendant "
+                    "on the following turn."
+                )
             ),
             "source_confidence": "high",
             "promotion_eligible": True,

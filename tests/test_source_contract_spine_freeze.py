@@ -132,7 +132,7 @@ def _canonical_combo_bundle():
                         "operator": ">>",
                         "values": ["6", "6"],
                         "evidence_text_short": (
-                            "Play Fixture Card One before Fixture Card Two."
+                            "Play CARD_001 into CARD_002 in the same turn."
                         ),
                         "source_confidence": "high",
                         "promotion_eligible": True,

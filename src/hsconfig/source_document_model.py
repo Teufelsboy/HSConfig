@@ -12,6 +12,7 @@ from hsconfig.role_tokens import (
     has_explicit_opening_hand_mulligan_intent,
 )
 from hsconfig.source_claim_context import (
+    claim_has_directed_combo_evidence,
     claim_text,
     has_explicit_mulligan_context,
     normalized,
@@ -948,7 +949,38 @@ def can_lower_to_combo(
             claim_kind,
             "combo",
         )
+    if (
+        _combo_claim_has_complete_sequence_shape(claim)
+        and not claim_has_directed_combo_evidence(claim, deck_identity)
+    ):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_directed_source_evidence",
+            claim_kind,
+            "combo",
+        )
     return SurfaceGateDecision(True, "allowed", claim_kind, "combo")
+
+
+def _combo_claim_has_complete_sequence_shape(claim: Mapping[str, Any]) -> bool:
+    sequence = claim.get("sequence", claim.get("cards", []))
+    if isinstance(sequence, str):
+        sequence = [sequence]
+    if not isinstance(sequence, Iterable):
+        return False
+    cards = [str(card) for card in sequence if str(card)]
+    values = claim.get("values", [])
+    if isinstance(values, str) or not isinstance(values, Iterable):
+        return False
+    timing_kind = _normalized_text(claim.get("timing_kind"))
+    expected_operator = {"same_turn": ">>", "cross_turn": ">->"}.get(timing_kind)
+    return bool(
+        len(cards) >= 2
+        and len([value for value in values]) == len(cards)
+        and expected_operator is not None
+        and _normalized_text(claim.get("operator", expected_operator))
+        == expected_operator
+    )
 
 
 def can_lower_to_cardid(

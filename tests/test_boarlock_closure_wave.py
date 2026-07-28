@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
@@ -18,6 +19,41 @@ def _explainability(result):
 def _card_explainability(result, card_id: str):
     explainability = _explainability(result)
     return next(row for row in explainability["card_rows"] if row["card_id"] == card_id)
+
+
+def test_boarlock_unordered_combo_section_does_not_compile_a_sequence():
+    deck_identity = {
+        "deck_name": "Boarlock",
+        "cards": [
+            {"card_id": "SW_075", "name": "Elwynn Boar"},
+            {"card_id": "UNG_832", "name": "Bloodbloom"},
+            {"card_id": "DINO_402", "name": "Bat Mask"},
+            {"card_id": "ULD_717", "name": "Plague of Flames"},
+        ],
+    }
+    payload = compile_source_search_records(
+        deck_name="Boarlock",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_url": "https://example.test/boarlock-guide",
+                "source_title": "Boarlock Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "normalized_text": (
+                    "Combo: Elwynn Boar, Bloodbloom, Bat Mask, "
+                    "and Plague of Flames all on turn 6."
+                ),
+            }
+        ],
+        current_date="2026-07-28",
+    )
+
+    assert [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "combo_sequence"
+    ] == []
 
 
 def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
