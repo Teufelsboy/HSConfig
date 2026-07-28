@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
 
-MULLIGAN_CONTEXT_MARKERS = ("mulligan", "opening hand", "opening-hand")
+MULLIGAN_CONTEXT_PATTERNS = (
+    re.compile(r"\bmulligan\b"),
+    re.compile(r"\bopening[ -]hand\b"),
+)
 BOILERPLATE_MARKERS = (
     "follow us on twitter",
     "follow us on bluesky",
@@ -30,7 +34,7 @@ def claim_text(claim: Mapping[str, Any]) -> str:
 
 def has_explicit_mulligan_context(text: str) -> bool:
     lowered = normalized(text)
-    return any(marker in lowered for marker in MULLIGAN_CONTEXT_MARKERS)
+    return any(pattern.search(lowered) for pattern in MULLIGAN_CONTEXT_PATTERNS)
 
 
 def is_content_evidence(text: str) -> bool:

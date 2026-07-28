@@ -669,6 +669,14 @@ def test_public_guide_mulligan_with_exact_authority_can_lower():
             "Keep pressure on the opponent with Fixture One.",
             id="keep-outside-opening-hand-instruction",
         ),
+        pytest.param(
+            "Use premulligan planning for Fixture One.",
+            id="mulligan-substring-without-token-boundary",
+        ),
+        pytest.param(
+            "Fixture One supports the opening handrail setup.",
+            id="opening-hand-substring-without-phrase-boundary",
+        ),
     ],
 )
 def test_exact_public_guide_claim_requires_explicit_opening_hand_context(

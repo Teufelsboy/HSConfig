@@ -9,6 +9,8 @@ from hsconfig.source_claim_context import has_explicit_mulligan_context
         "Play Fixture One on curve to pressure the opponent.",
         "Keep pressure on the opponent with Fixture One.",
         "Fixture One changes the Hero Power at the start of the game.",
+        "Use premulligan planning for Fixture One.",
+        "Fixture One supports the opening handrail setup.",
     ],
 )
 def test_ordinary_strategy_text_has_no_explicit_mulligan_context(text):
