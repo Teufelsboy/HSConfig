@@ -33,6 +33,10 @@ _RAW_DECK_CODE_FIELDS = frozenset(
 )
 _RAW_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _CONTENT_SHA256_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+_STABLE_IDENTIFIER_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)*"
+)
+_WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"[A-Za-z]:")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,9 +83,9 @@ def canonicalize_build_inputs(
     deck_name = _normalized_text(payload["deck_name"])
     deck_code_sha256 = _raw_sha256(payload["deck_code_sha256"])
     deck_fingerprint = _raw_sha256(payload["deck_fingerprint"])
-    card_snapshot_id = _normalized_text(payload["card_snapshot_id"])
+    card_snapshot_id = _normalized_stable_identifier(payload["card_snapshot_id"])
     card_snapshot_sha256 = _content_sha256(payload["card_snapshot_sha256"])
-    policy_profile_id = _normalized_text(payload["policy_profile_id"])
+    policy_profile_id = _normalized_stable_identifier(payload["policy_profile_id"])
     policy_profile_sha256 = _content_sha256(payload["policy_profile_sha256"])
     as_of_date = _normalized_date(payload["as_of_date"])
     source_bundle_sha256s = _normalized_reference_sequence(
@@ -90,7 +94,7 @@ def canonicalize_build_inputs(
     )
     evidence_policy_ids = _normalized_reference_sequence(
         payload["evidence_policy_ids"],
-        normalizer=_normalized_text,
+        normalizer=_normalized_stable_identifier,
     )
 
     normalized_payload = {
@@ -150,6 +154,24 @@ def _is_absolute_path(value: str) -> bool:
         or PurePosixPath(value).is_absolute()
         or PureWindowsPath(value).is_absolute()
     )
+
+
+def _normalized_stable_identifier(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("build_inputs_identifier_invalid")
+    normalized = value.strip()
+    if (
+        any(ord(character) < 32 for character in normalized)
+        or "/" in normalized
+        or "\\" in normalized
+        or ".." in normalized
+        or normalized.casefold().startswith("file:")
+        or _WINDOWS_DRIVE_PREFIX_PATTERN.match(normalized) is not None
+        or normalized.casefold().endswith(".json")
+        or _STABLE_IDENTIFIER_PATTERN.fullmatch(normalized) is None
+    ):
+        raise ValueError("build_inputs_identifier_invalid")
+    return normalized
 
 
 def _raw_sha256(value: Any) -> str:

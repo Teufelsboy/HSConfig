@@ -89,12 +89,12 @@ def test_canonicalize_build_inputs_normalizes_and_hashes_exact_json_bytes() -> N
 
 def test_canonical_payload_uses_utf8_instead_of_ascii_escapes() -> None:
     payload = _valid_payload()
-    payload["policy_profile_id"] = "policy.überprüft"
+    payload["deck_name"] = "ShadowPrïest"
 
     inputs = canonicalize_build_inputs(payload)
 
-    assert "policy.überprüft".encode() in inputs.canonical_payload
-    assert b"\\u00fc" not in inputs.canonical_payload
+    assert "ShadowPrïest".encode() in inputs.canonical_payload
+    assert b"\\u00ef" not in inputs.canonical_payload
 
 
 def test_audited_build_identity_matches_decoded_catalog() -> None:
@@ -202,8 +202,6 @@ def test_canonicalize_rejects_unknown_keys() -> None:
 @pytest.mark.parametrize(
     ("field", "absolute_path"),
     [
-        ("card_snapshot_id", r"C:\private\cards.json"),
-        ("policy_profile_id", "/private/policy.json"),
         ("generator_commit", r"\\server\share\repo"),
     ],
 )
@@ -216,6 +214,74 @@ def test_canonicalize_rejects_absolute_paths(
 
     with pytest.raises(ValueError, match="build_inputs_absolute_path_forbidden"):
         canonicalize_build_inputs(payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["card_snapshot_id", "policy_profile_id", "evidence_policy_ids"],
+)
+@pytest.mark.parametrize(
+    "path_shaped_identifier",
+    [
+        r"\private\cards.json",
+        r"C:private\cards.json",
+        r"..\private\policy.json",
+        "../private/policy.json",
+        "fixtures/cards.json",
+        r"fixtures\cards.json",
+        "file:///C:/private/cards.json",
+        "cards.json",
+        "local-policy.json",
+    ],
+)
+def test_canonicalize_rejects_path_shaped_stable_identifiers(
+    field: str,
+    path_shaped_identifier: str,
+) -> None:
+    payload = _valid_payload()
+    payload[field] = (
+        [path_shaped_identifier]
+        if field == "evidence_policy_ids"
+        else path_shaped_identifier
+    )
+
+    with pytest.raises(ValueError, match="build_inputs_identifier_invalid"):
+        canonicalize_build_inputs(payload)
+
+
+@pytest.mark.parametrize(
+    "invalid_identifier",
+    [
+        "policy id",
+        "policy@v1",
+        "policy.überprüft",
+        ":policy",
+        "policy::v1",
+        ".",
+        "..",
+    ],
+)
+def test_canonicalize_rejects_identifiers_outside_stable_ascii_grammar(
+    invalid_identifier: str,
+) -> None:
+    payload = _valid_payload()
+    payload["policy_profile_id"] = invalid_identifier
+
+    with pytest.raises(ValueError, match="build_inputs_identifier_invalid"):
+        canonicalize_build_inputs(payload)
+
+
+def test_canonicalize_accepts_namespaced_stable_ascii_identifiers() -> None:
+    payload = _valid_payload()
+    payload["card_snapshot_id"] = "HearthstoneJSON:247416:CardDefs.xml"
+    payload["policy_profile_id"] = "policy-profile_v1.2"
+    payload["evidence_policy_ids"] = ["evidence:policy-v1_2.3"]
+
+    inputs = canonicalize_build_inputs(payload)
+
+    assert inputs.card_snapshot_id == "HearthstoneJSON:247416:CardDefs.xml"
+    assert inputs.policy_profile_id == "policy-profile_v1.2"
+    assert inputs.evidence_policy_ids == ("evidence:policy-v1_2.3",)
 
 
 @pytest.mark.parametrize(
