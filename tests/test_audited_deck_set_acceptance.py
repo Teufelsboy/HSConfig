@@ -911,6 +911,201 @@ def _assert_global_semantic_invariants(package: Mapping[str, Any]) -> None:
     assert mulligan_condition_suppressions.isdisjoint(emitted_mulligan_claims)
 
 
+def _assert_warning_only_cards_absent_from_runtime(
+    package: Mapping[str, Any],
+    *,
+    mechanic: str,
+    expected_card_ids: set[str],
+) -> None:
+    reports = Path(package["out"]) / "reports"
+    semantic = read_json(reports / "semantic_enrichment_report.json")
+    warning_only_card_ids = {
+        str(card["card_id"])
+        for card in semantic["cards"]
+        if mechanic in card.get("warning_only_mechanics", [])
+    }
+    assert expected_card_ids <= warning_only_card_ids
+
+    if not warning_only_card_ids:
+        return
+    summary = read_json(reports / "operator_summary.json")
+    visible_warning_mechanics = {
+        str(row["mechanic"])
+        for row in summary["mechanic_visibility_summary"]["warning_boundaries"]
+    }
+    assert mechanic in visible_warning_mechanics
+
+    behavior = read_json(reports / "card_behavior_plan_report.json")
+    emitted_source_card_ids = {
+        str(row["source_card_id"])
+        for row in behavior["rows"]
+        if row.get("meaningful_runtime_surface") is True
+    }
+    runtime_card_ids = {
+        card_id for card_id, _block, _condition, _value in _physical_card_rows(
+            _card_payloads(package)
+        )
+    }
+    assert warning_only_card_ids.isdisjoint(emitted_source_card_ids)
+    assert warning_only_card_ids.isdisjoint(runtime_card_ids)
+
+
+def _assert_suppressed_card_semantics_absent(
+    package: Mapping[str, Any],
+    *,
+    expected_by_reason: Mapping[str, set[str]],
+) -> None:
+    reports = Path(package["out"]) / "reports"
+    behavior = read_json(reports / "card_behavior_plan_report.json")
+    emitted_claim_ids = {
+        str(claim_id)
+        for row in behavior["rows"]
+        for claim_id in row.get("source_claim_ids", [])
+    }
+    runtime_card_ids = {
+        card_id for card_id, _block, _condition, _value in _physical_card_rows(
+            _card_payloads(package)
+        )
+    }
+
+    for reason, expected_card_ids in expected_by_reason.items():
+        matching_rows = [
+            row for row in behavior["suppressed"] if row.get("reason") == reason
+        ]
+        visible_card_ids = {
+            str(card_id)
+            for row in matching_rows
+            for card_id in row.get("cards", [])
+        }
+        suppressed_claim_ids = {
+            str(row["claim_id"])
+            for row in matching_rows
+            if expected_card_ids.intersection(
+                str(card_id) for card_id in row.get("cards", [])
+            )
+        }
+        assert expected_card_ids <= visible_card_ids
+        assert suppressed_claim_ids
+        assert suppressed_claim_ids.isdisjoint(emitted_claim_ids)
+        assert expected_card_ids.isdisjoint(runtime_card_ids)
+
+
+def _assert_no_inferred_combo(package: Mapping[str, Any]) -> None:
+    reports = Path(package["out"]) / "reports"
+    combo_plan = read_json(reports / "combo_plan_report.json")
+    assert combo_plan["combos"] == []
+    assert not (_deck_dir(package) / "Combo.json").exists()
+
+
+def _assert_ctapaladin_semantic_boundary(package: Mapping[str, Any]) -> None:
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="secret_timing",
+        expected_card_ids={"EX1_136", "GIL_903", "DMF_236", "BAR_875"},
+    )
+
+
+def _assert_piraterogue_semantic_boundary(package: Mapping[str, Any]) -> None:
+    _assert_no_inferred_combo(package)
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="dredge",
+        expected_card_ids={"TSC_086"},
+    )
+    _assert_suppressed_card_semantics_absent(
+        package,
+        expected_by_reason={
+            "combo_target_condition_not_encoded": {"CS2_073"},
+            "combo_count_condition_not_encoded": {"DMF_519"},
+            "hand_position_condition_not_encoded": {"TTN_922"},
+        },
+    )
+
+
+def _assert_bigshaman_semantic_boundary(package: Mapping[str, Any]) -> None:
+    _assert_no_inferred_combo(package)
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="location_activation",
+        expected_card_ids={"TOY_507"},
+    )
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="board_position",
+        expected_card_ids=set(),
+    )
+
+
+def _assert_treantdruid_semantic_boundary(package: Mapping[str, Any]) -> None:
+    _assert_suppressed_card_semantics_absent(
+        package,
+        expected_by_reason={
+            "variable_cost_condition_not_encoded": {
+                "DRG_314",
+                "DMF_060",
+                "TTN_954",
+            },
+            "spell_cannot_own_on_board": {"TTN_954"},
+        },
+    )
+
+
+def _assert_piratedh_semantic_boundary(package: Mapping[str, Any]) -> None:
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="outcast",
+        expected_card_ids={"BT_490", "SCH_356", "CORE_YOP_001"},
+    )
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="location_activation",
+        expected_card_ids={"VAC_929"},
+    )
+    legacy_names = {"Presume.json", "Concede.json"}
+    assert legacy_names.isdisjoint(
+        path.name for path in _deck_dir(package).iterdir()
+    )
+
+
+def _assert_cutewarrior_semantic_boundary(package: Mapping[str, Any]) -> None:
+    matrix_names = {str(row["deck_name"]) for row in read_json(MATRIX_PATH)["decks"]}
+    supplemental_names = {
+        str(row["deck_name"]) for row in read_json(SUPPLEMENTAL_PATH)["decks"]
+    }
+    assert "CuteWarrior" not in matrix_names
+    assert "CuteWarrior" in supplemental_names
+
+    summary = read_json(Path(package["out"]) / "reports" / "operator_summary.json")
+    assert summary["fixture_classification"] == "load_safe_fixture"
+    assert summary["runtime_load_safe"] is True
+    assert summary["source_apply_eligible"] is False
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["configuration_assurance"]["source_authority"] == "archetype_only"
+
+    _assert_suppressed_card_semantics_absent(
+        package,
+        expected_by_reason={
+            "unresolved_option_identity": {"EDR_570"},
+            "choose_one_condition_not_encoded": {"EDR_570"},
+        },
+    )
+    _assert_warning_only_cards_absent_from_runtime(
+        package,
+        mechanic="board_position",
+        expected_card_ids=set(),
+    )
+
+
+DECK_SEMANTIC_BOUNDARY_ASSERTIONS = {
+    "CtAPaladin": _assert_ctapaladin_semantic_boundary,
+    "PirateRogue": _assert_piraterogue_semantic_boundary,
+    "BigShaman": _assert_bigshaman_semantic_boundary,
+    "TreantDruid": _assert_treantdruid_semantic_boundary,
+    "PirateDH": _assert_piratedh_semantic_boundary,
+    "CuteWarrior": _assert_cutewarrior_semantic_boundary,
+}
+
+
 def _assert_deck_specific_invariants(
     deck_name: str,
     package: Mapping[str, Any],
@@ -919,6 +1114,11 @@ def _assert_deck_specific_invariants(
     reports = out / "reports"
     payloads = _card_payloads(package)
     holds = _mulligan_hold_cards(package)
+
+    semantic_boundary_assertion = DECK_SEMANTIC_BOUNDARY_ASSERTIONS.get(deck_name)
+    if semantic_boundary_assertion is not None:
+        semantic_boundary_assertion(package)
+        return
 
     if deck_name == "ShadowPriest":
         assert "BeforeUseHeroPowerBonus" not in payloads["SW_448"]
@@ -1003,6 +1203,78 @@ def _assert_deck_specific_invariants(
         }
         assert physical_mulligan_cards == readiness_mulligan_cards
         assert "FIR_911" in physical_mulligan_cards
+
+
+def _insert_forbidden_semantic_row(
+    package: Mapping[str, Any],
+    *,
+    card_id: str,
+    mechanic: str,
+) -> None:
+    reports = Path(package["out"]) / "reports"
+    behavior_path = reports / "card_behavior_plan_report.json"
+    behavior = read_json(behavior_path)
+    row = {
+        "behavior_block": "BeforePlayCardBonus",
+        "card_id": card_id,
+        "condition": {"unsupported_semantic": mechanic},
+        "link_kind": "self",
+        "meaningful_runtime_surface": True,
+        "runtime_card_id": card_id,
+        "source_card_id": card_id,
+        "source_claim_ids": [f"mutation:{mechanic}"],
+        "source_refs": [f"mutation:{mechanic}"],
+        "value": 999,
+    }
+    behavior["rows"].append(row)
+    write_json(behavior_path, behavior)
+
+    card_path = _deck_dir(package) / f"{card_id}.json"
+    payload = read_json(card_path)
+    block = payload.setdefault("BeforePlayCardBonus", {"values": []})
+    block["values"].append(
+        {
+            "condition": {"unsupported_semantic": mechanic},
+            "value": 999,
+        }
+    )
+    write_json(card_path, payload)
+
+
+@pytest.mark.parametrize(
+    ("deck_name", "card_id", "mechanic"),
+    [
+        ("CtAPaladin", "EX1_136", "secret_timing"),
+        ("PirateRogue", "TSC_086", "dredge"),
+        ("BigShaman", "TOY_507", "location_activation"),
+        ("TreantDruid", "DRG_314", "variable_cost"),
+        ("PirateDH", "BT_490", "outcast"),
+        ("CuteWarrior", "EDR_570", "choose_one"),
+    ],
+)
+def test_named_deck_boundary_rejects_invented_semantic_row(
+    deck_name: str,
+    card_id: str,
+    mechanic: str,
+    tmp_path: Path,
+    read_only_isolation: dict[str, list[str]],
+) -> None:
+    del read_only_isolation
+    deck = next(
+        row for row in audited_decks() if row["deck_name"] == deck_name
+    )
+    package = _prepare_audited_deck(tmp_path, deck)
+    assert package["exit_code"] == 0
+
+    _insert_forbidden_semantic_row(
+        package,
+        card_id=card_id,
+        mechanic=mechanic,
+    )
+    _assert_global_semantic_invariants(package)
+
+    with pytest.raises(AssertionError):
+        DECK_SEMANTIC_BOUNDARY_ASSERTIONS[deck_name](package)
 
 
 @pytest.mark.parametrize(

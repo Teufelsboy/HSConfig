@@ -204,6 +204,24 @@ The universal matrix test covers:
 - PirateDH
 - CuteWarrior
 
+The audited acceptance suite also names one stable semantic boundary for every
+deck. These checks pin meaning, not warning totals or generated-file order:
+
+| Deck | Audited semantic boundary |
+| --- | --- |
+| ShadowPriest | Darkbishop's linked hero-power owner and the two source-backed board engines emit on their documented owners; reciprocal burn stays report-only. |
+| CtAPaladin | Secret timing remains visible as warning-only, with no invented timing or target row in CardID runtime JSON. |
+| PirateRogue | No ordered Combo is inferred; Dredge, Combo-count/target, and hand-placement semantics remain visible and absent from runtime JSON. |
+| BigShaman | No ordered Combo is inferred; location activation and any detected board-position behavior remain warning-only unless an explicit supported source contract exists. |
+| Discolock | No legacy `InHandPlayPriority` row is emitted, and the empty GlobalValues overlay remains authority-matched. |
+| TreantDruid | Variable-cost and board-count-dependent text remains suppressed instead of becoming an unconditional runtime threshold. |
+| ImbueMage | Physical Mulligan entries match readiness ownership, including the audited `FIR_911` keep. |
+| MechPala | Zilliax modules remain sideboard analysis entities, own no runtime surfaces, and do not become Mulligan keeps. |
+| Kingslayer | `DEEP_014` is not an inferred keep, and unsupported attack timing is not emitted for the audited Pirate cards. |
+| Boarlock | No inferred Fracking keep, Combo sequence, or hero-power value is emitted. |
+| PirateDH | Outcast/hand-position and location activation remain visible but absent from runtime JSON; forbidden legacy surfaces remain absent. |
+| CuteWarrior | The deck remains supplemental, load-safe, and non-authoritative; unresolved Choose One or placement behavior is not emitted. |
+
 Each deck must produce `VALID_PACKAGE`, `runtime_load_safe=true`,
 `runtime_apply_mode=load_safe_apply`, `GlobalValues.json`, and `Mulligan.json`.
 As HSConfig rich-output repo policy, normal `prepare` must also emit one per-card
