@@ -4,6 +4,7 @@ import pytest
 
 from hsconfig.io import write_json
 from hsconfig.runtime_apply_receipts import (
+    build_failed_apply_payload,
     build_fake_apply_receipt,
     package_fingerprint,
     runtime_snapshot,
@@ -182,3 +183,63 @@ def test_write_runtime_write_history_appends_jsonl(tmp_path: Path):
     assert len(lines) == 2
     assert '"status": "applied"' in lines[0]
     assert '"status": "rolled_back"' in lines[1]
+
+
+def test_build_failed_apply_payload_records_rollback_without_applied_status(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    failure = RuntimeError("injected runtime package match failure")
+    before = {
+        "target_exists": True,
+        "target_files": [{"path": "old.json", "sha256": "before"}],
+    }
+    after = {
+        "target_exists": True,
+        "target_files": [{"path": "old.json", "sha256": "before"}],
+    }
+
+    payload = build_failed_apply_payload(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir="deck",
+        target_path=runtime / "CustomConfig" / "deck",
+        rollback_snapshot_path=runtime
+        / "CustomConfig"
+        / ".hsconfig_backups"
+        / "deck-1",
+        rollback_restored=True,
+        failure=failure,
+        runtime_snapshot_before=before,
+        runtime_snapshot_after_rollback=after,
+    )
+
+    assert payload["status"] == "rolled_back"
+    assert payload["runtime_write_performed"] is True
+    assert payload["rollback_restored"] is True
+    assert payload["failure_type"] == "RuntimeError"
+    assert payload["failure_message"] == "injected runtime package match failure"
+    assert payload["runtime_snapshot_before"] == before
+    assert payload["runtime_snapshot_after_rollback"] == after
+    assert "applied" not in payload.values()
+
+
+def test_build_failed_apply_payload_marks_failed_restore(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+
+    payload = build_failed_apply_payload(
+        package_root=tmp_path / "package",
+        runtime_root=runtime,
+        config_dir="deck",
+        target_path=runtime / "CustomConfig" / "deck",
+        rollback_snapshot_path=None,
+        rollback_restored=False,
+        failure=OSError("restore failed"),
+        runtime_snapshot_before={},
+        runtime_snapshot_after_rollback={},
+    )
+
+    assert payload["status"] == "rollback_failed"
+    assert payload["runtime_write_performed"] is True
+    assert payload["rollback_restored"] is False

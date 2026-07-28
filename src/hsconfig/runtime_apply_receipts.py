@@ -68,6 +68,40 @@ def runtime_snapshot(runtime_root: str | Path, config_dir: str) -> dict[str, Any
     }
 
 
+def build_failed_apply_payload(
+    *,
+    package_root: str | Path,
+    runtime_root: str | Path,
+    config_dir: str,
+    target_path: str | Path,
+    rollback_snapshot_path: str | Path | None,
+    rollback_restored: bool,
+    failure: BaseException,
+    runtime_snapshot_before: dict[str, Any],
+    runtime_snapshot_after_rollback: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "status": "rolled_back" if rollback_restored else "rollback_failed",
+        "created_at_utc": _utc_now(),
+        "runtime_write_performed": True,
+        "package_root": str(Path(package_root)),
+        "runtime_root": str(Path(runtime_root)),
+        "config_dir": config_dir,
+        "target_path": str(Path(target_path)),
+        "rollback_snapshot_path": (
+            str(Path(rollback_snapshot_path))
+            if rollback_snapshot_path is not None
+            else None
+        ),
+        "rollback_restored": rollback_restored,
+        "failure_type": type(failure).__name__,
+        "failure_message": str(failure),
+        "runtime_snapshot_before": runtime_snapshot_before,
+        "runtime_snapshot_after_rollback": runtime_snapshot_after_rollback,
+    }
+
+
 def build_fake_apply_receipt(
     *,
     package_root: str | Path,

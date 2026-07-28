@@ -1,4 +1,5 @@
 import json
+import traceback
 from pathlib import Path
 
 import pytest
@@ -1621,7 +1622,8 @@ def test_apply_package_appends_rollback_history_when_final_receipt_write_fails(
         json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()
     ]
     assert history_rows[-1]["status"] == "rolled_back"
-    assert history_rows[-1]["failed_status"] == "applied"
+    assert "failed_status" not in history_rows[-1]
+    assert history_rows[-1]["runtime_write_performed"] is True
     assert history_rows[-1]["failure_type"] == "RuntimeError"
     assert history_rows[-1]["rollback_restored"] is True
     assert json.loads(
@@ -1686,3 +1688,378 @@ def test_apply_package_rolls_back_when_runtime_package_match_fails(
 
     marker = runtime / "CustomConfig" / "deck" / "marker.json"
     assert json.loads(marker.read_text(encoding="utf-8")) == {"marker": "before"}
+
+
+class InjectedPostMutationError(RuntimeError):
+    pass
+
+
+def _injected_post_mutation_error(message: str) -> InjectedPostMutationError:
+    return InjectedPostMutationError(message)
+
+
+@pytest.mark.parametrize(
+    "failure_point",
+    [
+        "target_removal",
+        "package_copy",
+        "deck_config_update",
+        "runtime_package_match",
+        "success_history_write",
+    ],
+)
+def test_apply_package_audits_every_failure_after_first_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    target = runtime / "CustomConfig" / "deck"
+    write_json(target / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\nOther Deck = other\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+
+    message = f"injected {failure_point} failure"
+    receipt_attempts: list[dict[str, object]] = []
+    history_attempts: list[dict[str, object]] = []
+    original_write_json = runtime_apply.write_json
+    original_write_history = runtime_apply.write_runtime_write_history
+
+    def capture_receipt(path: str | Path, data: dict[str, object]) -> None:
+        if Path(path).name == "runtime_apply_receipt.json":
+            receipt_attempts.append(dict(data))
+        original_write_json(path, data)
+
+    def capture_history(
+        runtime_root: str | Path,
+        entry: dict[str, object],
+    ) -> Path:
+        history_attempts.append(dict(entry))
+        path = original_write_history(runtime_root, entry)
+        if (
+            failure_point == "success_history_write"
+            and entry.get("status") == "applied"
+        ):
+            raise _injected_post_mutation_error(message)
+        return path
+
+    monkeypatch.setattr(runtime_apply, "write_json", capture_receipt)
+    monkeypatch.setattr(
+        runtime_apply,
+        "write_runtime_write_history",
+        capture_history,
+    )
+
+    if failure_point == "target_removal":
+        original_rmtree = runtime_apply.shutil.rmtree
+        injected = False
+
+        def fail_after_target_removal(path: str | Path, *args, **kwargs) -> None:
+            nonlocal injected
+            original_rmtree(path, *args, **kwargs)
+            if Path(path) == target and not injected:
+                injected = True
+                raise _injected_post_mutation_error(message)
+
+        monkeypatch.setattr(runtime_apply.shutil, "rmtree", fail_after_target_removal)
+    elif failure_point == "package_copy":
+        original_copytree = runtime_apply.shutil.copytree
+        source = package / "CustomConfig" / "deck"
+        injected = False
+
+        def fail_after_package_copy(src: str | Path, dst: str | Path, *args, **kwargs):
+            nonlocal injected
+            result = original_copytree(src, dst, *args, **kwargs)
+            if Path(src) == source and Path(dst) == target and not injected:
+                injected = True
+                raise _injected_post_mutation_error(message)
+            return result
+
+        monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_after_package_copy)
+    elif failure_point == "deck_config_update":
+        original_update = runtime_apply._update_deck_config_ini
+
+        def fail_after_deck_config_update(**kwargs):
+            original_update(**kwargs)
+            raise _injected_post_mutation_error(message)
+
+        monkeypatch.setattr(
+            runtime_apply,
+            "_update_deck_config_ini",
+            fail_after_deck_config_update,
+        )
+    elif failure_point == "runtime_package_match":
+        original_match = runtime_apply.assert_runtime_matches_package
+
+        def fail_after_runtime_package_match(**kwargs):
+            original_match(**kwargs)
+            raise _injected_post_mutation_error(message)
+
+        monkeypatch.setattr(
+            runtime_apply,
+            "assert_runtime_matches_package",
+            fail_after_runtime_package_match,
+        )
+
+    with pytest.raises(InjectedPostMutationError, match=message) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    traceback_functions = {
+        frame.name for frame in traceback.extract_tb(excinfo.value.__traceback__)
+    }
+    expected_injector = {
+        "target_removal": "fail_after_target_removal",
+        "package_copy": "fail_after_package_copy",
+        "deck_config_update": "fail_after_deck_config_update",
+        "runtime_package_match": "fail_after_runtime_package_match",
+        "success_history_write": "capture_history",
+    }[failure_point]
+    assert expected_injector in traceback_functions
+    assert json.loads((target / "old.json").read_text(encoding="utf-8")) == {
+        "old": True
+    }
+    assert not (target / "GlobalValues.json").exists()
+    assert deck_config.read_text(encoding="utf-8") == old_deck_config_text
+
+    assert receipt_attempts
+    failure_receipt = receipt_attempts[-1]
+    assert failure_receipt["status"] == "rolled_back"
+    assert failure_receipt["runtime_write_performed"] is True
+    assert failure_receipt["rollback_restored"] is True
+    assert failure_receipt["failure_type"] == "InjectedPostMutationError"
+    assert failure_receipt["failure_message"] == message
+    assert failure_receipt["runtime_snapshot_before"]["target_exists"] is True
+    assert (
+        failure_receipt["runtime_snapshot_after_rollback"]["target_files"]
+        == failure_receipt["runtime_snapshot_before"]["target_files"]
+    )
+
+    rollback_history = [
+        row for row in history_attempts if row.get("status") == "rolled_back"
+    ]
+    assert len(rollback_history) == 1
+    assert rollback_history[0]["runtime_write_performed"] is True
+    assert rollback_history[0]["failure_type"] == "InjectedPostMutationError"
+    assert rollback_history[0]["failure_message"] == message
+    assert not any(
+        row.get("status") == "applied" and row.get("failure_type")
+        for row in history_attempts
+    )
+
+
+def test_apply_package_records_rollback_failed_without_replacing_original_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    receipt_attempts: list[dict[str, object]] = []
+    history_attempts: list[dict[str, object]] = []
+    original_write_json = runtime_apply.write_json
+    original_copytree = runtime_apply.shutil.copytree
+
+    def fail_package_copy(src: str | Path, dst: str | Path, *args, **kwargs):
+        if (
+            Path(src) == package / "CustomConfig" / "deck"
+            and Path(dst) == runtime / "CustomConfig" / "deck"
+        ):
+            raise InjectedPostMutationError("primary copy failure")
+        return original_copytree(src, dst, *args, **kwargs)
+
+    def fail_restore(**_: object) -> None:
+        raise OSError("injected restore failure")
+
+    def capture_receipt(path: str | Path, data: dict[str, object]) -> None:
+        if Path(path).name == "runtime_apply_receipt.json":
+            receipt_attempts.append(dict(data))
+        original_write_json(path, data)
+
+    def capture_history(
+        _runtime_root: str | Path,
+        entry: dict[str, object],
+    ) -> Path:
+        history_attempts.append(dict(entry))
+        return runtime / "captured-history.jsonl"
+
+    monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_package_copy)
+    monkeypatch.setattr(
+        runtime_apply,
+        "_restore_runtime_target_snapshot",
+        fail_restore,
+    )
+    monkeypatch.setattr(runtime_apply, "write_json", capture_receipt)
+    monkeypatch.setattr(
+        runtime_apply,
+        "write_runtime_write_history",
+        capture_history,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary copy failure",
+    ) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+            write_history=False,
+        )
+
+    assert receipt_attempts[-1]["status"] == "rollback_failed"
+    assert receipt_attempts[-1]["rollback_restored"] is False
+    assert history_attempts[-1]["status"] == "rollback_failed"
+    assert history_attempts[-1]["rollback_restored"] is False
+    assert any(
+        "runtime rollback restore failed: injected restore failure" in note
+        for note in (excinfo.value.__notes__ or [])
+    )
+
+
+def test_apply_package_attempts_receipt_and_history_independently_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    original_copytree = runtime_apply.shutil.copytree
+    receipt_attempted = False
+    history_attempted = False
+
+    def fail_package_copy(src: str | Path, dst: str | Path, *args, **kwargs):
+        if (
+            Path(src) == package / "CustomConfig" / "deck"
+            and Path(dst) == runtime / "CustomConfig" / "deck"
+        ):
+            raise InjectedPostMutationError("primary copy failure")
+        return original_copytree(src, dst, *args, **kwargs)
+
+    def fail_receipt(path: str | Path, _data: dict[str, object]) -> None:
+        nonlocal receipt_attempted
+        if Path(path).name == "runtime_apply_receipt.json":
+            receipt_attempted = True
+            raise OSError("injected receipt failure")
+        raise AssertionError(f"unexpected write: {path}")
+
+    def fail_history(
+        _runtime_root: str | Path,
+        _entry: dict[str, object],
+    ) -> Path:
+        nonlocal history_attempted
+        history_attempted = True
+        raise PermissionError("injected history failure")
+
+    monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_package_copy)
+    monkeypatch.setattr(runtime_apply, "write_json", fail_receipt)
+    monkeypatch.setattr(
+        runtime_apply,
+        "write_runtime_write_history",
+        fail_history,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary copy failure",
+    ) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    assert receipt_attempted is True
+    assert history_attempted is True
+    notes = excinfo.value.__notes__ or []
+    assert any(
+        "runtime apply failure receipt write failed: injected receipt failure" in note
+        for note in notes
+    )
+    assert any(
+        "runtime rollback history write failed: injected history failure" in note
+        for note in notes
+    )
+
+
+def test_apply_package_pre_mutation_failure_never_records_runtime_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+
+    def fail_before_mutation(
+        _runtime_root: str | Path,
+        _config_dir: str,
+    ) -> dict[str, object]:
+        raise InjectedPostMutationError("injected pre-mutation snapshot failure")
+
+    monkeypatch.setattr(runtime_apply, "runtime_snapshot", fail_before_mutation)
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="injected pre-mutation snapshot failure",
+    ):
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    assert fake["runtime_write_performed"] is False
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+    assert not (runtime / "CustomConfig" / "hsconfig_write_history.jsonl").exists()

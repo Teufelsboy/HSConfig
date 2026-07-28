@@ -8,6 +8,7 @@ from typing import Any
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import file_sha256, write_json
 from hsconfig.runtime_apply_receipts import (
+    build_failed_apply_payload,
     build_fake_apply_receipt,
     runtime_snapshot,
     verify_fake_apply_receipt,
@@ -113,12 +114,16 @@ def apply_package(
     if replaced_existing and not replace:
         raise FileExistsError(f"Runtime deck config already exists: {target_dir}")
 
-    rollback_snapshot_path = _snapshot_existing_runtime_target(
-        runtime=runtime,
-        config_dir=deck_dir_name,
-    )
-    success_history_written = False
+    rollback_snapshot_path: str | None = None
+    mutation_started = False
+    runtime_target_mutation_started = False
     try:
+        mutation_started = True
+        rollback_snapshot_path = _snapshot_existing_runtime_target(
+            runtime=runtime,
+            config_dir=deck_dir_name,
+        )
+        runtime_target_mutation_started = True
         target_root.mkdir(parents=True, exist_ok=True)
         if replaced_existing and replace:
             _ensure_child_path(target_dir, target_root)
@@ -176,39 +181,58 @@ def apply_package(
                     "package_sha256": fake_verification["package_sha256"],
                 },
             )
-            success_history_written = True
             receipt["write_history_path"] = str(history_path)
         write_json(package / "reports" / "runtime_apply_receipt.json", receipt)
         return receipt
     except Exception as exc:
-        rollback_restored = False
-        try:
-            _restore_runtime_target_snapshot(
-                runtime=runtime,
-                config_dir=deck_dir_name,
-                rollback_snapshot_path=rollback_snapshot_path,
-            )
-            rollback_restored = True
-        except Exception as restore_exc:
-            exc.add_note(f"runtime rollback restore failed: {restore_exc}")
-        if write_history and success_history_written:
+        if not mutation_started:
+            raise
+        rollback_restored = not runtime_target_mutation_started
+        if runtime_target_mutation_started:
             try:
-                write_runtime_write_history(
-                    runtime,
-                    {
-                        "status": "rolled_back",
-                        "failed_status": "applied",
-                        "package_root": str(package),
-                        "config_dir": deck_dir_name,
-                        "target_path": str(target_dir),
-                        "rollback_snapshot_path": rollback_snapshot_path,
-                        "rollback_restored": rollback_restored,
-                        "failure_type": type(exc).__name__,
-                        "failure_message": str(exc),
-                    },
+                _restore_runtime_target_snapshot(
+                    runtime=runtime,
+                    config_dir=deck_dir_name,
+                    rollback_snapshot_path=rollback_snapshot_path,
                 )
-            except Exception as history_exc:
-                exc.add_note(f"runtime rollback history write failed: {history_exc}")
+                rollback_restored = True
+            except Exception as restore_exc:
+                exc.add_note(f"runtime rollback restore failed: {restore_exc}")
+
+        try:
+            after_rollback_snapshot = runtime_snapshot(runtime, deck_dir_name)
+        except Exception as snapshot_exc:
+            after_rollback_snapshot = {}
+            exc.add_note(
+                "runtime snapshot after rollback failed: "
+                f"{snapshot_exc}"
+            )
+
+        failure_payload = build_failed_apply_payload(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir=deck_dir_name,
+            target_path=target_dir,
+            rollback_snapshot_path=rollback_snapshot_path,
+            rollback_restored=rollback_restored,
+            failure=exc,
+            runtime_snapshot_before=before_snapshot,
+            runtime_snapshot_after_rollback=after_rollback_snapshot,
+        )
+        try:
+            write_json(
+                package / "reports" / "runtime_apply_receipt.json",
+                failure_payload,
+            )
+        except Exception as receipt_exc:
+            exc.add_note(
+                "runtime apply failure receipt write failed: "
+                f"{receipt_exc}"
+            )
+        try:
+            write_runtime_write_history(runtime, failure_payload)
+        except Exception as history_exc:
+            exc.add_note(f"runtime rollback history write failed: {history_exc}")
         raise
 
 
