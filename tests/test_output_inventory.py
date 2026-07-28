@@ -310,16 +310,59 @@ def test_package_mtime_cap_bounds_scandir_consumption_and_stat_work(
     monkeypatch.setattr(report_output_inventory, "_MAX_METADATA_NODES", 3)
     monkeypatch.setattr(os, "scandir", CountingScandir)
 
-    report_output_inventory._package_modified_epoch(
+    modified_epoch = report_output_inventory._package_modified_epoch(
         package.resolve(),
         (tmp_path / "outputs").resolve(),
     )
 
+    assert modified_epoch is None
     assert consumed == 4
     assert stated == 3
 
 
-def test_package_mtime_casefold_tie_is_independent_of_scandir_order(
+def test_inventory_limit_exceeded_cannot_displace_a_valid_duplicate_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outputs = tmp_path / "outputs"
+    valid = outputs / "valid"
+    overflowing = outputs / "overflowing"
+    _write_package(
+        valid,
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    _write_package(
+        overflowing,
+        deck_name="Deck",
+        staged=True,
+        modified_time=1_710_000_000,
+    )
+    package = overflowing / "04_package"
+    for index in range(20):
+        extra = package / f"extra-{index:02d}.json"
+        extra.write_text("{}", encoding="utf-8")
+        os.utime(extra, (1_720_000_000, 1_720_000_000))
+    os.utime(package, (1_720_000_000, 1_720_000_000))
+    monkeypatch.setattr(report_output_inventory, "_MAX_METADATA_NODES", 8)
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    rows = {row["path"]: row for row in inventory["entries"]}
+    assert rows["overflowing"] == {
+        "deck": "Deck",
+        "path": "overflowing",
+        "modified_time": None,
+        "package_status": "inventory_limit_exceeded",
+    }
+    assert rows["valid"]["package_status"] == "complete"
+    assert rows["valid"]["modified_time"] == "2023-11-14T22:13:20Z"
+    assert inventory["likely_duplicate_candidates"] == []
+    assert all(set(row) == ALLOWED_ENTRY_FIELDS for row in rows.values())
+
+
+def test_package_mtime_casefold_tie_overflow_fails_closed_for_any_scandir_order(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -335,7 +378,7 @@ def test_package_mtime_casefold_tie_is_independent_of_scandir_order(
     os.utime(lower, (1_800_000_000, 1_800_000_000))
     monkeypatch.setattr(report_output_inventory, "_MAX_METADATA_NODES", 1)
 
-    def measured(order: list[_NamedDirEntry]) -> float:
+    def measured(order: list[_NamedDirEntry]) -> float | None:
         monkeypatch.setattr(
             os,
             "scandir",
@@ -349,8 +392,8 @@ def test_package_mtime_casefold_tie_is_independent_of_scandir_order(
     uppercase = _NamedDirEntry(upper, "A")
     lowercase = _NamedDirEntry(lower, "a")
 
-    assert measured([uppercase, lowercase]) == 1_700_000_000
-    assert measured([lowercase, uppercase]) == 1_700_000_000
+    assert measured([uppercase, lowercase]) is None
+    assert measured([lowercase, uppercase]) is None
 
 
 def test_manifest_swap_after_resolution_cannot_emit_outside_deck(

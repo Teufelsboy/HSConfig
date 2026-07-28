@@ -143,12 +143,13 @@ def _is_link_or_reparse(path_stat: os.stat_result) -> bool:
     return bool(reparse_flag and file_attributes & reparse_flag)
 
 
-def _package_modified_epoch(package: Path, root: Path) -> float:
+def _package_modified_epoch(package: Path, root: Path) -> float | None:
     modified = _selected_modified_epoch([package])
     stack = [(package, 0)]
     visited: set[Path] = set()
     enumerated_nodes = 0
     inspected_nodes = 0
+    incomplete = False
     while (
         stack
         and inspected_nodes < _MAX_METADATA_NODES
@@ -167,6 +168,7 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
             with os.scandir(directory) as iterator:
                 entries = list(islice(iterator, take))
         except OSError:
+            incomplete = True
             continue
         enumerated_nodes += len(entries)
         entries.sort(
@@ -177,6 +179,8 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
                 os.path.abspath(entry.path),
             )
         )
+        if len(entries) > processing_remaining:
+            incomplete = True
         child_directories: list[Path] = []
         for entry in entries[:processing_remaining]:
             if inspected_nodes >= _MAX_METADATA_NODES:
@@ -185,6 +189,7 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
             try:
                 entry_stat = entry.stat(follow_symlinks=False)
             except OSError:
+                incomplete = True
                 continue
             if _is_link_or_reparse(entry_stat):
                 continue
@@ -192,23 +197,42 @@ def _package_modified_epoch(package: Path, root: Path) -> float:
             try:
                 resolved = _resolve_selected(entry_path, root)
             except _UnsafePathError:
+                incomplete = True
                 continue
             if resolved is None:
+                incomplete = True
                 continue
             modified = max(modified, entry_stat.st_mtime)
-            if stat.S_ISDIR(entry_stat.st_mode) and depth < _MAX_METADATA_DEPTH:
-                child_directories.append(resolved)
+            if stat.S_ISDIR(entry_stat.st_mode):
+                if depth < _MAX_METADATA_DEPTH:
+                    child_directories.append(resolved)
+                else:
+                    incomplete = True
         stack.extend(
             (child, depth + 1) for child in reversed(child_directories)
         )
-    return modified
+    if stack:
+        incomplete = True
+    return None if incomplete else modified
+
+
+def _package_inventory_result(
+    deck: str | None,
+    package_status: str,
+    package: Path,
+    root: Path,
+) -> tuple[str | None, str, float | None]:
+    modified_epoch = _package_modified_epoch(package, root)
+    if modified_epoch is None:
+        return deck, "inventory_limit_exceeded", None
+    return deck, package_status, modified_epoch
 
 
 def _inspect_entry(
     root: Path,
     entry: Path,
     resolved_entry: Path,
-) -> tuple[str | None, str, float]:
+) -> tuple[str | None, str, float | None]:
     try:
         staged_path = entry / "04_package"
         staged = _resolve_selected(staged_path, root)
@@ -219,14 +243,20 @@ def _inspect_entry(
 
         reports = _resolve_selected(package_path / "reports", root)
         if reports is None or not reports.is_dir():
-            return None, "missing_reports", _package_modified_epoch(package, root)
+            return _package_inventory_result(
+                None,
+                "missing_reports",
+                package,
+                root,
+            )
 
         manifest = _resolve_selected(reports / "input_manifest.json", root)
         if manifest is None:
-            return (
+            return _package_inventory_result(
                 None,
                 "missing_input_manifest",
-                _package_modified_epoch(package, root),
+                package,
+                root,
             )
 
         custom_config = _resolve_selected(package_path / "CustomConfig", root)
@@ -238,10 +268,11 @@ def _inspect_entry(
                     "package_not_found",
                     _selected_modified_epoch([resolved_entry]),
                 )
-            return (
+            return _package_inventory_result(
                 deck_name,
                 "missing_custom_config",
-                _package_modified_epoch(package, root),
+                package,
+                root,
             )
     except _UnsafePathError:
         return (
@@ -253,7 +284,12 @@ def _inspect_entry(
     manifest_safe, deck_name = _descriptor_deck_name(manifest, root)
     if not manifest_safe:
         return None, "package_not_found", _selected_modified_epoch([resolved_entry])
-    return deck_name, "complete", _package_modified_epoch(package, root)
+    return _package_inventory_result(
+        deck_name,
+        "complete",
+        package,
+        root,
+    )
 
 
 def _utc_timestamp(epoch: float) -> str:
@@ -267,7 +303,7 @@ def _utc_timestamp(epoch: float) -> str:
 def build_inventory(output_root: Path) -> dict[str, list[dict[str, Any]]]:
     """Return package rows and deterministic older same-deck candidates."""
     root = output_root.resolve()
-    internal_rows: list[tuple[dict[str, Any], float]] = []
+    internal_rows: list[tuple[dict[str, Any], float | None]] = []
     if root.is_dir():
         for entry in sorted(root.iterdir(), key=lambda path: path.name.casefold()):
             try:
@@ -284,7 +320,11 @@ def build_inventory(output_root: Path) -> dict[str, list[dict[str, Any]]]:
             row = {
                 "deck": deck,
                 "path": entry.relative_to(root).as_posix(),
-                "modified_time": _utc_timestamp(modified_epoch),
+                "modified_time": (
+                    _utc_timestamp(modified_epoch)
+                    if modified_epoch is not None
+                    else None
+                ),
                 "package_status": package_status,
             }
             internal_rows.append((row, modified_epoch))
@@ -292,7 +332,8 @@ def build_inventory(output_root: Path) -> dict[str, list[dict[str, Any]]]:
     internal_rows.sort(
         key=lambda item: (
             (item[0]["deck"] or "").casefold(),
-            -item[1],
+            item[1] is None,
+            -(item[1] if item[1] is not None else 0.0),
             item[0]["path"].casefold(),
             item[0]["path"],
             item[0]["deck"] or "",
@@ -300,9 +341,10 @@ def build_inventory(output_root: Path) -> dict[str, list[dict[str, Any]]]:
     )
     grouped: dict[str, list[tuple[dict[str, Any], float]]] = defaultdict(list)
     for row in internal_rows:
-        deck = row[0]["deck"]
-        if isinstance(deck, str):
-            grouped[deck.casefold()].append(row)
+        row_data, modified_epoch = row
+        deck = row_data["deck"]
+        if isinstance(deck, str) and modified_epoch is not None:
+            grouped[deck.casefold()].append((row_data, modified_epoch))
 
     likely_duplicates = []
     for deck_key in sorted(grouped):
