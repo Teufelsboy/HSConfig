@@ -230,27 +230,27 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
     assert observed_stages == [
         (
             "verified_deck",
-            "sha256:e79c4741639b40dac79ccdb76e8c9d1528f4b4d93dd412d035496070f587d1df",
+            "sha256:71c304fb7ebc0305c4177d96330d9769dff5f3a362f7063a0ab950a7e10a5582",
         ),
         (
             "normalized_source",
-            "sha256:3530d5bca971d2f7f719ed649a718c373f437f2aeaa55ca37f9cc06605236161",
+            "sha256:dd77ffe098982b5b9d86e12a14cb22f769b3fbc431bbbc0cc01e782be2a6e5e4",
         ),
         (
             "claim_surfaces",
-            "sha256:cc18c1818741c17842f55efeb34ee59152bb5d7d534334d09c1612eb2d9d4fcb",
+            "sha256:d9ea076a70aa470d4add3a15e4f14b8d2f611c2287427eaf44f204707a0ec673",
         ),
         (
             "lowered_runtime",
-            "sha256:b0d39866eceeadd64368eaf7918f1f0a3448c2de8aac9c5ca0aa9170696d0724",
+            "sha256:25c62ab2b15910c07f07c87aff475c0243f25513618e2dea84c83d6038643296",
         ),
         (
             "validated_authority",
-            "sha256:5b737dd4379a7d764a186d85618c7fa7ff8621451092b95455340430ec0d761f",
+            "sha256:076f15e085f9ddd5ecc413916e64b9207f67a9b02b9c7f4fe88ef705a3b7f696",
         ),
         (
             "artifact_writing",
-            "sha256:256f809cdef5d093996aef8cbd4b22eecaa3078aac5445f72cf6ca38cf67a47d",
+            "sha256:856718598311b2c2a9ac3320fbf75102afbcf90c8b9d9d135ee550c9cfc446db",
         ),
     ]
 

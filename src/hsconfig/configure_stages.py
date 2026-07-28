@@ -279,7 +279,7 @@ def _typed_canonical_value(
     if value_type is bool:
         return _digest_record({"kind": "bool", "value": value})
     if value_type is int:
-        return _digest_record({"kind": "int", "value": str(value)})
+        return _digest_record(_canonical_integer_record(value))
     if value_type is float:
         return _digest_record({"kind": "float", "value": value.hex()})
     if value_type is str:
@@ -379,6 +379,17 @@ def _check_unicode_scalar_string(value: str, path: str) -> None:
         message = (f"Stage string at {path} contains invalid Unicode surrogate "
                    f"U+{codepoint:04X} at index {error.start}")
         raise ValueError(message) from None
+
+
+def _canonical_integer_record(value: int) -> dict[str, str]:
+    if value == 0:
+        return {"kind": "int", "sign": "zero", "magnitude_hex": "0"}
+    sign = "negative" if value < 0 else "positive"
+    return {
+        "kind": "int",
+        "sign": sign,
+        "magnitude_hex": format(abs(value), "x"),
+    }
 
 
 def _stage_field_path(path: str, field_name: str) -> str:

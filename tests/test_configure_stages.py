@@ -96,7 +96,7 @@ def test_verified_deck_stage_is_deeply_immutable_with_stable_digest() -> None:
     ]
     assert dict(stage.input_verification) == {"status": "verified"}
     assert stage_digest(stage) == (
-        "sha256:3ed8d402c162f5547f61c7e2a8fe23fda0f678b35d6137861f54ca95f6b89fb4"
+        "sha256:a6457453efe86b8486b2d9ee9e0d33b6e05c49c4ee190297fc068e9b56e1c547"
     )
     with pytest.raises(TypeError):
         stage.identity["deck_name"] = "mutated"
@@ -524,6 +524,102 @@ def test_valid_supplementary_unicode_is_materialized_and_digested_deterministica
     assert stage_digest(left) == stage_digest(left)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(10**4299, id="positive-boundary"),
+        pytest.param(-(10**4299), id="negative-boundary"),
+        pytest.param(10**4300, id="positive-over-decimal-limit"),
+        pytest.param(-(10**4300), id="negative-over-decimal-limit"),
+    ],
+)
+def test_arbitrary_exact_integer_scalars_materialize_and_digest(value: int) -> None:
+    from hsconfig.configure_stages import materialize_stage_value, stage_digest
+
+    assert materialize_stage_value(value) == value
+    assert stage_digest(value) == stage_digest(value)
+
+
+def test_large_integer_mapping_values_ignore_insertion_and_sharing_topology() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    large = 10**4300
+    shared = [large]
+    shared_tree = {"alpha": shared, "beta": shared}
+    duplicated_tree = {"beta": [large], "alpha": [large]}
+
+    assert stage_digest(shared_tree) == stage_digest(duplicated_tree)
+
+
+def test_verified_stage_accepts_and_preserves_large_exact_integers() -> None:
+    from hsconfig.configure_stages import (
+        build_verified_deck_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    positive = 10**4300
+    negative = -positive
+    stage = build_verified_deck_stage(
+        identity={"positive": positive},
+        cards=[{"card_id": "LARGE", "dbf_id": negative, "count": 1}],
+        input_verification={"boundary": 10**4299},
+    )
+
+    assert materialize_stage_value(stage.identity)["positive"] == positive
+    assert materialize_stage_value(stage.cards)[0]["dbf_id"] == negative
+    assert stage_digest(stage) == stage_digest(stage)
+
+
+def test_lowered_stage_accepts_and_preserves_large_exact_integers() -> None:
+    from hsconfig.configure_stages import (
+        build_lowered_runtime_stage,
+        materialize_stage_value,
+        stage_digest,
+    )
+
+    positive = 10**4300
+    negative = -positive
+    stage = build_lowered_runtime_stage(
+        runtime_files={"GlobalValues.json": {"positive": positive}},
+        warnings=[{"negative": negative}],
+        source_contract={"boundary": -(10**4299)},
+    )
+
+    assert materialize_stage_value(stage.runtime_files)[
+        "GlobalValues.json"
+    ]["positive"] == positive
+    assert materialize_stage_value(stage.warnings)[0]["negative"] == negative
+    assert stage_digest(stage) == stage_digest(stage)
+
+
+def test_every_accepted_scalar_has_deterministic_distinct_canonicalization() -> None:
+    from hsconfig.configure_stages import stage_digest
+
+    values = [
+        None,
+        False,
+        True,
+        0,
+        1,
+        -1,
+        10**4300,
+        -(10**4300),
+        10**4300 + 1,
+        0.0,
+        -0.0,
+        1.5,
+        "",
+        "0",
+        "valid-\U0001f600",
+    ]
+
+    digests = [stage_digest(value) for value in values]
+
+    assert len(set(digests)) == len(values)
+    assert digests == [stage_digest(value) for value in values]
+
+
 def test_finite_float_canonicalization_preserves_binary_distinctions() -> None:
     from hsconfig.configure_stages import stage_digest
 
@@ -719,7 +815,7 @@ def test_lowered_runtime_stage_is_deeply_immutable_with_stable_digest() -> None:
     assert [dict(warning) for warning in stage.warnings] == [{"reason": "thin"}]
     assert dict(stage.source_contract) == {"status": "closed"}
     assert stage_digest(stage) == (
-        "sha256:b8a35c5837ee0c2f9c10ea8c7f6d909d0f932e9c94cdfaaf000e8a46eed5afd5"
+        "sha256:d2a9c785b9af32a01aedc7b914cd4d9e6ee92d440903f336ec5e2e10404d68f8"
     )
     with pytest.raises(TypeError):
         stage.runtime_files["GlobalValues.json"]["A"] = 2
