@@ -184,3 +184,38 @@ def test_source_combo_compiler_resolves_boundary_safe_card_ids():
     ]
     assert len(combo_claims) == 1
     assert combo_claims[0]["sequence"] == ["CARD_A", "CARD_B"]
+
+
+def test_source_combo_compiler_uses_later_complete_directed_chain():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "name": "Card A"},
+            {"card_id": "CARD_B", "name": "Card B"},
+        ],
+    }
+
+    payload = compile_source_search_records(
+        deck_name="Fixture",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_url": "https://example.test/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "normalized_text": (
+                    "Card B is the payoff; play Card A then Card B."
+                ),
+            }
+        ],
+        current_date="2026-07-28",
+    )
+
+    combo_claims = [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "combo_sequence"
+    ]
+    assert len(combo_claims) == 1
+    assert combo_claims[0]["sequence"] == ["CARD_A", "CARD_B"]

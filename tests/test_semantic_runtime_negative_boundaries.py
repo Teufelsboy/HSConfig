@@ -5,9 +5,14 @@ from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan as _build_combo_plan
 from hsconfig.static_semantics import infer_static_semantics
 from hsconfig.source_document_model import (
+    can_lower_to_combo,
     can_lower_to_globalvalues,
     can_lower_to_mulligan,
     surface_gate_decision,
+)
+from hsconfig.source_claim_lifecycle import (
+    build_initial_lifecycle_rows,
+    select_claims_for_surface,
 )
 from tests.combo_authority_fixtures import build_canonical_combo_case
 
@@ -129,6 +134,168 @@ def build_authorized_combo_case(*, deck_cards, case_id):
         deck_identity=deck_identity,
         verified_source_receipts=bundle["canonical_source_receipts"],
     )
+
+
+COMBO_GATE_CASES = [
+    (
+        "combo-undirected-sentence",
+        {"CARD_A", "CARD_B"},
+        "combo_requires_directed_source_evidence",
+        False,
+    ),
+    (
+        "claim-missing-undirected",
+        {"CARD_A"},
+        "card_not_in_deck",
+        False,
+    ),
+    (
+        "claim_same_turn",
+        {"CARD_A", "CARD_B"},
+        "combo_requires_public_guide_source",
+        True,
+    ),
+]
+
+
+def combo_gate_case(case_id, deck_cards, invalid_authority):
+    bundle, deck_identity = build_canonical_combo_case(case_id)
+    claim = dict(bundle["claims"][0])
+    if invalid_authority:
+        claim["source_family"] = "official_static_semantics"
+    filtered_deck_identity = {
+        **deck_identity,
+        "cards": [
+            card
+            for card in deck_identity["cards"]
+            if card["card_id"] in deck_cards
+        ],
+    }
+    return claim, filtered_deck_identity, bundle["canonical_source_receipts"]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "deck_cards", "expected_reason", "invalid_authority"),
+    COMBO_GATE_CASES,
+)
+def test_can_lower_to_combo_uses_complete_final_combo_gate(
+    case_id,
+    deck_cards,
+    expected_reason,
+    invalid_authority,
+):
+    claim, deck_identity, receipts = combo_gate_case(
+        case_id,
+        deck_cards,
+        invalid_authority,
+    )
+
+    decision = can_lower_to_combo(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=receipts,
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("case_id", "deck_cards", "expected_reason", "invalid_authority"),
+    COMBO_GATE_CASES,
+)
+def test_surface_gate_decision_uses_complete_final_combo_gate(
+    case_id,
+    deck_cards,
+    expected_reason,
+    invalid_authority,
+):
+    claim, deck_identity, receipts = combo_gate_case(
+        case_id,
+        deck_cards,
+        invalid_authority,
+    )
+
+    decision = surface_gate_decision(
+        claim,
+        "combo",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": receipts,
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("case_id", "deck_cards", "expected_reason", "invalid_authority"),
+    COMBO_GATE_CASES,
+)
+def test_combo_lifecycle_selection_uses_complete_final_combo_gate(
+    case_id,
+    deck_cards,
+    expected_reason,
+    invalid_authority,
+):
+    claim, deck_identity, receipts = combo_gate_case(
+        case_id,
+        deck_cards,
+        invalid_authority,
+    )
+    rows = build_initial_lifecycle_rows([claim])
+
+    selection = select_claims_for_surface(
+        rows,
+        "combo",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": receipts,
+        },
+    )
+
+    assert selection["accepted_claims"] == []
+    assert selection["rejected_claims"][0]["_claim_lifecycle"][
+        "surface_gate_reason"
+    ] == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("case_id", "deck_cards", "expected_reason", "invalid_authority"),
+    COMBO_GATE_CASES,
+)
+def test_combo_builder_uses_complete_final_combo_gate(
+    case_id,
+    deck_cards,
+    expected_reason,
+    invalid_authority,
+):
+    claim, deck_identity, receipts = combo_gate_case(
+        case_id,
+        deck_cards,
+        invalid_authority,
+    )
+
+    result = _build_combo_plan(
+        deck_cards=deck_cards,
+        claims=[claim],
+        deck_identity=deck_identity,
+        verified_source_receipts=receipts,
+    )
+
+    assert result["combos"] == []
+    assert result["suppressed"][0]["reason"] == expected_reason
+
+
+def test_exact_source_combo_accepts_later_complete_directed_chain():
+    result = build_authorized_combo_case(
+        deck_cards={"CARD_A", "CARD_B"},
+        case_id="combo-later-directed-chain",
+    )
+
+    assert result["suppressed"] == []
+    assert result["combos"][0]["cards"] == ["CARD_A", "CARD_B"]
 
 
 @pytest.mark.parametrize(

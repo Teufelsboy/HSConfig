@@ -4,10 +4,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
-from hsconfig.combo_sequence_contract import build_combo_sequence_contract
-from hsconfig.source_claim_context import claim_has_directed_combo_evidence
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
-from hsconfig.source_document_model import can_lower_to_combo, normalized_claim_kind
+from hsconfig.source_document_model import (
+    evaluate_combo_surface_gate,
+    normalized_claim_kind,
+)
 
 
 def build_combo_plan(
@@ -22,44 +23,33 @@ def build_combo_plan(
 
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
-        gate = can_lower_to_combo(
+        gate_evaluation = evaluate_combo_surface_gate(
             claim,
             deck_identity=deck_identity,
+            deck_cards=deck_cards,
             verified_source_receipts=verified_source_receipts,
+            contract_claim_id=lifecycle_claim_id(claim),
         )
+        gate = gate_evaluation.decision
         if not gate.allowed:
             if _is_combo_surface_candidate(claim, claim_kind):
-                suppressed.append(
-                    _suppression(
-                        claim,
-                        _claim_cards(claim),
-                        gate.reason,
-                    )
-                )
-            continue
-
-        contract = build_combo_sequence_contract(_claim_for_contract(claim), deck_cards)
-        if contract.get("emittable") is not True:
-            row = _suppression(
-                claim,
-                [str(card) for card in contract.get("cards", [])],
-                str(contract.get("reason", "not_emittable")),
-            )
-            if "missing_cards" in contract:
-                row["missing_cards"] = [str(card) for card in contract["missing_cards"]]
-            suppressed.append(row)
-            continue
-
-        if not claim_has_directed_combo_evidence(claim, deck_identity):
-            suppressed.append(
-                _suppression(
+                contract = gate_evaluation.contract
+                row = _suppression(
                     claim,
-                    [str(card) for card in contract.get("cards", [])],
-                    "combo_requires_directed_source_evidence",
+                    [
+                        str(card)
+                        for card in contract.get("cards", _claim_cards(claim))
+                    ],
+                    gate.reason,
                 )
-            )
+                if "missing_cards" in contract:
+                    row["missing_cards"] = [
+                        str(card) for card in contract["missing_cards"]
+                    ]
+                suppressed.append(row)
             continue
 
+        contract = gate_evaluation.contract
         row = {key: value for key, value in contract.items() if key != "emittable"}
         _with_claim_id(row, claim)
         condition, condition_error = _condition(claim)
@@ -138,15 +128,6 @@ def _with_claim_id(row: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]
     if claim_id:
         row["claim_id"] = claim_id
     return row
-
-
-def _claim_for_contract(claim: dict[str, Any]) -> dict[str, Any]:
-    if claim.get("claim_id"):
-        return claim
-    claim_id = lifecycle_claim_id(claim)
-    if not claim_id:
-        return claim
-    return {**claim, "claim_id": claim_id}
 
 
 def _condition(claim: dict[str, Any]) -> tuple[str, str | None]:

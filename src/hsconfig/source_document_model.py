@@ -6,12 +6,14 @@ from hashlib import sha256
 import json
 from typing import Any, Mapping
 
+from hsconfig.combo_sequence_contract import build_combo_sequence_contract
 from hsconfig.role_tokens import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
     card_role_tokens,
     has_explicit_opening_hand_mulligan_intent,
 )
 from hsconfig.source_claim_context import (
+    claim_has_directed_combo_evidence,
     claim_text,
     has_explicit_mulligan_context,
     normalized,
@@ -194,6 +196,12 @@ class SurfaceGateDecision:
     reason: str
     claim_kind: str
     surface: str
+
+
+@dataclass(frozen=True)
+class ComboSurfaceGateEvaluation:
+    decision: SurfaceGateDecision
+    contract: Mapping[str, Any]
 
 
 def normalized_claim_kind(claim: Mapping[str, Any]) -> str:
@@ -431,6 +439,7 @@ def surface_gate_decision(
         return can_lower_to_combo(
             claim,
             deck_identity=(context or {}).get("deck_identity"),
+            deck_cards=(context or {}).get("deck_cards"),
             verified_source_receipts=(context or {}).get(
                 "verified_source_receipts"
             ),
@@ -836,6 +845,101 @@ def _has_verified_globalvalues_source_receipt(
 
 
 def can_lower_to_combo(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    deck_cards: Iterable[str] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
+) -> SurfaceGateDecision:
+    return evaluate_combo_surface_gate(
+        claim,
+        deck_identity=deck_identity,
+        deck_cards=deck_cards,
+        verified_source_receipts=verified_source_receipts,
+    ).decision
+
+
+def evaluate_combo_surface_gate(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    deck_cards: Iterable[str] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
+    contract_claim_id: str | None = None,
+) -> ComboSurfaceGateEvaluation:
+    authority_decision = _combo_authority_decision(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
+    )
+    if not authority_decision.allowed:
+        return ComboSurfaceGateEvaluation(authority_decision, {})
+
+    contract_claim = dict(claim)
+    if not contract_claim.get("claim_id"):
+        contract_claim["claim_id"] = contract_claim_id or "combo_gate"
+    contract = build_combo_sequence_contract(
+        contract_claim,
+        _combo_contract_deck_cards(
+            claim,
+            deck_identity=deck_identity,
+            deck_cards=deck_cards,
+        ),
+    )
+    if contract.get("emittable") is not True:
+        return ComboSurfaceGateEvaluation(
+            SurfaceGateDecision(
+                False,
+                str(contract.get("reason", "not_emittable")),
+                authority_decision.claim_kind,
+                "combo",
+            ),
+            contract,
+        )
+    if not claim_has_directed_combo_evidence(claim, deck_identity):
+        return ComboSurfaceGateEvaluation(
+            SurfaceGateDecision(
+                False,
+                "combo_requires_directed_source_evidence",
+                authority_decision.claim_kind,
+                "combo",
+            ),
+            contract,
+        )
+    return ComboSurfaceGateEvaluation(authority_decision, contract)
+
+
+def _combo_contract_deck_cards(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None,
+    deck_cards: Iterable[str] | None,
+) -> set[str]:
+    if deck_cards is not None:
+        return {str(card_id) for card_id in deck_cards}
+    if isinstance(deck_identity, Mapping) and "cards" in deck_identity:
+        identity_cards = deck_identity.get("cards")
+        if isinstance(identity_cards, Mapping):
+            return {str(card_id) for card_id in identity_cards}
+        if isinstance(identity_cards, Iterable) and not isinstance(
+            identity_cards,
+            (str, bytes),
+        ):
+            return {
+                str(card.get("card_id"))
+                for card in identity_cards
+                if isinstance(card, Mapping) and card.get("card_id")
+            }
+        return set()
+    sequence = claim.get("sequence", claim.get("cards", []))
+    if isinstance(sequence, str):
+        sequence = [sequence]
+    if not isinstance(sequence, Iterable):
+        return set()
+    return {str(card_id) for card_id in sequence if str(card_id)}
+
+
+def _combo_authority_decision(
     claim: Mapping[str, Any],
     *,
     deck_identity: Mapping[str, Any] | None = None,

@@ -97,3 +97,13 @@ def test_every_gap_in_three_card_combo_must_be_a_directed_connector():
         )
         is False
     )
+
+
+def test_later_directed_chain_can_follow_an_unrelated_early_card_mention():
+    assert (
+        is_explicit_combo_sentence(
+            "CARD_B is the payoff; CARD_A then CARD_B.",
+            ["CARD_A", "CARD_B"],
+        )
+        is True
+    )

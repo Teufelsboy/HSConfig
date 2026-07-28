@@ -6,11 +6,9 @@ import re
 from typing import Any, Mapping, Sequence
 
 from hsconfig.source_claim_context import (
-    bounded_mention_spans,
     has_explicit_mulligan_context,
     is_content_evidence,
-    is_explicit_combo_sentence,
-    normalized,
+    resolve_directed_mention_chain,
 )
 
 GUIDE_FAMILIES = {
@@ -267,22 +265,9 @@ def _compile_combo_sequence_claims(
     deck_identity: Mapping[str, Any],
     text: str,
 ) -> None:
-    card_names_by_id = {
-        _text(card.get("card_id", "")): _text(card.get("name", ""))
-        for card in _deck_cards(deck_identity)
-    }
     for sentence in _sentences(text):
         sequence = _card_sequence_in_sentence(deck_identity, sentence)
         if len(sequence) < 2:
-            continue
-        mentioned_card_aliases = [
-            _first_mentioned_alias(
-                sentence,
-                (card_names_by_id[card_id], card_id),
-            )
-            for card_id in sequence
-        ]
-        if not is_explicit_combo_sentence(sentence, mentioned_card_aliases):
             continue
         compiled["claims"].append(
             _claim(
@@ -333,30 +318,25 @@ def _card_sequence_in_sentence(
     deck_identity: Mapping[str, Any],
     sentence: str,
 ) -> list[str]:
-    lowered = normalized(sentence)
-    found: list[tuple[int, int, str]] = []
+    card_ids: list[str] = []
+    mention_groups: list[list[str]] = []
     seen: set[str] = set()
     for card in _deck_cards(deck_identity):
         name = _text(card.get("name", ""))
         card_id = _text(card.get("card_id", ""))
         if not card_id or card_id in seen:
             continue
-        spans = bounded_mention_spans(lowered, (name, card_id))
-        if not spans:
-            continue
         seen.add(card_id)
-        start, end = spans[0]
-        found.append((start, end, card_id))
-    return [card_id for _, _, card_id in sorted(found)]
-
-
-def _first_mentioned_alias(sentence: str, aliases: Sequence[str]) -> str:
-    candidates = [
-        (span[0], span[1], alias)
-        for alias in aliases
-        for span in bounded_mention_spans(sentence, (alias,))
-    ]
-    return min(candidates)[2] if candidates else ""
+        card_ids.append(card_id)
+        mention_groups.append([alias for alias in (name, card_id) if alias])
+    chain = resolve_directed_mention_chain(
+        sentence,
+        mention_groups,
+        preserve_group_order=False,
+    )
+    if chain is None:
+        return []
+    return [card_ids[index] for index in chain.group_indices]
 
 
 def _combo_timing(sentence: str) -> str | None:

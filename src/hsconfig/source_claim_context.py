@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from typing import Any, Iterable, Mapping
 
@@ -21,6 +22,12 @@ ORDERED_CONNECTORS = ("then", "into", "followed by", "->")
 ORDERED_CONNECTOR_GAP_PATTERN = re.compile(
     r"\s*,?\s*(?:then|into|followed\s+by|->)\s*",
 )
+
+
+@dataclass(frozen=True)
+class DirectedMentionChain:
+    group_indices: tuple[int, ...]
+    spans: tuple[tuple[int, int], ...]
 
 
 def normalized(value: Any) -> str:
@@ -46,16 +53,11 @@ def is_content_evidence(text: str) -> bool:
 
 
 def is_explicit_combo_sentence(sentence: str, card_names: list[str]) -> bool:
-    lowered = " ".join(sentence.lower().split())
-    if len(lowered) > 500 or not is_content_evidence(lowered):
-        return False
-    spans = _ordered_mention_spans(
-        lowered,
+    return resolve_directed_mention_chain(
+        sentence,
         [[name] for name in card_names],
-    )
-    if spans is None:
-        return False
-    return _has_connectors_between_mentions(lowered, spans)
+        preserve_group_order=True,
+    ) is not None
 
 
 def claim_has_directed_combo_evidence(
@@ -88,12 +90,11 @@ def claim_has_directed_combo_evidence(
         for card_id in ordered_card_ids
     ]
     lowered = normalized(claim_text(claim))
-    if len(lowered) > 500 or not is_content_evidence(lowered):
-        return False
-    spans = _ordered_mention_spans(lowered, mention_groups)
-    if spans is None:
-        return False
-    return _has_connectors_between_mentions(lowered, spans)
+    return resolve_directed_mention_chain(
+        lowered,
+        mention_groups,
+        preserve_group_order=True,
+    ) is not None
 
 
 def bounded_mention_spans(
@@ -113,28 +114,137 @@ def bounded_mention_spans(
     return sorted(spans)
 
 
-def _ordered_mention_spans(
-    lowered: str,
+def resolve_directed_mention_chain(
+    text: str,
     mention_groups: list[list[str]],
-) -> list[tuple[int, int]] | None:
-    spans: list[tuple[int, int]] = []
-    for aliases in mention_groups:
-        candidates = bounded_mention_spans(lowered, aliases)
-        if not candidates:
+    *,
+    preserve_group_order: bool,
+) -> DirectedMentionChain | None:
+    lowered = normalized(text)
+    if len(lowered) > 500 or not is_content_evidence(lowered):
+        return None
+    candidates_by_group = [
+        bounded_mention_spans(lowered, aliases)
+        for aliases in mention_groups
+    ]
+    if preserve_group_order:
+        group_indices = tuple(range(len(candidates_by_group)))
+        if len(group_indices) < 2 or any(
+            not candidates_by_group[index] for index in group_indices
+        ):
             return None
-        span = min(candidates)
-        if spans and span[0] < spans[-1][1]:
+        spans = _search_ordered_span_chain(
+            lowered,
+            candidates_by_group,
+            group_indices,
+        )
+        if spans is None:
             return None
-        spans.append(span)
-    return spans if len(spans) >= 2 else None
+        return DirectedMentionChain(group_indices, spans)
+
+    mentioned_group_indices = tuple(
+        index
+        for index, candidates in enumerate(candidates_by_group)
+        if candidates
+    )
+    if len(mentioned_group_indices) < 2:
+        return None
+    return _search_unordered_group_chain(
+        lowered,
+        candidates_by_group,
+        mentioned_group_indices,
+    )
 
 
-def _has_connectors_between_mentions(
+def _search_ordered_span_chain(
     lowered: str,
-    spans: list[tuple[int, int]],
+    candidates_by_group: list[list[tuple[int, int]]],
+    group_indices: tuple[int, ...],
+    *,
+    position: int = 0,
+    spans: tuple[tuple[int, int], ...] = (),
+) -> tuple[tuple[int, int], ...] | None:
+    if position == len(group_indices):
+        return spans
+    group_index = group_indices[position]
+    for span in candidates_by_group[group_index]:
+        if spans and not _spans_have_directed_gap(lowered, spans[-1], span):
+            continue
+        resolved = _search_ordered_span_chain(
+            lowered,
+            candidates_by_group,
+            group_indices,
+            position=position + 1,
+            spans=(*spans, span),
+        )
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _search_unordered_group_chain(
+    lowered: str,
+    candidates_by_group: list[list[tuple[int, int]]],
+    mentioned_group_indices: tuple[int, ...],
+) -> DirectedMentionChain | None:
+    occurrences = sorted(
+        (
+            span[0],
+            span[1],
+            group_index,
+        )
+        for group_index in mentioned_group_indices
+        for span in candidates_by_group[group_index]
+    )
+    required_groups = frozenset(mentioned_group_indices)
+    for start, end, group_index in occurrences:
+        resolved = _extend_unordered_group_chain(
+            lowered,
+            occurrences,
+            remaining_groups=required_groups - {group_index},
+            group_indices=(group_index,),
+            spans=((start, end),),
+        )
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _extend_unordered_group_chain(
+    lowered: str,
+    occurrences: list[tuple[int, int, int]],
+    *,
+    remaining_groups: frozenset[int],
+    group_indices: tuple[int, ...],
+    spans: tuple[tuple[int, int], ...],
+) -> DirectedMentionChain | None:
+    if not remaining_groups:
+        return DirectedMentionChain(group_indices, spans)
+    previous = spans[-1]
+    for start, end, group_index in occurrences:
+        if group_index not in remaining_groups:
+            continue
+        span = (start, end)
+        if not _spans_have_directed_gap(lowered, previous, span):
+            continue
+        resolved = _extend_unordered_group_chain(
+            lowered,
+            occurrences,
+            remaining_groups=remaining_groups - {group_index},
+            group_indices=(*group_indices, group_index),
+            spans=(*spans, span),
+        )
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _spans_have_directed_gap(
+    lowered: str,
+    left: tuple[int, int],
+    right: tuple[int, int],
 ) -> bool:
-    for left, right in zip(spans, spans[1:]):
-        between = lowered[left[1]:right[0]]
-        if ORDERED_CONNECTOR_GAP_PATTERN.fullmatch(between) is None:
-            return False
-    return True
+    if right[0] < left[1]:
+        return False
+    between = lowered[left[1]:right[0]]
+    return ORDERED_CONNECTOR_GAP_PATTERN.fullmatch(between) is not None

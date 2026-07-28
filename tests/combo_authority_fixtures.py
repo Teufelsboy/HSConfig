@@ -290,6 +290,20 @@ _CANONICAL_COMBO_CLAIMS = (
         "source_confidence": "high",
         "promotion_eligible": True,
     },
+    {
+        "claim_id": "combo-later-directed-chain",
+        "claim_kind": "combo_sequence",
+        "cards": ["CARD_A", "CARD_B"],
+        "sequence": ["CARD_A", "CARD_B"],
+        "timing_kind": "same_turn",
+        "operator": ">>",
+        "values": ["10", "10"],
+        "evidence_text_short": (
+            "CARD_B is the payoff; play CARD_A then CARD_B in the same turn."
+        ),
+        "source_confidence": "high",
+        "promotion_eligible": True,
+    },
 )
 
 
