@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
 
 
@@ -104,11 +105,20 @@ def load_audited_role_manifest(
 
 
 def _valid_visibility_only_identity(row: Mapping[str, Any]) -> bool:
-    return (
+    if not (
         row.get("deck_name") in _VISIBILITY_ONLY_DECK_NAMES
         and _nonempty_string(row.get("deck_code"))
         and row.get("proof_scope") == _VISIBILITY_ONLY_PROOF_SCOPE
         and row.get("matrix_policy") == _VISIBILITY_ONLY_MATRIX_POLICY
+    ):
+        return False
+    try:
+        decoded = decode_deck_code(str(row["deck_code"]))
+    except (TypeError, ValueError):
+        return False
+    return (
+        decoded.get("card_count_total") == 30
+        and decoded.get("unresolved_card_count") == 0
     )
 
 

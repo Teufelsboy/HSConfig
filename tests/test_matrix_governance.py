@@ -3,10 +3,12 @@ from pathlib import Path
 
 import pytest
 
+import hsconfig.audited_deck_catalog as audited_deck_catalog
 from hsconfig.audited_deck_catalog import (
     load_audited_deck_catalog,
     load_audited_role_manifest,
 )
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.input_loading import fixture_row_for
 
 
@@ -116,6 +118,77 @@ def test_role_manifest_rejects_unresolved_or_ambiguous_identity(
         load_audited_role_manifest(manifest_path)
 
 
+@pytest.mark.parametrize(
+    ("deck_name", "malformed_deck_code"),
+    [
+        ("SecretMage", "not-a-deck-code"),
+        ("HighlanderPriest", "AAEBA-invalid-base64"),
+    ],
+)
+def test_visibility_only_identity_rejects_nonempty_malformed_deck_code(
+    tmp_path: Path,
+    deck_name: str,
+    malformed_deck_code: str,
+):
+    catalog_path = tmp_path / "audited-deck-catalog.json"
+    manifest_path = tmp_path / "supplemental-proof-decks.json"
+    _write_json(
+        catalog_path,
+        json.loads(CATALOG.read_text(encoding="utf-8")),
+    )
+    payload = json.loads(SUPPLEMENTAL.read_text(encoding="utf-8"))
+    row = next(row for row in payload["decks"] if row["deck_name"] == deck_name)
+    assert row["proof_scope"] == "supplemental_visibility_only"
+    assert row["matrix_policy"] == "not_representative_visibility_only"
+    row["deck_code"] = malformed_deck_code
+    _write_json(manifest_path, payload)
+
+    with pytest.raises(ValueError, match="audited_role_manifest_invalid"):
+        load_audited_role_manifest(manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("deck_name", "decoded_identity"),
+    [
+        (
+            "SecretMage",
+            {"card_count_total": 29, "unresolved_card_count": 0},
+        ),
+        (
+            "HighlanderPriest",
+            {"card_count_total": 30, "unresolved_card_count": 1},
+        ),
+    ],
+)
+def test_visibility_only_identity_requires_thirty_resolved_main_deck_cards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    deck_name: str,
+    decoded_identity: dict[str, int],
+):
+    catalog_path = tmp_path / "audited-deck-catalog.json"
+    manifest_path = tmp_path / "supplemental-proof-decks.json"
+    _write_json(
+        catalog_path,
+        json.loads(CATALOG.read_text(encoding="utf-8")),
+    )
+    payload = json.loads(SUPPLEMENTAL.read_text(encoding="utf-8"))
+    target_code = next(
+        row["deck_code"] for row in payload["decks"] if row["deck_name"] == deck_name
+    )
+    _write_json(manifest_path, payload)
+
+    def fake_decode(deck_code: str) -> dict[str, int]:
+        if deck_code == target_code:
+            return decoded_identity
+        return {"card_count_total": 30, "unresolved_card_count": 0}
+
+    monkeypatch.setattr(audited_deck_catalog, "decode_deck_code", fake_decode)
+
+    with pytest.raises(ValueError, match="audited_role_manifest_invalid"):
+        load_audited_role_manifest(manifest_path)
+
+
 def test_role_manifests_reference_catalog_without_duplicating_identity():
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
@@ -146,7 +219,10 @@ def test_role_manifests_reference_catalog_without_duplicating_identity():
         "SecretMage",
         "HighlanderPriest",
     }
-    assert all(row["deck_code"] for row in visibility_only)
+    for row in visibility_only:
+        decoded = decode_deck_code(row["deck_code"])
+        assert decoded["card_count_total"] == 30
+        assert decoded["unresolved_card_count"] == 0
 
     assert {row["deck_name"] for row in candidates["decks"]} == catalog_names
     assert all(IDENTITY_FIELDS.isdisjoint(row) for row in candidates["decks"])

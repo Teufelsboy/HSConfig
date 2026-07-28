@@ -43,6 +43,50 @@ AUDITED_CARD_DB_METADATA = {
         "sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4"
     ),
 }
+# Test-only identity mapping for visibility deck decoding. These rows are not part of
+# the audited 192-row semantic snapshot and must never be used as semantic evidence.
+VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS = {
+    1783: "FP1_004",
+    2551: "AT_012",
+    39767: "KAR_092",
+    40299: "CFM_066",
+    40323: "CFM_020",
+    40373: "CFM_603",
+    40583: "CFM_760",
+    41173: "UNG_032",
+    43408: "ICC_830",
+    53756: "ULD_003",
+    53822: "ULD_240",
+    59029: "SCH_311",
+    61585: "DMF_107",
+    61944: "YOP_006",
+    62879: "BAR_315",
+    69566: "CORE_EX1_193",
+    69607: "CORE_EX1_287",
+    69702: "CORE_UNG_020",
+    70020: "AV_324",
+    70027: "AV_331",
+    71781: "TSC_908",
+    72007: "TSC_032",
+    76314: "CORE_LOE_011",
+    77305: "REV_249",
+    78371: "REV_513",
+    79486: "REV_841",
+    84351: "MAW_101",
+    86235: "CORE_LOOT_101",
+    86626: "RLK_222",
+    90749: "ETC_080",
+    94822: "JAM_036",
+    95336: "JAM_001",
+    98403: "TTN_742",
+    98413: "JAM_027",
+    101955: "WW_384",
+    101958: "WW_387",
+    102221: "CORE_SW_072",
+    102225: "CORE_CFM_790",
+    102592: "WON_058",
+    102718: "CORE_SW_448",
+}
 EXPECTED_AUDITED_DECK_CATALOG = [
     {
         "deck_name": "ShadowPriest",
@@ -204,6 +248,25 @@ def _required_snapshot_dbf_ids() -> set[int]:
     return required
 
 
+def _visibility_identity_decode_only_dbf_ids() -> set[int]:
+    payload = read_json(SUPPLEMENTAL_PATH)
+    decks = [
+        row
+        for row in payload["decks"]
+        if row["deck_name"] in {"SecretMage", "HighlanderPriest"}
+    ]
+    required: set[int] = set()
+    for deck in decks:
+        parsed = _parse_deckstring(str(deck["deck_code"]))
+        required.update(int(dbf_id) for dbf_id, _count in parsed["cards"])
+        required.update(int(dbf_id) for dbf_id in parsed["heroes"])
+        for sideboard in parsed.get("sideboards", []):
+            if isinstance(sideboard, tuple) and len(sideboard) == 3:
+                card_dbf_id, _count, owner_dbf_id = sideboard
+                required.update((int(card_dbf_id), int(owner_dbf_id)))
+    return required
+
+
 def test_audited_dbf_snapshot_metadata_and_exact_set_are_pinned() -> None:
     payload = read_json(AUDITED_CARD_DB_PATH)
     required = _required_snapshot_dbf_ids()
@@ -227,6 +290,43 @@ def test_audited_dbf_snapshot_metadata_and_exact_set_are_pinned() -> None:
     assert len(required) == 192
     assert {int(row[0]) for row in cards} == required
     assert len({str(row[1]) for row in cards}) == 192
+
+
+def test_visibility_identity_decode_overlay_is_exact_and_separate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = read_json(AUDITED_CARD_DB_PATH)
+    audited_dbf_ids = {int(row[0]) for row in payload["cards"]}
+    visibility_dbf_ids = _visibility_identity_decode_only_dbf_ids()
+
+    assert len(audited_dbf_ids) == 192
+    assert len(visibility_dbf_ids) == 49
+    assert len(visibility_dbf_ids - audited_dbf_ids) == 40
+    assert set(VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS) == (
+        visibility_dbf_ids - audited_dbf_ids
+    )
+    assert len(set(VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS.values())) == 40
+
+    decoder_db = _audited_card_db()
+    assert set(decoder_db) == audited_dbf_ids | visibility_dbf_ids
+    monkeypatch.setattr(
+        "hsconfig.deckstring_decode.cardxml.load_dbf",
+        lambda: (decoder_db, None),
+    )
+
+    supplemental = read_json(SUPPLEMENTAL_PATH)
+    visibility_decks = [
+        row
+        for row in supplemental["decks"]
+        if row["deck_name"] in {"SecretMage", "HighlanderPriest"}
+    ]
+    for deck in visibility_decks:
+        decoded = decode_deck_code(str(deck["deck_code"]))
+        assert decoded["card_count_total"] == 30
+        assert decoded["unresolved_card_count"] == 0
+        assert decoded["sideboard_count"] == (
+            3 if deck["deck_name"] == "HighlanderPriest" else 0
+        )
 
 
 def test_audited_dbf_snapshot_rejects_malformed_schema_or_metadata() -> None:
@@ -460,7 +560,23 @@ def _audited_card_db() -> dict[int, SimpleNamespace]:
         for mechanic in mechanics:
             setattr(card, str(mechanic), True)
         cards[int(dbf_id)] = card
+    cards.update(_visibility_identity_decode_only_card_db())
     return cards
+
+
+def _visibility_identity_decode_only_card_db() -> dict[int, SimpleNamespace]:
+    return {
+        dbf_id: SimpleNamespace(
+            card_class="VISIBILITY_IDENTITY_ONLY",
+            card_id=card_id,
+            cost=None,
+            english_description="",
+            english_name=card_id,
+            name=card_id,
+            type="VISIBILITY_IDENTITY_ONLY",
+        )
+        for dbf_id, card_id in VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS.items()
+    }
 
 
 def _install_read_only_isolation(
