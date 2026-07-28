@@ -194,6 +194,7 @@ def apply_package(
                     runtime=runtime,
                     config_dir=deck_dir_name,
                     rollback_snapshot_path=rollback_snapshot_path,
+                    runtime_snapshot_before=before_snapshot,
                 )
                 rollback_restored = True
             except Exception as restore_exc:
@@ -208,17 +209,35 @@ def apply_package(
                 f"{snapshot_exc}"
             )
 
-        failure_payload = build_failed_apply_payload(
-            package_root=package,
-            runtime_root=runtime,
-            config_dir=deck_dir_name,
-            target_path=target_dir,
-            rollback_snapshot_path=rollback_snapshot_path,
-            rollback_restored=rollback_restored,
-            failure=exc,
-            runtime_snapshot_before=before_snapshot,
-            runtime_snapshot_after_rollback=after_rollback_snapshot,
-        )
+        try:
+            failure_payload = build_failed_apply_payload(
+                package_root=package,
+                runtime_root=runtime,
+                config_dir=deck_dir_name,
+                target_path=target_dir,
+                rollback_snapshot_path=rollback_snapshot_path,
+                rollback_restored=rollback_restored,
+                failure=exc,
+                runtime_snapshot_before=before_snapshot,
+                runtime_snapshot_after_rollback=after_rollback_snapshot,
+            )
+        except Exception as payload_exc:
+            exc.add_note(
+                "runtime apply failure payload build failed: "
+                f"{payload_exc}"
+            )
+            failure_payload = {
+                "schema_version": 1,
+                "status": (
+                    "rolled_back" if rollback_restored else "rollback_failed"
+                ),
+                "runtime_write_performed": True,
+                "rollback_restored": rollback_restored,
+                "failure_type": type(exc).__name__,
+                "failure_message": str(exc),
+                "runtime_snapshot_before": before_snapshot,
+                "runtime_snapshot_after_rollback": after_rollback_snapshot,
+            }
         try:
             write_json(
                 package / "reports" / "runtime_apply_receipt.json",
@@ -350,32 +369,108 @@ def _restore_runtime_target_snapshot(
     runtime: Path,
     config_dir: str,
     rollback_snapshot_path: str | None,
+    runtime_snapshot_before: dict[str, Any],
 ) -> None:
     custom_config = runtime / "CustomConfig"
     target = custom_config / config_dir
     deck_config = custom_config / "deck_config.ini"
+    backup = Path(rollback_snapshot_path) if rollback_snapshot_path else None
+    backup_target = backup / config_dir if backup is not None else None
+    backup_deck_config = backup / "deck_config.ini" if backup is not None else None
+
+    _preflight_rollback_material(
+        backup_target=backup_target,
+        backup_deck_config=backup_deck_config,
+        runtime_snapshot_before=runtime_snapshot_before,
+    )
 
     if target.exists():
         _ensure_child_path(target, custom_config)
         shutil.rmtree(target)
 
-    if rollback_snapshot_path is None:
-        if deck_config.exists():
-            deck_config.unlink()
-        return
-
-    backup = Path(rollback_snapshot_path)
-    backup_target = backup / config_dir
-    if backup_target.exists():
+    if backup_target is not None and backup_target.exists():
         custom_config.mkdir(parents=True, exist_ok=True)
         shutil.copytree(backup_target, target)
 
-    backup_deck_config = backup / "deck_config.ini"
-    if backup_deck_config.exists():
+    if backup_deck_config is not None and backup_deck_config.exists():
         custom_config.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup_deck_config, deck_config)
     elif deck_config.exists():
         deck_config.unlink()
+
+    after_restore = runtime_snapshot(runtime, config_dir)
+    if _runtime_restore_identity(after_restore) != _runtime_restore_identity(
+        runtime_snapshot_before
+    ):
+        raise RuntimeError(
+            "runtime rollback verification failed: restored target/INI "
+            "does not match runtime_snapshot_before"
+        )
+
+
+def _preflight_rollback_material(
+    *,
+    backup_target: Path | None,
+    backup_deck_config: Path | None,
+    runtime_snapshot_before: dict[str, Any],
+) -> None:
+    expected = _runtime_restore_identity(runtime_snapshot_before)
+    problems: list[str] = []
+
+    target_exists = backup_target is not None and backup_target.is_dir()
+    if target_exists != expected["target_exists"]:
+        problems.append("target backup existence does not match before snapshot")
+    elif target_exists:
+        target_files = sorted(
+            path for path in backup_target.rglob("*") if path.is_file()
+        )
+        backup_target_identity = {
+            "target_file_count": len(target_files),
+            "target_files": [
+                {
+                    "path": path.relative_to(backup_target).as_posix(),
+                    "sha256": file_sha256(path),
+                }
+                for path in target_files
+            ],
+        }
+        if backup_target_identity != {
+            "target_file_count": expected["target_file_count"],
+            "target_files": expected["target_files"],
+        }:
+            problems.append("target backup hashes do not match before snapshot")
+
+    deck_config_exists = (
+        backup_deck_config is not None and backup_deck_config.is_file()
+    )
+    if deck_config_exists != expected["deck_config_ini_exists"]:
+        problems.append(
+            "deck_config.ini backup existence does not match before snapshot"
+        )
+    elif (
+        deck_config_exists
+        and file_sha256(backup_deck_config)
+        != expected["deck_config_ini_sha256"]
+    ):
+        problems.append(
+            "deck_config.ini backup hash does not match before snapshot"
+        )
+
+    if problems:
+        raise RuntimeError(
+            "runtime rollback backup validation failed: "
+            + "; ".join(problems)
+        )
+
+
+def _runtime_restore_identity(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "target_exists": snapshot.get("target_exists"),
+        "target_file_count": snapshot.get("target_file_count"),
+        "target_files": snapshot.get("target_files"),
+        "deck_config_ini_exists": snapshot.get("deck_config_ini_exists"),
+        "deck_config_ini_sha256": snapshot.get("deck_config_ini_sha256"),
+    }
 
 
 def _update_deck_config_ini(

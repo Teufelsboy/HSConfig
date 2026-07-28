@@ -2063,3 +2063,324 @@ def test_apply_package_pre_mutation_failure_never_records_runtime_write(
     assert fake["runtime_write_performed"] is False
     assert not (package / "reports" / "runtime_apply_receipt.json").exists()
     assert not (runtime / "CustomConfig" / "hsconfig_write_history.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    ("missing_material", "expected_note_fragment"),
+    [
+        ("target", "target backup"),
+        ("deck_config_ini", "deck_config.ini backup"),
+    ],
+)
+def test_apply_package_rejects_incomplete_rollback_backup_before_deleting_current_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    missing_material: str,
+    expected_note_fragment: str,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    target = runtime / "CustomConfig" / "deck"
+    write_json(target / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\nOther Deck = other\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    original_snapshot = runtime_apply._snapshot_existing_runtime_target
+    original_update = runtime_apply._update_deck_config_ini
+
+    def remove_required_backup_material(**kwargs) -> str | None:
+        rollback_path = original_snapshot(**kwargs)
+        assert rollback_path is not None
+        backup = Path(rollback_path)
+        if missing_material == "target":
+            runtime_apply.shutil.rmtree(backup / "deck")
+        else:
+            (backup / "deck_config.ini").unlink()
+        return rollback_path
+
+    def fail_after_deck_config_update(**kwargs):
+        original_update(**kwargs)
+        raise InjectedPostMutationError("primary failure after INI update")
+
+    monkeypatch.setattr(
+        runtime_apply,
+        "_snapshot_existing_runtime_target",
+        remove_required_backup_material,
+    )
+    monkeypatch.setattr(
+        runtime_apply,
+        "_update_deck_config_ini",
+        fail_after_deck_config_update,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary failure after INI update",
+    ) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    receipt = read_json(package / "reports" / "runtime_apply_receipt.json")
+    history_rows = [
+        json.loads(line)
+        for line in (
+            runtime / "CustomConfig" / "hsconfig_write_history.jsonl"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert receipt["status"] == "rollback_failed"
+    assert receipt["rollback_restored"] is False
+    assert history_rows[-1]["status"] == "rollback_failed"
+    assert history_rows[-1]["rollback_restored"] is False
+    assert any(
+        expected_note_fragment in note
+        for note in (excinfo.value.__notes__ or [])
+    )
+    assert (target / "GlobalValues.json").exists()
+    assert not (target / "old.json").exists()
+    assert "Gate Deck = deck" in deck_config.read_text(encoding="utf-8")
+
+
+def test_apply_package_rejects_post_restore_snapshot_parity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    target = runtime / "CustomConfig" / "deck"
+    write_json(target / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\nOther Deck = other\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    original_copytree = runtime_apply.shutil.copytree
+    original_runtime_snapshot = runtime_apply.runtime_snapshot
+    runtime_snapshot_calls = 0
+
+    def fail_after_package_copy(src: str | Path, dst: str | Path, *args, **kwargs):
+        result = original_copytree(src, dst, *args, **kwargs)
+        if (
+            Path(src) == package / "CustomConfig" / "deck"
+            and Path(dst) == target
+        ):
+            raise InjectedPostMutationError("primary failure after package copy")
+        return result
+
+    def inject_post_restore_parity_mismatch(
+        runtime_root: str | Path,
+        config_dir: str,
+    ) -> dict[str, object]:
+        nonlocal runtime_snapshot_calls
+        runtime_snapshot_calls += 1
+        snapshot = original_runtime_snapshot(runtime_root, config_dir)
+        if runtime_snapshot_calls == 2:
+            snapshot = dict(snapshot)
+            snapshot["deck_config_ini_sha256"] = "injected-parity-mismatch"
+        return snapshot
+
+    monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_after_package_copy)
+    monkeypatch.setattr(
+        runtime_apply,
+        "runtime_snapshot",
+        inject_post_restore_parity_mismatch,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary failure after package copy",
+    ) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    receipt = read_json(package / "reports" / "runtime_apply_receipt.json")
+    history_rows = [
+        json.loads(line)
+        for line in (
+            runtime / "CustomConfig" / "hsconfig_write_history.jsonl"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert receipt["status"] == "rollback_failed"
+    assert receipt["rollback_restored"] is False
+    assert history_rows[-1]["status"] == "rollback_failed"
+    assert history_rows[-1]["rollback_restored"] is False
+    assert any(
+        "runtime rollback verification failed" in note
+        for note in (excinfo.value.__notes__ or [])
+    )
+    assert json.loads((target / "old.json").read_text(encoding="utf-8")) == {
+        "old": True
+    }
+    assert deck_config.read_text(encoding="utf-8") == old_deck_config_text
+
+
+def test_apply_package_preserves_primary_error_when_failure_payload_builder_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    target = runtime / "CustomConfig" / "deck"
+    write_json(target / "old.json", {"old": True})
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    original_copytree = runtime_apply.shutil.copytree
+
+    def fail_after_package_copy(src: str | Path, dst: str | Path, *args, **kwargs):
+        result = original_copytree(src, dst, *args, **kwargs)
+        if (
+            Path(src) == package / "CustomConfig" / "deck"
+            and Path(dst) == target
+        ):
+            raise InjectedPostMutationError("primary failure after package copy")
+        return result
+
+    def fail_payload_builder(**_: object) -> dict[str, object]:
+        raise OSError("injected failure payload builder error")
+
+    monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_after_package_copy)
+    monkeypatch.setattr(
+        runtime_apply,
+        "build_failed_apply_payload",
+        fail_payload_builder,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary failure after package copy",
+    ) as excinfo:
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    traceback_functions = {
+        frame.name for frame in traceback.extract_tb(excinfo.value.__traceback__)
+    }
+    receipt = read_json(package / "reports" / "runtime_apply_receipt.json")
+    history_rows = [
+        json.loads(line)
+        for line in (
+            runtime / "CustomConfig" / "hsconfig_write_history.jsonl"
+        )
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert "fail_after_package_copy" in traceback_functions
+    assert any(
+        "runtime apply failure payload build failed: "
+        "injected failure payload builder error" in note
+        for note in (excinfo.value.__notes__ or [])
+    )
+    assert receipt["schema_version"] == 1
+    assert receipt["status"] == "rolled_back"
+    assert receipt["runtime_write_performed"] is True
+    assert receipt["rollback_restored"] is True
+    assert receipt["failure_type"] == "InjectedPostMutationError"
+    assert receipt["failure_message"] == "primary failure after package copy"
+    assert receipt["runtime_snapshot_before"]["target_exists"] is True
+    assert receipt["runtime_snapshot_after_rollback"]["target_exists"] is True
+    assert history_rows[-1]["status"] == "rolled_back"
+    assert history_rows[-1]["failure_type"] == "InjectedPostMutationError"
+    assert json.loads((target / "old.json").read_text(encoding="utf-8")) == {
+        "old": True
+    }
+
+
+def test_apply_package_audits_backup_failure_without_deleting_original_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    target = runtime / "CustomConfig" / "deck"
+    write_json(target / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate=_allowed_gate(package),
+    )
+    original_snapshot = runtime_apply._snapshot_existing_runtime_target
+
+    def fail_after_backup_write(**kwargs):
+        original_snapshot(**kwargs)
+        raise InjectedPostMutationError("primary backup write failure")
+
+    monkeypatch.setattr(
+        runtime_apply,
+        "_snapshot_existing_runtime_target",
+        fail_after_backup_write,
+    )
+
+    with pytest.raises(
+        InjectedPostMutationError,
+        match="primary backup write failure",
+    ):
+        runtime_apply.apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            fake_receipt=fake,
+        )
+
+    receipt = read_json(package / "reports" / "runtime_apply_receipt.json")
+    assert receipt["status"] == "rolled_back"
+    assert receipt["rollback_restored"] is True
+    assert json.loads((target / "old.json").read_text(encoding="utf-8")) == {
+        "old": True
+    }
+    assert deck_config.read_text(encoding="utf-8") == old_deck_config_text
