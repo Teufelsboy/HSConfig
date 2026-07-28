@@ -94,6 +94,24 @@ def test_inventory_rejects_changed_canonical_content(
         validate_semantic_inventory(inventory, audited_catalog=audited_catalog["decks"])
 
 
+def test_inventory_rejects_claim_substitution_after_embedded_checksum_rewrite(
+    inventory: dict[str, Any], audited_catalog: dict[str, Any]
+) -> None:
+    changed = copy.deepcopy(inventory)
+    claim = changed["decks"][0]["claims"][0]
+    substituted_claim_id = "claim_substituted_after_approval"
+    claim["claim_id"] = substituted_claim_id
+    claim["claim_key"] = (
+        f"{changed['decks'][0]['deck_fingerprint']}:{substituted_claim_id}"
+    )
+    _refresh_checksum(changed)
+
+    with pytest.raises(
+        ValueError, match="semantic_inventory_approved_content_sha256_invalid"
+    ):
+        validate_semantic_inventory(changed, audited_catalog=audited_catalog["decks"])
+
+
 def test_inventory_rejects_duplicate_card_identity_after_valid_checksum(
     inventory: dict[str, Any], audited_catalog: dict[str, Any]
 ) -> None:

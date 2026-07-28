@@ -75,6 +75,9 @@ _SIDEBARD_MODULE_KEYS = frozenset(
     }
 )
 _CLAIM_KEYS = frozenset({"claim_id", "claim_key"})
+_APPROVED_CONTENT_SHA256 = (
+    "c012df4514f5c86e6f17e1593a302b135f44c2dd03a51a1adb1b04fa3436c37a"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +97,7 @@ def validate_semantic_inventory(
     audited_catalog: Sequence[Mapping[str, Any]],
 ) -> SemanticInventorySummary:
     """Validate the tracked projection of the twelve audited package semantics."""
-    _validate_inventory_content_sha256(inventory)
+    content_sha256 = _validate_inventory_content_sha256(inventory)
     if set(inventory) != _INVENTORY_KEYS or inventory.get("schema_version") != 1:
         raise ValueError("semantic_inventory_schema_invalid")
 
@@ -128,6 +131,8 @@ def validate_semantic_inventory(
         raise ValueError("semantic_inventory_claim_key_invalid")
     for row in rows:
         _validate_claim_keys(row)
+    if content_sha256 != _APPROVED_CONTENT_SHA256:
+        raise ValueError("semantic_inventory_approved_content_sha256_invalid")
 
     return SemanticInventorySummary(
         deck_count=len(rows),
@@ -140,7 +145,7 @@ def validate_semantic_inventory(
     )
 
 
-def _validate_inventory_content_sha256(inventory: Mapping[str, Any]) -> None:
+def _validate_inventory_content_sha256(inventory: Mapping[str, Any]) -> str:
     checksum = inventory.get("canonical_content_sha256")
     if not isinstance(checksum, str) or len(checksum) != 64:
         raise ValueError("semantic_inventory_content_sha256_invalid")
@@ -149,6 +154,7 @@ def _validate_inventory_content_sha256(inventory: Mapping[str, Any]) -> None:
     actual_checksum = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     if actual_checksum != checksum:
         raise ValueError("semantic_inventory_content_sha256_invalid")
+    return actual_checksum
 
 
 def _catalog_rows(
