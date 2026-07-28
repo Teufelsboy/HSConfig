@@ -27,6 +27,7 @@ from hsconfig.config_quality_contract import (
     build_config_quality_report,
     semantic_handoff_projection,
 )
+from hsconfig.configure_stages import StageObserver
 from hsconfig.configure_source_closure_receipt import (
     build_configure_source_closure_receipt,
 )
@@ -64,7 +65,11 @@ def run_configure_command(args: argparse.Namespace) -> int:
     return emit_result(payload, bool(getattr(args, "json", False)), status)
 
 
-def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+def configure_payload(
+    args: argparse.Namespace,
+    *,
+    stage_observer: StageObserver | None = None,
+) -> tuple[dict[str, Any], int]:
     reject_caller_supplied_source_authority(args)
     current_date = _normalize_operator_date(
         getattr(args, "current_date", None)
@@ -310,6 +315,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             ),
             current_date=current_date,
             source_authority_handoff=prepare_source_authority_handoff,
+            stage_observer=stage_observer,
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)

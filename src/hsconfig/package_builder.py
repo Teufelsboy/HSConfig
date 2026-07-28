@@ -16,6 +16,13 @@ from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.configure_stages import (
+    StageObserver,
+    build_lowered_runtime_stage,
+    build_verified_deck_stage,
+    materialize_stage_value,
+    observe_stage,
+)
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
@@ -113,6 +120,7 @@ def prepare_package_payload(
     *,
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+    stage_observer: StageObserver | None = None,
 ) -> tuple[dict[str, Any], int]:
     reject_caller_supplied_source_authority(args)
     operator_date = _package_current_date(args, current_date)
@@ -120,6 +128,7 @@ def prepare_package_payload(
         args,
         current_date=operator_date,
         source_authority_handoff=source_authority_handoff,
+        stage_observer=stage_observer,
     )
     payload = dict(payload)
     payload["command"] = "prepare"
@@ -140,6 +149,7 @@ def build_package_payload(
     *,
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+    stage_observer: StageObserver | None = None,
 ) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     deck_slug = slugify_deck_name(args.deck_name)
@@ -156,9 +166,23 @@ def build_package_payload(
         research_required_guide_sources_fn=_research_required_guide_sources,
     )
     cards_payload = context["cards_payload"]
-    deck_input_verification = cards_payload["deck_input_verification"]
-    mechanic_drift_report = build_mechanic_drift_report(cards_payload["cards"])
-    deck_identity = context["deck_identity"]
+    verified_deck_stage = build_verified_deck_stage(
+        identity=context["deck_identity"],
+        cards=cards_payload["cards"],
+        input_verification=cards_payload["deck_input_verification"],
+    )
+    observe_stage(stage_observer, "verified_deck", verified_deck_stage)
+    verified_cards = materialize_stage_value(verified_deck_stage.cards)
+    deck_input_verification = materialize_stage_value(
+        verified_deck_stage.input_verification
+    )
+    cards_payload = {
+        **cards_payload,
+        "cards": verified_cards,
+        "deck_input_verification": deck_input_verification,
+    }
+    mechanic_drift_report = build_mechanic_drift_report(verified_cards)
+    deck_identity = materialize_stage_value(verified_deck_stage.identity)
     card_metadata = context["card_metadata"]
     semantic_report = context["semantic_report"]
     guide_claim_bundle = context["guide_claim_bundle"]
@@ -179,6 +203,15 @@ def build_package_payload(
         **guide_claim_bundle,
         "claims": plan_claims,
     }
+    observe_stage(
+        stage_observer,
+        "normalized_source",
+        {
+            "card_metadata": card_metadata,
+            "guide_claim_bundle": guide_claim_bundle,
+            "source_evidence_report": context["source_evidence_report"],
+        },
+    )
     source_claim_conflict_report = guide_claim_bundle.get(
         "claim_conflict_report",
         {"conflict_count": 0, "conflicts": []},
@@ -392,6 +425,17 @@ def build_package_payload(
         "combo_plan": combo_plan,
         "global_values_authority_matrix": global_values_authority_matrix,
     }
+    observe_stage(
+        stage_observer,
+        "claim_surfaces",
+        {
+            "runtime_source_claims": runtime_source_claims,
+            "mulligan_plan": mulligan_plan,
+            "card_behavior_plan": card_behavior_plan,
+            "combo_plan": combo_plan,
+            "global_values_authority_matrix": global_values_authority_matrix,
+        },
+    )
     cardid_behavior_files = compile_cardid_behaviors(
         gameplan_contract,
         rows=card_behavior_plan["rows"],
@@ -447,18 +491,55 @@ def build_package_payload(
         source_evidence_verification_report=context["source_evidence_report"],
     )
     surface_intent = build_surface_intent(gameplan_contract)
+    runtime_files: dict[str, dict[str, Any]] = {
+        "GlobalValues.json": globalvalues["config"],
+        "Mulligan.json": compiled_mulligan,
+        **dict(cardid_behavior_files.items()),
+    }
+    if combo is not None:
+        runtime_files["Combo.json"] = combo
+    lowered_runtime_stage = build_lowered_runtime_stage(
+        runtime_files=runtime_files,
+        warnings=[
+            *[
+                row
+                for row in mulligan_plan.get("suppressed_rules", [])
+                if isinstance(row, dict)
+            ],
+            *[
+                row
+                for row in card_behavior_plan.get("suppressed", [])
+                if isinstance(row, dict)
+            ],
+            *[
+                row
+                for row in combo_plan.get("suppressed", [])
+                if isinstance(row, dict)
+            ],
+            *[
+                row
+                for row in global_values_authority_matrix.get(
+                    "blocked_until_runtime_evidence",
+                    [],
+                )
+                if isinstance(row, dict)
+            ],
+        ],
+        source_contract=gameplan_contract,
+    )
+    observe_stage(stage_observer, "lowered_runtime", lowered_runtime_stage)
+    gameplan_contract = materialize_stage_value(
+        lowered_runtime_stage.source_contract
+    )
 
     _reset_generated_package_dirs(deck_dir, reports_dir)
     derivation_receipt_path = out / DERIVATION_RECEIPT_PATH
     if derivation_receipt_path.is_file():
         derivation_receipt_path.unlink()
-    write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
-    write_json(deck_dir / "Mulligan.json", compiled_mulligan)
-    for filename, payload in cardid_behavior_files.items():
+    for filename, payload in materialize_stage_value(
+        lowered_runtime_stage.runtime_files
+    ).items():
         write_json(deck_dir / filename, payload)
-
-    if combo is not None:
-        write_json(deck_dir / "Combo.json", combo)
 
     manifest = InputManifest(
         deck_name=args.deck_name,
@@ -652,6 +733,15 @@ def build_package_payload(
         package_authority=package_authority,
         **operator_summary_kwargs,
     )
+    observe_stage(
+        stage_observer,
+        "validated_authority",
+        {
+            "technical_validation": report,
+            "package_authority": package_authority,
+            "operator_summary": operator_summary,
+        },
+    )
     assert operator_summary["surface_ledger_sha256"] == config_readiness_report[
         "surface_ledger_sha256"
     ]
@@ -691,6 +781,16 @@ def build_package_payload(
         source_evidence_closure_report,
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
+    observe_stage(
+        stage_observer,
+        "artifact_writing",
+        {
+            "generated_files": generated_files,
+            "output_ownership_manifest": output_ownership_manifest,
+            "package_derivation": package_derivation,
+            "operator_summary": operator_summary,
+        },
+    )
     code = 0 if report["status"] == "passed" else 1
     return (
         {

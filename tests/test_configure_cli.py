@@ -11,7 +11,9 @@ from hsconfig.commands.configure import (
     _build_acceptance_summary,
     _build_config_proof_summary,
     _compact_config_quality_summary,
+    configure_payload,
 )
+from hsconfig.cli_parser import build_parser
 from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
@@ -314,6 +316,46 @@ def test_configure_builds_valid_load_safe_package_without_source_evidence(
     assert list(package.glob("CustomConfig/*/Mulligan.json"))
     assert summary["runtime_package_match_status"] == "not_checked"
     assert summary["runtime_package_match"] is None
+
+
+def test_configure_exposes_package_stage_digests_without_changing_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _stub_empty_card_fetches(monkeypatch)
+    args = build_parser().parse_args(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(tmp_path / "configure"),
+            "--current-date",
+            "2026-07-28",
+            "--json",
+        ]
+    )
+    observed_stages: list[tuple[str, str]] = []
+
+    payload, status = configure_payload(
+        args,
+        stage_observer=lambda name, digest: observed_stages.append((name, digest)),
+    )
+
+    assert status == 0
+    assert payload == _read_json(tmp_path / "configure" / "configure_summary.json")
+    assert [name for name, _digest in observed_stages] == [
+        "verified_deck",
+        "normalized_source",
+        "claim_surfaces",
+        "lowered_runtime",
+        "validated_authority",
+        "artifact_writing",
+    ]
 
 
 def test_configure_source_evidence_is_not_reingested_after_drafting(
