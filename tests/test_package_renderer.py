@@ -52,6 +52,45 @@ def test_renderer_uses_the_linked_physical_owner_payload_for_cardid() -> None:
     }
 
 
+def test_globalvalues_runtime_and_report_have_one_row_per_ledger_key() -> None:
+    model = _model_with_ordered_globalvalues()
+    rendered = render_package_model(model)
+    artifacts = {
+        artifact.relative_path: json.loads(artifact.content)
+        for artifact in rendered.artifacts
+        if artifact.relative_path in {
+            "GlobalValues.json",
+            "reports/package_model.json",
+        }
+    }
+    runtime = artifacts["GlobalValues.json"]
+    report_rows = artifacts["reports/package_model.json"][
+        "globalvalues_ledger"
+    ]["decisions"]
+    globalvalues_surface = next(
+        surface
+        for surface in model.runtime_surface_plan.surfaces
+        if surface.family == "GlobalValues"
+    )
+
+    assert len(runtime) == 3
+    assert set(runtime) == {
+        "ConfigComment",
+        "FirstTurnValueWeight",
+        "GameCardId",
+    }
+    assert [row["key"] for row in report_rows] == [
+        "GameCardId",
+        "ConfigComment",
+        "FirstTurnValueWeight",
+    ]
+    assert globalvalues_surface.decision_ids == (
+        "globalvalues:ConfigComment",
+        "globalvalues:FirstTurnValueWeight",
+        "globalvalues:GameCardId",
+    )
+
+
 def test_renderer_refuses_nonempty_destination_and_verifies_written_tree(tmp_path: Path) -> None:
     rendered = render_package_model(_model())
     destination = tmp_path / "package"
@@ -251,6 +290,47 @@ def _model_with_cardid() -> PackageModel:
             mulligan_plan=model.mulligan_plan,
             globalvalues_ledger=model.globalvalues_ledger,
             disposition_ledger=dispositions,
+            combo_decision_ids=(),
+        ),
+    )
+
+
+def _model_with_ordered_globalvalues() -> PackageModel:
+    model = _model()
+    decisions = tuple(
+        GlobalValueDecision(
+            "fingerprint",
+            key,
+            GlobalValueDecisionKind.COPY_BASELINE,
+            b'"baseline"',
+            b'"baseline"',
+            "baseline",
+            (),
+            "fixture",
+        )
+        for key in (
+            "GameCardId",
+            "ConfigComment",
+            "FirstTurnValueWeight",
+        )
+    )
+    ledger = GlobalValuesDecisionLedger(
+        "fingerprint",
+        "baseline",
+        decisions,
+        "globalvalues",
+    )
+    return PackageModel(
+        model.deck_name,
+        model.deck_fingerprint,
+        model.mulligan_plan,
+        ledger,
+        model.disposition_ledger,
+        model.evidence_contract,
+        build_runtime_surface_plan(
+            mulligan_plan=model.mulligan_plan,
+            globalvalues_ledger=ledger,
+            disposition_ledger=model.disposition_ledger,
             combo_decision_ids=(),
         ),
     )

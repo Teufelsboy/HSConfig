@@ -220,10 +220,10 @@ def build_runtime_surface_plan(
             owner="globalvalues",
             decision_ids=tuple(
                 sorted(
-                    {
+                    (
                         f"globalvalues:{row.key}"
                         for row in globalvalues_ledger.decisions
-                    }
+                    )
                 )
             ),
         ),

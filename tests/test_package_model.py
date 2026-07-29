@@ -252,6 +252,59 @@ def test_globalvalues_ledger_preserves_registry_order_while_refs_sort_separately
     assert references == expected_references
 
 
+def test_globalvalues_ledger_rejects_an_identical_duplicate_key() -> None:
+    model = package_model()
+    decision = model.globalvalues_ledger.decisions[0]
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_key_duplicate",
+    ):
+        replace(
+            model.globalvalues_ledger,
+            decisions=(decision, decision),
+        )
+
+
+def test_globalvalues_ledger_rejects_a_conflicting_duplicate_key() -> None:
+    model = package_model()
+    decision = model.globalvalues_ledger.decisions[0]
+    conflicting = replace(
+        decision,
+        kind=GlobalValueDecisionKind.AUTHORIZED_OVERLAY,
+        emitted_canonical_json=(
+            b'{"values":[{"condition":"*","value":"2"}]}'
+        ),
+        reason="conflicting fixture",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_key_duplicate",
+    ):
+        replace(
+            model.globalvalues_ledger,
+            decisions=(decision, conflicting),
+        )
+
+
+def test_globalvalues_ledger_rejects_an_empty_decision_key() -> None:
+    model = package_model()
+    empty_key = replace(
+        model.globalvalues_ledger.decisions[0],
+        key="",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_key_invalid",
+    ):
+        replace(
+            model.globalvalues_ledger,
+            decisions=(empty_key,),
+        )
+
+
 @pytest.mark.parametrize(
     ("relative_path", "decision_ids", "error"),
     [

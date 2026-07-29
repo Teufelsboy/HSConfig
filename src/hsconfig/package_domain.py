@@ -222,7 +222,18 @@ class GlobalValuesDecisionLedger:
     content_sha256: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "decisions", tuple(self.decisions))
+        decisions = tuple(self.decisions)
+        object.__setattr__(self, "decisions", decisions)
+        keys = tuple(decision.key for decision in decisions)
+        if any(
+            not isinstance(key, str)
+            or not key
+            or key != key.strip()
+            for key in keys
+        ):
+            raise ValueError("globalvalues_decision_key_invalid")
+        if len(set(keys)) != len(keys):
+            raise ValueError("globalvalues_decision_key_duplicate")
 
 
 @dataclass(frozen=True, slots=True)
