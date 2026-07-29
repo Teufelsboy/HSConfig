@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from hsconfig.commands.common import run_payload_command
 from hsconfig.deck_identity import build_deck_identity
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.guide_source_builder import build_candidate_archetypes
 from hsconfig.hearthstonejson import fetch_latest_cards, fetch_latest_collectible_cards
 from hsconfig.input_loading import (
@@ -26,6 +27,11 @@ from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_status_sync import build_research_status_sync_report
 from hsconfig.source_acquisition import collect_public_source_records, fetchable_source_url
+from hsconfig.source_acquisition_closure import (
+    acquisition_closure_payload,
+    build_acquisition_closure,
+    freeze_source_bundle,
+)
 from hsconfig.source_acquisition_provenance import FIXTURE_MAP, LIVE_HTTP
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
@@ -130,18 +136,22 @@ def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], i
         card_roles={},
         source_documents=[],
     )
-    manifest = build_source_research_manifest(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        candidate_archetypes=candidate_archetypes,
-        fixture_row=fixture_row_for(args.deck_name),
-    )
     source_candidate_plan = build_source_candidate_plan(
         deck_name=args.deck_name,
         deck_identity=deck_identity,
         candidate_archetypes=candidate_archetypes,
         explicit_source_urls=list(getattr(args, "source_url", []) or []),
         current_date=getattr(args, "current_date", None),
+    )
+    manifest = build_source_research_manifest(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        candidate_archetypes=candidate_archetypes,
+        fixture_row=fixture_row_for(args.deck_name),
+        current_date=getattr(args, "current_date", None),
+        attempted_queries=_candidate_query_texts(source_candidate_plan),
+        checked_dossier=True,
+        policy_profile=load_policy_profile(),
     )
     output_path = out / "source_research_manifest.json"
     candidate_plan_path = out / "source_candidate_plan.json"
@@ -348,6 +358,36 @@ def _source_acquire_payload(
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
+    policy_profile = load_policy_profile()
+    candidate_archetypes = build_candidate_archetypes(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        card_roles={},
+        source_documents=[],
+    )
+    source_candidate_plan = build_source_candidate_plan(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        candidate_archetypes=candidate_archetypes,
+        explicit_source_urls=source_urls,
+        current_date=getattr(args, "current_date", None),
+    )
+    manifest_path_value = getattr(args, "source_research_manifest_json", None)
+    if manifest_path_value:
+        research_manifest = read_json(manifest_path_value)
+        if not isinstance(research_manifest, dict):
+            raise ValueError("source_research_manifest_json_invalid")
+    else:
+        research_manifest = build_source_research_manifest(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            candidate_archetypes=candidate_archetypes,
+            fixture_row=fixture_row_for(args.deck_name),
+            current_date=getattr(args, "current_date", None),
+            attempted_queries=_candidate_query_texts(source_candidate_plan),
+            checked_dossier=True,
+            policy_profile=policy_profile,
+        )
     fixture_map_path = getattr(args, "source_fixture_url_map_json", None)
     acquired = collect_public_source_records(
         deck_name=args.deck_name,
@@ -361,6 +401,8 @@ def _source_acquire_payload(
             getattr(args, "candidate_registry_url_count", 0) or 0
         ),
         acquisition_mode=FIXTURE_MAP if fixture_map_path else LIVE_HTTP,
+        checked_dossier=research_manifest.get("checked_dossier") is True,
+        policy_profile=policy_profile,
     )
     compiled = compile_source_search_records(
         deck_name=args.deck_name,
@@ -373,9 +415,33 @@ def _source_acquire_payload(
         compiled["records"],
         strict=True,
     ):
-        compiled_record["acquisition_provenance"] = acquired_record[
-            "acquisition_provenance"
-        ]
+        for key in (
+            "evidence_id",
+            "source_id",
+            "source_identity",
+            "as_of_date",
+            "content_sha256",
+            "acquisition_provenance",
+        ):
+            compiled_record[key] = acquired_record[key]
+    closure = build_acquisition_closure(
+        deck_identity=deck_identity,
+        research_manifest=research_manifest,
+        acquisition_report=acquired["source_acquisition_report"],
+        source_records=compiled["records"],
+        policy_profile=policy_profile,
+    )
+    closure_payload = acquisition_closure_payload(closure)
+    frozen_bundle = (
+        freeze_source_bundle(
+            deck_identity=deck_identity,
+            closure=closure,
+            source_records=compiled["records"],
+            policy_profile=policy_profile,
+        )
+        if closure.status != "open"
+        else None
+    )
     authority_handoff = (
         _issue_acquired_search_records_handoff(compiled["records"])
         if issue_authority_handoff
@@ -385,9 +451,14 @@ def _source_acquire_payload(
     acquisition_path = out / "source_acquisition_report.json"
     compiler_path = out / "source_claim_compiler_report.json"
     source_search_path = out / "source_search_results.json"
+    closure_path = out / "source_acquisition_closure.json"
+    frozen_bundle_path = out / "frozen_source_bundle.json"
     write_json(acquisition_path, acquired["source_acquisition_report"])
     write_json(compiler_path, compiled["source_claim_compiler_report"])
     write_json(source_search_path, compiled)
+    write_json(closure_path, closure_payload)
+    if frozen_bundle is not None:
+        write_json(frozen_bundle_path, frozen_bundle)
     payload_and_status = (
         {
             "status": "OK",
@@ -396,17 +467,47 @@ def _source_acquire_payload(
             "source_search_results_json": str(source_search_path),
             "source_acquisition_report": acquired["source_acquisition_report"],
             "source_claim_compiler_report": compiled["source_claim_compiler_report"],
+            "source_acquisition_closure": closure_payload,
+            "source_acquisition_closure_json": str(closure_path),
+            "frozen_source_bundle": frozen_bundle,
+            "frozen_source_bundle_json": (
+                str(frozen_bundle_path) if frozen_bundle is not None else None
+            ),
+            "frozen_source_bundle_sha256": (
+                frozen_bundle["content_sha256"]
+                if frozen_bundle is not None
+                else None
+            ),
             "source_acquisition_report_json": str(acquisition_path),
             "source_claim_compiler_report_json": str(compiler_path),
             "written_files": [
                 str(acquisition_path),
                 str(compiler_path),
                 str(source_search_path),
+                str(closure_path),
+                *(
+                    [str(frozen_bundle_path)]
+                    if frozen_bundle is not None
+                    else []
+                ),
             ],
         },
         0,
     )
     return *payload_and_status, authority_handoff
+
+
+def _candidate_query_texts(
+    source_candidate_plan: Mapping[str, Any],
+) -> list[str]:
+    rows = source_candidate_plan.get("queries")
+    if not isinstance(rows, list):
+        return []
+    return [
+        str(row.get("query", "")).strip()
+        for row in rows
+        if isinstance(row, Mapping) and str(row.get("query", "")).strip()
+    ]
 
 
 def _fixture_fetcher(path_value: str | None):

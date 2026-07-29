@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import date
 from typing import Any
 
+from hsconfig.evidence_contract import load_policy_profile
+from hsconfig.package_domain import PolicyProfile
+from hsconfig.source_acquisition_closure import (
+    acquisition_attempt_id,
+    normalize_acquisition_date,
+)
 
 DECK_ALIASES = {
     "ShadowPriest": ["ShadowPriest", "Shadow Priest"],
@@ -15,6 +23,7 @@ DECK_ALIASES = {
     "Kingslayer": ["Kingslayer", "Kingsbane Rogue"],
     "Boarlock": ["Boarlock", "Boar Warlock"],
     "PirateDH": ["PirateDH", "Pirate Demon Hunter"],
+    "CuteWarrior": ["CuteWarrior", "Cute Warrior"],
 }
 
 MECHANIC_REQUIRED_CLAIMS = {
@@ -58,19 +67,49 @@ def build_source_research_manifest(
     deck_identity: dict[str, Any],
     candidate_archetypes: dict[str, Any],
     fixture_row: dict[str, Any] | None = None,
+    current_date: str | date | None = None,
+    attempted_queries: Sequence[str] | None = None,
+    checked_dossier: bool = False,
+    policy_profile: PolicyProfile | None = None,
 ) -> dict[str, Any]:
     mechanics = _mechanic_focus(candidate_archetypes, fixture_row)
+    profile = policy_profile or load_policy_profile()
+    research_date = normalize_acquisition_date(current_date or date.today())
+    deck_fingerprint = str(deck_identity.get("deck_fingerprint", "")).strip()
+    aliases = DECK_ALIASES.get(deck_name, [deck_name])
+    queries = _stable_queries(
+        attempted_queries
+        if attempted_queries is not None
+        else [f"{alias} guide" for alias in aliases]
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
         "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
-        "search_aliases": DECK_ALIASES.get(deck_name, [deck_name]),
+        "deck_fingerprint": deck_fingerprint,
+        "research_date": research_date,
+        "attempt_id": acquisition_attempt_id(deck_fingerprint, research_date),
+        "attempted_queries": queries,
+        "checked_dossier": checked_dossier is True,
+        "policy_id": profile.policy_id,
+        "policy_sha256": profile.content_sha256,
+        "search_aliases": aliases,
         "primary_archetype": str(candidate_archetypes.get("primary_archetype", "")),
         "mechanic_focus": mechanics,
         "required_source_families": ["guide", "mulligan_guide", "card_text", "metadata"],
         "research_questions": _research_questions(mechanics),
         "card_targets": _card_targets(deck_identity, mechanics),
     }
+
+
+def _stable_queries(values: Sequence[str]) -> list[str]:
+    return sorted(
+        {
+            str(value).strip()
+            for value in values
+            if str(value).strip()
+        }
+    )
 
 
 def _mechanic_focus(

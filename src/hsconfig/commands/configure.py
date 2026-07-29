@@ -120,6 +120,10 @@ def configure_payload(
         )
 
     source_acquisition_path = None
+    source_acquisition_closure_path = None
+    frozen_source_bundle_path = None
+    frozen_source_bundle_sha256 = None
+    source_acquisition_closure = None
     source_documents_json = None
     source_authority_handoff = None
     research_source_authority_handoff = None
@@ -171,6 +175,9 @@ def configure_payload(
                     "source_fetch_timeout_seconds",
                     6.0,
                 ),
+                source_research_manifest_json=str(
+                    manifest_dir / "source_research_manifest.json"
+                ),
                 out=str(source_acquisition_dir),
             )
             (
@@ -192,6 +199,21 @@ def configure_payload(
         args.source_search_results_json = acquire_payload["source_search_results_json"]
         args.auto_source = True
         source_acquisition_path = source_acquisition_dir
+        source_acquisition_closure_path = Path(
+            acquire_payload["source_acquisition_closure_json"]
+        )
+        frozen_bundle_value = acquire_payload.get("frozen_source_bundle_json")
+        frozen_source_bundle_path = (
+            Path(frozen_bundle_value)
+            if isinstance(frozen_bundle_value, str) and frozen_bundle_value
+            else None
+        )
+        source_acquisition_closure = acquire_payload.get(
+            "source_acquisition_closure"
+        )
+        frozen_source_bundle_sha256 = acquire_payload.get(
+            "frozen_source_bundle_sha256"
+        )
 
     if bool(getattr(args, "auto_source", False)):
         if not getattr(args, "source_search_results_json", None):
@@ -571,6 +593,18 @@ def configure_payload(
             "source_acquisition_path": (
                 str(source_acquisition_path) if source_acquisition_path else None
             ),
+            "source_acquisition_closure_path": (
+                str(source_acquisition_closure_path)
+                if source_acquisition_closure_path
+                else None
+            ),
+            "frozen_source_bundle_path": (
+                str(frozen_source_bundle_path)
+                if frozen_source_bundle_path
+                else None
+            ),
+            "frozen_source_bundle_sha256": frozen_source_bundle_sha256,
+            "source_acquisition_closure": source_acquisition_closure,
             "source_autopilot_path": (
                 str(source_autopilot_path) if source_autopilot_path else None
             ),

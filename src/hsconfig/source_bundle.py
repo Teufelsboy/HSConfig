@@ -3,6 +3,18 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from hsconfig.source_acquisition_closure import (
+    AcquisitionClosure,
+    freeze_source_bundle,
+)
+
+
+__all__ = [
+    "AcquisitionClosure",
+    "build_source_bundle",
+    "freeze_source_bundle",
+]
+
 
 def build_source_bundle(
     *,

@@ -12,6 +12,12 @@ from urllib.parse import urlparse
 
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.evidence_contract import load_policy_profile
+from hsconfig.package_domain import PolicyProfile
+from hsconfig.source_acquisition_closure import (
+    acquisition_attempt_id,
+    normalize_acquisition_date,
+)
 from hsconfig.source_acquisition_provenance import (
     CAPTURED_RECORD,
     LIVE_HTTP,
@@ -125,8 +131,11 @@ def collect_public_source_records(
     timeout_seconds: float = 6.0,
     candidate_registry_url_count: int = 0,
     acquisition_mode: str = LIVE_HTTP,
+    checked_dossier: bool = False,
+    policy_profile: PolicyProfile | None = None,
 ) -> dict[str, Any]:
     resolve = resolver or _default_resolver
+    profile = policy_profile or load_policy_profile()
     records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     deduped_urls = _dedupe_urls(source_urls)
@@ -190,7 +199,19 @@ def collect_public_source_records(
             publication_year=publication_year,
             current_date=current_date,
         )
+        provenance = build_acquisition_provenance(
+            mode=(
+                acquisition_mode
+                if fetcher is None or acquisition_mode != LIVE_HTTP
+                else CAPTURED_RECORD
+            ),
+            content=body,
+        )
+        evidence_id = _source_evidence_id(url, provenance["content_sha256"])
         record = {
+            "evidence_id": evidence_id,
+            "source_id": _source_id(url),
+            "source_identity": url,
             "source_url": url,
             "source_title": parsed["title"] or url,
             "source_family": source_family,
@@ -202,17 +223,12 @@ def collect_public_source_records(
             "source_record_strength": strength,
             "source_strength": strength,
             "retrieved_at": retrieved_at,
+            "as_of_date": normalize_acquisition_date(retrieved_at),
             "deck_match": deck_match,
             "deck_match_scope": deck_match_scope,
             "normalized_text": sanitized_text,
-            "acquisition_provenance": build_acquisition_provenance(
-                mode=(
-                    acquisition_mode
-                    if fetcher is None or acquisition_mode != LIVE_HTTP
-                    else CAPTURED_RECORD
-                ),
-                content=body,
-            ),
+            "content_sha256": provenance["content_sha256"],
+            "acquisition_provenance": provenance,
         }
         if fetch_url != url:
             record["source_fetch_url"] = fetch_url
@@ -226,9 +242,25 @@ def collect_public_source_records(
             _redact_persisted_deckstrings({**record, **_record_policy_fields(policy)})
         )
 
+    attempted_at = normalize_acquisition_date(retrieved_at)
+    attempts = _acquisition_attempts(
+        attempted_urls=deduped_urls,
+        records=records,
+        failures=failures,
+        attempted_at=attempted_at,
+    )
+    deck_fingerprint = str(deck_identity.get("deck_fingerprint", "")).strip()
     report = {
         "schema_version": 1,
         "deck_name": deck_name,
+        "deck_fingerprint": deck_fingerprint,
+        "attempt_id": acquisition_attempt_id(deck_fingerprint, attempted_at),
+        "attempted_at": attempted_at,
+        "attempted_urls": deduped_urls,
+        "attempts": attempts,
+        "checked_dossier": checked_dossier is True,
+        "policy_id": profile.policy_id,
+        "policy_sha256": profile.content_sha256,
         "attempted_url_count": len(deduped_urls),
         "candidate_registry_url_count": min(
             max(0, int(candidate_registry_url_count)),
@@ -251,6 +283,61 @@ def collect_public_source_records(
         "source_records": records,
         "source_acquisition_report": report,
     })
+
+
+def _acquisition_attempts(
+    *,
+    attempted_urls: Sequence[str],
+    records: Sequence[Mapping[str, Any]],
+    failures: Sequence[Mapping[str, Any]],
+    attempted_at: str,
+) -> list[dict[str, str]]:
+    records_by_url = {
+        str(record.get("source_url", "")): record
+        for record in records
+        if str(record.get("source_url", ""))
+    }
+    failures_by_url = {
+        str(failure.get("url", "")): str(failure.get("error", ""))
+        for failure in failures
+        if str(failure.get("url", ""))
+    }
+    attempts: list[dict[str, str]] = []
+    for url in attempted_urls:
+        record = records_by_url.get(url)
+        if record is not None:
+            attempts.append(
+                {
+                    "source_identity": url,
+                    "outcome": "acquired",
+                    "evidence_id": str(record.get("evidence_id", "")),
+                    "attempted_at": attempted_at,
+                }
+            )
+            continue
+        reason_code = failures_by_url.get(url, "outcome_not_recorded")
+        attempts.append(
+            {
+                "source_identity": url,
+                "outcome": (
+                    "not_found"
+                    if reason_code == "http_status_404"
+                    else "failed"
+                ),
+                "reason_code": reason_code,
+                "attempted_at": attempted_at,
+            }
+        )
+    return attempts
+
+
+def _source_id(url: str) -> str:
+    return f"source:{sha256(url.encode('utf-8')).hexdigest()}"
+
+
+def _source_evidence_id(url: str, content_sha256: str) -> str:
+    digest = sha256(f"{url}\0{content_sha256}".encode("utf-8")).hexdigest()
+    return f"evidence:{digest}"
 
 
 def _report_first_missing_source_action(records: Sequence[Mapping[str, Any]]) -> str:
