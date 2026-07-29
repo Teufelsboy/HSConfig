@@ -1388,7 +1388,7 @@ def _canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def _load_disposition_ledger(
+def load_disposition_ledger_report(
     document: Mapping[str, Any],
 ) -> DispositionLedger:
     try:
@@ -1451,7 +1451,7 @@ def _load_disposition_ledger(
     return ledger
 
 
-def _load_globalvalues_ledger(
+def load_globalvalues_decision_ledger_report(
     document: Mapping[str, Any],
 ) -> GlobalValuesDecisionLedger:
     try:
@@ -2079,10 +2079,10 @@ def validate_pre_run_package_reports(
         raise ValueError(
             "pre_run_contract_schema_version_invalid"
         )
-    disposition = _load_disposition_ledger(
+    disposition = load_disposition_ledger_report(
         documents["reports/disposition_ledger.json"]
     )
-    globalvalues = _load_globalvalues_ledger(
+    globalvalues = load_globalvalues_decision_ledger_report(
         documents["reports/globalvalues_decision_ledger.json"]
     )
     fingerprint = disposition.deck_fingerprint

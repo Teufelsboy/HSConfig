@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -10,6 +11,7 @@ from hsconfig.config_quality_contract import (
     build_config_quality_report,
     semantic_handoff_projection,
 )
+from hsconfig.package_model import DirectoryPackageView
 from hsconfig.visionai_registry import is_supported_card_behavior_block
 from tests.helpers.fixture_prepare import (
     load_archetype_matrix,
@@ -18,6 +20,7 @@ from tests.helpers.fixture_prepare import (
 
 
 DECK_SLUG = "shadowpriest"
+QUALITY_ORACLE_DIR = Path(__file__).parent / "fixtures"
 
 
 def _physical_blocks(card_files: dict[str, dict], card_id: str) -> list[str]:
@@ -405,6 +408,190 @@ def minimal_clean_package(tmp_path: Path) -> Path:
         },
     )
     return package
+
+
+class _MemoryQualityView:
+    def __init__(
+        self,
+        package_label: str,
+        files: dict[str, bytes],
+    ) -> None:
+        self.package_label = package_label
+        self.files = files
+
+    def file_names(self) -> tuple[str, ...]:
+        return tuple(reversed(tuple(self.files)))
+
+    def read_bytes(self, relative_path: str) -> bytes:
+        return self.files[relative_path]
+
+    def read_json(self, relative_path: str) -> Any:
+        return json.loads(self.read_bytes(relative_path).decode("utf-8-sig"))
+
+    def exists(self, relative_path: str) -> bool:
+        return relative_path in self.files
+
+
+def _quality_package_bytes(package: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(package).as_posix(): path.read_bytes()
+        for path in package.rglob("*")
+        if path.is_file()
+    }
+
+
+def _memory_quality_view(package: Path) -> _MemoryQualityView:
+    return _MemoryQualityView(
+        str(package),
+        _quality_package_bytes(package),
+    )
+
+
+def _base_quality_oracle(name: str) -> dict[str, Any]:
+    return json.loads(
+        (QUALITY_ORACLE_DIR / f"config_quality_base_{name}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _canonical_quality_report_bytes(report: dict[str, Any]) -> bytes:
+    normalized = dict(report)
+    normalized["package"] = "<package>"
+    return json.dumps(
+        normalized,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _assert_base_quality_oracle(
+    report: dict[str, Any],
+    oracle_name: str,
+) -> None:
+    expected = _base_quality_oracle(oracle_name)
+    assert _canonical_quality_report_bytes(report) == (
+        _canonical_quality_report_bytes(expected)
+    )
+
+
+def test_config_quality_facade_has_path_and_directory_view_golden_parity(
+    tmp_path: Path,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+
+    for source in (
+        package,
+        str(package),
+        DirectoryPackageView(package),
+        _memory_quality_view(package),
+    ):
+        _assert_base_quality_oracle(
+            build_config_quality_report(source),
+            "clean",
+        )
+
+
+def test_config_quality_facade_attention_golden_parity(
+    tmp_path: Path,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+    operator_path = package / "reports" / "operator_summary.json"
+    operator = json.loads(operator_path.read_text(encoding="utf-8"))
+    operator["source_to_runtime_explainability_summary"][
+        "closure_schema_current"
+    ] = False
+    write_json(operator_path, operator)
+    actual = build_config_quality_report(package)
+
+    assert actual["status"] == "attention"
+    assert {
+        "check": "source_to_runtime_closure_not_current",
+        "value": False,
+    } in actual["problems"]
+    for source in (
+        package,
+        str(package),
+        DirectoryPackageView(package),
+        _memory_quality_view(package),
+    ):
+        _assert_base_quality_oracle(
+            build_config_quality_report(source),
+            "attention",
+        )
+
+
+def test_config_quality_facade_missing_operator_golden_parity(
+    tmp_path: Path,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+    (package / "reports" / "operator_summary.json").unlink()
+    actual = build_config_quality_report(package)
+
+    assert actual["checks"] == {
+        "operator_summary": {
+            "present": False,
+            "path": "reports/operator_summary.json",
+        }
+    }
+    assert actual["problems"] == [
+        {
+            "check": "operator_summary_missing_or_invalid",
+            "value": "reports/operator_summary.json",
+        }
+    ]
+    assert actual["semantic_handoff_status"] == "insufficient_evidence"
+    for source in (
+        package,
+        str(package),
+        DirectoryPackageView(package),
+        _memory_quality_view(package),
+    ):
+        _assert_base_quality_oracle(
+            build_config_quality_report(source),
+            "missing_operator",
+        )
+
+
+def test_config_quality_facade_malformed_optional_json_golden_parity(
+    tmp_path: Path,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+    optional = package / "reports" / "semantic_enrichment_report.json"
+    optional.write_bytes(b"\xef\xbb\xbf{malformed")
+    memory = _memory_quality_view(package)
+
+    for source in (
+        package,
+        str(package),
+        DirectoryPackageView(package),
+        memory,
+    ):
+        _assert_base_quality_oracle(
+            build_config_quality_report(source),
+            "clean",
+        )
+
+    optional.unlink()
+    _assert_base_quality_oracle(
+        build_config_quality_report(package),
+        "clean",
+    )
+
+
+def test_config_quality_facade_propagates_view_read_exceptions() -> None:
+    class _ExplodingView(_MemoryQualityView):
+        def read_bytes(self, relative_path: str) -> bytes:
+            raise RuntimeError("quality-view-boom")
+
+    view = _ExplodingView(
+        "memory://quality-error",
+        {"reports/operator_summary.json": b"{}"},
+    )
+
+    with pytest.raises(RuntimeError, match="quality-view-boom"):
+        build_config_quality_report(view)
 
 
 def test_quality_contract_flags_unreported_physical_cardid_row(tmp_path):

@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from hsconfig.io import read_json
+from hsconfig.io import decode_json_bytes, read_json
+from hsconfig.package_model import PackageView
 from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
@@ -95,6 +96,51 @@ def verify_package_derivation_receipt(
         ]
     try:
         expected = build_package_derivation_receipt(Path(package_root))
+    except (OSError, TypeError, ValueError):
+        return False, [
+            {
+                "code": "package_derivation_mismatch",
+                "detail": "Authoritative package content differs from its receipt.",
+            }
+        ]
+    if dict(receipt) != expected:
+        return False, [
+            {
+                "code": "package_derivation_mismatch",
+                "detail": "Authoritative package content differs from its receipt.",
+            }
+        ]
+    return True, []
+
+
+def build_package_derivation_receipt_from_view(
+    package: PackageView,
+) -> dict[str, Any]:
+    """Build a receipt without adapting an existing package view to Path."""
+
+    return {
+        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "inputs": _authoritative_input_digests_from_view(package),
+        "linked_runtime_owners": _linked_runtime_owners_from_view(package),
+        "runtime_files": _runtime_file_digests_from_view(package),
+    }
+
+
+def verify_package_derivation_receipt_from_view(
+    package: PackageView,
+    receipt: Mapping[str, Any],
+) -> tuple[bool, list[dict[str, str]]]:
+    """Verify a receipt entirely against the supplied package view."""
+
+    if not derivation_schema_version_supported(receipt.get("schema_version")):
+        return False, [
+            {
+                "code": "package_derivation_receipt_schema_unsupported",
+                "detail": "Package derivation receipt schema version is not supported.",
+            }
+        ]
+    try:
+        expected = build_package_derivation_receipt_from_view(package)
     except (OSError, TypeError, ValueError):
         return False, [
             {
@@ -576,6 +622,73 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     return dict(sorted(inputs.items()))
 
 
+def _authoritative_input_digests_from_view(
+    package: PackageView,
+) -> dict[str, str]:
+    inputs: dict[str, str] = {}
+    manifest: Mapping[str, Any] | None = None
+    for relative_path in _AUTHORITATIVE_JSON_PATHS:
+        if (
+            relative_path == "reports/card_behavior_plan_report.json"
+            and not package.exists(relative_path)
+        ):
+            inputs[relative_path] = _canonical_json_sha256([])
+            continue
+        payload = _read_view_json(package, relative_path)
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                "Authoritative package input must be an object: "
+                f"{relative_path}"
+            )
+        if relative_path == "reports/input_manifest.json":
+            manifest = payload
+        if relative_path == "reports/card_behavior_plan_report.json":
+            inputs[relative_path] = _canonical_json_sha256(
+                linked_runtime_owner_projection(payload)
+            )
+            continue
+        inputs[relative_path] = _canonical_json_sha256(
+            _stable_authority_document(relative_path, payload)
+        )
+
+    guide_bundle = _read_view_json(
+        package,
+        "reports/guide_claim_bundle.json",
+    )
+    if not isinstance(guide_bundle, Mapping):
+        raise ValueError(
+            "Authoritative source receipt container must be an object: "
+            "reports/guide_claim_bundle.json"
+        )
+    source_receipts = guide_bundle.get(
+        "canonical_source_receipts",
+        guide_bundle.get("globalvalues_source_receipts", []),
+    )
+    inputs["reports/guide_claim_bundle.json#canonical_source_receipts"] = (
+        _canonical_json_sha256(_canonical_receipt_sequence(source_receipts))
+    )
+    inputs["reports/guide_claim_bundle.json#source_provenance"] = (
+        _canonical_json_sha256(_source_provenance_projection(guide_bundle))
+    )
+
+    verification_path = "reports/deck_input_verification.json"
+    if package.exists(verification_path):
+        deck_input_verification = _read_view_json(
+            package,
+            verification_path,
+        )
+    else:
+        deck_input_verification = (
+            manifest.get("deck_input_verification")
+            if isinstance(manifest, Mapping)
+            else None
+        )
+    inputs["deck_input_verification"] = _canonical_json_sha256(
+        _stable_authority_value(deck_input_verification)
+    )
+    return dict(sorted(inputs.items()))
+
+
 def _linked_runtime_owners(package_root: Path) -> list[dict[str, str]]:
     path = package_root / "reports" / "card_behavior_plan_report.json"
     if not path.is_file():
@@ -584,6 +697,21 @@ def _linked_runtime_owners(package_root: Path) -> list[dict[str, str]]:
     if not isinstance(behavior_plan, Mapping):
         raise ValueError(
             f"Linked runtime owner evidence must be an object: {path}"
+        )
+    return linked_runtime_owner_projection(behavior_plan)
+
+
+def _linked_runtime_owners_from_view(
+    package: PackageView,
+) -> list[dict[str, str]]:
+    relative_path = "reports/card_behavior_plan_report.json"
+    if not package.exists(relative_path):
+        return []
+    behavior_plan = _read_view_json(package, relative_path)
+    if not isinstance(behavior_plan, Mapping):
+        raise ValueError(
+            "Linked runtime owner evidence must be an object: "
+            f"{relative_path}"
         )
     return linked_runtime_owner_projection(behavior_plan)
 
@@ -601,6 +729,26 @@ def _runtime_file_digests(package_root: Path) -> dict[str, str]:
         relative_path = path.relative_to(package_root).as_posix()
         runtime_files[relative_path] = _canonical_json_sha256(payload)
     return runtime_files
+
+
+def _runtime_file_digests_from_view(
+    package: PackageView,
+) -> dict[str, str]:
+    runtime_files: dict[str, str] = {}
+    for relative_path in package.file_names():
+        if (
+            not relative_path.startswith("CustomConfig/")
+            or not relative_path.endswith(".json")
+        ):
+            continue
+        runtime_files[relative_path] = _canonical_json_sha256(
+            _read_view_json(package, relative_path)
+        )
+    return dict(sorted(runtime_files.items()))
+
+
+def _read_view_json(package: PackageView, relative_path: str) -> Any:
+    return decode_json_bytes(package.read_bytes(relative_path))
 
 
 def _stable_authority_document(

@@ -8,7 +8,11 @@ from typing import Any
 
 
 def read_json(path: str | Path) -> Any:
-    text = Path(path).read_text(encoding="utf-8-sig")
+    return decode_json_bytes(Path(path).read_bytes())
+
+
+def decode_json_bytes(value: bytes) -> Any:
+    text = bytes(value).decode("utf-8-sig")
     try:
         return json.loads(text)
     except json.JSONDecodeError:

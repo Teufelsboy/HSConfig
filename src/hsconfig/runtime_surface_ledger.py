@@ -10,7 +10,8 @@ from typing import Any
 from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
 from hsconfig.condition_format import lower_runtime_condition
-from hsconfig.io import read_json
+from hsconfig.io import decode_json_bytes, read_json
+from hsconfig.package_model import PackageView
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     COMBO_RUNTIME_FILE,
@@ -390,6 +391,77 @@ def rederive_runtime_surface_ledger_from_package(package: str | Path) -> dict[st
             if isinstance(row, Mapping) and row.get("meaningful_runtime_surface") is True
         ],
     )
+
+
+def rederive_runtime_surface_ledger_from_view(
+    package: PackageView,
+) -> dict[str, Any]:
+    """Rederive the ledger from an already materialized package view."""
+
+    deck_identity = _view_json(package, "reports/deck_identity.json")
+    baseline = _view_json(package, "reports/globalvalues_baseline.json")
+    behavior_plan = _view_json(
+        package,
+        "reports/card_behavior_plan_report.json",
+    )
+    if not isinstance(deck_identity, Mapping) or not isinstance(
+        baseline,
+        Mapping,
+    ):
+        raise ValueError("runtime_surface_ledger_report_invalid")
+    if not isinstance(behavior_plan, Mapping):
+        raise ValueError("runtime_surface_ledger_behavior_plan_invalid")
+    runtime_paths = [
+        name
+        for name in package.file_names()
+        if name.startswith("CustomConfig/")
+        and name.endswith(".json")
+        and len(name.split("/")) == 3
+    ]
+    deck_names = {
+        name.split("/")[1]
+        for name in runtime_paths
+    }
+    if len(deck_names) != 1:
+        raise ValueError("runtime_surface_ledger_customconfig_dir_invalid")
+    deck_name = next(iter(deck_names))
+    payloads = {
+        name.rsplit("/", 1)[-1]: _view_json(package, name)
+        for name in runtime_paths
+        if name.split("/")[1] == deck_name
+    }
+    return build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan=payloads.get(MULLIGAN_RUNTIME_FILE, {}),
+        compiled_globalvalues=payloads.get(GLOBALVALUES_RUNTIME_FILE, {}),
+        globalvalues_baseline=baseline,
+        compiled_combo=payloads.get(COMBO_RUNTIME_FILE),
+        compiled_cardid_files={
+            name: payload
+            for name, payload in payloads.items()
+            if name not in NORMAL_SPECIAL_RUNTIME_SURFACES
+        },
+        linked_runtime_owners=[
+            {
+                "source_card_id": str(
+                    row.get("source_card_id")
+                    or row.get("card_id", "")
+                ),
+                "runtime_card_id": str(
+                    row.get("runtime_card_id")
+                    or row.get("card_id", "")
+                ),
+                "link_kind": str(row.get("link_kind") or "self"),
+            }
+            for row in behavior_plan.get("rows", [])
+            if isinstance(row, Mapping)
+            and row.get("meaningful_runtime_surface") is True
+        ],
+    )
+
+
+def _view_json(package: PackageView, relative_path: str) -> Any:
+    return decode_json_bytes(package.read_bytes(relative_path))
 
 
 def _linked_entities(
