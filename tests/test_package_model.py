@@ -22,6 +22,8 @@ from hsconfig.package_domain import (
     RuntimeSurfaceDecision,
     RuntimeSurfacePlan,
     disposition_ledger_content_sha256,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
 )
 from hsconfig.package_model import (
     PackageArtifact,
@@ -235,7 +237,14 @@ def test_globalvalues_ledger_preserves_registry_order_while_refs_sort_separately
         )
         for key in registry_order
     )
-    ledger = replace(model.globalvalues_ledger, decisions=decisions)
+    ledger = replace(
+        model.globalvalues_ledger,
+        baseline_sha256=globalvalues_baseline_sha256(decisions),
+        decisions=decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            decisions
+        ),
+    )
 
     plan = build_runtime_surface_plan(
         mulligan_plan=model.mulligan_plan,
@@ -663,7 +672,13 @@ def test_all_domain_tuple_fields_copy_caller_lists() -> None:
     caller_decisions = [decision]
     globalvalues = replace(
         model.globalvalues_ledger,
+        baseline_sha256=globalvalues_baseline_sha256(
+            tuple(caller_decisions)
+        ),
         decisions=caller_decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            tuple(caller_decisions)
+        ),
     )
     caller_rule_claim_ids = ["claim-mulligan"]
     rule = replace(
@@ -805,22 +820,27 @@ def package_model() -> PackageModel:
         bot_delegated=(),
         merged_duplicate_rule_count=0,
     )
+    globalvalue_decisions = (
+        GlobalValueDecision(
+            deck_fingerprint="fingerprint",
+            key="HeroValue",
+            kind=GlobalValueDecisionKind.COPY_BASELINE,
+            baseline_canonical_json=b'{"values":[{"condition":"*","value":"1"}]}',
+            emitted_canonical_json=b'{"values":[{"condition":"*","value":"1"}]}',
+            authority_id="baseline",
+            claim_ids=(),
+            reason="fixture",
+        ),
+    )
     globalvalues = GlobalValuesDecisionLedger(
         deck_fingerprint="fingerprint",
-        baseline_sha256="baseline",
-        decisions=(
-            GlobalValueDecision(
-                deck_fingerprint="fingerprint",
-                key="HeroValue",
-                kind=GlobalValueDecisionKind.COPY_BASELINE,
-                baseline_canonical_json=b'{"values":[{"condition":"*","value":"1"}]}',
-                emitted_canonical_json=b'{"values":[{"condition":"*","value":"1"}]}',
-                authority_id="baseline",
-                claim_ids=(),
-                reason="fixture",
-            ),
+        baseline_sha256=globalvalues_baseline_sha256(
+            globalvalue_decisions
         ),
-        content_sha256="globalvalues",
+        decisions=globalvalue_decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            globalvalue_decisions
+        ),
     )
     disposition_cards = (
             CardDispositionRow(

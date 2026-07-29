@@ -1,5 +1,5 @@
 import json
-from copy import deepcopy
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -15,7 +15,15 @@ from hsconfig.config_readiness import (
     project_config_readiness_from_dispositions,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
-from hsconfig.package_domain import CardDisposition, ClaimDisposition
+from hsconfig.package_domain import (
+    CardDisposition,
+    ClaimDisposition,
+    GlobalValueDecision,
+    GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
+)
 from hsconfig.package_builder import build_package_payload
 from hsconfig.source_contract_audit import (
     project_source_contract_audit_from_dispositions,
@@ -26,21 +34,46 @@ from hsconfig.source_to_runtime_explainability import (
 from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
+def _canonical_bytes(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _globalvalues_ledger(
+    decisions,
+    *,
+    deck_fingerprint="deck-fingerprint",
+):
+    frozen = tuple(decisions)
+    return GlobalValuesDecisionLedger(
+        deck_fingerprint=deck_fingerprint,
+        baseline_sha256=globalvalues_baseline_sha256(frozen),
+        decisions=frozen,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            frozen
+        ),
+    )
+
+
 def _complete_globalvalues():
-    return [
-        {
-            "deck_fingerprint": "deck-fingerprint",
-            "key": key,
-            "status": "complete",
-            "kind": "copy_baseline",
-            "baseline": deepcopy(FALLBACK_GLOBALVALUES_BASELINE[key]),
-            "emitted": deepcopy(FALLBACK_GLOBALVALUES_BASELINE[key]),
-            "authority_id": "bundled-fallback-baseline",
-            "claim_ids": [],
-            "reason": "copied canonical baseline",
-        }
-        for key in sorted(FALLBACK_GLOBALVALUES_BASELINE)
-    ]
+    decisions = tuple(
+        GlobalValueDecision(
+            deck_fingerprint="deck-fingerprint",
+            key=key,
+            kind=GlobalValueDecisionKind.COPY_BASELINE,
+            baseline_canonical_json=_canonical_bytes(value),
+            emitted_canonical_json=_canonical_bytes(value),
+            authority_id="globalvalues:baseline",
+            claim_ids=(),
+            reason="copied canonical baseline",
+        )
+        for key, value in FALLBACK_GLOBALVALUES_BASELINE.items()
+    )
+    return _globalvalues_ledger(decisions)
 
 
 def _explicit_ledger(
@@ -114,9 +147,7 @@ def test_unknown_builder_state_blocks_complete_closure():
 
     status = build_dual_closure(
         dispositions=ledger,
-        globalvalues_decisions=[
-            {"key": "DiscoverSimulationValue", "status": "complete"},
-        ],
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="partial",
     )
 
@@ -129,7 +160,7 @@ def test_unknown_builder_state_blocks_complete_closure():
 def test_complete_pre_run_contract_is_independent_of_partial_source_strength():
     status = build_dual_closure(
         dispositions=_explicit_ledger(),
-        globalvalues_decisions=_complete_globalvalues(),
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="partial",
     )
 
@@ -140,10 +171,11 @@ def test_complete_pre_run_contract_is_independent_of_partial_source_strength():
 
 
 def test_strong_source_does_not_rescue_missing_globalvalues_decision():
-    incomplete = _complete_globalvalues()[:-1]
+    complete = _complete_globalvalues()
+    incomplete = _globalvalues_ledger(complete.decisions[:-1])
     status = build_dual_closure(
         dispositions=_explicit_ledger(),
-        globalvalues_decisions=incomplete,
+        globalvalues_ledger=incomplete,
         strategy_source_status="strong",
     )
 
@@ -154,28 +186,29 @@ def test_strong_source_does_not_rescue_missing_globalvalues_decision():
 
 
 def test_duplicate_globalvalues_decision_blocks_exact_completeness():
-    duplicated = [*_complete_globalvalues(), _complete_globalvalues()[0]]
-    status = build_dual_closure(
-        dispositions=_explicit_ledger(),
-        globalvalues_decisions=duplicated,
-        strategy_source_status="partial",
-    )
+    complete = _complete_globalvalues()
 
-    assert status.pre_run_contract_status == "incomplete"
-    assert "incomplete_globalvalues_decision" in status.unresolved_reasons
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_key_duplicate",
+    ):
+        _globalvalues_ledger(
+            (*complete.decisions, complete.decisions[0])
+        )
 
 
 def test_extra_globalvalues_decision_blocks_exact_completeness():
-    decisions = [
-        *_complete_globalvalues(),
-        {
-            **_complete_globalvalues()[0],
-            "key": "UnexpectedGlobalValue",
-        },
-    ]
+    complete = _complete_globalvalues()
+    decisions = (
+        *complete.decisions,
+        replace(
+            complete.decisions[0],
+            key="UnexpectedGlobalValue",
+        ),
+    )
     status = build_dual_closure(
         dispositions=_explicit_ledger(),
-        globalvalues_decisions=decisions,
+        globalvalues_ledger=_globalvalues_ledger(decisions),
         strategy_source_status="partial",
     )
 
@@ -184,48 +217,42 @@ def test_extra_globalvalues_decision_blocks_exact_completeness():
 
 
 def test_matching_globalvalues_keys_with_invalid_emitted_value_block_closure():
-    decisions = _complete_globalvalues()
-    decisions[0]["emitted"] = "tampered-value"
-    status = build_dual_closure(
-        dispositions=_explicit_ledger(),
-        globalvalues_decisions=decisions,
-        strategy_source_status="partial",
-    )
+    decision = _complete_globalvalues().decisions[0]
 
-    assert status.pre_run_contract_status == "incomplete"
-    assert "invalid_globalvalues_decision" in status.unresolved_reasons
+    with pytest.raises(
+        ValueError,
+        match="globalvalue_copy_baseline_mismatch",
+    ):
+        replace(
+            decision,
+            emitted_canonical_json=b'"tampered-value"',
+        )
 
 
 @pytest.mark.parametrize(
-    ("field", "invalid_value"),
+    ("field", "invalid_value", "error"),
     [
-        ("kind", "unknown"),
-        ("authority_id", ""),
-        ("reason", ""),
-        ("claim_ids", "not-a-list"),
-        ("deck_fingerprint", "other-deck"),
+        ("kind", "unknown", "globalvalue_kind_invalid"),
+        ("authority_id", "", "globalvalue_authority_id_invalid"),
+        ("reason", "", "globalvalue_reason_invalid"),
+        ("claim_ids", "not-a-list", "globalvalue_claim_ids"),
     ],
 )
 def test_matching_globalvalues_keys_with_invalid_metadata_block_closure(
     field,
     invalid_value,
+    error,
 ):
-    decisions = _complete_globalvalues()
-    decisions[0][field] = invalid_value
-    status = build_dual_closure(
-        dispositions=_explicit_ledger(),
-        globalvalues_decisions=decisions,
-        strategy_source_status="partial",
-    )
+    decision = _complete_globalvalues().decisions[0]
 
-    assert status.pre_run_contract_status == "incomplete"
-    assert "invalid_globalvalues_decision" in status.unresolved_reasons
+    with pytest.raises(ValueError, match=error):
+        replace(decision, **{field: invalid_value})
 
 
 def test_strong_source_without_lane_b_is_not_exact_guide_authority():
     status = build_dual_closure(
         dispositions=_explicit_ledger(authority_lane="A"),
-        globalvalues_decisions=_complete_globalvalues(),
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="strong",
     )
 
@@ -236,7 +263,7 @@ def test_strong_source_without_lane_b_is_not_exact_guide_authority():
 def test_strong_source_with_lane_b_is_exact_guide_authority():
     status = build_dual_closure(
         dispositions=_explicit_ledger(authority_lane="B"),
-        globalvalues_decisions=_complete_globalvalues(),
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="strong",
     )
 
@@ -285,7 +312,7 @@ def test_conflicting_builder_states_block_closure_without_bot_fallback():
     )
     status = build_dual_closure(
         dispositions=ledger,
-        globalvalues_decisions=_complete_globalvalues(),
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="partial",
     )
 
@@ -301,7 +328,7 @@ def test_existing_reports_project_one_diagnostic_ledger_without_new_apply_gate()
     ledger = _explicit_ledger()
     status = build_dual_closure(
         dispositions=ledger,
-        globalvalues_decisions=_complete_globalvalues(),
+        globalvalues_ledger=_complete_globalvalues(),
         strategy_source_status="partial",
     )
     audit = project_source_contract_audit_from_dispositions(
@@ -524,15 +551,7 @@ def test_package_ledger_derives_lane_b_from_typed_evidence_authority():
                 "cards": {},
                 "linked_runtime_entities": {},
             },
-            globalvalues_config=deepcopy(
-                FALLBACK_GLOBALVALUES_BASELINE
-            ),
-            globalvalues_baseline=deepcopy(
-                FALLBACK_GLOBALVALUES_BASELINE
-            ),
-            global_values_authority_matrix={
-                "allowed_step1_overlays": []
-            },
+            globalvalues_ledger=_complete_globalvalues(),
             strategy_source_status="strong",
         )
     )
@@ -590,15 +609,7 @@ def test_package_ledger_requires_exact_policy_for_lane_e_bot_delegation(
                 "cards": {},
                 "linked_runtime_entities": {},
             },
-            globalvalues_config=deepcopy(
-                FALLBACK_GLOBALVALUES_BASELINE
-            ),
-            globalvalues_baseline=deepcopy(
-                FALLBACK_GLOBALVALUES_BASELINE
-            ),
-            global_values_authority_matrix={
-                "allowed_step1_overlays": []
-            },
+            globalvalues_ledger=_complete_globalvalues(),
             strategy_source_status="strong",
         )
     )

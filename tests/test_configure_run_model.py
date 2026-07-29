@@ -19,6 +19,8 @@ from hsconfig.package_domain import (
     LayeredEvidenceContract,
     MulliganPlanModel,
     disposition_ledger_content_sha256,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
 )
 from hsconfig.package_model import PackageModel, build_runtime_surface_plan
 
@@ -274,16 +276,19 @@ def test_configure_writer_rejects_a_forged_revision_before_writing(
 
 def _model() -> PackageModel:
     mulligan = MulliganPlanModel("Fixture Deck", (), (), (), 0)
+    globalvalue_decisions = (
+        GlobalValueDecision(
+            "fingerprint", "HeroValue", GlobalValueDecisionKind.COPY_BASELINE,
+            b'{"values":[]}', b'{"values":[]}', "baseline", (), "fixture",
+        ),
+    )
     globalvalues = GlobalValuesDecisionLedger(
         "fingerprint",
-        "baseline",
-        (
-            GlobalValueDecision(
-                "fingerprint", "HeroValue", GlobalValueDecisionKind.COPY_BASELINE,
-                b'{"values":[]}', b'{"values":[]}', "baseline", (), "fixture",
-            ),
+        globalvalues_baseline_sha256(globalvalue_decisions),
+        globalvalue_decisions,
+        globalvalues_decision_ledger_content_sha256(
+            globalvalue_decisions
         ),
-        "globalvalues",
     )
     dispositions = DispositionLedger(
         "fingerprint",

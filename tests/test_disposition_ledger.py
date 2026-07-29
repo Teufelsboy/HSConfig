@@ -1,5 +1,4 @@
 import json
-from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
@@ -10,7 +9,15 @@ from hsconfig.disposition_ledger import (
     build_dual_closure,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
-from hsconfig.package_domain import CardDisposition, ClaimDisposition
+from hsconfig.package_domain import (
+    CardDisposition,
+    ClaimDisposition,
+    GlobalValueDecision,
+    GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
+)
 
 
 def _card(
@@ -52,6 +59,42 @@ def _claim(
     if policy_id is not None:
         row["policy_id"] = policy_id
     return row
+
+
+def _globalvalues_ledger(
+    deck_fingerprint: str = "deck-fingerprint",
+) -> GlobalValuesDecisionLedger:
+    decisions = tuple(
+        GlobalValueDecision(
+            deck_fingerprint=deck_fingerprint,
+            key=key,
+            kind=GlobalValueDecisionKind.COPY_BASELINE,
+            baseline_canonical_json=json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8"),
+            emitted_canonical_json=json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8"),
+            authority_id="globalvalues:baseline",
+            claim_ids=(),
+            reason="copied canonical baseline",
+        )
+        for key, value in sorted(FALLBACK_GLOBALVALUES_BASELINE.items())
+    )
+    return GlobalValuesDecisionLedger(
+        deck_fingerprint=deck_fingerprint,
+        baseline_sha256=globalvalues_baseline_sha256(decisions),
+        decisions=decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            decisions
+        ),
+    )
 
 
 def test_physical_meaningful_row_wins_disposition_precedence():
@@ -257,22 +300,7 @@ def test_missing_top_level_contract_claim_blocks_dual_closure():
     )
     status = build_dual_closure(
         dispositions=ledger,
-        globalvalues_decisions=[
-            {
-                "deck_fingerprint": "deck-fingerprint",
-                "key": key,
-                "status": "complete",
-                "kind": "copy_baseline",
-                "baseline": deepcopy(value),
-                "emitted": deepcopy(value),
-                "authority_id": "bundled-fallback-baseline",
-                "claim_ids": [],
-                "reason": "copied canonical baseline",
-            }
-            for key, value in sorted(
-                FALLBACK_GLOBALVALUES_BASELINE.items()
-            )
-        ],
+        globalvalues_ledger=_globalvalues_ledger(),
         strategy_source_status="partial",
     )
 

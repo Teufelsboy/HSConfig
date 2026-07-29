@@ -12,6 +12,8 @@ from hsconfig.package_domain import (
     LayeredEvidenceContract,
     MulliganPlanModel,
     disposition_ledger_content_sha256,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
 )
 from hsconfig.package_model import (
     PackageArtifact,
@@ -230,16 +232,19 @@ def test_package_writer_rejects_an_existing_file_destination(
 
 def _model() -> PackageModel:
     mulligan = MulliganPlanModel("Fixture Deck", (), (), (), 0)
+    globalvalue_decisions = (
+        GlobalValueDecision(
+            "fingerprint", "HeroValue", GlobalValueDecisionKind.COPY_BASELINE,
+            b'{"values":[]}', b'{"values":[]}', "baseline", (), "fixture",
+        ),
+    )
     globalvalues = GlobalValuesDecisionLedger(
         "fingerprint",
-        "baseline",
-        (
-            GlobalValueDecision(
-                "fingerprint", "HeroValue", GlobalValueDecisionKind.COPY_BASELINE,
-                b'{"values":[]}', b'{"values":[]}', "baseline", (), "fixture",
-            ),
+        globalvalues_baseline_sha256(globalvalue_decisions),
+        globalvalue_decisions,
+        globalvalues_decision_ledger_content_sha256(
+            globalvalue_decisions
         ),
-        "globalvalues",
     )
     dispositions = DispositionLedger(
         "fingerprint",
@@ -331,9 +336,9 @@ def _model_with_ordered_globalvalues() -> PackageModel:
     )
     ledger = GlobalValuesDecisionLedger(
         "fingerprint",
-        "baseline",
+        globalvalues_baseline_sha256(decisions),
         decisions,
-        "globalvalues",
+        globalvalues_decision_ledger_content_sha256(decisions),
     )
     return PackageModel(
         model.deck_name,

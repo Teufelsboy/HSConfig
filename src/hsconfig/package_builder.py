@@ -37,6 +37,11 @@ from hsconfig.disposition_ledger import (
 from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
+from hsconfig.globalvalues_decisions import (
+    build_globalvalues_decision_ledger,
+    canonical_globalvalues_baseline_sha256,
+    normalize_globalvalues_decision_baseline,
+)
 from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.guide_source_builder import (
     research_required_guide_sources as build_research_required_guide_sources,
@@ -84,6 +89,7 @@ from hsconfig.source_contract_audit import (
     project_source_contract_audit_from_dispositions,
     render_source_contract_audit_markdown,
 )
+from hsconfig.package_domain import GlobalValuesDecisionLedger
 from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
@@ -495,8 +501,20 @@ def build_package_payload(
         cardid_behavior_files.runtime_row_conflicts
     )
     baseline_receipt = load_globalvalues_baseline(args.runtime_root)
-    baseline = baseline_receipt["baseline"]
-    globalvalues = compile_globalvalues(baseline, gameplan_contract)
+    baseline = normalize_globalvalues_decision_baseline(
+        baseline_receipt["baseline"]
+    )
+    globalvalues_ledger = build_globalvalues_decision_ledger(
+        deck_fingerprint=str(deck_identity.get("deck_fingerprint", "")),
+        baseline=baseline,
+        baseline_sha256=canonical_globalvalues_baseline_sha256(baseline),
+        authority_matrix=global_values_authority_matrix,
+    )
+    globalvalues = compile_globalvalues(
+        baseline,
+        gameplan_contract,
+        decision_ledger=globalvalues_ledger,
+    )
     compiled_mulligan = compile_mulligan(mulligan_plan_model)
     combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
     runtime_surface_ledger = build_runtime_surface_ledger(
@@ -678,9 +696,7 @@ def build_package_payload(
             deck_identity=deck_identity,
             source_contract_audit_report=source_contract_audit_report,
             runtime_surface_ledger=runtime_surface_ledger,
-            globalvalues_config=globalvalues["config"],
-            globalvalues_baseline=baseline,
-            global_values_authority_matrix=global_values_authority_matrix,
+            globalvalues_ledger=globalvalues_ledger,
             strategy_source_status=(
                 "strong"
                 if str(
@@ -908,9 +924,7 @@ def _build_package_disposition_ledger(
     deck_identity: dict[str, Any],
     source_contract_audit_report: dict[str, Any],
     runtime_surface_ledger: dict[str, Any],
-    globalvalues_config: dict[str, Any],
-    globalvalues_baseline: dict[str, Any],
-    global_values_authority_matrix: dict[str, Any],
+    globalvalues_ledger: GlobalValuesDecisionLedger,
     strategy_source_status: str,
 ):
     deck_fingerprint = str(deck_identity.get("deck_fingerprint", ""))
@@ -1086,14 +1100,7 @@ def _build_package_disposition_ledger(
     )
     dual_closure = build_dual_closure(
         dispositions=dispositions,
-        globalvalues_decisions=_globalvalues_decision_rows(
-            deck_fingerprint=deck_fingerprint,
-            globalvalues_config=globalvalues_config,
-            globalvalues_baseline=globalvalues_baseline,
-            global_values_authority_matrix=(
-                global_values_authority_matrix
-            ),
-        ),
+        globalvalues_ledger=globalvalues_ledger,
         strategy_source_status=strategy_source_status,
     )
     return dispositions, dual_closure
@@ -1200,89 +1207,6 @@ def _is_exact_bot_delegation(lifecycle: Any, claim: Any) -> bool:
         == "bot_delegated"
         and policy_id == "BOT_NATIVE_PRE_RUN"
     )
-
-
-def _globalvalues_decision_rows(
-    *,
-    deck_fingerprint: str,
-    globalvalues_config: Mapping[str, Any],
-    globalvalues_baseline: Mapping[str, Any],
-    global_values_authority_matrix: Mapping[str, Any],
-) -> list[dict[str, Any]]:
-    overlays = {
-        str(row.get("key", "")): row
-        for row in global_values_authority_matrix.get(
-            "allowed_step1_overlays",
-            (),
-        )
-        if isinstance(row, Mapping)
-        and row.get("key")
-        and row.get("key") != "baseline"
-    }
-    decisions: list[dict[str, Any]] = []
-    for key in sorted(
-        set(globalvalues_baseline) | set(globalvalues_config)
-    ):
-        baseline_present = key in globalvalues_baseline
-        emitted_present = key in globalvalues_config
-        baseline_value = globalvalues_baseline.get(key)
-        emitted_value = globalvalues_config.get(key)
-        overlay = overlays.get(key)
-        copy_baseline = (
-            baseline_present
-            and emitted_present
-            and baseline_value == emitted_value
-        )
-        claim_ids = (
-            sorted(
-                {
-                    str(value)
-                    for value in (
-                        overlay.get("claim_id"),
-                        *overlay.get("source_claim_ids", ()),
-                    )
-                    if value
-                }
-            )
-            if isinstance(overlay, Mapping)
-            else []
-        )
-        decisions.append(
-            {
-                "deck_fingerprint": deck_fingerprint,
-                "key": key,
-                "status": (
-                    "complete"
-                    if baseline_present and emitted_present
-                    else "incomplete"
-                ),
-                "kind": (
-                    "copy_baseline"
-                    if copy_baseline
-                    else "authorized_overlay"
-                ),
-                "baseline": baseline_value,
-                "emitted": emitted_value,
-                "authority_id": (
-                    "globalvalues:baseline"
-                    if copy_baseline
-                    else str(
-                        (overlay or {}).get("authority")
-                        or "globalvalues:overlay_unclassified"
-                    )
-                ),
-                "claim_ids": claim_ids,
-                "reason": (
-                    "copied canonical baseline"
-                    if copy_baseline
-                    else str(
-                        (overlay or {}).get("reason")
-                        or "overlay authority is not classified"
-                    )
-                ),
-            }
-        )
-    return decisions
 
 
 def _disposition_diagnostics_document(

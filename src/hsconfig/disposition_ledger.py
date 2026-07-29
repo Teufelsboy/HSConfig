@@ -14,11 +14,12 @@ from hsconfig.package_domain import (
     DispositionLedger,
     DualClosureStatus,
     EvidenceLane,
-    GlobalValueDecision,
-    GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
     disposition_ledger_content_sha256,
 )
-from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
+from hsconfig.globalvalues_decisions import (
+    GLOBALVALUES_BASELINE_DECISION_KEYS,
+)
 
 
 _KNOWN_DISPOSITIONS = {
@@ -41,15 +42,6 @@ def _canonical_bytes(value: Any) -> bytes:
         decoded = value
     return json.dumps(
         decoded,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-
-
-def _canonical_value_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -351,7 +343,7 @@ def build_disposition_ledger(
 def build_dual_closure(
     *,
     dispositions: DispositionLedger,
-    globalvalues_decisions: Sequence[Mapping[str, Any]],
+    globalvalues_ledger: GlobalValuesDecisionLedger,
     strategy_source_status: str,
 ) -> DualClosureStatus:
     """Project independent completeness and strategy-authority statuses."""
@@ -378,56 +370,17 @@ def build_dual_closure(
             "unclassified_card_disposition",
         }
     )
+    if globalvalues_ledger.deck_fingerprint != dispositions.deck_fingerprint:
+        raise ValueError("globalvalues_disposition_fingerprint_mismatch")
     globalvalue_keys = [
-        str(decision.get("key", ""))
-        for decision in globalvalues_decisions
-        if isinstance(decision, Mapping)
+        decision.key for decision in globalvalues_ledger.decisions
     ]
     if (
-        len(globalvalue_keys) != len(FALLBACK_GLOBALVALUES_BASELINE)
+        len(globalvalue_keys) != len(GLOBALVALUES_BASELINE_DECISION_KEYS)
         or len(set(globalvalue_keys)) != len(globalvalue_keys)
-        or set(globalvalue_keys) != set(FALLBACK_GLOBALVALUES_BASELINE)
-        or any(
-            not isinstance(decision, Mapping)
-            or decision.get("status") != "complete"
-            for decision in globalvalues_decisions
-        )
+        or tuple(globalvalue_keys) != GLOBALVALUES_BASELINE_DECISION_KEYS
     ):
         unresolved.add("incomplete_globalvalues_decision")
-    for decision in globalvalues_decisions:
-        if not isinstance(decision, Mapping):
-            unresolved.add("invalid_globalvalues_decision")
-            continue
-        try:
-            key = str(decision["key"])
-            claim_ids = decision["claim_ids"]
-            if not isinstance(claim_ids, (list, tuple)):
-                raise ValueError("globalvalue_claim_ids_invalid")
-            typed_decision = GlobalValueDecision(
-                deck_fingerprint=decision["deck_fingerprint"],
-                key=key,
-                kind=GlobalValueDecisionKind(decision["kind"]),
-                baseline_canonical_json=_canonical_value_bytes(
-                    decision["baseline"]
-                ),
-                emitted_canonical_json=_canonical_value_bytes(
-                    decision["emitted"]
-                ),
-                authority_id=decision["authority_id"],
-                claim_ids=tuple(claim_ids),
-                reason=decision["reason"],
-            )
-            if (
-                decision.get("status") != "complete"
-                or typed_decision.deck_fingerprint
-                != dispositions.deck_fingerprint
-                or key not in FALLBACK_GLOBALVALUES_BASELINE
-                or typed_decision.baseline_canonical_json
-                != _canonical_value_bytes(FALLBACK_GLOBALVALUES_BASELINE[key])
-            ):
-                raise ValueError("globalvalues_decision_contract_invalid")
-        except (KeyError, TypeError, ValueError):
-            unresolved.add("invalid_globalvalues_decision")
     strategy_status = strategy_source_status
     return DualClosureStatus(
         pre_run_contract_status="incomplete" if unresolved else "complete",

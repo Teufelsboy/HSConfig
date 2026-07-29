@@ -27,6 +27,8 @@ def test_aggressive_posture_allows_selected_step1_keys():
     blocked = {row["key"] for row in matrix["blocked_until_runtime_evidence"]}
     assert "FirstTurnValueWeight" in allowed
     assert "SecondTurnValueWeight" in allowed
+    assert "MyHeroPowerValue" not in allowed
+    assert "MyHeroPowerValue" in blocked
     assert "LowHpBoardValuePenalty" in blocked
 
 
@@ -61,9 +63,17 @@ def test_globalvalues_rows_use_lifecycle_claim_id_without_rewriting_claim_refs()
         verified_source_receipts=receipts,
     )
 
-    allowed = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
-    assert allowed["MyWeaponValue"]["claim_id"] == "lifecycle_posture"
-    assert allowed["MyWeaponValue"]["claim_refs"] == ["raw_posture", *source_refs]
+    suppressed_weapon = next(
+        row
+        for row in matrix["blocked_until_runtime_evidence"]
+        if row["key"] == "MyWeaponValue"
+    )
+    assert suppressed_weapon["claim_id"] == "lifecycle_posture"
+    assert suppressed_weapon["claim_refs"] == ["raw_posture", *source_refs]
+    assert suppressed_weapon["authority"] == "source_contract_suppressed"
+    assert suppressed_weapon["reason"] == (
+        "globalvalues_key_outside_baseline_decision_registry"
+    )
 
     numeric_row = next(
         row
@@ -87,7 +97,10 @@ def test_globalvalues_authority_matrix_embeds_per_key_authority():
     blocked = {row["key"]: row for row in matrix["blocked_until_runtime_evidence"]}
 
     assert allowed["FirstTurnValueWeight"]["key_authority"] == authority_for_key("FirstTurnValueWeight")
-    assert allowed["MyHeroPowerValue"]["key_authority"] == authority_for_key("MyHeroPowerValue")
+    assert "MyHeroPowerValue" not in allowed
+    assert blocked["MyHeroPowerValue"]["key_authority"] == authority_for_key(
+        "MyHeroPowerValue"
+    )
     assert blocked["OpponentSpecificMatchupTuning"]["key_authority"] == authority_for_key(
         "OpponentSpecificMatchupTuning"
     )
@@ -114,14 +127,23 @@ def test_runtime_only_numeric_tuning_is_reported_not_applied():
 
 def test_posture_overlay_matrix_supports_named_step1_postures():
     cases = {
-        "aggro_burn": {"FirstTurnValueWeight", "MyHeroPowerValue"},
-        "token_board": {"GlobalMinionAttack", "GlobalMinionIntrinsicValue"},
-        "weapon_pressure": {"MyWeaponValue"},
-        "deathrattle_recruit": {"GlobalMinionIntrinsicValue"},
-        "control_value": {"SecondTurnValueWeight"},
+        "aggro_burn": (
+            {"FirstTurnValueWeight"},
+            {"MyHeroPowerValue"},
+        ),
+        "token_board": (
+            {"GlobalMinionAttack", "GlobalMinionIntrinsicValue"},
+            set(),
+        ),
+        "weapon_pressure": (
+            {"FirstTurnValueWeight"},
+            {"MyWeaponValue"},
+        ),
+        "deathrattle_recruit": ({"GlobalMinionIntrinsicValue"}, set()),
+        "control_value": ({"SecondTurnValueWeight"}, set()),
     }
 
-    for posture, expected_keys in cases.items():
+    for posture, (expected_keys, suppressed_keys) in cases.items():
         claim, receipts = _verified_public_guide_posture_claim(
             stance=posture,
             claim_id=f"claim_{posture}",
@@ -134,10 +156,23 @@ def test_posture_overlay_matrix_supports_named_step1_postures():
         )
 
         rows_by_key = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
+        blocked_by_key = {
+            row["key"]: row
+            for row in matrix["blocked_until_runtime_evidence"]
+        }
         assert expected_keys <= set(rows_by_key), posture
+        assert not suppressed_keys & set(rows_by_key), posture
+        assert suppressed_keys <= set(blocked_by_key), posture
         for key in expected_keys:
             assert rows_by_key[key]["operation"] in {"set", "increase", "decrease"}
             assert "reason" in rows_by_key[key]
+        for key in suppressed_keys:
+            assert blocked_by_key[key]["authority"] == (
+                "source_contract_suppressed"
+            )
+            assert blocked_by_key[key]["reason"] == (
+                "globalvalues_key_outside_baseline_decision_registry"
+            )
 
 
 def test_unknown_posture_keeps_baseline_default():
@@ -174,9 +209,17 @@ def test_source_posture_claim_overrides_generic_aggro_profile():
     )
 
     allowed = {row["key"] for row in matrix["allowed_step1_overlays"]}
+    blocked = {
+        row["key"]: row
+        for row in matrix["blocked_until_runtime_evidence"]
+    }
     assert matrix["posture"] == "weapon_pressure"
-    assert "MyWeaponValue" in allowed
+    assert "FirstTurnValueWeight" in allowed
+    assert "MyWeaponValue" not in allowed
     assert "MyHeroPowerValue" not in allowed
+    assert blocked["MyWeaponValue"]["reason"] == (
+        "globalvalues_key_outside_baseline_decision_registry"
+    )
 
 
 def test_globalvalues_ignores_card_role_claims_even_when_source_backed():
@@ -360,11 +403,20 @@ def test_exact_public_guide_posture_remains_authorized() -> None:
     assert matrix["posture"] == "aggro"
     assert {
         row["key"] for row in matrix["allowed_step1_overlays"]
-    } >= {"FirstTurnValueWeight", "MyHeroPowerValue"}
-    assert not any(
-        row.get("authority") == "source_contract_suppressed"
+    } >= {"FirstTurnValueWeight", "GlobalMinionAttack"}
+    assert "MyHeroPowerValue" not in {
+        row["key"] for row in matrix["allowed_step1_overlays"]
+    }
+    nonbaseline_suppression = next(
+        row
         for row in matrix["blocked_until_runtime_evidence"]
+        if row.get("key") == "MyHeroPowerValue"
     )
+    assert nonbaseline_suppression["authority"] == "source_contract_suppressed"
+    assert nonbaseline_suppression["reason"] == (
+        "globalvalues_key_outside_baseline_decision_registry"
+    )
+    assert nonbaseline_suppression["claim_id"] == "verified-posture"
 
 
 def test_raw_claim_cannot_self_assert_exact_public_guide_authority() -> None:

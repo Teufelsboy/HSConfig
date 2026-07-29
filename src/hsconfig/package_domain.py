@@ -119,6 +119,44 @@ class GlobalValueDecisionKind(StrEnum):
     AUTHORIZED_OVERLAY = "authorized_overlay"
 
 
+def globalvalues_baseline_sha256(
+    decisions: tuple["GlobalValueDecision", ...],
+) -> str:
+    baseline = {
+        decision.key: json.loads(decision.baseline_canonical_json)
+        for decision in decisions
+    }
+    canonical = json.dumps(
+        baseline,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(canonical).hexdigest()}"
+
+
+def globalvalues_decision_ledger_content_sha256(
+    decisions: tuple["GlobalValueDecision", ...],
+) -> str:
+    records = [
+        {
+            "key": decision.key,
+            "kind": decision.kind.value,
+            "value": json.loads(decision.emitted_canonical_json),
+            "authority_id": decision.authority_id,
+            "claim_ids": list(decision.claim_ids),
+        }
+        for decision in decisions
+    ]
+    canonical = json.dumps(
+        records,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(canonical).hexdigest()}"
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceAuthority:
     lane: EvidenceLane
@@ -362,6 +400,17 @@ class GlobalValuesDecisionLedger:
     def __post_init__(self) -> None:
         decisions = tuple(self.decisions)
         object.__setattr__(self, "decisions", decisions)
+        if (
+            not isinstance(self.deck_fingerprint, str)
+            or not self.deck_fingerprint
+            or self.deck_fingerprint != self.deck_fingerprint.strip()
+        ):
+            raise ValueError("globalvalues_deck_fingerprint_invalid")
+        if any(
+            decision.deck_fingerprint != self.deck_fingerprint
+            for decision in decisions
+        ):
+            raise ValueError("globalvalues_decision_deck_fingerprint_mismatch")
         keys = tuple(decision.key for decision in decisions)
         if any(
             not isinstance(key, str)
@@ -372,6 +421,13 @@ class GlobalValuesDecisionLedger:
             raise ValueError("globalvalues_decision_key_invalid")
         if len(set(keys)) != len(keys):
             raise ValueError("globalvalues_decision_key_duplicate")
+        if self.baseline_sha256 != globalvalues_baseline_sha256(decisions):
+            raise ValueError("globalvalues_baseline_sha256_invalid")
+        if (
+            self.content_sha256
+            != globalvalues_decision_ledger_content_sha256(decisions)
+        ):
+            raise ValueError("globalvalues_ledger_content_sha256_invalid")
 
 
 @dataclass(frozen=True, slots=True)

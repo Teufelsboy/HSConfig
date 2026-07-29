@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_globalvalues, normalized_claim_kind
@@ -76,7 +77,17 @@ def build_globalvalues_authority_matrix(
     posture = _resolve_posture(aggression_profile, lowerable_claims)
     posture_claim_id = _posture_claim_id(posture, lowerable_claims)
     overlays = POSTURE_OVERLAYS.get(posture or "", {})
-    if overlays:
+    baseline_overlays = {
+        key: value
+        for key, value in overlays.items()
+        if key in GLOBALVALUES_BASELINE_DECISION_KEYS
+    }
+    nonbaseline_overlays = {
+        key: value
+        for key, value in overlays.items()
+        if key not in GLOBALVALUES_BASELINE_DECISION_KEYS
+    }
+    if baseline_overlays:
         allowed = [
             _allowed_row(
                 key=key,
@@ -86,21 +97,10 @@ def build_globalvalues_authority_matrix(
                 claim_refs=claim_refs,
                 claim_id=posture_claim_id,
             )
-            for key, (operation, value, reason) in overlays.items()
+            for key, (operation, value, reason) in baseline_overlays.items()
         ]
     else:
-        allowed = [
-            {
-                "key": "baseline",
-                "overlay": "none",
-                "operation": "none",
-                "value": None,
-                "authority": "baseline_default",
-                "key_authority": authority_for_key("baseline"),
-                "claim_refs": [],
-                "reason": "no_source_backed_posture_overlay",
-            }
-        ]
+        allowed = [_baseline_default_row()]
 
     blocked = [
         {
@@ -113,6 +113,17 @@ def build_globalvalues_authority_matrix(
         }
         for key in sorted(RUNTIME_EVIDENCE_KEYS)
     ]
+    blocked.extend(
+        _nonbaseline_posture_suppressed_row(
+            key=key,
+            operation=operation,
+            value=value,
+            candidate_reason=reason,
+            claim_refs=claim_refs,
+            claim_id=posture_claim_id,
+        )
+        for key, (operation, value, reason) in nonbaseline_overlays.items()
+    )
     blocked_claim_id = _single_claim_id(lowerable_claims)
     if blocked_claim_id:
         for row in blocked:
@@ -135,6 +146,19 @@ def build_globalvalues_authority_matrix(
     }
 
 
+def _baseline_default_row() -> dict[str, Any]:
+    return {
+        "key": "baseline",
+        "overlay": "none",
+        "operation": "none",
+        "value": None,
+        "authority": "baseline_default",
+        "key_authority": authority_for_key("baseline"),
+        "claim_refs": [],
+        "reason": "no_source_backed_posture_overlay",
+    }
+
+
 def _allowed_row(
     *,
     key: str,
@@ -153,6 +177,33 @@ def _allowed_row(
         "key_authority": authority_for_key(key),
         "claim_refs": claim_refs,
         "reason": reason,
+    }
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
+
+
+def _nonbaseline_posture_suppressed_row(
+    *,
+    key: str,
+    operation: str,
+    value: str | None,
+    candidate_reason: str,
+    claim_refs: list[str],
+    claim_id: str,
+) -> dict[str, Any]:
+    reason = "globalvalues_key_outside_baseline_decision_registry"
+    row = {
+        "key": key,
+        "overlay": f"set:{value}" if operation == "set" else operation,
+        "operation": operation,
+        "value": value,
+        "authority": "source_contract_suppressed",
+        "key_authority": authority_for_key(key),
+        "claim_refs": claim_refs,
+        "reason": reason,
+        "blocked_reason": reason,
+        "candidate_reason": candidate_reason,
     }
     if claim_id:
         row["claim_id"] = claim_id

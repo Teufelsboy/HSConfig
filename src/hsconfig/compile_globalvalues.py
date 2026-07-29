@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
+import json
 import operator
 from typing import Any, Mapping
 
@@ -9,6 +10,7 @@ from hsconfig.globalvalues_key_authority import (
     STEP1_POSTURE_KEYS,
     authority_for_key,
 )
+from hsconfig.package_domain import GlobalValuesDecisionLedger
 
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
@@ -32,6 +34,7 @@ def compile_globalvalues(
     *,
     baseline: dict[str, Any] | None = None,
     posture: dict[str, Any] | None = None,
+    decision_ledger: GlobalValuesDecisionLedger | None = None,
 ) -> dict[str, Any]:
     if default_values is None:
         default_values = baseline
@@ -60,10 +63,15 @@ def compile_globalvalues(
         overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
         authority_rows = {}
     generated_overlay_candidates = set(overlays)
-    generated_overlay_keys = sorted(
-        key
-        for key in generated_overlay_candidates
-        if key not in default_values and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
+    generated_overlay_keys = (
+        []
+        if decision_ledger is not None
+        else sorted(
+            key
+            for key in generated_overlay_candidates
+            if key not in default_values
+            and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
+        )
     )
     authorized_baseline_overlay_keys = sorted(
         key
@@ -82,14 +90,22 @@ def compile_globalvalues(
     )
     all_expected_overlay_keys_accounted_for = not missing_overlay_keys
 
-    config = {
-        key: deepcopy(value) if key in TOP_LEVEL_KEYS else _values_block(value)
-        for key, value in default_values.items()
-    }
-    for key in generated_overlay_keys:
-        config[key] = _values_block(KNOWN_GENERATED_OVERLAY_DEFAULTS[key])
-    config["GameCardId"] = "GlobalValues"
-    config.setdefault("ConfigComment", "Generated GlobalValues")
+    if decision_ledger is None:
+        config = {
+            key: deepcopy(value) if key in TOP_LEVEL_KEYS else _values_block(value)
+            for key, value in default_values.items()
+        }
+        for key in generated_overlay_keys:
+            config[key] = _values_block(KNOWN_GENERATED_OVERLAY_DEFAULTS[key])
+        config["GameCardId"] = "GlobalValues"
+        config.setdefault("ConfigComment", "Generated GlobalValues")
+    else:
+        config = {
+            decision.key: json.loads(decision.emitted_canonical_json)
+            for decision in decision_ledger.decisions
+        }
+        if set(config) != set(default_values):
+            raise ValueError("globalvalues_decision_ledger_baseline_keys_mismatch")
 
     changed_keys: list[str] = []
     unchanged_keys: list[str] = []
@@ -110,7 +126,11 @@ def compile_globalvalues(
             unchanged_keys.append(key)
             continue
 
-        before = _first_value(config[key])
+        before = _first_value(
+            _values_block(default_values[key])
+            if key in default_values
+            else config[key]
+        )
         decision = {
             "category": _classify_key(key),
             "authority_category": key_authority["category"],
@@ -130,7 +150,11 @@ def compile_globalvalues(
             allow_speed_fallback=not has_authority_overlays,
         )
         if overlay is not None:
-            after = _apply_overlay(config[key], overlay)
+            after = (
+                _apply_overlay(config[key], overlay)
+                if decision_ledger is None
+                else _first_value(config[key])
+            )
             decision.update(
                 {
                     "decision": "overlay_changed" if after != before else "baseline_confirmed",
@@ -315,6 +339,27 @@ def _values_block(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return {"values": [{"condition": value.get("condition", "*"), "value": str(value.get("value", "0"))}]}
     return {"values": [{"condition": "*", "value": str(value)}]}
+
+
+def apply_globalvalues_overlay_operation(
+    baseline_value: Any,
+    *,
+    operation: str,
+    value: Any,
+) -> dict[str, Any]:
+    block = _values_block(deepcopy(baseline_value))
+    if operation == "set":
+        if value is None:
+            raise ValueError("globalvalues_overlay_set_value_missing")
+        overlay = f"set:{value}"
+    elif operation in {"increase", "decrease"}:
+        if value is not None:
+            raise ValueError("globalvalues_overlay_numeric_value_conflict")
+        overlay = operation
+    else:
+        raise ValueError("globalvalues_overlay_operation_unsupported")
+    _apply_overlay(block, overlay)
+    return block
 
 
 def _first_value(block: dict[str, Any]) -> str | None:

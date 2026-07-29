@@ -696,7 +696,7 @@ def test_productive_audit_preserves_globalvalues_key_in_explainability(
     assert claim[identity_field] == "GlobalAggroValue"
 
 
-def test_productive_matrix_globalvalues_identity_matches_exact_physical_key():
+def test_nonbaseline_globalvalues_candidate_is_suppressed_before_runtime():
     deck_identity = {
         "deck_name": "MatrixGlobalValues",
         "deck_fingerprint": "sha256:matrix-globalvalues",
@@ -757,49 +757,32 @@ def test_productive_matrix_globalvalues_identity_matches_exact_physical_key():
     )
     assert [
         row["key"] for row in matrix["allowed_step1_overlays"]
-    ] == ["MyHeroPowerValue"]
+    ] == ["baseline"]
+    suppressed = next(
+        row
+        for row in matrix["blocked_until_runtime_evidence"]
+        if row["key"] == "MyHeroPowerValue"
+    )
+    assert suppressed["authority"] == "source_contract_suppressed"
+    assert suppressed["reason"] == (
+        "globalvalues_key_outside_baseline_decision_registry"
+    )
+    assert suppressed["blocked_reason"] == suppressed["reason"]
+    assert suppressed["claim_id"] == claim_id
+    assert claim_id in suppressed["claim_refs"]
+    assert suppressed["operation"] == "increase"
     audit = build_source_contract_audit(
         deck_name="MatrixGlobalValues",
         deck_identity=deck_identity,
         guide_claim_bundle=bundle,
         global_values_authority_matrix=matrix,
     )
-    matching_ledger = build_runtime_surface_ledger(
-        deck_identity=deck_identity,
-        compiled_mulligan={},
-        compiled_globalvalues={
-            "MyHeroPowerValue": {
-                "values": [{"condition": "*", "value": "9"}]
-            }
-        },
-        globalvalues_baseline={
-            "MyHeroPowerValue": {
-                "values": [{"condition": "*", "value": "5"}]
-            }
-        },
-        compiled_combo=None,
-        compiled_cardid_files={},
-        linked_runtime_owners=[],
-    )
-
-    matching = build_source_to_runtime_explainability_report(
-        audit,
-        runtime_surface_ledger=matching_ledger,
-    )
-    audit_claim = audit["claim_rows"][claim_id]
-    matching_claim = next(
-        row for row in matching["claim_rows"] if row["claim_id"] == claim_id
-    )
-    assert audit_claim["key"] == "MyHeroPowerValue"
-    assert audit_claim["globalvalues_keys"] == ["MyHeroPowerValue"]
-    assert matching_claim["emitted_runtime_files"] == ["GlobalValues.json"]
-
-    mismatching_ledger = build_runtime_surface_ledger(
+    runtime_ledger = build_runtime_surface_ledger(
         deck_identity=deck_identity,
         compiled_mulligan={},
         compiled_globalvalues={
             "FirstTurnValueWeight": {
-                "values": [{"condition": "*", "value": "0.75"}]
+                "values": [{"condition": "*", "value": "0.50"}]
             }
         },
         globalvalues_baseline={
@@ -811,19 +794,27 @@ def test_productive_matrix_globalvalues_identity_matches_exact_physical_key():
         compiled_cardid_files={},
         linked_runtime_owners=[],
     )
-    mismatching = build_source_to_runtime_explainability_report(
+
+    report = build_source_to_runtime_explainability_report(
         audit,
-        runtime_surface_ledger=mismatching_ledger,
+        runtime_surface_ledger=runtime_ledger,
     )
-    mismatching_claim = next(
+    audit_claim = audit["claim_rows"][claim_id]
+    lifecycle = next(
         row
-        for row in mismatching["claim_rows"]
+        for row in audit["claim_lifecycle_rows"]
         if row["claim_id"] == claim_id
     )
-    assert mismatching_claim["emitted_runtime_files"] == []
-    assert mismatching_claim["not_emitted_runtime_files"] == [
-        "GlobalValues.json"
-    ]
+    report_claim = next(
+        row for row in report["claim_rows"] if row["claim_id"] == claim_id
+    )
+    assert "key" not in audit_claim
+    assert "globalvalues_keys" not in audit_claim
+    assert lifecycle["builder_or_router_decision"] == "suppressed"
+    assert lifecycle["emitted_files"] == []
+    assert "MyHeroPowerValue" not in runtime_ledger["globalvalues"]["keys"]
+    assert report_claim["emitted_runtime_files"] == []
+    assert "GlobalValues.json" not in report_claim["emitted_runtime_files"]
 
 
 def test_multi_identity_behavior_claim_reconciles_each_physical_runtime_file():

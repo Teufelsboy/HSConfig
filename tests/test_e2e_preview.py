@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.globalvalues_decisions import (
+    GLOBALVALUES_BASELINE_DECISION_KEYS,
+)
 
 
 def test_build_preview_creates_valid_package_without_cards_json(tmp_path: Path, capsys):
@@ -71,8 +74,14 @@ def test_build_preview_creates_valid_package_without_cards_json(tmp_path: Path, 
 
     assert validation_report["status"] == "passed"
     assert set(profile["keys"]) == set(globalvalues)
-    assert "RuntimeOnlyFullBaselineKey" in globalvalues
-    assert set(baseline) == set(runtime_default)
+    assert set(globalvalues) == set(GLOBALVALUES_BASELINE_DECISION_KEYS)
+    assert "RuntimeOnlyFullBaselineKey" not in globalvalues
+    assert set(baseline) == set(GLOBALVALUES_BASELINE_DECISION_KEYS)
+    assert baseline["ConfigComment"] == "Runtime default baseline"
+    assert baseline["SecondTurnValueWeight"] == runtime_default[
+        "SecondTurnValueWeight"
+    ]
     assert baseline_receipt["source"] == "runtime_default"
+    assert baseline_receipt["key_count"] == len(runtime_default)
     assert deck_identity["deck_slug"] == "fixture_deck"
     assert deck_identity["card_count_total"] > 0

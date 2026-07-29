@@ -5,6 +5,9 @@ from pathlib import Path
 from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.globalvalues_decisions import (
+    GLOBALVALUES_BASELINE_DECISION_KEYS,
+)
 from tests.helpers.verified_deck_input import (
     VERIFIED_FIXTURE_CARDS,
     deck_code_for_cards,
@@ -1237,7 +1240,8 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
         row["reason"] == "requires_runtime_evidence" and row["claim_refs"]
         for row in blocked
     )
-    assert globalvalues["LowHpBoardValuePenalty"]["values"][0]["value"] == "1.00"
+    assert set(globalvalues) == set(GLOBALVALUES_BASELINE_DECISION_KEYS)
+    assert "LowHpBoardValuePenalty" not in globalvalues
     suppressed_lifecycle_rows = [
         row
         for row in source_contract_audit["claim_lifecycle_rows"]
