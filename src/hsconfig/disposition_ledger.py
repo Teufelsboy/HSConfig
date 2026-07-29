@@ -169,12 +169,12 @@ def build_disposition_ledger(
 
     deck_fingerprint = str(evidence_contract["deck_fingerprint"])
     evidence_cards = tuple(evidence_contract.get("cards", ()))
-    expected_claim_ids = {
+    expected_contract_claim_ids = {
         str(claim_id)
         for card in evidence_cards
         for claim_id in card.get("claim_ids", ())
     }
-    expected_claim_ids.update(
+    expected_contract_claim_ids.update(
         str(claim_id)
         for claim_id in evidence_contract.get("claim_ids", ())
     )
@@ -186,7 +186,7 @@ def build_disposition_ledger(
         claim_id = str(row["claim_id"])
         if claim_id in seen_claim_ids:
             raise ValueError(f"claim_disposition_duplicate:{claim_id}")
-        if claim_id not in expected_claim_ids:
+        if claim_id not in expected_contract_claim_ids:
             raise ValueError(
                 f"claim_lifecycle_not_in_evidence_contract:{claim_id}"
             )
@@ -216,10 +216,12 @@ def build_disposition_ledger(
             lifecycle_rows=lifecycle_rows,
             runtime_paths=runtime_paths,
         )
-        expected_claim_ids = {
+        expected_card_claim_ids = {
             str(claim_id) for claim_id in card.get("claim_ids", ())
         }
-        missing_claim_ids = sorted(expected_claim_ids - seen_claim_ids)
+        missing_claim_ids = sorted(
+            expected_card_claim_ids - seen_claim_ids
+        )
         if missing_claim_ids and disposition is not CardDisposition.RUNTIME_EMITTED:
             disposition = CardDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY
             reason_code = "missing_claim_lifecycle"
@@ -313,6 +315,24 @@ def build_disposition_ledger(
             )
         )
         projected_claim_ids.add(claim_id)
+
+    missing_contract_claim_ids = sorted(
+        expected_contract_claim_ids - projected_claim_ids
+    )
+    claim_rows.extend(
+        ClaimDispositionRow(
+            deck_fingerprint=deck_fingerprint,
+            claim_id=claim_id,
+            claim_kind="unclassified",
+            evidence_id="missing_evidence",
+            disposition=(
+                ClaimDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY
+            ),
+            runtime_paths=(),
+            reason_code="missing_claim_lifecycle",
+        )
+        for claim_id in missing_contract_claim_ids
+    )
 
     cards = tuple(card_rows)
     claims = tuple(sorted(claim_rows, key=lambda row: row.claim_id))

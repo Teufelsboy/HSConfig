@@ -1,10 +1,15 @@
 import json
+from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
 
-from hsconfig.disposition_ledger import build_disposition_ledger
+from hsconfig.disposition_ledger import (
+    build_disposition_ledger,
+    build_dual_closure,
+)
+from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
 from hsconfig.package_domain import CardDisposition, ClaimDisposition
 
 
@@ -223,6 +228,66 @@ def test_missing_lifecycle_claim_receives_one_blocking_disposition():
         is ClaimDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY
     )
     assert rows["claim-missing"].reason_code == "missing_claim_lifecycle"
+
+
+def test_missing_top_level_contract_claim_blocks_dual_closure():
+    ledger = build_disposition_ledger(
+        evidence_contract={
+            "deck_fingerprint": "deck-fingerprint",
+            "cards": [
+                _card(
+                    "CARD_001",
+                    claim_ids=("claim-card",),
+                )
+            ],
+            "claim_ids": [
+                "claim-card",
+                "claim-contract-missing",
+            ],
+        },
+        claim_lifecycle_rows=[
+            _claim(
+                "CARD_001",
+                claim_id="claim-card",
+                builder_state="suppressed_unsupported_surface",
+            )
+        ],
+        physical_emission_index={},
+        runtime_surface_ledger={"physical_emissions": []},
+    )
+    status = build_dual_closure(
+        dispositions=ledger,
+        globalvalues_decisions=[
+            {
+                "deck_fingerprint": "deck-fingerprint",
+                "key": key,
+                "status": "complete",
+                "kind": "copy_baseline",
+                "baseline": deepcopy(value),
+                "emitted": deepcopy(value),
+                "authority_id": "bundled-fallback-baseline",
+                "claim_ids": [],
+                "reason": "copied canonical baseline",
+            }
+            for key, value in sorted(
+                FALLBACK_GLOBALVALUES_BASELINE.items()
+            )
+        ],
+        strategy_source_status="partial",
+    )
+
+    assert tuple(row.claim_id for row in ledger.claims) == (
+        "claim-card",
+        "claim-contract-missing",
+    )
+    missing = ledger.claims[1]
+    assert (
+        missing.disposition
+        is ClaimDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY
+    )
+    assert missing.reason_code == "missing_claim_lifecycle"
+    assert status.pre_run_contract_status == "incomplete"
+    assert "missing_claim_lifecycle" in status.unresolved_reasons
 
 
 def test_duplicate_claim_lifecycle_is_rejected_instead_of_double_counted():
