@@ -446,8 +446,8 @@ load-safe and apply-ready even when some guide claims remain diagnostic.
 `reports/operator_summary.json` is the only apply authority.
 
 `SOURCE_BACKED_STRONG` is a source-confidence label, not an apply gate.
-`policy_backed_autonomous_mulligan` may prevent default-only output, but it does
-not convert a claim into source-backed evidence.
+`versioned_internal_policy` Lane-D rows and `bot_delegated` Lane-E dispositions
+do not convert a claim into source-backed evidence.
 
 Never lower these into runtime config unless the specific runtime surface is
 documented and identity is resolved:
@@ -609,7 +609,8 @@ def test_operator_docs_and_skill_name_mulligan_policy_status_without_strong_prom
 
     assert "mulligan_policy_status" in active_text
     assert "default_only_runtime_surfaces" in active_text
-    assert "policy_backed_autonomous_mulligan" in active_text
+    assert "versioned_internal_policy" in active_text
+    assert "bot_delegated" in active_text
     assert "must not promote" in active_text
     assert "SOURCE_BACKED_STRONG" in active_text
     assert "Darkbishop Benedictus" in active_text

@@ -151,7 +151,7 @@ def test_decklist_stats_snippet_policy_and_partial_records_never_promote():
         {"source_family": "stats", "source_visibility": "full_text"},
         {"source_family": "public_guide", "source_visibility": "snippet_only"},
         {
-            "source_type": "policy_backed_autonomous_mulligan",
+            "source_type": "versioned_internal_policy",
             "source_visibility": "full_text",
         },
         {

@@ -106,9 +106,10 @@ exact authority for a 30-card target deck.
 | `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
 
 Guide-backed Mulligan claims must pass every gate above. A failing claim is
-suppressed with a stable visible reason. It does not block the
-`policy_backed_autonomous_mulligan` fallback; fallback rows remain labeled
-`policy_backed`, never count as exact guide evidence, and cannot infer a
+suppressed with a stable visible reason and does not authorize a heuristic
+replacement row. A physical fallback row requires an explicit deterministic
+Lane-D claim bound to `versioned_internal_policy`; otherwise Lane E records
+`bot_delegated` with zero generated runtime rows. Neither lane can infer a
 Darkbishop opening-hand keep from its start-of-game effect.
 
 The same canonical exact-source fields gate `gameplan_posture` before it can

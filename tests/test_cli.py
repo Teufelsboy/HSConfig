@@ -2863,7 +2863,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
             "action": "hold",
             "condition": "*",
             "reason": "imported no-id policy mutation",
-            "source_type": "policy_backed_autonomous_mulligan",
+            "source_type": "versioned_internal_policy",
         },
     ]
     imported_card_rows = [

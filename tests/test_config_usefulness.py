@@ -148,7 +148,7 @@ def test_policy_backed_mulligan_is_not_default_only_or_blocking():
                     "card": "CARD_1",
                     "action": "hold",
                     "selector_kind": "card",
-                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_type": "versioned_internal_policy",
                 }
             ],
             "quality": {
@@ -158,7 +158,7 @@ def test_policy_backed_mulligan_is_not_default_only_or_blocking():
                 "source_backed_keep_rule_count": 0,
                 "policy_backed_rule_count": 1,
                 "policy_backed_keep_rule_count": 1,
-                "first_gap_reason": "policy_backed_autonomous_mulligan",
+                "first_gap_reason": "explicit_policy_claim",
             },
         },
         card_behavior_plan_report={"rows": []},
@@ -185,9 +185,7 @@ def test_config_usefulness_reports_mulligan_policy_lane_metadata():
                     "card": "PIRATE",
                     "selector_kind": "card",
                     "action": "hold",
-                    "source_type": "policy_backed_autonomous_mulligan",
-                    "policy_lane": "aggro",
-                    "policy_reason": "pirate_pressure",
+                    "source_type": "versioned_internal_policy",
                 }
             ],
             "quality": {
@@ -196,8 +194,8 @@ def test_config_usefulness_reports_mulligan_policy_lane_metadata():
                 "default_only": False,
                 "policy_backed_rule_count": 1,
                 "policy_backed_keep_rule_count": 1,
-                "policy_lanes": ["aggro"],
-                "policy_reasons": ["pirate_pressure"],
+                "policy_lanes": ["D"],
+                "policy_reasons": ["explicit_policy_claim"],
             },
         },
         card_behavior_plan_report={"rows": []},
@@ -208,8 +206,8 @@ def test_config_usefulness_reports_mulligan_policy_lane_metadata():
     mulligan = payload["surfaces"]["mulligan"]
     assert mulligan["status"] == "policy_backed"
     assert mulligan["default_only"] is False
-    assert mulligan["policy_lanes"] == ["aggro"]
-    assert mulligan["policy_reasons"] == ["pirate_pressure"]
+    assert mulligan["policy_lanes"] == ["D"]
+    assert mulligan["policy_reasons"] == ["explicit_policy_claim"]
 
 
 def test_config_usefulness_marks_valid_sparse_package_load_safe_but_thin():

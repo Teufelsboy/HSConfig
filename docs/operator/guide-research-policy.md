@@ -111,11 +111,10 @@ checks must pass:
 | `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
 
 Failed public-guide keeps and discards remain visible with their stable
-suppression reasons. They do not prevent the existing
-`policy_backed_autonomous_mulligan` fallback from running. Fallback rows remain
-explicitly `policy_backed`, never count as exact guide evidence, and still
-exclude non-hand start-of-game effects such as Darkbishop Benedictus unless
-separate exact opening-hand authority exists.
+suppression reasons. They do not authorize a heuristic replacement row. A
+physical fallback row requires a separate explicit deterministic Lane-D claim
+bound to the packaged `versioned_internal_policy`; otherwise Lane E records a
+`bot_delegated` disposition with zero generated Mulligan runtime rows.
 
 The same canonical exact-source fields gate `gameplan_posture` before it can
 authorize a GlobalValues posture overlay. Archetype-only posture claims remain
@@ -331,8 +330,8 @@ load-safe and apply-ready even when some guide claims remain diagnostic.
 `reports/operator_summary.json` is the only apply authority.
 
 `SOURCE_BACKED_STRONG` is a source-confidence label, not an apply gate.
-`policy_backed_autonomous_mulligan` may prevent default-only output, but it does
-not convert a claim into source-backed evidence.
+`versioned_internal_policy` Lane-D rows and `bot_delegated` Lane-E dispositions
+do not convert a claim into source-backed evidence.
 
 Never lower these into runtime config unless the specific runtime surface is
 documented and identity is resolved:
@@ -528,24 +527,22 @@ Mulligan selector support:
   start-of-game enablers like Darkbishop Benedictus. This still must not create
   `mulligan_keep`.
 
-### Policy-backed autonomous Mulligan fallback
+### Explicit Lane-D policy and Lane-E bot delegation
 
-If no source-backed keep can be emitted, HSConfig may build a small
-`policy_backed_autonomous_mulligan` keep set from deterministic low-curve
-pressure, draw, setup, or class-plan semantics. This keeps valid deck packages
-useful and prevents default-only `Mulligan.json` output.
+If no exact live-guide keep can be emitted, HSConfig does not construct a keep
+set from mana curve, card roles, pressure, draw, setup, or class-plan
+heuristics. A physical policy row requires a separate explicit deterministic
+claim bound to the packaged `versioned_internal_policy` profile (Lane D).
 
-This fallback is not source-backed guide evidence and does not promote a deck to
-`SOURCE_BACKED_STRONG`. It is visible in `mulligan_plan_report.json` and
-`operator_summary.json.config_usefulness.surfaces.mulligan` as
-`status=policy_backed`.
+Cards without Lane-B or Lane-D authority receive explicit `bot_delegated`
+dispositions (Lane E). Lane E leaves the decision to HearthRanger's native
+pre-run bot and emits zero Mulligan runtime rows. Both lanes remain weaker than
+source-backed guide evidence and do not promote a deck to
+`SOURCE_BACKED_STRONG`.
 
-The fallback must still respect the source/contract boundary: start-of-game,
-deckbuilding, highlander, odd/even, hero-power-transform, and other non-hand
-effects stay out of opening-hand keeps unless a current mulligan source
-explicitly says the card should be kept. Darkbishop Benedictus remains the
-reference case. Cards with explicit, suppressed, or quarantined Mulligan source
-intent are also excluded from policy keeps until the source intent is resolved.
+Start-of-game, deckbuilding, highlander, odd/even, hero-power-transform, and
+other non-hand effects stay out of opening-hand keeps unless exact opening-hand
+authority exists. Darkbishop Benedictus remains the reference case.
 
 ### Effect semantics are not opening-hand mulligan keeps
 

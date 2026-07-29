@@ -336,6 +336,26 @@ def test_unsupported_condition_is_suppressed_not_broadened() -> None:
     )
 
 
+def test_suppressed_report_restores_canonical_source_claim_provenance() -> None:
+    source_url = "https://example.test/unsupported-condition"
+    plan = _build_plan(
+        claims=[
+            {
+                "claim_id": "bad-condition-provenance",
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "conditions": {"unsupported": True},
+                "source_url": source_url,
+            }
+        ]
+    )
+
+    suppressed = plan.to_report()["suppressed_rules"][0]
+
+    assert suppressed["source_type"] == "source_claim"
+    assert suppressed["source_url"] == source_url
+
+
 def test_lifecycle_rejection_is_reported_without_runtime_rule() -> None:
     plan = _build_plan(
         claims=[

@@ -1252,8 +1252,8 @@ def _compact_source_lane(row: Mapping[str, Any]) -> str:
     source_lane = str(row.get("source_lane") or "").strip()
     if source_lane:
         return source_lane
-    if str(row.get("source_type")) == "policy_backed_autonomous_mulligan":
-        return "policy_fallback"
+    if str(row.get("source_type")) == "versioned_internal_policy":
+        return "versioned_internal_policy"
     return ""
 
 
@@ -1709,7 +1709,7 @@ def _first_missing_source_action(
     claim_kind: str,
     next_source_action: str,
 ) -> str:
-    if _has_policy_backed_mulligan(related_claims):
+    if _has_versioned_internal_policy_mulligan(related_claims):
         return "add_explicit_mulligan_source"
     return _next_source_action(
         first_missing_link=first_missing_link,
@@ -1721,7 +1721,7 @@ def _first_missing_source_action(
 def _runtime_lowering_status(
     related_claims: Sequence[Mapping[str, Any]], runtime_backed: bool
 ) -> str:
-    if _has_policy_backed_mulligan(related_claims):
+    if _has_versioned_internal_policy_mulligan(related_claims):
         return (
             "policy_backed_runtime"
             if runtime_backed
@@ -1741,9 +1741,9 @@ def _closure_lane(
         _is_source_backed_strong_claim(claim) for claim in related_claims
     ):
         return "source_backed_runtime_lowered"
-    if _has_policy_backed_mulligan(related_claims) or any(
-        str(claim.get("policy_lane")) == "policy_fallback"
-        or str(claim.get("source_lane")) == "policy_fallback"
+    if _has_versioned_internal_policy_mulligan(related_claims) or any(
+        str(claim.get("policy_lane")) in {"D", "versioned_internal_policy"}
+        or str(claim.get("source_lane")) == "versioned_internal_policy"
         for claim in related_claims
     ):
         return "policy_backed"
@@ -1761,16 +1761,18 @@ def _is_source_backed_strong_claim(claim: Mapping[str, Any]) -> bool:
         return False
     if claim.get("promotion_eligible") is True:
         return True
-    if str(claim.get("source_type")) == "policy_backed_autonomous_mulligan":
+    if str(claim.get("source_type")) == "versioned_internal_policy":
         return False
     lane = str(claim.get("source_lane") or claim.get("policy_lane") or "")
     return lane in {"runtime_lowered", "runtime_lowerable", "deck_matched_public_guide"}
 
 
-def _has_policy_backed_mulligan(related_claims: Sequence[Mapping[str, Any]]) -> bool:
+def _has_versioned_internal_policy_mulligan(
+    related_claims: Sequence[Mapping[str, Any]],
+) -> bool:
     return any(
         str(row.get("claim_kind")) == "mulligan_keep"
-        and str(row.get("source_type")) == "policy_backed_autonomous_mulligan"
+        and str(row.get("source_type")) == "versioned_internal_policy"
         for row in related_claims
     )
 

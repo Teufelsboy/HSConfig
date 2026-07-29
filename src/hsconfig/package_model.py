@@ -394,6 +394,8 @@ def load_package_model_from_view(package: PackageView) -> PackageModel:
                     reason_code=row["reason"],
                     source_claim_ids=tuple(row["source_claim_ids"]),
                     claim_id=row.get("claim_id"),
+                    source_type=row.get("source_type"),
+                    source_url=row.get("source_url"),
                 )
                 for row in mulligan_doc["suppressed_rules"]
             ),

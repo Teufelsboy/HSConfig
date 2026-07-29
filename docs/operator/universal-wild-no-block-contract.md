@@ -114,10 +114,12 @@ Layer 2 and Layer 3 gaps are warning-only. They must not block `load_safe_apply`
 - `VALID_PACKAGE` remains the technical load-safety truth.
 - `load_safe_apply` remains allowed when the apply gate is structurally valid.
 - `config_usefulness.status=load_safe_but_thin` is a warning surface, not an apply blocker.
-- `mulligan.status=policy_backed` means HSConfig emitted an autonomous
-  low-curve Mulligan fallback because explicit source-backed Mulligan keeps were
-  absent. It is acceptable for load-safe apply, but weaker than
-  `SOURCE_BACKED_STRONG`.
+- `mulligan.status=policy_backed` means HSConfig emitted a physical row from an
+  explicit deterministic Lane-D claim bound to `versioned_internal_policy`.
+  HSConfig does not infer low-curve keeps.
+- `mulligan.status=bot_delegated` means Lane E left the decision to
+  HearthRanger's native pre-run bot and emitted zero generated Mulligan runtime
+  rows.
 - `operator_summary.json.mulligan_policy_status` is the compact operator view
   for source-backed versus policy-backed Mulligan coverage.
 - `operator_summary.json.default_only_runtime_surfaces` must normally be empty

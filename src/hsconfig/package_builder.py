@@ -50,10 +50,7 @@ from hsconfig.internal_source_authority import (
 from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
-from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
-from hsconfig.mulligan_source_gap_registry import (
-    validated_mulligan_source_gap_vetoes,
-)
+from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.runtime_surface_ledger import (
@@ -1681,30 +1678,6 @@ def _explicit_bot_delegation_claims(
     ]
 
 
-def _policy_mulligan_excluded_card_ids(
-    accepted_mulligan_claims: list[dict[str, Any]],
-) -> set[str]:
-    cards: set[str] = set()
-    for claim in accepted_mulligan_claims:
-        if str(claim.get("claim_kind", "")) not in {"mulligan_keep", "mulligan_discard"}:
-            continue
-        cards.update(_claim_card_ids(claim))
-    return cards
-
-
-def _mulligan_source_gap_vetoes(
-    source_gaps: list[dict[str, str]] | None,
-    *,
-    deck_name: str,
-    deck_identity: dict[str, Any],
-) -> dict[str, str]:
-    return validated_mulligan_source_gap_vetoes(
-        source_gaps,
-        deck_name=deck_name,
-        deck_identity=deck_identity,
-    )
-
-
 def _claim_card_ids(claim: dict[str, Any]) -> set[str]:
     cards = claim.get("cards", [])
     if isinstance(cards, str):
@@ -1815,15 +1788,6 @@ def _filter_mulligan_plan(
         plan.get("rules", []),
         allowed_claim_ids,
     )
-    seen_rule_keys = {mulligan_rule_key(row) for row in filtered_rules}
-    for row in plan.get("rules", []):
-        if not _is_policy_backed_mulligan_row(row):
-            continue
-        key = mulligan_rule_key(row)
-        if key in seen_rule_keys:
-            continue
-        seen_rule_keys.add(key)
-        filtered_rules.append(row)
     if _has_concrete_mulligan_hold(filtered_rules):
         filtered_rules.extend(
             row
@@ -2020,13 +1984,6 @@ def _is_unreferenced_wildcard_discard(row: Any) -> bool:
         str(row.get("action", row.get("intent", ""))) == "discard"
         and str(row.get("selector_kind", "")) == "wildcard"
         and str(row.get("selector", row.get("card", ""))) == "*"
-    )
-
-
-def _is_policy_backed_mulligan_row(row: Any) -> bool:
-    return (
-        isinstance(row, dict)
-        and str(row.get("source_type")) == "policy_backed_autonomous_mulligan"
     )
 
 

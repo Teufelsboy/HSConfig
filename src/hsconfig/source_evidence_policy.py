@@ -37,7 +37,7 @@ STATIC_CARDID_EFFECT_CLAIM_KINDS = {
     "card_role",
 }
 NON_PROMOTING_SOURCE_TYPES = {
-    "policy_backed_autonomous_mulligan",
+    "versioned_internal_policy",
     "default_runtime",
     "generated_default",
 }

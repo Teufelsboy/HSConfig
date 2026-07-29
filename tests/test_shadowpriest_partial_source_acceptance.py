@@ -85,8 +85,6 @@ def test_configure_shadowpriest_keeps_archetype_only_guide_mulligan_diagnostic(
     assert {
         row["reason"] for row in mulligan_plan["suppressed_rules"]
     } >= {"mulligan_requires_exact_deck_match"}
-    assert all(
-        row.get("source_type") == "policy_backed_autonomous_mulligan"
-        for row in mulligan_plan["rules"]
-        if row["action"] == "hold"
+    assert not any(
+        row["action"] == "hold" for row in mulligan_plan["rules"]
     )

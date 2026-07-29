@@ -429,6 +429,8 @@ class MulliganSuppressionModel:
     reason_code: str
     source_claim_ids: tuple[str, ...]
     claim_id: str | None = None
+    source_type: str | None = None
+    source_url: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -441,6 +443,16 @@ class MulliganSuppressionModel:
         )
         if not self.card_id or self.action not in {"hold", "discard", "none"}:
             raise ValueError("mulligan_suppression_invalid")
+        for field_name in ("source_type", "source_url"):
+            value = getattr(self, field_name)
+            if value is not None and (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+            ):
+                raise ValueError(
+                    f"mulligan_suppression_{field_name}_invalid"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,6 +528,16 @@ class MulliganPlanModel:
                 "reason": row.reason_code,
                 "source_claim_ids": list(row.source_claim_ids),
                 **({"claim_id": row.claim_id} if row.claim_id else {}),
+                **(
+                    {"source_type": row.source_type}
+                    if row.source_type
+                    else {}
+                ),
+                **(
+                    {"source_url": row.source_url}
+                    if row.source_url
+                    else {}
+                ),
             }
             for row in self.suppressed
         ]

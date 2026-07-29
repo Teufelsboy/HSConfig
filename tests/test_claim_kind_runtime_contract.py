@@ -1224,7 +1224,7 @@ def test_source_family_public_guides_are_not_reclassified_as_static_strong_claim
         {"source_visibility": "snippet_only", "deck_match_scope": "archetype_matched"},
         {"source_visibility": "unknown", "deck_match_scope": "archetype_matched"},
         {"source_lane": "source_unclassified", "deck_match_scope": "unknown"},
-        {"source_type": "policy_backed_autonomous_mulligan"},
+        {"source_type": "versioned_internal_policy"},
         {"source_type": "generated_default"},
         {"source_type": "official_card_data"},
     ],
@@ -1271,19 +1271,19 @@ def test_string_true_source_blocked_prevents_public_guide_promotion():
     assert claim["strong_static_claim"] is False
 
 
-def test_policy_backed_claim_is_never_strong_promotion_evidence():
+def test_versioned_internal_policy_claim_is_never_strong_promotion_evidence():
     claim = qualify_source_claim(
         {
             "claim_id": "policy-keep",
             "claim_kind": "mulligan_keep",
-            "source_type": "policy_backed_autonomous_mulligan",
+            "source_type": "versioned_internal_policy",
             "card_ids": ["CARD_001"],
         }
     )
 
     assert claim["promotion_eligible"] is False
     assert claim["strong_static_claim"] is False
-    assert claim["source_lane"] == "policy_fallback"
+    assert claim["source_lane"] == "versioned_internal_policy"
 
 
 def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():

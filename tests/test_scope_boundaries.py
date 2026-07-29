@@ -46,6 +46,9 @@ REQUIRED_DOC_PHRASES = (
     "hdt_deck_id is identity-only metadata",
     "not replay evidence",
 )
+FORBIDDEN_AUTONOMOUS_MULLIGAN_SOURCE_TYPE = (
+    "policy_backed_autonomous_mulligan"
+)
 
 
 def _forbidden_source_concepts(text):
@@ -128,6 +131,28 @@ def test_hsconfig_src_does_not_absorb_post_run_scope():
         text = path.read_text(encoding="utf-8")
         for concept in _forbidden_source_concepts(text):
             offenders.append(f"{path}:{concept}")
+
+    assert offenders == []
+
+
+def test_active_code_has_no_obsolete_autonomous_mulligan_source_type():
+    guard_path = Path(__file__).resolve()
+    offenders = []
+    for root in (Path("src"), Path("tests"), Path("scripts")):
+        for path in sorted(root.rglob("*")):
+            if (
+                not path.is_file()
+                or "__pycache__" in path.parts
+                or any(part.endswith(".egg-info") for part in path.parts)
+                or path.resolve() == guard_path
+            ):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if FORBIDDEN_AUTONOMOUS_MULLIGAN_SOURCE_TYPE in text:
+                offenders.append(str(path))
 
     assert offenders == []
 

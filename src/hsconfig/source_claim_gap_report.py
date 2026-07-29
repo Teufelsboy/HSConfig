@@ -363,7 +363,7 @@ def _mulligan_surface_row(mulligan_plan: dict[str, Any]) -> dict[str, Any]:
         return {
             "surface": "mulligan",
             "first_missing_link": "none",
-            "source_depth_lane": "policy_backed_autonomous_mulligan",
+            "source_depth_lane": "versioned_internal_policy",
             "source_quality_lane": "policy_backed",
             "policy_lanes": _string_list(quality.get("policy_lanes")),
             "policy_reasons": _string_list(quality.get("policy_reasons")),

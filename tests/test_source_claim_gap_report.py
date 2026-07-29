@@ -263,7 +263,7 @@ def test_gap_report_marks_policy_backed_mulligan_as_closed_not_source_backed():
                     "card": "CARD_1",
                     "action": "hold",
                     "selector_kind": "card",
-                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_type": "versioned_internal_policy",
                 }
             ],
             "quality": {
@@ -280,7 +280,7 @@ def test_gap_report_marks_policy_backed_mulligan_as_closed_not_source_backed():
 
     mulligan = report["deck_surfaces"]["mulligan"]
     assert mulligan["first_missing_link"] == "none"
-    assert mulligan["source_depth_lane"] == "policy_backed_autonomous_mulligan"
+    assert mulligan["source_depth_lane"] == "versioned_internal_policy"
     assert mulligan["source_quality_lane"] == "policy_backed"
     assert mulligan["recommended_source_claim_kind"] == "none"
     assert mulligan["recommended_next_claim_kind"] == "none"
@@ -298,9 +298,7 @@ def test_gap_report_includes_policy_lane_for_policy_backed_mulligan_surface():
                     "card": "PIRATE",
                     "selector_kind": "card",
                     "action": "hold",
-                    "source_type": "policy_backed_autonomous_mulligan",
-                    "policy_lane": "aggro",
-                    "policy_reason": "pirate_pressure",
+                    "source_type": "versioned_internal_policy",
                 }
             ],
             "quality": {
@@ -308,8 +306,8 @@ def test_gap_report_includes_policy_lane_for_policy_backed_mulligan_surface():
                 "has_concrete_keeps": True,
                 "default_only": False,
                 "policy_backed_keep_rule_count": 1,
-                "policy_lanes": ["aggro"],
-                "policy_reasons": ["pirate_pressure"],
+                "policy_lanes": ["D"],
+                "policy_reasons": ["explicit_policy_claim"],
             },
         },
         card_behavior_plan={"rows": []},
@@ -317,9 +315,9 @@ def test_gap_report_includes_policy_lane_for_policy_backed_mulligan_surface():
     )
 
     mulligan = report["deck_surfaces"]["mulligan"]
-    assert mulligan["source_depth_lane"] == "policy_backed_autonomous_mulligan"
-    assert mulligan["policy_lanes"] == ["aggro"]
-    assert mulligan["policy_reasons"] == ["pirate_pressure"]
+    assert mulligan["source_depth_lane"] == "versioned_internal_policy"
+    assert mulligan["policy_lanes"] == ["D"]
+    assert mulligan["policy_reasons"] == ["explicit_policy_claim"]
     assert report["summary"]["deck_surface_gap_count"] == 0
 
 

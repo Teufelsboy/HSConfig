@@ -1844,15 +1844,15 @@ def test_explainability_card_rows_include_compact_closure_lane():
     }
 
 
-def test_explainability_points_to_first_missing_source_action_for_partial_deck():
+def test_explainability_points_to_source_action_for_versioned_policy_keep():
     report = build_source_to_runtime_explainability_report(
         audit={
             "claim_rows": [
                 {
                     "card_id": "PIRATE_DH_CARD",
                     "claim_kind": "mulligan_keep",
-                    "source_type": "policy_backed_autonomous_mulligan",
-                    "source_lane": "policy_fallback",
+                    "source_type": "versioned_internal_policy",
+                    "source_lane": "versioned_internal_policy",
                     "runtime_backed": True,
                 }
             ]
@@ -1861,20 +1861,20 @@ def test_explainability_points_to_first_missing_source_action_for_partial_deck()
     )
 
     row = report["card_rows"][0]
-    assert row["source_lane"] == "policy_fallback"
+    assert row["source_lane"] == "versioned_internal_policy"
     assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
     assert row["runtime_lowering_status"] == "policy_backed_runtime"
 
 
-def test_explainability_exposes_policy_backed_runtime_as_non_strong():
+def test_explainability_exposes_versioned_policy_runtime_as_non_strong():
     report = build_source_to_runtime_explainability_report(
         audit={
             "claim_rows": [
                 {
                     "card_id": "CARD_001",
                     "claim_kind": "mulligan_keep",
-                    "source_type": "policy_backed_autonomous_mulligan",
-                    "source_lane": "policy_fallback",
+                    "source_type": "versioned_internal_policy",
+                    "source_lane": "versioned_internal_policy",
                     "runtime_backed": True,
                 }
             ]
@@ -1883,7 +1883,7 @@ def test_explainability_exposes_policy_backed_runtime_as_non_strong():
     )
 
     row = report["card_rows"][0]
-    assert row["source_lane"] == "policy_fallback"
+    assert row["source_lane"] == "versioned_internal_policy"
     assert row["runtime_lowering_status"] == "policy_backed_runtime"
     assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
     assert row["closure_lane"] == "policy_backed"
@@ -1913,14 +1913,14 @@ def test_explainability_exposes_default_only_blocker_on_card_row():
     assert row["default_only_blocker"] is True
 
 
-def test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan():
+def test_explainability_does_not_treat_versioned_policy_non_mulligan_as_mulligan():
     report = build_source_to_runtime_explainability_report(
         audit={
             "claim_rows": [
                 {
                     "card_id": "POLICY_ROLE",
                     "claim_kind": "card_role",
-                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_type": "versioned_internal_policy",
                     "runtime_backed": True,
                 }
             ]
@@ -1933,7 +1933,7 @@ def test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan(
     assert row["runtime_lowering_status"] == "source_backed_runtime"
 
 
-def test_explainability_preserves_policy_fallback_from_legacy_audit_report():
+def test_explainability_preserves_versioned_policy_from_audit_report():
     audit_report = build_source_contract_audit(
         deck_name="FixtureDeck",
         deck_identity={
@@ -1954,8 +1954,8 @@ def test_explainability_preserves_policy_fallback_from_legacy_audit_report():
                     "claim_readiness": "guide_backed",
                     "trust_ceiling": "runtime_candidate",
                     "cards": ["POLICY_KEEP"],
-                    "source_type": "policy_backed_autonomous_mulligan",
-                    "source_lane": "policy_fallback",
+                    "source_type": "versioned_internal_policy",
+                    "source_lane": "versioned_internal_policy",
                 }
             ]
         },
@@ -1991,6 +1991,6 @@ def test_explainability_preserves_policy_fallback_from_legacy_audit_report():
     report = build_source_to_runtime_explainability_report(audit_report)
 
     row = report["card_rows"][0]
-    assert row["source_lane"] == "policy_fallback"
+    assert row["source_lane"] == "versioned_internal_policy"
     assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
     assert row["runtime_lowering_status"] == "policy_backed_runtime"

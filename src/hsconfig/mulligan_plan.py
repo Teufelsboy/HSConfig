@@ -593,6 +593,9 @@ def _suppression_rows(
         action = "none"
     claim_id = lifecycle_claim_id(dict(claim)) or None
     source_claim_ids = _source_claim_ids(claim)
+    source_url = str(claim.get("source_url", "")).strip() or None
+    # Report rows classify their provenance lane as source_claim; the source
+    # document retains the upstream quality type such as public_guide.
     return tuple(
         MulliganSuppressionModel(
             card_id=card_id,
@@ -600,6 +603,8 @@ def _suppression_rows(
             reason_code=reason_code,
             source_claim_ids=source_claim_ids,
             claim_id=claim_id,
+            source_type="source_claim" if source_url else None,
+            source_url=source_url,
         )
         for card_id in sorted(set(card_ids))
         if card_id

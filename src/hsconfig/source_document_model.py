@@ -315,8 +315,8 @@ def _quality_source_type(claim: Mapping[str, Any]) -> str:
 
 
 def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
-    if source_type == "policy_backed_autonomous_mulligan":
-        return "policy_fallback"
+    if source_type == "versioned_internal_policy":
+        return "versioned_internal_policy"
     if source_type in {"official_card_data", "hearthstonejson", "blizzard_card_library"}:
         return "official_static_semantics"
     if source_type in {"community_guide", "public_guide"}:
@@ -356,7 +356,7 @@ def _runtime_lowering(claim_kind: str) -> str:
 def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
     if "promotion_eligible" in claim and not _bool_value(claim["promotion_eligible"]):
         return False
-    if source_type == "policy_backed_autonomous_mulligan":
+    if source_type == "versioned_internal_policy":
         return False
     if source_type in {"default_runtime", "generated_default"}:
         return False

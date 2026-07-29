@@ -6,15 +6,14 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Source-backed runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 
-When no source-backed keep can be emitted, HSConfig may emit a small
-`policy_backed_autonomous_mulligan` keep set from low-curve pressure, draw, or
-setup semantics so `Mulligan.json` is not default-only. This is a separate,
-weaker autonomous fallback, not a source-backed guide claim. Cards with
-explicit, suppressed, or quarantined Mulligan source intent are vetoed from the
-policy lane; non-hand start-of-game effects such as Darkbishop Benedictus also
-stay out of opening-hand keeps. Policy-backed Mulligan coverage must not promote
-the deck to `SOURCE_BACKED_STRONG`; it only makes the generated pre-run package
-more useful while preserving the source/contract boundary.
+Runtime Mulligan rows may come only from exact live-guide authority (Lane B) or
+an explicit deterministic claim bound to the packaged
+`versioned_internal_policy` profile (Lane D). HSConfig never infers keeps from
+mana curve, card roles, pressure, draw, setup, or deck-name heuristics. When
+neither lane authorizes a physical row, Lane E records explicit
+`bot_delegated` dispositions and leaves the Mulligan decision to HearthRanger's
+native pre-run bot with zero generated runtime rows. Lane D and
+Lane E must not promote the deck to `SOURCE_BACKED_STRONG`.
 
 HSConfig separates source semantics from runtime authority. A claim such as
 `hero_power_transform` or `card_role` can enrich the every-card contract and

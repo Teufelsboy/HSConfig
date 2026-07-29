@@ -2293,8 +2293,8 @@ def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evi
     [
         (
             {
-                "source_type": "policy_backed_autonomous_mulligan",
-                "source_lane": "policy_fallback",
+                "source_type": "versioned_internal_policy",
+                "source_lane": "versioned_internal_policy",
                 "claim_readiness": "guide_backed",
                 "evidence_text_short": "Always keep Darkbishop in the opening hand.",
             },
@@ -2332,7 +2332,7 @@ def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evi
         ),
     ],
     ids=[
-        "policy-backed-autonomous-mulligan",
+        "versioned-internal-policy",
         "policy-fallback",
         "default-runtime",
         "effect-only-suppressed",
