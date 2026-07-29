@@ -10,12 +10,15 @@ from hsconfig.card_behavior_router import (
     diagnose_card_behavior_claims,
     route_card_behavior_claims,
 )
+from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
-from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.config_readiness import (
+    build_config_readiness_report,
+)
 from hsconfig.configure_stages import (
     StageObserver,
     build_lowered_runtime_stage,
@@ -24,6 +27,10 @@ from hsconfig.configure_stages import (
     observe_stage,
 )
 from hsconfig.gameplan_contract import build_gameplan_contract
+from hsconfig.disposition_ledger import (
+    build_disposition_ledger,
+    build_dual_closure,
+)
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.guide_source_depth import build_guide_source_depth_report
@@ -641,6 +648,23 @@ def build_package_payload(
         initial_lifecycle_rows=initial_lifecycle_rows,
         plan_input_diagnostics=plan_input_diagnostics,
     )
+    _disposition_ledger, _dual_closure_status = (
+        _build_package_disposition_ledger(
+            deck_identity=deck_identity,
+            source_contract_audit_report=source_contract_audit_report,
+            runtime_surface_ledger=runtime_surface_ledger,
+            globalvalues_config=globalvalues["config"],
+            globalvalues_baseline=baseline,
+            strategy_source_status=(
+                "strong"
+                if str(
+                    guide_claim_bundle.get("source_backed_status", "")
+                )
+                == "SOURCE_BACKED_STRONG"
+                else "partial"
+            ),
+        )
+    )
     write_json(reports_dir / "source_contract_audit.json", source_contract_audit_report)
     (reports_dir / "source_contract_audit.md").write_text(
         render_source_contract_audit_markdown(source_contract_audit_report),
@@ -818,6 +842,220 @@ def build_package_payload(
             "next_action": operator_summary["next_action"],
         },
         code,
+    )
+
+
+def _build_package_disposition_ledger(
+    *,
+    deck_identity: dict[str, Any],
+    source_contract_audit_report: dict[str, Any],
+    runtime_surface_ledger: dict[str, Any],
+    globalvalues_config: dict[str, Any],
+    globalvalues_baseline: dict[str, Any],
+    strategy_source_status: str,
+):
+    deck_fingerprint = str(deck_identity.get("deck_fingerprint", ""))
+    claim_rows = source_contract_audit_report.get("claim_rows", {})
+    lifecycle_rows = source_contract_audit_report.get(
+        "claim_lifecycle_rows", []
+    )
+    claims_by_card: dict[str, set[str]] = {}
+    if isinstance(claim_rows, dict):
+        for claim_id, claim in claim_rows.items():
+            if not isinstance(claim, dict):
+                continue
+            for card_id in claim.get("cards", []):
+                claims_by_card.setdefault(str(card_id), set()).add(
+                    str(claim_id)
+                )
+
+    ledger_cards = runtime_surface_ledger.get("cards", {})
+    linked_entities = runtime_surface_ledger.get(
+        "linked_runtime_entities", {}
+    )
+    evidence_cards: list[dict[str, Any]] = []
+    physical_emission_index: dict[str, list[str]] = {}
+    physical_emissions: list[dict[str, Any]] = []
+    composite_by_card: dict[str, str] = {}
+    for card in analysis_cards_from_deck_identity(deck_identity):
+        card_id = str(card.get("card_id", ""))
+        if not card_id:
+            continue
+        zone = (
+            "sideboard_module"
+            if str(card.get("deck_zone", "main")) == "sideboard"
+            else "main_deck"
+        )
+        composite_key = f"{deck_fingerprint}:{zone}:{card_id}"
+        composite_by_card[card_id] = composite_key
+        runtime_paths = []
+        raw_ledger_card = (
+            ledger_cards.get(card_id, {})
+            if isinstance(ledger_cards, dict)
+            else {}
+        )
+        if isinstance(raw_ledger_card, dict):
+            runtime_paths.extend(
+                str(path)
+                for path in raw_ledger_card.get("runtime_surfaces", [])
+                if str(path) == f"{card_id}.json"
+            )
+        physical_owner = card_id
+        if isinstance(linked_entities, dict):
+            for runtime_card_id, raw_link in linked_entities.items():
+                if (
+                    isinstance(raw_link, dict)
+                    and str(raw_link.get("source_card_id", "")) == card_id
+                    and raw_link.get("runtime_emitted") is True
+                ):
+                    physical_owner = str(runtime_card_id)
+                    runtime_paths.append(
+                        str(
+                            raw_link.get("runtime_surface")
+                            or f"{runtime_card_id}.json"
+                        )
+                    )
+        runtime_paths = sorted(set(runtime_paths))
+        if runtime_paths:
+            physical_emission_index[composite_key] = runtime_paths
+            physical_emissions.extend(
+                {
+                    "composite_card_key": composite_key,
+                    "physical_owner": physical_owner,
+                    "relative_path": path,
+                    "meaningful": True,
+                }
+                for path in runtime_paths
+            )
+        claim_ids = sorted(claims_by_card.get(card_id, set()))
+        evidence_cards.append(
+            {
+                "composite_card_key": composite_key,
+                "zone": zone,
+                "official_semantics_canonical_json": {
+                    "GameCardId": physical_owner,
+                },
+                "authority_lane": "A",
+                "evidence_ids": [
+                    *claim_ids,
+                ]
+                or [f"official:{card_id}"],
+                "claim_ids": claim_ids,
+                "physical_owner": physical_owner,
+            }
+        )
+
+    normalized_lifecycle_rows: list[dict[str, Any]] = []
+    lifecycle_by_id = {
+        str(row.get("claim_id", "")): row
+        for row in lifecycle_rows
+        if isinstance(row, dict) and row.get("claim_id")
+    }
+    for claim_id, raw_claim in sorted(
+        claim_rows.items() if isinstance(claim_rows, dict) else ()
+    ):
+        claim = raw_claim if isinstance(raw_claim, dict) else {}
+        lifecycle = lifecycle_by_id.get(str(claim_id), {})
+        emitted_files = sorted(
+            {
+                str(path)
+                for path in lifecycle.get("emitted_files", [])
+                if str(path)
+            }
+        )
+        related_cards = sorted(
+            str(card_id)
+            for card_id in claim.get("cards", [])
+            if str(card_id) in composite_by_card
+        )
+        owner_card_id = next(
+            (
+                card_id
+                for card_id in related_cards
+                if f"{card_id}.json" in emitted_files
+            ),
+            related_cards[0] if related_cards else None,
+        )
+        normalized_lifecycle_rows.append(
+            {
+                "deck_fingerprint": deck_fingerprint,
+                "claim_id": str(claim_id),
+                "claim_kind": str(claim.get("claim_kind", "")),
+                "evidence_id": str(claim_id),
+                "composite_card_key": (
+                    composite_by_card.get(owner_card_id, "__contract__")
+                ),
+                "builder_state": _final_disposition_builder_state(
+                    lifecycle
+                ),
+                "runtime_paths": emitted_files,
+                "policy_id": lifecycle.get("policy_id"),
+            }
+        )
+
+    dispositions = build_disposition_ledger(
+        evidence_contract={
+            "deck_fingerprint": deck_fingerprint,
+            "cards": evidence_cards,
+        },
+        claim_lifecycle_rows=normalized_lifecycle_rows,
+        physical_emission_index=physical_emission_index,
+        runtime_surface_ledger={
+            "physical_emissions": physical_emissions,
+        },
+    )
+    globalvalue_keys = sorted(
+        set(globalvalues_baseline) | set(globalvalues_config)
+    )
+    dual_closure = build_dual_closure(
+        dispositions=dispositions,
+        globalvalues_decisions=[
+            {
+                "key": key,
+                "status": (
+                    "complete"
+                    if key in globalvalues_baseline
+                    and key in globalvalues_config
+                    else "incomplete"
+                ),
+            }
+            for key in globalvalue_keys
+        ],
+        strategy_source_status=strategy_source_status,
+    )
+    return dispositions, dual_closure
+
+
+def _final_disposition_builder_state(
+    lifecycle: dict[str, Any],
+) -> str:
+    emitted_files = lifecycle.get("emitted_files", [])
+    if isinstance(emitted_files, list) and any(
+        isinstance(path, str) and path for path in emitted_files
+    ):
+        return "runtime_emitted"
+    reason = str(lifecycle.get("suppressed_reason") or "")
+    policy_lane = str(lifecycle.get("policy_lane") or "")
+    if (
+        policy_lane in {
+            "report_only",
+            "suppressed_or_conditional",
+            "unsupported_or_unmapped",
+        }
+        or reason in {
+            "claim_kind_policy",
+            "claim_kind_not_globalvalues_surface",
+            "requires_supported_cardid_surface",
+            "source_eligibility",
+            "unsupported_or_unmapped",
+        }
+    ):
+        return "suppressed_unsupported_surface"
+    if str(lifecycle.get("builder_or_router_decision") or "") == "suppressed":
+        return "suppressed_insufficient_authority"
+    return str(
+        lifecycle.get("builder_or_router_decision")
+        or "unclassified_builder_state"
     )
 
 

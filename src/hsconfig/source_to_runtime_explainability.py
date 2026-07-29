@@ -5,7 +5,9 @@ from typing import Any, Mapping, Sequence
 
 from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.disposition_ledger import disposition_projection
 from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.package_domain import DispositionLedger, DualClosureStatus
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.source_claim_gap_report import NEXT_ACTION_BY_MISSING_LINK
 
@@ -58,6 +60,8 @@ def build_source_to_runtime_explainability_report(
     runtime_files: Sequence[str] | set[str] | None = None,
     card_behavior_plan: Mapping[str, Any] | None = None,
     runtime_surface_ledger: Mapping[str, Any] | None = None,
+    disposition_ledger: DispositionLedger | None = None,
+    dual_closure_status: DualClosureStatus | None = None,
 ) -> dict[str, Any]:
     """Project source-contract audit rows into operator-facing diagnostics.
 
@@ -120,7 +124,7 @@ def build_source_to_runtime_explainability_report(
         "apply_blocking": False,
         "next_report_to_open": REPORT_PATH,
     }
-    return {
+    report = {
         "schema_version": 1,
         "authority": "diagnostic_only",
         "operator_gate_impact": "diagnostic_only",
@@ -149,6 +153,58 @@ def build_source_to_runtime_explainability_report(
             else ""
         ),
         "operator_attention": _operator_attention_rows(card_rows),
+    }
+    if disposition_ledger is None or dual_closure_status is None:
+        return report
+
+    claim_dispositions = {
+        row.claim_id: row for row in disposition_ledger.claims
+    }
+    card_dispositions = {
+        row.composite_card_key.rsplit(":", 1)[-1]: row
+        for row in disposition_ledger.cards
+    }
+    report["claim_rows"] = [
+        {
+            **row,
+            **_claim_disposition_fields(
+                claim_dispositions.get(str(row.get("claim_id", "")))
+            ),
+        }
+        for row in report["claim_rows"]
+    ]
+    report["card_rows"] = [
+        {
+            **row,
+            **_card_disposition_fields(
+                card_dispositions.get(str(row.get("card_id", "")))
+            ),
+        }
+        for row in report["card_rows"]
+    ]
+    report["disposition_projection"] = disposition_projection(
+        dispositions=disposition_ledger,
+        dual_closure=dual_closure_status,
+    )
+    return report
+
+
+def _claim_disposition_fields(row: Any) -> dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        "final_disposition": row.disposition.value,
+        "disposition_reason_code": row.reason_code,
+        "disposition_runtime_paths": list(row.runtime_paths),
+    }
+
+
+def _card_disposition_fields(row: Any) -> dict[str, Any]:
+    if row is None:
+        return {}
+    return {
+        **_claim_disposition_fields(row),
+        "composite_card_key": row.composite_card_key,
     }
 
 

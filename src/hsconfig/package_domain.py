@@ -225,6 +225,24 @@ class DispositionLedger:
 
 
 @dataclass(frozen=True, slots=True)
+class DualClosureStatus:
+    pre_run_contract_status: Literal["complete", "incomplete"]
+    strategy_authority_status: Literal["partial", "strong"]
+    exact_guide_authority: bool
+    unresolved_reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "unresolved_reasons",
+            _freeze_stable_strings(
+                self.unresolved_reasons,
+                field="dual_closure_unresolved_reasons",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class GlobalValueDecision:
     deck_fingerprint: str
     key: str

@@ -5,10 +5,12 @@ import json
 from typing import Any, Mapping, Sequence
 
 from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
+from hsconfig.disposition_ledger import disposition_projection
 from hsconfig.evidence_contract import (
     classify_evidence_authority,
     load_policy_profile,
 )
+from hsconfig.package_domain import DispositionLedger, DualClosureStatus
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
@@ -216,6 +218,105 @@ def build_source_contract_audit(
     if plan_input_diagnostics is not None:
         report["plan_input_diagnostics"] = dict(plan_input_diagnostics)
     return report
+
+
+def project_source_contract_audit_from_dispositions(
+    report: Mapping[str, Any],
+    *,
+    dispositions: DispositionLedger,
+    dual_closure: DualClosureStatus,
+) -> dict[str, Any]:
+    """Add final dispositions while preserving diagnostic-only authority."""
+
+    claim_dispositions = {
+        row.claim_id: row for row in dispositions.claims
+    }
+    card_dispositions = {
+        row.composite_card_key.rsplit(":", 1)[-1]: row
+        for row in dispositions.cards
+    }
+
+    def claim_fields(claim_id: object) -> dict[str, Any]:
+        row = claim_dispositions.get(str(claim_id))
+        if row is None:
+            return {}
+        return {
+            "final_disposition": row.disposition.value,
+            "disposition_reason_code": row.reason_code,
+            "disposition_runtime_paths": list(row.runtime_paths),
+        }
+
+    def card_fields(card_id: object) -> dict[str, Any]:
+        row = card_dispositions.get(str(card_id))
+        if row is None:
+            return {}
+        return {
+            "final_disposition": row.disposition.value,
+            "disposition_reason_code": row.reason_code,
+            "disposition_runtime_paths": list(row.runtime_paths),
+            "composite_card_key": row.composite_card_key,
+        }
+
+    raw_claim_rows = report.get("claim_rows", {})
+    projected_claim_rows = (
+        {
+            str(claim_id): {
+                **dict(row),
+                **claim_fields(claim_id),
+            }
+            for claim_id, row in raw_claim_rows.items()
+            if isinstance(row, Mapping)
+        }
+        if isinstance(raw_claim_rows, Mapping)
+        else raw_claim_rows
+    )
+    raw_card_rows = report.get("card_rows", {})
+    projected_card_rows = (
+        {
+            str(card_id): {
+                **dict(row),
+                **card_fields(card_id),
+            }
+            for card_id, row in raw_card_rows.items()
+            if isinstance(row, Mapping)
+        }
+        if isinstance(raw_card_rows, Mapping)
+        else raw_card_rows
+    )
+    projected_lifecycle = [
+        {
+            **dict(row),
+            **claim_fields(row.get("claim_id")),
+        }
+        for row in report.get("claim_lifecycle_rows", ())
+        if isinstance(row, Mapping)
+    ]
+    projection = disposition_projection(
+        dispositions=dispositions,
+        dual_closure=dual_closure,
+    )
+    return {
+        **dict(report),
+        "summary": {
+            **dict(report.get("summary", {})),
+            "final_card_disposition_counts": projection[
+                "card_disposition_counts"
+            ],
+            "final_claim_disposition_counts": projection[
+                "claim_disposition_counts"
+            ],
+            "pre_run_contract_status": projection[
+                "pre_run_contract_status"
+            ],
+            "strategy_authority_status": projection[
+                "strategy_authority_status"
+            ],
+        },
+        "claim_rows": projected_claim_rows,
+        "claim_lifecycle_rows": projected_lifecycle,
+        "card_rows": projected_card_rows,
+        "disposition_projection": projection,
+    }
 
 
 def _packaged_policy_mapping() -> dict[str, Any]:

@@ -4,11 +4,13 @@ from collections import Counter
 from typing import Any, Iterable, Mapping
 
 from hsconfig.card_metadata import analysis_cards_from_deck_identity
+from hsconfig.disposition_ledger import disposition_projection
 from hsconfig.mechanic_support import (
     support_for_roles,
     summarize_mechanic_support,
     summarize_mechanic_visibility,
 )
+from hsconfig.package_domain import DispositionLedger, DualClosureStatus
 from hsconfig.io import slugify_deck_name
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.visionai_registry import (
@@ -301,6 +303,59 @@ def build_config_readiness_report(
             if isinstance(runtime_surface_ledger, Mapping)
             else ""
         ),
+    }
+
+
+def project_config_readiness_from_dispositions(
+    report: Mapping[str, Any],
+    *,
+    dispositions: DispositionLedger,
+    dual_closure: DualClosureStatus,
+) -> dict[str, Any]:
+    """Project canonical card outcomes without adding an apply gate."""
+
+    disposition_by_card = {
+        row.composite_card_key.rsplit(":", 1)[-1]: row
+        for row in dispositions.cards
+    }
+    cards: dict[str, dict[str, Any]] = {}
+    for card_id, raw_row in report.get("cards", {}).items():
+        if not isinstance(raw_row, Mapping):
+            continue
+        row = disposition_by_card.get(str(card_id))
+        cards[str(card_id)] = {
+            **dict(raw_row),
+            **(
+                {
+                    "final_disposition": row.disposition.value,
+                    "disposition_reason_code": row.reason_code,
+                    "disposition_runtime_paths": list(row.runtime_paths),
+                    "composite_card_key": row.composite_card_key,
+                }
+                if row is not None
+                else {}
+            ),
+        }
+    projection = disposition_projection(
+        dispositions=dispositions,
+        dual_closure=dual_closure,
+    )
+    return {
+        **dict(report),
+        "summary": {
+            **dict(report.get("summary", {})),
+            "final_card_disposition_counts": projection[
+                "card_disposition_counts"
+            ],
+            "pre_run_contract_status": projection[
+                "pre_run_contract_status"
+            ],
+            "strategy_authority_status": projection[
+                "strategy_authority_status"
+            ],
+        },
+        "cards": cards,
+        "disposition_projection": projection,
     }
 
 
