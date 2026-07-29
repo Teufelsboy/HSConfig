@@ -49,6 +49,10 @@ def compile_globalvalues(
 
     has_authority_overlays = "global_values_authority_matrix" in contract
     authority_matrix = contract.get("global_values_authority_matrix")
+    if decision_ledger is not None and not has_authority_overlays:
+        raise ValueError(
+            "globalvalues_decision_ledger_authority_matrix_required"
+        )
     allowed_rows: list[dict[str, Any]] = []
     if has_authority_overlays:
         allowed_rows = validated_globalvalues_authority_rows(authority_matrix)
@@ -582,7 +586,7 @@ def _numeric_value(value: str) -> float:
 
 
 def _eval_numeric_expression(node: ast.AST) -> float:
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+    if isinstance(node, ast.Constant) and type(node.value) in {int, float}:
         return float(node.value)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return -_eval_numeric_expression(node.operand)

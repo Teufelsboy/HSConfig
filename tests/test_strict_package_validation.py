@@ -378,6 +378,50 @@ def test_strict_validation_rejects_internally_consistent_authorized_key39(
 
 
 @pytest.mark.parametrize(
+    "expression",
+    ["True", "False", "-True", "True + 1"],
+)
+def test_strict_validation_rejects_boolean_authority_expression(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    expression: str,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    authority = {
+        "aggression_profile": "turn_weight",
+        "posture": "turn_weight",
+        "allowed_step1_overlays": [
+            {
+                "key": "FirstTurnValueWeight",
+                "overlay": f"set:{expression}",
+                "operation": "set",
+                "value": expression,
+                "authority": "step1_source_backed_posture",
+                "claim_id": "boolean-expression",
+                "claim_refs": ["boolean-expression"],
+                "reason": "boolean expression must not be numeric",
+            }
+        ],
+        "blocked_until_runtime_evidence": [],
+    }
+    write_json(
+        package / "reports" / "global_values_authority_matrix.json",
+        authority,
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        "globalvalues_authority_overlay_value_invalid:FirstTurnValueWeight"
+        in error
+        for error in report["errors"]
+    )
+
+
+@pytest.mark.parametrize(
     ("mutation", "expected_error"),
     [
         (

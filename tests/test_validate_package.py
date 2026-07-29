@@ -234,14 +234,23 @@ def test_validate_globalvalues_rejects_provenance_key(tmp_path):
     assert any("unsupported runtime row key metadata" in error for error in result["errors"])
 
 
-def test_validate_globalvalues_rejects_unsafe_expression(tmp_path):
+@pytest.mark.parametrize(
+    "expression",
+    ["1 / 0", "True", "False", "-True", "True + 1"],
+)
+def test_validate_globalvalues_rejects_unsafe_expression(
+    tmp_path,
+    expression: str,
+):
     package = _strict_package(tmp_path)
     write_json(
         package / "CustomConfig" / "deck" / "GlobalValues.json",
         {
             "GameCardId": "GlobalValues",
             "ConfigComment": "x",
-            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1 / 0"}]},
+            "FirstTurnValueWeight": {
+                "values": [{"condition": "*", "value": expression}]
+            },
         },
     )
 

@@ -291,6 +291,27 @@ def test_set_overlay_rejects_values_outside_nonempty_string_contract(
         )
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("True", id="true-literal"),
+        pytest.param("False", id="false-literal"),
+        pytest.param("-True", id="negated-true"),
+        pytest.param("True + 1", id="true-plus-one"),
+    ],
+)
+def test_set_overlay_rejects_boolean_numeric_expressions(value: str) -> None:
+    row = _overlay_row(value=value)
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_overlay_value_invalid",
+    ):
+        build_globalvalues_decision_ledger(
+            **_baseline_inputs(authority_matrix=_overlay_matrix(row))
+        )
+
+
 def test_ledger_compiler_rejects_noop_overlay_contract_for_baseline_ledger() -> None:
     baseline = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
     ledger = build_globalvalues_decision_ledger(
@@ -311,6 +332,29 @@ def test_ledger_compiler_rejects_noop_overlay_contract_for_baseline_ledger() -> 
         compile_globalvalues(
             baseline,
             {"global_values_authority_matrix": noop_overlay},
+            decision_ledger=ledger,
+        )
+
+
+def test_ledger_compiler_requires_explicit_authority_matrix() -> None:
+    baseline = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
+    ledger = build_globalvalues_decision_ledger(
+        **_baseline_inputs(baseline=baseline)
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_ledger_authority_matrix_required",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "aggression_profile": {
+                    "global_value_overlays": {
+                        "FirstTurnValueWeight": "set:0.75"
+                    }
+                }
+            },
             decision_ledger=ledger,
         )
 
