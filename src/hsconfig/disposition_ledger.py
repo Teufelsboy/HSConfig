@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from hashlib import sha256
 from typing import Any, Mapping, Sequence
 
 from hsconfig.package_domain import (
@@ -15,6 +14,9 @@ from hsconfig.package_domain import (
     DispositionLedger,
     DualClosureStatus,
     EvidenceLane,
+    GlobalValueDecision,
+    GlobalValueDecisionKind,
+    disposition_ledger_content_sha256,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
 
@@ -45,17 +47,30 @@ def _canonical_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _canonical_value_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
 def _runtime_paths(
     *,
     composite_card_key: str,
+    physical_owner: str,
     physical_emission_index: Mapping[str, Sequence[str]],
     runtime_surface_ledger: Mapping[str, Any],
 ) -> tuple[str, ...]:
+    expected_path = f"{physical_owner}.json"
     meaningful_paths = {
         row.get("relative_path")
         for row in runtime_surface_ledger.get("physical_emissions", ())
         if isinstance(row, Mapping)
         and row.get("composite_card_key") == composite_card_key
+        and row.get("physical_owner") == physical_owner
+        and row.get("relative_path") == expected_path
         and row.get("meaningful") is True
         and isinstance(row.get("relative_path"), str)
     }
@@ -125,19 +140,10 @@ def _claim_disposition(
     card_disposition: CardDisposition,
     runtime_paths: tuple[str, ...],
 ) -> tuple[ClaimDisposition, str]:
-    emitted_paths = tuple(
-        sorted(
-            {
-                str(path)
-                for key in ("runtime_paths", "emitted_files")
-                for path in row.get(key, ())
-                if isinstance(path, str) and path
-            }
-        )
-    )
-    if emitted_paths:
-        return ClaimDisposition.RUNTIME_EMITTED, "physical_meaningful_emission"
-    if card_disposition is CardDisposition.RUNTIME_EMITTED:
+    if (
+        card_disposition is CardDisposition.RUNTIME_EMITTED
+        and runtime_paths
+    ):
         return ClaimDisposition.RUNTIME_EMITTED, "physical_meaningful_emission"
     if card_disposition is CardDisposition.ANALYSIS_ONLY_SIDEBOARD:
         return ClaimDisposition.CONTRACT_ONLY, "sideboard_analysis_only"
@@ -152,54 +158,6 @@ def _claim_disposition(
         )
 
 
-def _ledger_sha256(
-    *,
-    deck_fingerprint: str,
-    cards: tuple[CardDispositionRow, ...],
-    claims: tuple[ClaimDispositionRow, ...],
-) -> str:
-    payload = {
-        "deck_fingerprint": deck_fingerprint,
-        "cards": [
-            {
-                "deck_fingerprint": row.deck_fingerprint,
-                "composite_card_key": row.composite_card_key,
-                "zone": row.zone,
-                "official_semantics_canonical_json": json.loads(
-                    row.official_semantics_canonical_json
-                ),
-                "authority_lane": row.authority_lane.value,
-                "evidence_ids": list(row.evidence_ids),
-                "claim_ids": list(row.claim_ids),
-                "physical_owner": row.physical_owner,
-                "disposition": row.disposition.value,
-                "runtime_paths": list(row.runtime_paths),
-                "reason_code": row.reason_code,
-            }
-            for row in cards
-        ],
-        "claims": [
-            {
-                "deck_fingerprint": row.deck_fingerprint,
-                "claim_id": row.claim_id,
-                "claim_kind": row.claim_kind,
-                "evidence_id": row.evidence_id,
-                "disposition": row.disposition.value,
-                "runtime_paths": list(row.runtime_paths),
-                "reason_code": row.reason_code,
-            }
-            for row in claims
-        ],
-    }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return f"sha256:{sha256(encoded).hexdigest()}"
-
-
 def build_disposition_ledger(
     *,
     evidence_contract: Mapping[str, Any],
@@ -210,12 +168,28 @@ def build_disposition_ledger(
     """Build one deterministic disposition row per card and exact claim."""
 
     deck_fingerprint = str(evidence_contract["deck_fingerprint"])
+    evidence_cards = tuple(evidence_contract.get("cards", ()))
+    expected_claim_ids = {
+        str(claim_id)
+        for card in evidence_cards
+        for claim_id in card.get("claim_ids", ())
+    }
+    expected_claim_ids.update(
+        str(claim_id)
+        for claim_id in evidence_contract.get("claim_ids", ())
+    )
     lifecycle_by_card: dict[str, list[Mapping[str, Any]]] = {}
     seen_claim_ids: set[str] = set()
     for row in claim_lifecycle_rows:
+        if str(row.get("deck_fingerprint", "")) != deck_fingerprint:
+            raise ValueError("claim_lifecycle_deck_fingerprint_mismatch")
         claim_id = str(row["claim_id"])
         if claim_id in seen_claim_ids:
             raise ValueError(f"claim_disposition_duplicate:{claim_id}")
+        if claim_id not in expected_claim_ids:
+            raise ValueError(
+                f"claim_lifecycle_not_in_evidence_contract:{claim_id}"
+            )
         seen_claim_ids.add(claim_id)
         lifecycle_by_card.setdefault(str(row["composite_card_key"]), []).append(row)
 
@@ -223,7 +197,7 @@ def build_disposition_ledger(
     claim_rows: list[ClaimDispositionRow] = []
     projected_claim_ids: set[str] = set()
     for card in sorted(
-        evidence_contract.get("cards", ()),
+        evidence_cards,
         key=lambda item: str(item["composite_card_key"]),
     ):
         composite_card_key = str(card["composite_card_key"])
@@ -233,6 +207,7 @@ def build_disposition_ledger(
         )
         runtime_paths = _runtime_paths(
             composite_card_key=composite_card_key,
+            physical_owner=str(card["physical_owner"]),
             physical_emission_index=physical_emission_index,
             runtime_surface_ledger=runtime_surface_ledger,
         )
@@ -281,20 +256,7 @@ def build_disposition_ledger(
                     evidence_id=str(lifecycle_row["evidence_id"]),
                     disposition=claim_disposition,
                     runtime_paths=(
-                        tuple(
-                            sorted(
-                                {
-                                    str(path)
-                                    for key in (
-                                        "runtime_paths",
-                                        "emitted_files",
-                                    )
-                                    for path in lifecycle_row.get(key, ())
-                                    if isinstance(path, str) and path
-                                }
-                            )
-                        )
-                        or runtime_paths
+                        runtime_paths
                         if claim_disposition
                         is ClaimDisposition.RUNTIME_EMITTED
                         else ()
@@ -337,16 +299,6 @@ def build_disposition_ledger(
             ),
             runtime_paths=(),
         )
-        emitted_paths = tuple(
-            sorted(
-                {
-                    str(path)
-                    for key in ("runtime_paths", "emitted_files")
-                    for path in lifecycle_row.get(key, ())
-                    if isinstance(path, str) and path
-                }
-            )
-        )
         claim_rows.append(
             ClaimDispositionRow(
                 deck_fingerprint=deck_fingerprint,
@@ -356,12 +308,7 @@ def build_disposition_ledger(
                     lifecycle_row.get("evidence_id") or claim_id
                 ),
                 disposition=claim_disposition,
-                runtime_paths=(
-                    emitted_paths
-                    if claim_disposition
-                    is ClaimDisposition.RUNTIME_EMITTED
-                    else ()
-                ),
+                runtime_paths=(),
                 reason_code=claim_reason,
             )
         )
@@ -373,7 +320,7 @@ def build_disposition_ledger(
         deck_fingerprint=deck_fingerprint,
         cards=cards,
         claims=claims,
-        content_sha256=_ledger_sha256(
+        content_sha256=disposition_ledger_content_sha256(
             deck_fingerprint=deck_fingerprint,
             cards=cards,
             claims=claims,
@@ -427,11 +374,51 @@ def build_dual_closure(
         )
     ):
         unresolved.add("incomplete_globalvalues_decision")
+    for decision in globalvalues_decisions:
+        if not isinstance(decision, Mapping):
+            unresolved.add("invalid_globalvalues_decision")
+            continue
+        try:
+            key = str(decision["key"])
+            claim_ids = decision["claim_ids"]
+            if not isinstance(claim_ids, (list, tuple)):
+                raise ValueError("globalvalue_claim_ids_invalid")
+            typed_decision = GlobalValueDecision(
+                deck_fingerprint=decision["deck_fingerprint"],
+                key=key,
+                kind=GlobalValueDecisionKind(decision["kind"]),
+                baseline_canonical_json=_canonical_value_bytes(
+                    decision["baseline"]
+                ),
+                emitted_canonical_json=_canonical_value_bytes(
+                    decision["emitted"]
+                ),
+                authority_id=decision["authority_id"],
+                claim_ids=tuple(claim_ids),
+                reason=decision["reason"],
+            )
+            if (
+                decision.get("status") != "complete"
+                or typed_decision.deck_fingerprint
+                != dispositions.deck_fingerprint
+                or key not in FALLBACK_GLOBALVALUES_BASELINE
+                or typed_decision.baseline_canonical_json
+                != _canonical_value_bytes(FALLBACK_GLOBALVALUES_BASELINE[key])
+            ):
+                raise ValueError("globalvalues_decision_contract_invalid")
+        except (KeyError, TypeError, ValueError):
+            unresolved.add("invalid_globalvalues_decision")
     strategy_status = strategy_source_status
     return DualClosureStatus(
         pre_run_contract_status="incomplete" if unresolved else "complete",
         strategy_authority_status=strategy_status,
-        exact_guide_authority=strategy_status == "strong",
+        exact_guide_authority=(
+            strategy_status == "strong"
+            and any(
+                row.authority_lane is EvidenceLane.EXACT_LIVE_GUIDE
+                for row in dispositions.cards
+            )
+        ),
         unresolved_reasons=tuple(sorted(unresolved)),
     )
 

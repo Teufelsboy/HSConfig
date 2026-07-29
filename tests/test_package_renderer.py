@@ -11,6 +11,7 @@ from hsconfig.package_domain import (
     GlobalValuesDecisionLedger,
     LayeredEvidenceContract,
     MulliganPlanModel,
+    disposition_ledger_content_sha256,
 )
 from hsconfig.package_model import (
     PackageArtifact,
@@ -240,7 +241,16 @@ def _model() -> PackageModel:
         ),
         "globalvalues",
     )
-    dispositions = DispositionLedger("fingerprint", (), (), "dispositions")
+    dispositions = DispositionLedger(
+        "fingerprint",
+        (),
+        (),
+        disposition_ledger_content_sha256(
+            deck_fingerprint="fingerprint",
+            cards=(),
+            claims=(),
+        ),
+    )
     evidence = LayeredEvidenceContract("fingerprint", (), False, 0, 0, "evidence")
     return PackageModel(
         "Fixture Deck", "fingerprint", mulligan, globalvalues, dispositions, evidence,
@@ -259,9 +269,7 @@ def _model_with_cardid() -> PackageModel:
     )
 
     model = _model()
-    dispositions = DispositionLedger(
-        "fingerprint",
-        (
+    disposition_cards = (
             CardDispositionRow(
                 "fingerprint",
                 "CARD_A",
@@ -275,9 +283,16 @@ def _model_with_cardid() -> PackageModel:
                 ("CARD_A.json",),
                 "fixture",
             ),
-        ),
+        )
+    dispositions = DispositionLedger(
+        "fingerprint",
+        disposition_cards,
         (),
-        "dispositions",
+        disposition_ledger_content_sha256(
+            deck_fingerprint="fingerprint",
+            cards=disposition_cards,
+            claims=(),
+        ),
     )
     return PackageModel(
         model.deck_name,

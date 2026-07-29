@@ -21,6 +21,7 @@ from hsconfig.package_domain import (
     MulliganSuppressionModel,
     RuntimeSurfaceDecision,
     RuntimeSurfacePlan,
+    disposition_ledger_content_sha256,
 )
 from hsconfig.package_model import (
     PackageArtifact,
@@ -275,6 +276,8 @@ def test_globalvalues_ledger_rejects_a_conflicting_duplicate_key() -> None:
         emitted_canonical_json=(
             b'{"values":[{"condition":"*","value":"2"}]}'
         ),
+        authority_id="claim-overlay",
+        claim_ids=("claim-overlay",),
         reason="conflicting fixture",
     )
 
@@ -290,18 +293,14 @@ def test_globalvalues_ledger_rejects_a_conflicting_duplicate_key() -> None:
 
 def test_globalvalues_ledger_rejects_an_empty_decision_key() -> None:
     model = package_model()
-    empty_key = replace(
-        model.globalvalues_ledger.decisions[0],
-        key="",
-    )
 
     with pytest.raises(
         ValueError,
-        match="globalvalues_decision_key_invalid",
+        match="globalvalue_key_invalid",
     ):
         replace(
-            model.globalvalues_ledger,
-            decisions=(empty_key,),
+            model.globalvalues_ledger.decisions[0],
+            key="",
         )
 
 
@@ -360,9 +359,15 @@ def test_package_model_rejects_a_direct_suppressed_cardid_surface() -> None:
         runtime_paths=(),
         reason_code="suppressed",
     )
+    cards = (*model.disposition_ledger.cards, suppressed)
     ledger = replace(
         model.disposition_ledger,
-        cards=(*model.disposition_ledger.cards, suppressed),
+        cards=cards,
+        content_sha256=disposition_ledger_content_sha256(
+            deck_fingerprint=model.disposition_ledger.deck_fingerprint,
+            cards=cards,
+            claims=model.disposition_ledger.claims,
+        ),
     )
     direct_plan = RuntimeSurfacePlan(
         surfaces=tuple(
@@ -641,7 +646,14 @@ def test_all_domain_tuple_fields_copy_caller_lists() -> None:
     caller_cards = [card]
     caller_claims = [claim]
     ledger = DispositionLedger(
-        "fingerprint", caller_cards, caller_claims, "dispositions"
+        "fingerprint",
+        caller_cards,
+        caller_claims,
+        disposition_ledger_content_sha256(
+            deck_fingerprint="fingerprint",
+            cards=tuple(caller_cards),
+            claims=tuple(caller_claims),
+        ),
     )
     caller_global_claim_ids = ["claim-global"]
     decision = replace(
@@ -810,9 +822,7 @@ def package_model() -> PackageModel:
         ),
         content_sha256="globalvalues",
     )
-    dispositions = DispositionLedger(
-        deck_fingerprint="fingerprint",
-        cards=(
+    disposition_cards = (
             CardDispositionRow(
                 deck_fingerprint="fingerprint",
                 composite_card_key="CARD_A",
@@ -826,9 +836,16 @@ def package_model() -> PackageModel:
                 runtime_paths=("CARD_A.json",),
                 reason_code="fixture",
             ),
-        ),
+        )
+    dispositions = DispositionLedger(
+        deck_fingerprint="fingerprint",
+        cards=disposition_cards,
         claims=(),
-        content_sha256="dispositions",
+        content_sha256=disposition_ledger_content_sha256(
+            deck_fingerprint="fingerprint",
+            cards=disposition_cards,
+            claims=(),
+        ),
     )
     evidence = LayeredEvidenceContract(
         deck_fingerprint="fingerprint",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,7 @@ from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.config_readiness import (
     build_config_readiness_report,
+    project_config_readiness_from_dispositions,
 )
 from hsconfig.configure_stages import (
     StageObserver,
@@ -80,6 +83,7 @@ from hsconfig.source_claim_lifecycle import (
 )
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
+    project_source_contract_audit_from_dispositions,
     render_source_contract_audit_markdown,
 )
 from hsconfig.source_evidence_closure import build_source_evidence_closure_report
@@ -166,6 +170,7 @@ def build_package_payload(
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     stage_observer: StageObserver | None = None,
     mulligan_source_gaps: list[dict[str, str]] | None = None,
+    include_disposition_diagnostics: bool = False,
 ) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     deck_slug = slugify_deck_name(args.deck_name)
@@ -647,14 +652,16 @@ def build_package_payload(
         config_readiness_report=config_readiness_report,
         initial_lifecycle_rows=initial_lifecycle_rows,
         plan_input_diagnostics=plan_input_diagnostics,
+        include_evidence_authority=include_disposition_diagnostics,
     )
-    _disposition_ledger, _dual_closure_status = (
+    disposition_ledger, dual_closure_status = (
         _build_package_disposition_ledger(
             deck_identity=deck_identity,
             source_contract_audit_report=source_contract_audit_report,
             runtime_surface_ledger=runtime_surface_ledger,
             globalvalues_config=globalvalues["config"],
             globalvalues_baseline=baseline,
+            global_values_authority_matrix=global_values_authority_matrix,
             strategy_source_status=(
                 "strong"
                 if str(
@@ -665,6 +672,23 @@ def build_package_payload(
             ),
         )
     )
+    if include_disposition_diagnostics:
+        source_contract_audit_report = (
+            project_source_contract_audit_from_dispositions(
+                source_contract_audit_report,
+                dispositions=disposition_ledger,
+                dual_closure=dual_closure_status,
+            )
+        )
+        config_readiness_report = project_config_readiness_from_dispositions(
+            config_readiness_report,
+            dispositions=disposition_ledger,
+            dual_closure=dual_closure_status,
+        )
+        write_json(
+            reports_dir / "per_card_config_readiness_report.json",
+            config_readiness_report,
+        )
     write_json(reports_dir / "source_contract_audit.json", source_contract_audit_report)
     (reports_dir / "source_contract_audit.md").write_text(
         render_source_contract_audit_markdown(source_contract_audit_report),
@@ -689,6 +713,16 @@ def build_package_payload(
             source_contract_audit_report,
             card_behavior_plan=card_behavior_plan,
             runtime_surface_ledger=runtime_surface_ledger,
+            disposition_ledger=(
+                disposition_ledger
+                if include_disposition_diagnostics
+                else None
+            ),
+            dual_closure_status=(
+                dual_closure_status
+                if include_disposition_diagnostics
+                else None
+            ),
         )
     )
     write_json(
@@ -825,24 +859,29 @@ def build_package_payload(
         },
     )
     code = 0 if report["status"] == "passed" else 1
-    return (
-        {
-            "status": report["status"],
-            "package": str(out),
-            "deck_slug": deck_slug,
-            "errors": report["errors"],
-            "guide_claims_count": len(guide_claim_bundle["claims"]),
-            "guide_backed_cards": guide_claim_bundle["coverage"]["guide_backed_cards"],
-            "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
-            "config_readiness_summary": config_readiness_report["summary"],
-            "guide_source_depth_status": guide_source_depth_report["depth_status"],
-            "guide_strength_summary": operator_summary["guide_strength_summary"],
-            "semantic_blockers": operator_summary["semantic_blockers"],
-            "operator_summary": operator_summary,
-            "next_action": operator_summary["next_action"],
-        },
-        code,
-    )
+    result_payload = {
+        "status": report["status"],
+        "package": str(out),
+        "deck_slug": deck_slug,
+        "errors": report["errors"],
+        "guide_claims_count": len(guide_claim_bundle["claims"]),
+        "guide_backed_cards": guide_claim_bundle["coverage"]["guide_backed_cards"],
+        "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
+        "config_readiness_summary": config_readiness_report["summary"],
+        "guide_source_depth_status": guide_source_depth_report["depth_status"],
+        "guide_strength_summary": operator_summary["guide_strength_summary"],
+        "semantic_blockers": operator_summary["semantic_blockers"],
+        "operator_summary": operator_summary,
+        "next_action": operator_summary["next_action"],
+    }
+    if include_disposition_diagnostics:
+        result_payload["disposition_diagnostics"] = (
+            _disposition_diagnostics_document(
+                dispositions=disposition_ledger,
+                dual_closure=dual_closure_status,
+            )
+        )
+    return result_payload, code
 
 
 def _build_package_disposition_ledger(
@@ -852,6 +891,7 @@ def _build_package_disposition_ledger(
     runtime_surface_ledger: dict[str, Any],
     globalvalues_config: dict[str, Any],
     globalvalues_baseline: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
     strategy_source_status: str,
 ):
     deck_fingerprint = str(deck_identity.get("deck_fingerprint", ""))
@@ -877,6 +917,11 @@ def _build_package_disposition_ledger(
     physical_emission_index: dict[str, list[str]] = {}
     physical_emissions: list[dict[str, Any]] = []
     composite_by_card: dict[str, str] = {}
+    lifecycle_by_id = {
+        str(row.get("claim_id", "")): row
+        for row in lifecycle_rows
+        if isinstance(row, dict) and row.get("claim_id")
+    }
     for card in analysis_cards_from_deck_identity(deck_identity):
         card_id = str(card.get("card_id", ""))
         if not card_id:
@@ -928,6 +973,15 @@ def _build_package_disposition_ledger(
                 for path in runtime_paths
             )
         claim_ids = sorted(claims_by_card.get(card_id, set()))
+        authority_lane = _card_evidence_authority_lane(
+            claim_ids=claim_ids,
+            claim_rows=claim_rows,
+            lifecycle_by_id=lifecycle_by_id,
+        )
+        evidence_ids = _card_evidence_authority_ids(
+            claim_ids=claim_ids,
+            claim_rows=claim_rows,
+        )
         evidence_cards.append(
             {
                 "composite_card_key": composite_key,
@@ -935,10 +989,9 @@ def _build_package_disposition_ledger(
                 "official_semantics_canonical_json": {
                     "GameCardId": physical_owner,
                 },
-                "authority_lane": "A",
-                "evidence_ids": [
-                    *claim_ids,
-                ]
+                "authority_lane": authority_lane,
+                "evidence_ids": evidence_ids
+                or claim_ids
                 or [f"official:{card_id}"],
                 "claim_ids": claim_ids,
                 "physical_owner": physical_owner,
@@ -946,11 +999,6 @@ def _build_package_disposition_ledger(
         )
 
     normalized_lifecycle_rows: list[dict[str, Any]] = []
-    lifecycle_by_id = {
-        str(row.get("claim_id", "")): row
-        for row in lifecycle_rows
-        if isinstance(row, dict) and row.get("claim_id")
-    }
     for claim_id, raw_claim in sorted(
         claim_rows.items() if isinstance(claim_rows, dict) else ()
     ):
@@ -981,7 +1029,10 @@ def _build_package_disposition_ledger(
                 "deck_fingerprint": deck_fingerprint,
                 "claim_id": str(claim_id),
                 "claim_kind": str(claim.get("claim_kind", "")),
-                "evidence_id": str(claim_id),
+                "evidence_id": _claim_evidence_authority_id(
+                    claim,
+                    fallback=str(claim_id),
+                ),
                 "composite_card_key": (
                     composite_by_card.get(owner_card_id, "__contract__")
                 ),
@@ -989,7 +1040,11 @@ def _build_package_disposition_ledger(
                     lifecycle
                 ),
                 "runtime_paths": emitted_files,
-                "policy_id": lifecycle.get("policy_id"),
+                "policy_id": (
+                    lifecycle.get("policy_id")
+                    or claim.get("policy_id")
+                    or _claim_evidence_policy_id(claim)
+                ),
             }
         )
 
@@ -997,6 +1052,12 @@ def _build_package_disposition_ledger(
         evidence_contract={
             "deck_fingerprint": deck_fingerprint,
             "cards": evidence_cards,
+            "claim_ids": sorted(
+                str(claim_id)
+                for claim_id in (
+                    claim_rows if isinstance(claim_rows, dict) else {}
+                )
+            ),
         },
         claim_lifecycle_rows=normalized_lifecycle_rows,
         physical_emission_index=physical_emission_index,
@@ -1004,26 +1065,262 @@ def _build_package_disposition_ledger(
             "physical_emissions": physical_emissions,
         },
     )
-    globalvalue_keys = sorted(
-        set(globalvalues_baseline) | set(globalvalues_config)
-    )
     dual_closure = build_dual_closure(
         dispositions=dispositions,
-        globalvalues_decisions=[
-            {
-                "key": key,
-                "status": (
-                    "complete"
-                    if key in globalvalues_baseline
-                    and key in globalvalues_config
-                    else "incomplete"
-                ),
-            }
-            for key in globalvalue_keys
-        ],
+        globalvalues_decisions=_globalvalues_decision_rows(
+            deck_fingerprint=deck_fingerprint,
+            globalvalues_config=globalvalues_config,
+            globalvalues_baseline=globalvalues_baseline,
+            global_values_authority_matrix=(
+                global_values_authority_matrix
+            ),
+        ),
         strategy_source_status=strategy_source_status,
     )
     return dispositions, dual_closure
+
+
+def _card_evidence_authority_lane(
+    *,
+    claim_ids: list[str],
+    claim_rows: Mapping[str, Any],
+    lifecycle_by_id: Mapping[str, Any],
+) -> str:
+    if claim_ids and all(
+        _is_exact_bot_delegation(
+            lifecycle_by_id.get(claim_id),
+            claim_rows.get(claim_id),
+        )
+        for claim_id in claim_ids
+    ):
+        return "E"
+    lanes = {
+        str(authority.get("lane", ""))
+        for claim_id in claim_ids
+        for authority in (
+            _claim_evidence_authority(claim_rows.get(claim_id)),
+        )
+        if authority is not None
+    }
+    for lane in ("B", "D", "C", "A"):
+        if lane in lanes:
+            return lane
+    return "A"
+
+
+def _card_evidence_authority_ids(
+    *,
+    claim_ids: list[str],
+    claim_rows: Mapping[str, Any],
+) -> list[str]:
+    return sorted(
+        {
+            str(authority["authority_id"])
+            for claim_id in claim_ids
+            for authority in (
+                _claim_evidence_authority(claim_rows.get(claim_id)),
+            )
+            if authority is not None
+            and isinstance(authority.get("authority_id"), str)
+            and authority["authority_id"]
+        }
+    )
+
+
+def _claim_evidence_authority(
+    claim: Any,
+) -> Mapping[str, Any] | None:
+    if not isinstance(claim, Mapping):
+        return None
+    authority = claim.get("evidence_authority")
+    return authority if isinstance(authority, Mapping) else None
+
+
+def _claim_evidence_authority_id(
+    claim: Any,
+    *,
+    fallback: str,
+) -> str:
+    authority = _claim_evidence_authority(claim)
+    if authority is None:
+        return fallback
+    authority_id = authority.get("authority_id")
+    return (
+        authority_id
+        if isinstance(authority_id, str) and authority_id
+        else fallback
+    )
+
+
+def _claim_evidence_policy_id(claim: Any) -> str | None:
+    authority = _claim_evidence_authority(claim)
+    if authority is None:
+        return None
+    policy_id = authority.get("policy_id")
+    return (
+        policy_id
+        if isinstance(policy_id, str) and policy_id
+        else None
+    )
+
+
+def _is_exact_bot_delegation(lifecycle: Any, claim: Any) -> bool:
+    if not isinstance(lifecycle, Mapping):
+        return False
+    policy_id = (
+        lifecycle.get("policy_id")
+        or (
+            claim.get("policy_id")
+            if isinstance(claim, Mapping)
+            else None
+        )
+        or _claim_evidence_policy_id(claim)
+    )
+    return (
+        str(lifecycle.get("builder_or_router_decision", ""))
+        == "bot_delegated"
+        and policy_id == "BOT_NATIVE_PRE_RUN"
+    )
+
+
+def _globalvalues_decision_rows(
+    *,
+    deck_fingerprint: str,
+    globalvalues_config: Mapping[str, Any],
+    globalvalues_baseline: Mapping[str, Any],
+    global_values_authority_matrix: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    overlays = {
+        str(row.get("key", "")): row
+        for row in global_values_authority_matrix.get(
+            "allowed_step1_overlays",
+            (),
+        )
+        if isinstance(row, Mapping)
+        and row.get("key")
+        and row.get("key") != "baseline"
+    }
+    decisions: list[dict[str, Any]] = []
+    for key in sorted(
+        set(globalvalues_baseline) | set(globalvalues_config)
+    ):
+        baseline_present = key in globalvalues_baseline
+        emitted_present = key in globalvalues_config
+        baseline_value = globalvalues_baseline.get(key)
+        emitted_value = globalvalues_config.get(key)
+        overlay = overlays.get(key)
+        copy_baseline = (
+            baseline_present
+            and emitted_present
+            and baseline_value == emitted_value
+        )
+        claim_ids = (
+            sorted(
+                {
+                    str(value)
+                    for value in (
+                        overlay.get("claim_id"),
+                        *overlay.get("source_claim_ids", ()),
+                    )
+                    if value
+                }
+            )
+            if isinstance(overlay, Mapping)
+            else []
+        )
+        decisions.append(
+            {
+                "deck_fingerprint": deck_fingerprint,
+                "key": key,
+                "status": (
+                    "complete"
+                    if baseline_present and emitted_present
+                    else "incomplete"
+                ),
+                "kind": (
+                    "copy_baseline"
+                    if copy_baseline
+                    else "authorized_overlay"
+                ),
+                "baseline": baseline_value,
+                "emitted": emitted_value,
+                "authority_id": (
+                    "globalvalues:baseline"
+                    if copy_baseline
+                    else str(
+                        (overlay or {}).get("authority")
+                        or "globalvalues:overlay_unclassified"
+                    )
+                ),
+                "claim_ids": claim_ids,
+                "reason": (
+                    "copied canonical baseline"
+                    if copy_baseline
+                    else str(
+                        (overlay or {}).get("reason")
+                        or "overlay authority is not classified"
+                    )
+                ),
+            }
+        )
+    return decisions
+
+
+def _disposition_diagnostics_document(
+    *,
+    dispositions,
+    dual_closure,
+) -> dict[str, Any]:
+    return {
+        "authority": "diagnostic_only",
+        "operator_gate_impact": "diagnostic_only",
+        "apply_blocking": False,
+        "normal_apply_authority": "reports/operator_summary.json",
+        "ledger": {
+            "deck_fingerprint": dispositions.deck_fingerprint,
+            "content_sha256": dispositions.content_sha256,
+            "cards": [
+                {
+                    "deck_fingerprint": row.deck_fingerprint,
+                    "composite_card_key": row.composite_card_key,
+                    "zone": row.zone,
+                    "official_semantics": json.loads(
+                        row.official_semantics_canonical_json
+                    ),
+                    "authority_lane": row.authority_lane.value,
+                    "evidence_ids": list(row.evidence_ids),
+                    "claim_ids": list(row.claim_ids),
+                    "physical_owner": row.physical_owner,
+                    "disposition": row.disposition.value,
+                    "runtime_paths": list(row.runtime_paths),
+                    "reason_code": row.reason_code,
+                }
+                for row in dispositions.cards
+            ],
+            "claims": [
+                {
+                    "deck_fingerprint": row.deck_fingerprint,
+                    "claim_id": row.claim_id,
+                    "claim_kind": row.claim_kind,
+                    "evidence_id": row.evidence_id,
+                    "disposition": row.disposition.value,
+                    "runtime_paths": list(row.runtime_paths),
+                    "reason_code": row.reason_code,
+                }
+                for row in dispositions.claims
+            ],
+        },
+        "dual_closure": {
+            "pre_run_contract_status": (
+                dual_closure.pre_run_contract_status
+            ),
+            "strategy_authority_status": (
+                dual_closure.strategy_authority_status
+            ),
+            "exact_guide_authority": dual_closure.exact_guide_authority,
+            "unresolved_reasons": list(dual_closure.unresolved_reasons),
+        },
+    }
 
 
 def _final_disposition_builder_state(

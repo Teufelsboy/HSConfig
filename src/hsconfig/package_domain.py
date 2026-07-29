@@ -212,6 +212,56 @@ class ClaimDispositionRow:
         object.__setattr__(self, "runtime_paths", runtime_paths)
 
 
+def disposition_ledger_content_sha256(
+    *,
+    deck_fingerprint: str,
+    cards: tuple[CardDispositionRow, ...],
+    claims: tuple[ClaimDispositionRow, ...],
+) -> str:
+    """Hash the canonical semantic content of a disposition ledger."""
+
+    payload = {
+        "deck_fingerprint": deck_fingerprint,
+        "cards": [
+            {
+                "deck_fingerprint": row.deck_fingerprint,
+                "composite_card_key": row.composite_card_key,
+                "zone": row.zone,
+                "official_semantics_canonical_json": json.loads(
+                    row.official_semantics_canonical_json
+                ),
+                "authority_lane": row.authority_lane.value,
+                "evidence_ids": list(row.evidence_ids),
+                "claim_ids": list(row.claim_ids),
+                "physical_owner": row.physical_owner,
+                "disposition": row.disposition.value,
+                "runtime_paths": list(row.runtime_paths),
+                "reason_code": row.reason_code,
+            }
+            for row in cards
+        ],
+        "claims": [
+            {
+                "deck_fingerprint": row.deck_fingerprint,
+                "claim_id": row.claim_id,
+                "claim_kind": row.claim_kind,
+                "evidence_id": row.evidence_id,
+                "disposition": row.disposition.value,
+                "runtime_paths": list(row.runtime_paths),
+                "reason_code": row.reason_code,
+            }
+            for row in claims
+        ],
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(canonical).hexdigest()}"
+
+
 @dataclass(frozen=True, slots=True)
 class DispositionLedger:
     deck_fingerprint: str
@@ -220,8 +270,20 @@ class DispositionLedger:
     content_sha256: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "cards", tuple(self.cards))
-        object.__setattr__(self, "claims", tuple(self.claims))
+        cards = tuple(self.cards)
+        claims = tuple(self.claims)
+        object.__setattr__(self, "cards", cards)
+        object.__setattr__(self, "claims", claims)
+        if any(row.deck_fingerprint != self.deck_fingerprint for row in cards):
+            raise ValueError("card_disposition_deck_fingerprint_mismatch")
+        if any(row.deck_fingerprint != self.deck_fingerprint for row in claims):
+            raise ValueError("claim_disposition_deck_fingerprint_mismatch")
+        if self.content_sha256 != disposition_ledger_content_sha256(
+            deck_fingerprint=self.deck_fingerprint,
+            cards=cards,
+            claims=claims,
+        ):
+            raise ValueError("disposition_ledger_content_sha256_invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +316,20 @@ class GlobalValueDecision:
     reason: str
 
     def __post_init__(self) -> None:
+        for field, value in (
+            ("deck_fingerprint", self.deck_fingerprint),
+            ("key", self.key),
+            ("authority_id", self.authority_id),
+            ("reason", self.reason),
+        ):
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+            ):
+                raise ValueError(f"globalvalue_{field}_invalid")
+        if not isinstance(self.kind, GlobalValueDecisionKind):
+            raise ValueError("globalvalue_kind_invalid")
         object.__setattr__(
             self,
             "claim_ids",
@@ -269,6 +345,11 @@ class GlobalValueDecision:
             and self.baseline_canonical_json != self.emitted_canonical_json
         ):
             raise ValueError("globalvalue_copy_baseline_mismatch")
+        if (
+            self.kind is GlobalValueDecisionKind.AUTHORIZED_OVERLAY
+            and not self.claim_ids
+        ):
+            raise ValueError("globalvalue_overlay_authority_missing")
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,5 +1,5 @@
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 import pytest
@@ -33,10 +33,11 @@ def _claim(
     *,
     claim_id: str = "claim-1",
     builder_state: str,
+    deck_fingerprint: str = "deck-fingerprint",
     policy_id: str | None = None,
 ) -> dict[str, object]:
     row: dict[str, object] = {
-        "deck_fingerprint": "deck-fingerprint",
+        "deck_fingerprint": deck_fingerprint,
         "claim_id": claim_id,
         "claim_kind": "card_play",
         "evidence_id": "evidence-1",
@@ -242,6 +243,142 @@ def test_duplicate_claim_lifecycle_is_rejected_instead_of_double_counted():
         )
 
 
+def test_extra_claim_lifecycle_is_rejected_instead_of_entering_the_ledger():
+    with pytest.raises(
+        ValueError,
+        match="claim_lifecycle_not_in_evidence_contract",
+    ):
+        build_disposition_ledger(
+            evidence_contract={
+                "deck_fingerprint": "deck-fingerprint",
+                "cards": [_card("CARD_001")],
+            },
+            claim_lifecycle_rows=[
+                _claim(
+                    "CARD_001",
+                    builder_state="suppressed_unsupported_surface",
+                ),
+                _claim(
+                    "CARD_001",
+                    claim_id="claim-extra",
+                    builder_state="suppressed_unsupported_surface",
+                ),
+            ],
+            physical_emission_index={},
+            runtime_surface_ledger={"physical_emissions": []},
+        )
+
+
+def test_cross_deck_claim_lifecycle_is_rejected():
+    with pytest.raises(
+        ValueError,
+        match="claim_lifecycle_deck_fingerprint_mismatch",
+    ):
+        build_disposition_ledger(
+            evidence_contract={
+                "deck_fingerprint": "deck-a",
+                "cards": [_card("CARD_001")],
+            },
+            claim_lifecycle_rows=[
+                _claim(
+                    "CARD_001",
+                    builder_state="suppressed_unsupported_surface",
+                    deck_fingerprint="deck-b",
+                )
+            ],
+            physical_emission_index={},
+            runtime_surface_ledger={"physical_emissions": []},
+        )
+
+
+def test_raw_claim_ids_are_scoped_by_their_deck_fingerprint():
+    ledgers = [
+        build_disposition_ledger(
+            evidence_contract={
+                "deck_fingerprint": deck_fingerprint,
+                "cards": [_card("CARD_001")],
+            },
+            claim_lifecycle_rows=[
+                _claim(
+                    "CARD_001",
+                    builder_state="suppressed_unsupported_surface",
+                    deck_fingerprint=deck_fingerprint,
+                )
+            ],
+            physical_emission_index={},
+            runtime_surface_ledger={"physical_emissions": []},
+        )
+        for deck_fingerprint in ("deck-a", "deck-b")
+    ]
+
+    claim_identities = {
+        (ledger.claims[0].deck_fingerprint, ledger.claims[0].claim_id)
+        for ledger in ledgers
+    }
+    assert claim_identities == {
+        ("deck-a", "claim-1"),
+        ("deck-b", "claim-1"),
+    }
+
+
+def test_lifecycle_runtime_path_cannot_self_attest_physical_emission():
+    ledger = build_disposition_ledger(
+        evidence_contract={
+            "deck_fingerprint": "deck-fingerprint",
+            "cards": [_card("CARD_001")],
+        },
+        claim_lifecycle_rows=[
+            {
+                **_claim(
+                    "CARD_001",
+                    builder_state="runtime_emitted",
+                ),
+                "runtime_paths": ["FORGED.json"],
+            }
+        ],
+        physical_emission_index={},
+        runtime_surface_ledger={"physical_emissions": []},
+    )
+
+    assert ledger.cards[0].disposition is not CardDisposition.RUNTIME_EMITTED
+    assert ledger.cards[0].runtime_paths == ()
+    assert ledger.claims[0].disposition is not ClaimDisposition.RUNTIME_EMITTED
+    assert ledger.claims[0].runtime_paths == ()
+
+
+def test_wrong_physical_owner_cannot_attest_runtime_emission():
+    ledger = build_disposition_ledger(
+        evidence_contract={
+            "deck_fingerprint": "deck-fingerprint",
+            "cards": [_card("CARD_001")],
+        },
+        claim_lifecycle_rows=[
+            _claim(
+                "CARD_001",
+                builder_state="suppressed_unsupported_surface",
+            )
+        ],
+        physical_emission_index={
+            "main_deck:CARD_001": ["CARD_001.json"],
+        },
+        runtime_surface_ledger={
+            "physical_emissions": [
+                {
+                    "composite_card_key": "main_deck:CARD_001",
+                    "physical_owner": "OTHER_CARD",
+                    "relative_path": "CARD_001.json",
+                    "meaningful": True,
+                }
+            ]
+        },
+    )
+
+    assert ledger.cards[0].disposition is not CardDisposition.RUNTIME_EMITTED
+    assert ledger.cards[0].runtime_paths == ()
+    assert ledger.claims[0].disposition is not ClaimDisposition.RUNTIME_EMITTED
+    assert ledger.claims[0].runtime_paths == ()
+
+
 def test_approved_inventory_has_one_row_per_exact_card_and_claim():
     inventory = json.loads(
         (
@@ -364,3 +501,26 @@ def test_ledger_is_deeply_immutable_and_hash_is_order_independent():
     assert first.cards[0].claim_ids == ("claim-a",)
     with pytest.raises(FrozenInstanceError):
         first.cards[0].reason_code = "mutated"
+
+
+def test_disposition_ledger_rejects_a_forged_content_hash():
+    ledger = build_disposition_ledger(
+        evidence_contract={
+            "deck_fingerprint": "deck-fingerprint",
+            "cards": [_card("CARD_001")],
+        },
+        claim_lifecycle_rows=[
+            _claim(
+                "CARD_001",
+                builder_state="suppressed_unsupported_surface",
+            )
+        ],
+        physical_emission_index={},
+        runtime_surface_ledger={"physical_emissions": []},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="disposition_ledger_content_sha256_invalid",
+    ):
+        replace(ledger, content_sha256=f"sha256:{'0' * 64}")
