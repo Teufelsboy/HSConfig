@@ -261,7 +261,45 @@ def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
             "mechanic_usage",
         }
     )
+    normalized["evidence_lane_candidate"] = evidence_lane_candidate(
+        normalized
+    )
     return normalized
+
+
+def evidence_lane_candidate(claim: Mapping[str, Any]) -> str | None:
+    """Return a diagnostic lane hint without granting evidence authority."""
+    source_type = _quality_source_type(claim)
+    source_family = _normalized_text(claim.get("source_family"))
+    if source_type in {
+        "official_card_data",
+        "hearthstonejson",
+        "blizzard_card_library",
+    } or source_family in STATIC_SEMANTIC_SOURCE_FAMILIES:
+        return "A"
+    if source_type == "versioned_internal_policy":
+        return "D"
+    if source_type not in {"community_guide", "public_guide"} and (
+        source_family not in PUBLIC_GUIDE_SOURCE_FAMILIES
+        and source_family not in {"archetype_guide", "mechanic_guide"}
+    ):
+        return None
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return None
+    if (
+        _normalized_text(claim.get("deck_match_scope"))
+        == "exact_deck_matched"
+        or _normalized_text(claim.get("source_lane"))
+        == "deck_matched_public_guide"
+    ):
+        return "B"
+    if (
+        _normalized_text(claim.get("deck_match_scope"))
+        in {"archetype_matched", "mechanic_matched"}
+        or source_family in {"archetype_guide", "mechanic_guide"}
+    ):
+        return "C"
+    return None
 
 
 def _quality_source_type(claim: Mapping[str, Any]) -> str:

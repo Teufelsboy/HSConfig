@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Mapping
 
+from hsconfig.source_document_model import evidence_lane_candidate
 from hsconfig.source_provenance import normalize_source_provenance
 
 
@@ -105,6 +106,14 @@ def classify_source_evidence(
             "source_freshness_lane": source_freshness_lane,
             "source_rank_lane": source_rank_lane,
             "source_lane": source_lane,
+            "evidence_lane_candidate": evidence_lane_candidate(
+                {
+                    **record,
+                    "source_visibility": visibility,
+                    "source_lane": source_lane,
+                    "deck_match_scope": deck_scope,
+                }
+            ),
             "freshness_status": provenance["freshness_status"],
             "current_or_evergreen": provenance["current_or_evergreen"],
             "current_or_evergreen_reason": provenance["current_or_evergreen_reason"],

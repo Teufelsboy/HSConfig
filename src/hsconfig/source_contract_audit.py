@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import json
 from typing import Any, Mapping, Sequence
 
 from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
+from hsconfig.evidence_contract import (
+    classify_evidence_authority,
+    load_policy_profile,
+)
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
@@ -29,6 +34,8 @@ def build_source_contract_audit(
     runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
     initial_lifecycle_rows: Sequence[Mapping[str, Any]] | None = None,
     plan_input_diagnostics: Mapping[str, Any] | None = None,
+    policy_profile: Mapping[str, Any] | None = None,
+    include_evidence_authority: bool = False,
 ) -> dict[str, Any]:
     """Explain why source claims did or did not lower into runtime surfaces."""
     deck_identity = deck_identity or {}
@@ -61,6 +68,11 @@ def build_source_contract_audit(
         card_behavior_plan=card_behavior_plan,
         combo_plan=combo_plan,
         global_values_authority_matrix=global_values_authority_matrix,
+    )
+    active_policy_profile = (
+        policy_profile or _packaged_policy_mapping()
+        if include_evidence_authority
+        else None
     )
 
     claim_rows: dict[str, dict[str, Any]] = {}
@@ -120,6 +132,20 @@ def build_source_contract_audit(
             )
         )
         policy_lane_counts[policy_lane] += 1
+        evidence_projection: dict[str, Any] = {}
+        if active_policy_profile is not None:
+            evidence_authority, evidence_lane_error = (
+                _claim_evidence_authority(
+                    claim=claim,
+                    deck_identity=deck_identity,
+                    verified_source_receipts=verified_source_receipts,
+                    policy_profile=active_policy_profile,
+                )
+            )
+            evidence_projection = {
+                "evidence_authority": evidence_authority,
+                "evidence_lane_error": evidence_lane_error,
+            }
         claim_rows[claim_id] = {
             "claim_id": claim_id,
             "claim_kind": normalized_claim_kind(claim),
@@ -135,6 +161,7 @@ def build_source_contract_audit(
             "cards": cards,
             "lane": lane,
             "policy_lane": policy_lane,
+            **evidence_projection,
             "first_reason": first_reason,
             "lowered_surfaces": emitted_surfaces,
             "surfaces": decisions,
@@ -189,6 +216,51 @@ def build_source_contract_audit(
     if plan_input_diagnostics is not None:
         report["plan_input_diagnostics"] = dict(plan_input_diagnostics)
     return report
+
+
+def _packaged_policy_mapping() -> dict[str, Any]:
+    profile = load_policy_profile()
+    return {
+        "policy_id": profile.policy_id,
+        "version": profile.version,
+        "effective_date": profile.effective_date,
+        "content_sha256": profile.content_sha256,
+        "rules": json.loads(profile.rules_canonical_json),
+    }
+
+
+def _claim_evidence_authority(
+    *,
+    claim: Mapping[str, Any],
+    deck_identity: Mapping[str, Any],
+    verified_source_receipts: Sequence[Mapping[str, Any]],
+    policy_profile: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        authority = classify_evidence_authority(
+            claim=claim,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+            policy_profile=policy_profile,
+        )
+    except ValueError as error:
+        if str(error) != "evidence_lane_unclassified":
+            raise
+        return None, "evidence_lane_unclassified"
+    return (
+        {
+            "lane": authority.lane.value,
+            "authority_id": authority.authority_id,
+            "source_identity": authority.source_identity,
+            "as_of_date": authority.as_of_date,
+            "claim_kind": authority.claim_kind,
+            "content_sha256": authority.content_sha256,
+            "exact_deck_fingerprint": authority.exact_deck_fingerprint,
+            "runtime_authorized": authority.runtime_authorized,
+            "reason": authority.reason,
+        },
+        None,
+    )
 
 
 def _claim_runtime_identity(

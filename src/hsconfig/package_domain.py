@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
+from hashlib import sha256
 from typing import Any, Literal
 
 
@@ -57,6 +59,43 @@ class EvidenceLane(StrEnum):
     ARCHETYPE_OR_MECHANIC_GUIDE = "C"
     VERSIONED_INTERNAL_POLICY = "D"
     BOT_DELEGATION = "E"
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyProfile:
+    policy_id: str
+    version: int
+    effective_date: str
+    content_sha256: str
+    rules_canonical_json: bytes
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.policy_id, str)
+            or not self.policy_id
+            or self.policy_id != self.policy_id.strip()
+        ):
+            raise ValueError("policy_profile_id_invalid")
+        if (
+            not isinstance(self.version, int)
+            or isinstance(self.version, bool)
+            or self.version < 1
+        ):
+            raise ValueError("policy_profile_version_invalid")
+        try:
+            parsed_date = date.fromisoformat(self.effective_date)
+        except (TypeError, ValueError) as error:
+            raise ValueError("policy_profile_effective_date_invalid") from error
+        if parsed_date.isoformat() != self.effective_date:
+            raise ValueError("policy_profile_effective_date_invalid")
+        canonical_rules = _canonical_json(bytes(self.rules_canonical_json))
+        expected_sha256 = f"sha256:{sha256(canonical_rules).hexdigest()}"
+        if self.content_sha256 != expected_sha256:
+            raise ValueError("policy_profile_content_sha256_invalid")
+        rules = json.loads(canonical_rules)
+        if not isinstance(rules, list) or not rules:
+            raise ValueError("policy_profile_rules_invalid")
+        object.__setattr__(self, "rules_canonical_json", canonical_rules)
 
 
 class CardDisposition(StrEnum):

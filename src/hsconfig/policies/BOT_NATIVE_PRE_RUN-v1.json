@@ -1,0 +1,47 @@
+{
+  "policy_id": "BOT_NATIVE_PRE_RUN",
+  "version": 1,
+  "effective_date": "2026-07-28",
+  "content_sha256": "sha256:11f503fbf0c487170efab34be74dcb4035afebcfa0f7897b605ea4deab5c1605",
+  "rules": [
+    {
+      "rule_id": "explicit_policy_claim",
+      "authority_lane": "D",
+      "runtime_authorized": true,
+      "action": "accept_explicit_policy_claim",
+      "required_claim_fields": [
+        "claim_id",
+        "claim_kind",
+        "policy_id",
+        "policy_version",
+        "policy_content_sha256",
+        "policy_rule_id",
+        "cards",
+        "action",
+        "reason_code"
+      ]
+    },
+    {
+      "rule_id": "intentional_bot_delegation",
+      "authority_lane": "E",
+      "runtime_authorized": false,
+      "action": "delegate_without_runtime_row",
+      "required_claim_fields": [
+        "claim_id",
+        "claim_kind",
+        "policy_id",
+        "reason_code"
+      ]
+    },
+    {
+      "rule_id": "unclassified_evidence_fails_closed",
+      "authority_lane": "none",
+      "runtime_authorized": false,
+      "action": "reject_unclassified_evidence",
+      "required_claim_fields": [
+        "claim_id",
+        "claim_kind"
+      ]
+    }
+  ]
+}
