@@ -5,8 +5,15 @@ import json
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from enum import EnumType
 from pathlib import Path
-from types import CellType, CodeType, FunctionType, MappingProxyType
+from types import (
+    CellType,
+    CodeType,
+    FunctionType,
+    MappingProxyType,
+    MemberDescriptorType,
+)
 from typing import Any, NamedTuple
 
 from hsconfig.config_quality_inputs import (
@@ -88,6 +95,17 @@ _UNKNOWN_MECHANIC_LOWERING_POLICY = MappingProxyType(
         ).items()
     }
 )
+
+
+def _path_name(value: Any) -> str:
+    """Project a path basename without consulting pathlib descriptors."""
+
+    parts = tuple(
+        part
+        for part in str(value or "").replace("\\", "/").split("/")
+        if part not in {"", "."}
+    )
+    return parts[-1] if parts else ""
 _EXPLICIT_OPENING_HAND_MULLIGAN_ROLES = frozenset(
     EXPLICIT_OPENING_HAND_MULLIGAN_ROLES
 )
@@ -242,7 +260,7 @@ def _mechanic_lowering_policy(mechanic: str) -> Mapping[str, Any]:
 
 
 def _normalized_runtime_surface_name(value: Any) -> str:
-    name = Path(str(value)).name
+    name = _path_name(value)
     if name in _RUNTIME_SURFACE_SPECS:
         return name
     if name == "CardID.json" or _CARD_ID_SURFACE_RE.fullmatch(name):
@@ -1389,7 +1407,7 @@ def _runtime_owner_card_id(row: Mapping[str, Any]) -> str:
 
 
 def _file_card_id(value: Any) -> str:
-    name = Path(str(value or "")).name
+    name = _path_name(value)
     try:
         if _classify_runtime_surface(name) != "conditional_card_surface":
             return ""
@@ -1411,7 +1429,7 @@ def _diagnostic_card_id(value: Any) -> str:
     card_id = _file_card_id(value)
     if card_id:
         return card_id
-    name = Path(str(value or "")).name
+    name = _path_name(value)
     if name in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES:
         return name.removesuffix(".json")
     return ""
@@ -1422,7 +1440,7 @@ def _diagnostic_runtime_value_row_keys(file_name: str) -> set[str]:
         return _runtime_value_row_keys(file_name)
     except KeyError:
         if (
-            Path(file_name).name
+            _path_name(file_name)
             not in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES
         ):
             raise
@@ -2631,7 +2649,7 @@ def _config_intent_self_audit_check(
     unsupported_runtime_files: list[str] = []
     for item in runtime_files:
         try:
-            classification = _classify_runtime_surface(Path(item).name)
+            classification = _classify_runtime_surface(_path_name(item))
         except KeyError:
             unsupported_runtime_files.append(item)
             continue
@@ -2643,7 +2661,7 @@ def _config_intent_self_audit_check(
     for runtime_file in runtime_files:
         if runtime_file in unsupported_runtime_file_set:
             continue
-        basename = Path(runtime_file).name
+        basename = _path_name(runtime_file)
         card_id = _file_card_id(basename)
         if basename in {"GlobalValues.json", "Mulligan.json"}:
             if basename in explained_files:
@@ -2751,16 +2769,17 @@ def _explained_runtime_files_from_reports(
     for row in _report_rows(explainability, ("claim_rows", "card_rows")):
         if _has_emitted_runtime_intent(row):
             explained.update(
-                Path(item).name
+                _path_name(item)
                 for item in _string_list(row.get("emitted_runtime_files"))
             )
             explained.update(
-                Path(item).name for item in _string_list(row.get("runtime_surfaces"))
+                _path_name(item)
+                for item in _string_list(row.get("runtime_surfaces"))
             )
             closure = row.get("closure")
             if isinstance(closure, Mapping):
                 explained.update(
-                    Path(item).name
+                    _path_name(item)
                     for item in _string_list(closure.get("runtime_surfaces"))
                 )
         evidence_chain = row.get("evidence_chain", [])
@@ -2771,7 +2790,7 @@ def _explained_runtime_files_from_reports(
                 if not _has_emitted_runtime_intent(item):
                     continue
                 explained.update(
-                    Path(value).name
+                    _path_name(value)
                     for value in _string_list(item.get("runtime_files"))
                 )
 
@@ -2822,7 +2841,7 @@ def _is_canonical_surface_intent_row(
 
     if (
         not surface
-        or surface != Path(surface).name
+        or surface != _path_name(surface)
         or surface not in required_surfaces | optional_surfaces
         or surface in _FORBIDDEN_RUNTIME_SURFACES
     ):
@@ -3170,6 +3189,55 @@ def _freeze_function_graph(
 ) -> tuple[tuple[FunctionType, ...], tuple[type[Any], ...]]:
     """Clone reachable HSConfig callables into private namespaces."""
 
+    class _DefinitionsBoundJsonApi(NamedTuple):
+        loads: Any
+        dumps: Any
+        JSONDecodeError: type[Exception]
+
+    class _DefinitionsBoundHashApi(NamedTuple):
+        sha256: Any
+
+    def immutable_string_enum_projection(enum_type: EnumType) -> type[str]:
+        projected_values: tuple[str, ...] = ()
+
+        def __new__(class_: type[str], value: Any) -> str:
+            for projected in projected_values:
+                if projected == value:
+                    return projected
+            raise ValueError(f"{value!r} is not a valid {enum_type.__name__}")
+
+        def value(self: str) -> str:
+            return str(self)
+
+        projected_type = type(
+            enum_type.__name__,
+            (str,),
+            {
+                "__doc__": enum_type.__doc__,
+                "__module__": enum_type.__module__,
+                "__new__": __new__,
+                "__slots__": (),
+                "value": property(value),
+            },
+        )
+        projected_type.__qualname__ = enum_type.__qualname__
+        by_value: dict[str, str] = {}
+        for name, member in enum_type.__members__.items():
+            member_value = str(member.value)
+            projected = by_value.get(member_value)
+            if projected is None:
+                projected = str.__new__(projected_type, member_value)
+                by_value[member_value] = projected
+            type.__setattr__(projected_type, name, projected)
+        projected_values = tuple(by_value.values())
+        return projected_type
+
+    json_api = _DefinitionsBoundJsonApi(
+        loads=json.loads,
+        dumps=json.dumps,
+        JSONDecodeError=json.JSONDecodeError,
+    )
+    hash_api = _DefinitionsBoundHashApi(sha256=hashlib.sha256)
     namespaces: dict[int, dict[str, Any]] = {}
     functions: dict[int, FunctionType] = {}
     protected_classes: dict[int, type[Any]] = {}
@@ -3190,6 +3258,14 @@ def _freeze_function_graph(
         existing = protected_classes.get(id(class_))
         if existing is not None:
             return existing
+        if isinstance(class_, EnumType) and issubclass(class_, str):
+            frozen_enum = immutable_string_enum_projection(class_)
+            protected_classes[id(class_)] = frozen_enum
+            for namespace in namespaces.values():
+                for name, value in tuple(namespace.items()):
+                    if value is class_:
+                        namespace[name] = frozen_enum
+            return frozen_enum
         if type(class_) is not type:
             return class_
 
@@ -3209,7 +3285,10 @@ def _freeze_function_graph(
             if (
                 name not in generated_dataclass_methods
                 and (
-                    isinstance(value, (FunctionType, property))
+                    isinstance(
+                        value,
+                        (FunctionType, MemberDescriptorType, property),
+                    )
                     or isinstance(value, (classmethod, staticmethod))
                 )
             )
@@ -3222,6 +3301,8 @@ def _freeze_function_graph(
         for name, member in members.items():
             if isinstance(member, FunctionType):
                 frozen_members[name] = freeze(member)
+            elif isinstance(member, MemberDescriptorType):
+                frozen_members[name] = member
             elif isinstance(member, property):
                 frozen_members[name] = property(
                     freeze(member.fget)
@@ -3314,7 +3395,11 @@ def _freeze_function_graph(
 
         for name in _referenced_global_names(function.__code__):
             dependency = source_globals.get(name)
-            if (
+            if dependency is json:
+                frozen_globals[name] = json_api
+            elif dependency is hashlib:
+                frozen_globals[name] = hash_api
+            elif (
                 isinstance(dependency, FunctionType)
                 and dependency.__module__.startswith("hsconfig.")
             ):
@@ -3348,23 +3433,77 @@ def _build_config_quality_kernel() -> _ConfigQualityKernel:
 def _bind_config_quality_kernel_roots(
     kernel: _ConfigQualityKernel,
 ) -> tuple[FunctionType, FunctionType, FunctionType, FunctionType, FunctionType]:
+    inputs_type = ConfigQualityInputs
+    package_type = FrozenPackageSnapshot
+    input_slots = tuple(
+        inputs_type.__dict__[name]
+        for name in (
+            "package",
+            "semantic_inventory",
+            "disposition_ledger",
+            "source_closure",
+            "globalvalues_ledger",
+        )
+    )
+    package_slots = tuple(
+        package_type.__dict__[name]
+        for name in (
+            "package_label",
+            "_names",
+            "_files",
+            "derivation_receipt_verified",
+            "rederived_runtime_surface_ledger",
+        )
+    )
+
     def protected_inputs(inputs: ConfigQualityInputs) -> ConfigQualityInputs:
-        package = inputs.package
+        (
+            input_package,
+            input_semantic_inventory,
+            input_disposition_ledger,
+            input_source_closure,
+            input_globalvalues_ledger,
+        ) = input_slots
+        (
+            package_label,
+            package_names,
+            package_files,
+            package_derivation_receipt_verified,
+            package_rederived_runtime_surface_ledger,
+        ) = package_slots
+        package = input_package.__get__(inputs, inputs_type)
         protected_package = kernel.package_snapshot_type(
-            package_label=package.package_label,
-            _names=package._names,
-            _files=package._files,
-            derivation_receipt_verified=package.derivation_receipt_verified,
+            package_label=package_label.__get__(package, package_type),
+            _names=package_names.__get__(package, package_type),
+            _files=package_files.__get__(package, package_type),
+            derivation_receipt_verified=(
+                package_derivation_receipt_verified.__get__(
+                    package,
+                    package_type,
+                )
+            ),
             rederived_runtime_surface_ledger=(
-                package.rederived_runtime_surface_ledger
+                package_rederived_runtime_surface_ledger.__get__(
+                    package,
+                    package_type,
+                )
             ),
         )
         return kernel.inputs_type(
             package=protected_package,
-            semantic_inventory=inputs.semantic_inventory,
-            disposition_ledger=inputs.disposition_ledger,
-            source_closure=inputs.source_closure,
-            globalvalues_ledger=inputs.globalvalues_ledger,
+            semantic_inventory=input_semantic_inventory.__get__(
+                inputs,
+                inputs_type,
+            ),
+            disposition_ledger=input_disposition_ledger.__get__(
+                inputs,
+                inputs_type,
+            ),
+            source_closure=input_source_closure.__get__(inputs, inputs_type),
+            globalvalues_ledger=input_globalvalues_ledger.__get__(
+                inputs,
+                inputs_type,
+            ),
         )
 
     def evaluate_config_quality(
@@ -3412,20 +3551,24 @@ def _bind_config_quality_kernel_roots(
     return bound
 
 
-_CONFIG_QUALITY_KERNEL = _build_config_quality_kernel()
-for _bound_root_name, _bound_root in zip(
-    (
-        "evaluate_config_quality",
-        "_typed_input_diagnostics",
-        "semantic_handoff_projection",
-        "_file_card_id",
-        "_runtime_value_row_keys",
-    ),
-    _bind_config_quality_kernel_roots(_CONFIG_QUALITY_KERNEL),
-    strict=True,
-):
-    globals()[_bound_root_name] = _bound_root
-del _bound_root, _bound_root_name
+def _install_config_quality_kernel() -> None:
+    kernel = _build_config_quality_kernel()
+    for bound_root_name, bound_root in zip(
+        (
+            "evaluate_config_quality",
+            "_typed_input_diagnostics",
+            "semantic_handoff_projection",
+            "_file_card_id",
+            "_runtime_value_row_keys",
+        ),
+        _bind_config_quality_kernel_roots(kernel),
+        strict=True,
+    ):
+        globals()[bound_root_name] = bound_root
+
+
+_install_config_quality_kernel()
+del _install_config_quality_kernel
 
 
 __all__ = ("evaluate_config_quality", "semantic_handoff_projection")

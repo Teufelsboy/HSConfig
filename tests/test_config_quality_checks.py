@@ -886,7 +886,6 @@ _QUALITY_EVALUATOR_CONSTANTS = (
     "_BODY_AUTHORITY_ROLES",
     "_CARDID_SURFACE_FAMILY",
     "_CARD_ID_SURFACE_RE",
-    "_CONFIG_QUALITY_KERNEL",
     "_EFFECT_ONLY_START_OF_GAME_ROLES",
     "_EXPLICIT_OPENING_HAND_MULLIGAN_ROLES",
     "_FORBIDDEN_RUNTIME_SURFACES",
@@ -1178,6 +1177,82 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
             cell.cell_contents = value
         for value, snapshot in mutable_origins:
             value.update(snapshot)
+
+
+@pytest.mark.parametrize(
+    "mutation_kind",
+    (
+        "json_functions",
+        "hashlib_sha256",
+        "path_name_descriptor",
+        "package_label_descriptor",
+        "evidence_lane_value_map",
+    ),
+)
+def test_loaded_inputs_are_byte_stable_across_origin_object_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_kind: str,
+) -> None:
+    """Origin state is ambient; reflective sealed-callable edits are out of scope."""
+
+    files = _typed_quality_files(minimal_clean_package(tmp_path))
+    files["CustomConfig/shadowpriest/Presume.json"] = _json_bytes({})
+    inputs = load_config_quality_inputs(_PoisonableMemoryPackageView(files))
+    public_evaluator = config_quality_checks_module.evaluate_config_quality
+    typed_evaluator = config_quality_checks_module._typed_input_diagnostics
+    stable_json_dumps = json.dumps
+
+    def canonical_bytes(value: Mapping[str, Any]) -> bytes:
+        return stable_json_dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+
+    expected_public = canonical_bytes(public_evaluator(inputs))
+    expected_typed = canonical_bytes(typed_evaluator(inputs))
+
+    def poisoned(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(f"ambient origin dependency: {mutation_kind}")
+
+    evidence_lane_map: dict[Any, Any] | None = None
+    evidence_lane_snapshot: dict[Any, Any] = {}
+    if mutation_kind == "json_functions":
+        monkeypatch.setattr(json, "loads", poisoned)
+        monkeypatch.setattr(json, "dumps", poisoned)
+    elif mutation_kind == "hashlib_sha256":
+        monkeypatch.setattr(hashlib, "sha256", poisoned)
+    elif mutation_kind == "path_name_descriptor":
+        monkeypatch.setattr(
+            Path,
+            "name",
+            property(lambda _self: poisoned()),
+        )
+    elif mutation_kind == "package_label_descriptor":
+        monkeypatch.setattr(
+            config_quality_inputs_module.FrozenPackageSnapshot,
+            "package_label",
+            property(lambda _self: poisoned()),
+        )
+    else:
+        evidence_lane_map = EvidenceLane._value2member_map_
+        evidence_lane_snapshot = dict(evidence_lane_map)
+        evidence_lane_map.clear()
+
+    try:
+        assert canonical_bytes(public_evaluator(inputs)) == expected_public
+        assert canonical_bytes(typed_evaluator(inputs)) == expected_typed
+    finally:
+        if evidence_lane_map is not None:
+            evidence_lane_map.update(evidence_lane_snapshot)
+
+
+def test_evaluator_kernel_has_no_module_handle() -> None:
+    """Private callable internals are not an in-process authorization boundary."""
+
+    assert "_CONFIG_QUALITY_KERNEL" not in vars(config_quality_checks_module)
 
 
 def _reverse_mappings(value: Any) -> Any:
