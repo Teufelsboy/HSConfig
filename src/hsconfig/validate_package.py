@@ -12,6 +12,10 @@ from hsconfig.compile_globalvalues import (
     compile_globalvalues,
 )
 from hsconfig.condition_format import classify_runtime_condition
+from hsconfig.globalvalues_decisions import (
+    build_globalvalues_decision_ledger,
+    canonical_globalvalues_baseline_sha256,
+)
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
@@ -415,9 +419,16 @@ def _validate_canonical_globalvalues_authority(
     authority_matrix: dict[str, Any],
 ) -> list[str]:
     try:
+        decision_ledger = build_globalvalues_decision_ledger(
+            deck_fingerprint="0" * 64,
+            baseline=baseline,
+            baseline_sha256=canonical_globalvalues_baseline_sha256(baseline),
+            authority_matrix=authority_matrix,
+        )
         canonical = compile_globalvalues(
             baseline,
             {"global_values_authority_matrix": authority_matrix},
+            decision_ledger=decision_ledger,
         )
     except ValueError as error:
         return [

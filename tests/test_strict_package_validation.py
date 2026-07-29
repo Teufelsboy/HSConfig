@@ -10,6 +10,7 @@ import pytest
 from hsconfig import package_builder
 import hsconfig.strict_package_validation as strict_package_validation
 from hsconfig.cli import main
+from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import write_json
 from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
@@ -321,6 +322,57 @@ def test_strict_validation_binds_globalvalues_to_canonical_authority_matrix(
     assert any(
         "GlobalValues config does not match canonical authority matrix" in error
         or "GlobalValues profile does not match canonical authority matrix" in error
+        for error in report["errors"]
+    )
+
+
+def test_strict_validation_rejects_internally_consistent_authorized_key39(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    reports = package / "reports"
+    deck_dir = next((package / "CustomConfig").iterdir())
+    baseline = json.loads(
+        (reports / "globalvalues_baseline.json").read_text(encoding="utf-8")
+    )
+    authority = {
+        "aggression_profile": "hero_power_pressure",
+        "posture": "hero_power_pressure",
+        "allowed_step1_overlays": [
+            {
+                "key": "MyHeroPowerValue",
+                "overlay": "increase",
+                "operation": "increase",
+                "value": None,
+                "authority": "step1_source_backed_posture",
+                "claim_id": "forged-key39",
+                "claim_refs": ["forged-key39"],
+                "reason": "forged authorized key39",
+            }
+        ],
+        "blocked_until_runtime_evidence": [],
+    }
+    forged = compile_globalvalues(
+        baseline,
+        {"global_values_authority_matrix": authority},
+    )
+    write_json(deck_dir / "GlobalValues.json", forged["config"])
+    write_json(reports / "globalvalues_profile.json", forged["profile"])
+    write_json(reports / "global_values_authority_matrix.json", authority)
+    write_json(
+        reports / "runtime_surface_ledger.json",
+        rederive_runtime_surface_ledger_from_package(package),
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        "globalvalues_authority_overlay_key_not_baseline:MyHeroPowerValue"
+        in error
         for error in report["errors"]
     )
 

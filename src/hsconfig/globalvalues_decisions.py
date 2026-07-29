@@ -11,6 +11,7 @@ from typing import Any
 
 from hsconfig.compile_globalvalues import (
     apply_globalvalues_overlay_operation,
+    validate_globalvalues_overlay_value,
     validated_globalvalues_authority_rows,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
@@ -154,6 +155,11 @@ def _validated_overlay_rows(
             raise ValueError(
                 f"globalvalues_authority_overlay_value_missing:{key}"
             )
+        validate_globalvalues_overlay_value(
+            key=key,
+            operation=row["operation"],
+            value=row["value"],
+        )
         claim_id = row.get("claim_id")
         if (
             not isinstance(claim_id, str)

@@ -263,6 +263,85 @@ def test_production_compiler_uses_typed_ledger_emitted_values() -> None:
     assert result["config"]["GlobalMinionAttack"]["values"][0]["value"] == "0.93"
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("", id="empty-string"),
+        pytest.param(True, id="true"),
+        pytest.param(False, id="false"),
+        pytest.param(None, id="null"),
+        pytest.param(0, id="integer"),
+        pytest.param(0.75, id="float"),
+        pytest.param([], id="list"),
+        pytest.param({}, id="mapping"),
+    ],
+)
+def test_set_overlay_rejects_values_outside_nonempty_string_contract(
+    value: object,
+) -> None:
+    row = _overlay_row()
+    row["value"] = value
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_overlay_value_invalid",
+    ):
+        build_globalvalues_decision_ledger(
+            **_baseline_inputs(authority_matrix=_overlay_matrix(row))
+        )
+
+
+def test_ledger_compiler_rejects_noop_overlay_contract_for_baseline_ledger() -> None:
+    baseline = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
+    ledger = build_globalvalues_decision_ledger(
+        **_baseline_inputs(baseline=baseline)
+    )
+    noop_overlay = _overlay_matrix(
+        _overlay_row(
+            key="FirstTurnValueWeight",
+            operation="set",
+            value="0",
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_ledger_authority_mismatch",
+    ):
+        compile_globalvalues(
+            baseline,
+            {"global_values_authority_matrix": noop_overlay},
+            decision_ledger=ledger,
+        )
+
+
+def test_ledger_compiler_rejects_baseline_contract_for_overlay_ledger() -> None:
+    baseline = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
+    overlay_matrix = _overlay_matrix(
+        _overlay_row(
+            key="FirstTurnValueWeight",
+            operation="set",
+            value="0.75",
+        )
+    )
+    ledger = build_globalvalues_decision_ledger(
+        **_baseline_inputs(
+            baseline=baseline,
+            authority_matrix=overlay_matrix,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_ledger_authority_mismatch",
+    ):
+        compile_globalvalues(
+            baseline,
+            {"global_values_authority_matrix": _baseline_matrix()},
+            decision_ledger=ledger,
+        )
+
+
 def test_dual_closure_consumes_the_typed_ledger_directly() -> None:
     ledger = build_globalvalues_decision_ledger(**_baseline_inputs())
     dispositions = DispositionLedger(

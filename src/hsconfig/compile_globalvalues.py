@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from copy import deepcopy
 import json
+import math
 import operator
 from typing import Any, Mapping
 
@@ -10,7 +11,10 @@ from hsconfig.globalvalues_key_authority import (
     STEP1_POSTURE_KEYS,
     authority_for_key,
 )
-from hsconfig.package_domain import GlobalValuesDecisionLedger
+from hsconfig.package_domain import (
+    GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
+)
 
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
@@ -48,6 +52,12 @@ def compile_globalvalues(
     allowed_rows: list[dict[str, Any]] = []
     if has_authority_overlays:
         allowed_rows = validated_globalvalues_authority_rows(authority_matrix)
+    if decision_ledger is not None:
+        _require_globalvalues_decision_ledger_authority_parity(
+            default_values=default_values,
+            allowed_rows=allowed_rows,
+            decision_ledger=decision_ledger,
+        )
     key_authorities = _key_authorities_from_matrix(authority_matrix)
     if has_authority_overlays:
         overlays = {str(row["key"]): _overlay_from_authority_row(row) for row in allowed_rows}
@@ -252,6 +262,77 @@ def compile_globalvalues(
     }
 
 
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _require_globalvalues_decision_ledger_authority_parity(
+    *,
+    default_values: Mapping[str, Any],
+    allowed_rows: list[dict[str, Any]],
+    decision_ledger: GlobalValuesDecisionLedger,
+) -> None:
+    decisions_by_key = {
+        decision.key: decision for decision in decision_ledger.decisions
+    }
+    if set(decisions_by_key) != set(default_values):
+        raise ValueError("globalvalues_decision_ledger_baseline_keys_mismatch")
+
+    authority_rows = {str(row["key"]): row for row in allowed_rows}
+    ledger_overlay_keys = {
+        key
+        for key, decision in decisions_by_key.items()
+        if decision.kind is GlobalValueDecisionKind.AUTHORIZED_OVERLAY
+    }
+    if ledger_overlay_keys != set(authority_rows):
+        raise ValueError("globalvalues_decision_ledger_authority_mismatch")
+
+    for key, baseline_value in default_values.items():
+        decision = decisions_by_key[key]
+        baseline_canonical_json = _canonical_json_bytes(baseline_value)
+        if decision.baseline_canonical_json != baseline_canonical_json:
+            raise ValueError(
+                "globalvalues_decision_ledger_authority_mismatch"
+            )
+
+        authority_row = authority_rows.get(key)
+        if authority_row is None:
+            if (
+                decision.kind is not GlobalValueDecisionKind.COPY_BASELINE
+                or decision.emitted_canonical_json
+                != baseline_canonical_json
+                or decision.authority_id != "globalvalues:baseline"
+                or decision.claim_ids
+                or decision.reason != "copied canonical baseline"
+            ):
+                raise ValueError(
+                    "globalvalues_decision_ledger_authority_mismatch"
+                )
+            continue
+
+        expected_emitted = _canonical_json_bytes(
+            apply_globalvalues_overlay_operation(
+                baseline_value,
+                operation=str(authority_row["operation"]),
+                value=authority_row.get("value"),
+            )
+        )
+        if (
+            decision.emitted_canonical_json != expected_emitted
+            or decision.authority_id != authority_row.get("authority")
+            or decision.claim_ids != (authority_row.get("claim_id"),)
+            or decision.reason != authority_row.get("reason")
+        ):
+            raise ValueError(
+                "globalvalues_decision_ledger_authority_mismatch"
+            )
+
+
 def validated_globalvalues_authority_rows(
     authority_matrix: Any,
 ) -> list[dict[str, Any]]:
@@ -305,22 +386,15 @@ def validated_globalvalues_authority_rows(
             raise ValueError(
                 f"globalvalues_authority_overlay_key_not_step1:{key}"
             )
-        if operation not in {"set", "increase", "decrease"}:
-            raise ValueError(
-                f"globalvalues_authority_overlay_operation_unsupported:{key}"
-            )
+        validate_globalvalues_overlay_value(
+            key=key,
+            operation=raw_row.get("operation", "none"),
+            value=raw_row.get("value"),
+        )
         if operation == "set":
             value = raw_row.get("value")
-            if value is None:
-                raise ValueError(
-                    f"globalvalues_authority_overlay_semantics_conflict:{key}"
-                )
             expected_overlay = f"set:{value}"
         else:
-            if raw_row.get("value") is not None:
-                raise ValueError(
-                    f"globalvalues_authority_overlay_semantics_conflict:{key}"
-                )
             expected_overlay = operation
         if "overlay" in raw_row and overlay != expected_overlay:
             raise ValueError(
@@ -328,6 +402,45 @@ def validated_globalvalues_authority_rows(
             )
         rows.append(dict(raw_row))
     return rows
+
+
+def validate_globalvalues_overlay_value(
+    *,
+    key: str,
+    operation: Any,
+    value: Any,
+) -> None:
+    if not isinstance(operation, str) or operation not in {
+        "set",
+        "increase",
+        "decrease",
+    }:
+        raise ValueError(
+            f"globalvalues_authority_overlay_operation_unsupported:{key}"
+        )
+    if operation == "set":
+        if (
+            not isinstance(value, str)
+            or not value
+            or value != value.strip()
+        ):
+            raise ValueError(
+                f"globalvalues_authority_overlay_value_invalid:{key}"
+            )
+        try:
+            numeric_value = _numeric_value(value)
+        except (OverflowError, ValueError, ZeroDivisionError):
+            raise ValueError(
+                f"globalvalues_authority_overlay_value_invalid:{key}"
+            ) from None
+        if not math.isfinite(numeric_value):
+            raise ValueError(
+                f"globalvalues_authority_overlay_value_invalid:{key}"
+            )
+    elif value is not None:
+        raise ValueError(
+            f"globalvalues_authority_overlay_value_invalid:{key}"
+        )
 
 
 def _values_block(value: Any) -> dict[str, Any]:
