@@ -228,12 +228,18 @@ def test_official_card_data_without_pinned_snapshot_is_unclassified() -> None:
         )
 
 
-def test_metadata_mulligan_claim_is_not_official_card_data_authority() -> None:
+@pytest.mark.parametrize(
+    "claim_kind",
+    ["mulligan_keep", "mulligan_discard"],
+)
+def test_metadata_mulligan_claim_is_not_official_card_data_authority(
+    claim_kind: str,
+) -> None:
     with pytest.raises(ValueError, match="^evidence_lane_unclassified$"):
         classify_evidence_authority(
             claim={
-                "claim_id": "claim-metadata-keep",
-                "claim_kind": "mulligan_keep",
+                "claim_id": f"claim-metadata-{claim_kind}",
+                "claim_kind": claim_kind,
                 "source_type": "metadata",
                 "source_identity": "hearthstonejson:fixture",
                 "as_of_date": "2026-07-29",

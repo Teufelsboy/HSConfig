@@ -67,6 +67,9 @@ _PUBLIC_GUIDE_SOURCES = frozenset(
 _CONTEXT_GUIDE_SCOPES = frozenset(
     {"archetype_matched", "mechanic_matched"}
 )
+_STRATEGIC_MULLIGAN_CLAIM_KINDS = frozenset(
+    {"mulligan_discard", "mulligan_keep"}
+)
 
 
 def load_policy_profile() -> PolicyProfile:
@@ -199,7 +202,7 @@ def classify_evidence_authority(
             or claim.get("snapshot_sha256")
         )
         if not (
-            claim_kind != "mulligan_keep"
+            claim_kind not in _STRATEGIC_MULLIGAN_CLAIM_KINDS
             and _is_content_sha256(content_sha256)
             and _is_content_sha256(snapshot_sha256)
         ):
