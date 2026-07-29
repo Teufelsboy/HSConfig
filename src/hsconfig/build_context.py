@@ -37,6 +37,10 @@ _APPROVED_POLICY_ID = "BOT_NATIVE_PRE_RUN"
 _APPROVED_POLICY_SHA256 = (
     "sha256:11f503fbf0c487170efab34be74dcb4035afebcfa0f7897b605ea4deab5c1605"
 )
+_APPROVED_EVIDENCE_POLICY_IDS = (
+    _APPROVED_POLICY_ID,
+    "pre_run_authority_handoff",
+)
 _APPROVED_GLOBALVALUES_BASELINE_RESOURCE_SHA256 = (
     "sha256:67e6f87a792c86ffbd28b10b6289ba6d88ef17c7e8204eff3b7d968be77b5177"
 )
@@ -45,40 +49,40 @@ _APPROVED_GLOBALVALUES_BASELINE_RESOURCE_SHA256 = (
 # resource at resolution time.
 _APPROVED_INPUT_SHA256_BY_DECK: Mapping[str, str] = MappingProxyType({
     "ShadowPriest": (
-        "f74c471984dddcb2a4361d49ceaac68fd6bd4f0a462544e0e0eea5dec6018a20"
+        "7e892dad9887a8ec8bea0a33b0ad7ba738249d8aee6b9cf4c40bfb2ad01ea9a5"
     ),
     "CtAPaladin": (
-        "2a57f828e15bcfbcdda982ccc9c6b3005fdafa4e593926d3a8e107e79af9f746"
+        "711328fbdbfae465af863e92217c91f26a240e5f22f4dabb63c3058a837f8b9a"
     ),
     "PirateRogue": (
-        "f0b9be9a85ab9864ebcd4e35dc06b7a07b226b77f8f75ebbf6f020da308eabb7"
+        "9a11419b87ce646181e5232d3b4f2be14d87f3ab1fffa9f4bf80ff8deb30a706"
     ),
     "BigShaman": (
-        "e9efb8ed3ddd09ae89bef91025909549b012e185087ffe2c7f7d6a6b2747de09"
+        "8158133655efee58204f07bf28539e7d7f9d15bd29e5e1ee55be9046026d4904"
     ),
     "Discolock": (
-        "c772d5fd43510ae7da983f80d9a347915b13a6f6323c4268401fcd4a4b96f465"
+        "68f3afe57fcd471eb829bc4e9326ad1aa633643f2eba0181e26eeb5184e971e1"
     ),
     "TreantDruid": (
-        "7a17088148b6fa62d226f48d2a09e7b74f0493d35672e73065b1d30f950ed836"
+        "587f6da63e44b7900be17252dd338deb2fb25bb5325d851dbcd9cadc0cc3069d"
     ),
     "ImbueMage": (
-        "e5d5947421461a840a5d94b1b248993833b41d461ae787e811466deeba6fd1de"
+        "392ecd26553f3ff0d1a1de85aa62cb705841f80e4e4f5d704fc1daf2adffac6a"
     ),
     "MechPala": (
-        "794ce3a78b46a5d51554dd2d034e1c846809a3fc47c78e63d81d5f206c453ee6"
+        "892114e3c380551f1260b7858dc9d4f084dcf0e6180cbf62f25a18742a61aa97"
     ),
     "Kingslayer": (
-        "50b7518c2516111e031c7e3b102b3d7708d8928ccb4985331889e8dd7e1e9cc1"
+        "078791cce886587f3ec2628a1f9c9d89626612ca25514164760b297c9c2e9b60"
     ),
     "Boarlock": (
-        "2eb18732058fb88d624ce3974af5ed759b887587e2db5f5d0bf57374c13e015b"
+        "7641dd84a462cbc61599b4601015c1fdb2f00437099b656a016cb31143f1e106"
     ),
     "PirateDH": (
-        "56aab5f49b85290ea2afd8b09eb1d621c30d8a3810d888979101e1004f1537bb"
+        "de6d5e0869c05a8fe0cfc1c0f36e64f3ef5a708dcf85f572e0020e6dfcfb4f7c"
     ),
     "CuteWarrior": (
-        "050c96cb87b417a91ee48d1b528a4eacf70eb34c602f4bbce25c193f87a7f89b"
+        "c2a6e57db6118a250d16531b8b23fdf88fc8993f7fe6459b75d6d1ba761fbed5"
     ),
 })
 _GLOBALVALUES_KEYS = frozenset(
@@ -164,7 +168,6 @@ _EVIDENCE_CONTRACT_FIELDS = frozenset(
     {
         "schema_version",
         "deck_fingerprint",
-        "evidence_policy_ids",
         "authorities",
         "content_sha256",
     }
@@ -352,6 +355,8 @@ def _validate_inputs(inputs: CanonicalBuildInputs) -> None:
         inputs.source_bundle_resource_sha256s
     ):
         raise ValueError("resolved_build_source_bundle_roots_mismatch")
+    if inputs.evidence_policy_ids != _APPROVED_EVIDENCE_POLICY_IDS:
+        raise ValueError("resolved_build_evidence_policy_ids_not_approved")
 
 
 def _validate_approved_inputs(inputs: CanonicalBuildInputs) -> None:
@@ -584,13 +589,6 @@ def _validate_evidence_contract(
         or document.get("deck_fingerprint") != inputs.deck_fingerprint
     ):
         raise ValueError("evidence_contract_identity_invalid")
-    evidence_policy_ids = document.get("evidence_policy_ids")
-    if (
-        not isinstance(evidence_policy_ids, list)
-        or tuple(evidence_policy_ids) != inputs.evidence_policy_ids
-        or profile.policy_id not in evidence_policy_ids
-    ):
-        raise ValueError("evidence_contract_policy_binding_invalid")
     _validate_self_hash(document, error="evidence_contract_hash_stale")
     authorities = document.get("authorities")
     if not isinstance(authorities, list):

@@ -58,7 +58,7 @@ _PACKAGED_STORE = "resources/audited_build_resources.json"
 # Updated only by the reviewed deterministic materialization step. This pin is
 # deliberately independent of the self-hash embedded in the catalog.
 APPROVED_AUDITED_BUILD_INPUTS_SHA256 = (
-    "sha256:e516fe33a08eab9e38811f4174c8866e465802ddf596a4fdb045b72923d3053a"
+    "sha256:d7799f7e5139ed8e121072216a38709297e931835e7dd037670af55dc75641ca"
 )
 
 

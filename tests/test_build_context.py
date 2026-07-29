@@ -23,6 +23,17 @@ from hsconfig.build_input_catalog import (
     load_audited_build_resource_store,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
+from hsconfig.package_domain import (
+    ClaimDisposition,
+    ClaimDispositionRow,
+    DispositionLedger,
+    disposition_ledger_content_sha256,
+)
+from hsconfig.pre_run_metrics import (
+    _load_pre_run_authority_handoff,
+    build_pre_run_authority_handoff,
+    evidence_authority_from_projection,
+)
 from hsconfig.source_acquisition_closure import (
     AcquisitionClosure,
     AcquisitionFailure,
@@ -111,6 +122,106 @@ def _replace_resource(
     memory = _memory_store(inputs, store)
     memory.values[digest] = raw
     return changed, memory
+
+
+def _task7_disposition_ledger(
+    deck: dict[str, Any],
+    evidence: dict[str, Any],
+) -> DispositionLedger:
+    authorities_by_claim_id = {
+        row["claim_id"]: row for row in evidence["authorities"]
+    }
+    claims = tuple(
+        ClaimDispositionRow(
+            deck_fingerprint=deck["deck_fingerprint"],
+            claim_id=claim["claim_id"],
+            claim_kind=authorities_by_claim_id[claim["claim_id"]][
+                "claim_kind"
+            ],
+            evidence_id=f"inventory:{claim['claim_id']}",
+            disposition=ClaimDisposition.CONTRACT_ONLY,
+            runtime_paths=(),
+            reason_code="claim_kind_has_no_runtime_surface",
+        )
+        for claim in deck["claims"]
+    )
+    return DispositionLedger(
+        deck_fingerprint=deck["deck_fingerprint"],
+        cards=(),
+        claims=claims,
+        content_sha256=disposition_ledger_content_sha256(
+            deck_fingerprint=deck["deck_fingerprint"],
+            cards=(),
+            claims=claims,
+        ),
+    )
+
+
+def _task7_authorities(evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        row["claim_id"]: evidence_authority_from_projection(row)
+        for row in evidence["authorities"]
+    }
+
+
+def test_all_evidence_resources_have_exact_task7_field_set() -> None:
+    audited, store = _loaded()
+
+    for inputs in audited.builds:
+        evidence = json.loads(
+            store.read_by_sha256(inputs.evidence_contract_resource_sha256)
+        )
+
+        assert set(evidence) == {
+            "schema_version",
+            "deck_fingerprint",
+            "authorities",
+            "content_sha256",
+        }, inputs.deck_name
+
+
+def test_all_evidence_resources_are_byte_identical_task7_producer_output() -> (
+    None
+):
+    audited, store = _loaded()
+
+    for inputs in audited.builds:
+        deck = json.loads(
+            store.read_by_sha256(inputs.deck_cards_resource_sha256)
+        )
+        evidence_raw = store.read_by_sha256(
+            inputs.evidence_contract_resource_sha256
+        )
+        evidence = json.loads(evidence_raw)
+        disposition_ledger = _task7_disposition_ledger(deck, evidence)
+        produced = build_pre_run_authority_handoff(
+            disposition_ledger=disposition_ledger,
+            classified_authorities=_task7_authorities(evidence),
+        )
+
+        assert evidence_raw == _canonical(produced), inputs.deck_name
+
+
+def test_task7_loader_accepts_all_evidence_resources() -> None:
+    audited, store = _loaded()
+
+    for inputs in audited.builds:
+        deck = json.loads(
+            store.read_by_sha256(inputs.deck_cards_resource_sha256)
+        )
+        evidence = json.loads(
+            store.read_by_sha256(inputs.evidence_contract_resource_sha256)
+        )
+        disposition_ledger = _task7_disposition_ledger(deck, evidence)
+
+        loaded = _load_pre_run_authority_handoff(
+            evidence,
+            disposition_ledger=disposition_ledger,
+        )
+
+        assert tuple(loaded) == tuple(
+            row["claim_id"] for row in deck["claims"]
+        ), inputs.deck_name
 
 
 def test_resolver_returns_every_exact_hash_verified_context() -> None:
@@ -207,8 +318,9 @@ def test_resolver_returns_every_exact_hash_verified_context() -> None:
         evidence_hash = evidence_payload.pop("content_sha256")
         assert _raw_digest(_canonical(evidence_payload)) == evidence_hash
         assert evidence["deck_fingerprint"] == inputs.deck_fingerprint
-        assert evidence["evidence_policy_ids"] == list(
-            inputs.evidence_policy_ids
+        assert inputs.evidence_policy_ids == (
+            "BOT_NATIVE_PRE_RUN",
+            "pre_run_authority_handoff",
         )
         assert [row["claim_id"] for row in evidence["authorities"]] == [
             row["claim_id"] for row in deck["claims"]
@@ -338,39 +450,42 @@ def test_resolver_rejects_freshly_self_hashed_unapproved_inputs() -> None:
     inputs = audited.builds[0]
     payload = json.loads(inputs.canonical_payload)
     payload["deck_code_sha256"] = "0" * 64
-    payload["evidence_policy_ids"] = ["forged.policy"]
     forged = canonicalize_build_inputs(payload)
 
     with pytest.raises(ValueError, match="deck_cards_deck_code_mismatch"):
         resolve_build_context(forged, resources=store)
 
 
+def test_resolver_rejects_unapproved_evidence_policy_tuple_before_resolution() -> (
+    None
+):
+    audited, _store = _loaded()
+    payload = json.loads(audited.builds[0].canonical_payload)
+    payload["evidence_policy_ids"] = ["BOT_NATIVE_PRE_RUN", "forged.policy"]
+    forged = canonicalize_build_inputs(payload)
+
+    with pytest.raises(
+        ValueError,
+        match="resolved_build_evidence_policy_ids_not_approved",
+    ):
+        resolve_build_context(forged, resources=_MemoryStore({}))
+
+
 def test_resolver_rejects_coordinated_self_hashed_input_substitution() -> None:
     audited, store = _loaded()
     inputs = audited.builds[0]
     forged_deck_code = "0" * 64
-    forged_policy_ids = ("BOT_NATIVE_PRE_RUN", "forged.policy")
 
     deck = json.loads(store.read_by_sha256(inputs.deck_cards_resource_sha256))
     deck["deck_code_sha256"] = forged_deck_code
     deck_raw = _canonical(deck)
     deck_digest = _raw_digest(deck_raw)
-    evidence = json.loads(
-        store.read_by_sha256(inputs.evidence_contract_resource_sha256)
-    )
-    evidence["evidence_policy_ids"] = list(forged_policy_ids)
-    _self_hash(evidence)
-    evidence_raw = _canonical(evidence)
-    evidence_digest = _raw_digest(evidence_raw)
     payload = json.loads(inputs.canonical_payload)
     payload["deck_code_sha256"] = forged_deck_code
-    payload["evidence_policy_ids"] = list(forged_policy_ids)
     payload["deck_cards_resource_sha256"] = deck_digest
-    payload["evidence_contract_resource_sha256"] = evidence_digest
     forged = canonicalize_build_inputs(payload)
     memory = _memory_store(inputs, store)
     memory.values[deck_digest] = deck_raw
-    memory.values[evidence_digest] = evidence_raw
 
     with pytest.raises(ValueError, match="resolved_build_inputs_not_approved"):
         resolve_build_context(forged, resources=memory)
