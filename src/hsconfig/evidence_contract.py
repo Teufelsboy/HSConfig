@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date
 from importlib import resources
 import json
@@ -146,6 +146,8 @@ def classify_evidence_authority(
 ) -> EvidenceAuthority:
     try:
         profile = _policy_profile_from_mapping(policy_profile)
+        if profile != load_policy_profile():
+            raise ValueError("policy_profile_not_packaged")
     except (TypeError, ValueError) as error:
         raise ValueError("evidence_lane_unclassified") from error
 
@@ -177,6 +179,19 @@ def classify_evidence_authority(
             profile=profile,
         )
 
+    if _has_exact_guide_intent(claim):
+        if not source_markers.intersection(_PUBLIC_GUIDE_SOURCES):
+            raise ValueError("evidence_lane_unclassified")
+        return _classify_exact_live_guide(
+            claim=claim,
+            claim_id=claim_id,
+            claim_kind=claim_kind,
+            source_identity=source_identity,
+            as_of_date=as_of_date,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
+
     if source_markers.intersection(_OFFICIAL_CARD_DATA_SOURCES):
         content_sha256 = _content_sha256(claim)
         snapshot_sha256 = _clean_text(
@@ -184,7 +199,8 @@ def classify_evidence_authority(
             or claim.get("snapshot_sha256")
         )
         if not (
-            _is_content_sha256(content_sha256)
+            claim_kind != "mulligan_keep"
+            and _is_content_sha256(content_sha256)
             and _is_content_sha256(snapshot_sha256)
         ):
             raise ValueError("evidence_lane_unclassified")
@@ -201,16 +217,6 @@ def classify_evidence_authority(
         )
 
     if source_markers.intersection(_PUBLIC_GUIDE_SOURCES):
-        if _has_exact_guide_intent(claim):
-            return _classify_exact_live_guide(
-                claim=claim,
-                claim_id=claim_id,
-                claim_kind=claim_kind,
-                source_identity=source_identity,
-                as_of_date=as_of_date,
-                deck_identity=deck_identity,
-                verified_source_receipts=verified_source_receipts,
-            )
         if (
             _normalized_text(claim.get("source_visibility")) == "full_text"
             and (
@@ -435,9 +441,18 @@ def _has_exact_guide_intent(claim: Mapping[str, Any]) -> bool:
 def _claim_field_present(claim: Mapping[str, Any], field: Any) -> bool:
     if not isinstance(field, str) or field not in claim:
         return False
-    value = claim[field]
+    return _binding_has_content(claim[field])
+
+
+def _binding_has_content(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
+    if isinstance(value, Mapping):
+        return bool(value) and any(
+            _binding_has_content(item) for item in value.values()
+        )
+    if isinstance(value, Collection):
+        return bool(value) and any(_binding_has_content(item) for item in value)
     return value is not None
 
 

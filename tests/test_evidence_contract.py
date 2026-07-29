@@ -228,6 +228,73 @@ def test_official_card_data_without_pinned_snapshot_is_unclassified() -> None:
         )
 
 
+def test_metadata_mulligan_claim_is_not_official_card_data_authority() -> None:
+    with pytest.raises(ValueError, match="^evidence_lane_unclassified$"):
+        classify_evidence_authority(
+            claim={
+                "claim_id": "claim-metadata-keep",
+                "claim_kind": "mulligan_keep",
+                "source_type": "metadata",
+                "source_identity": "hearthstonejson:fixture",
+                "as_of_date": "2026-07-29",
+                "content_sha256": "sha256:" + ("b" * 64),
+                "card_snapshot_sha256": _SNAPSHOT_SHA256,
+            },
+            deck_identity=_deck_identity(),
+            verified_source_receipts=(),
+            policy_profile=_policy_mapping(load_policy_profile()),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "not_live_http",
+        "not_live_verified",
+        "not_full_text",
+        "incomplete_exact_evidence",
+        "mismatching_fingerprint",
+        "missing_receipt",
+    ],
+)
+def test_incomplete_exact_guide_intent_never_falls_back_to_lane_a(
+    mutation: str,
+) -> None:
+    claim = _exact_claim()
+    claim["source_type"] = "official_card_data"
+    claim["card_snapshot_sha256"] = _SNAPSHOT_SHA256
+    receipts = _matching_receipts(claim)
+    if mutation == "not_live_http":
+        claim["acquisition_provenance"]["mode"] = "captured_record"
+        receipts = _matching_receipts(claim)
+    elif mutation == "not_live_verified":
+        claim["acquisition_provenance"]["authority"] = "captured_unverified"
+        receipts = _matching_receipts(claim)
+    elif mutation == "not_full_text":
+        claim["source_visibility"] = "snippet_only"
+        receipts = _matching_receipts(claim)
+    elif mutation == "incomplete_exact_evidence":
+        del claim["deck_match"]["exact_deck_evidence"][
+            "decoded_candidate_count"
+        ]
+        receipts = _matching_receipts(claim)
+    elif mutation == "mismatching_fingerprint":
+        claim["deck_match"]["exact_deck_evidence"][
+            "matched_deck_fingerprint"
+        ] = "sha256:other-deck"
+        receipts = _matching_receipts(claim)
+    elif mutation == "missing_receipt":
+        receipts = ()
+
+    with pytest.raises(ValueError, match="^evidence_lane_unclassified$"):
+        classify_evidence_authority(
+            claim=claim,
+            deck_identity=_deck_identity(),
+            verified_source_receipts=receipts,
+            policy_profile=_policy_mapping(load_policy_profile()),
+        )
+
+
 def test_full_text_archetype_guide_classifies_as_context_only_lane_c() -> None:
     provenance = build_acquisition_provenance(
         mode="live_http",
@@ -337,6 +404,83 @@ def test_internal_policy_requires_explicit_card_action_and_reason() -> None:
                 "policy_content_sha256": profile.content_sha256,
                 "policy_rule_id": "explicit_policy_claim",
             },
+            deck_identity=_deck_identity(),
+            verified_source_receipts=(),
+            policy_profile=_policy_mapping(profile),
+        )
+
+
+def test_internal_policy_rejects_self_consistent_caller_policy() -> None:
+    packaged_profile = load_policy_profile()
+    caller_policy = _policy_mapping(packaged_profile)
+    caller_policy["rules"][0]["action"] = "caller_redefined_action"
+    caller_rules = json.dumps(
+        caller_policy["rules"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    caller_policy["content_sha256"] = (
+        "sha256:" + sha256(caller_rules).hexdigest()
+    )
+
+    with pytest.raises(ValueError, match="^evidence_lane_unclassified$"):
+        classify_evidence_authority(
+            claim={
+                "claim_id": "claim-caller-policy",
+                "claim_kind": "mechanic_usage",
+                "source_type": "versioned_internal_policy",
+                "source_identity": "BOT_NATIVE_PRE_RUN",
+                "as_of_date": "2026-07-29",
+                "policy_id": caller_policy["policy_id"],
+                "policy_version": caller_policy["version"],
+                "policy_content_sha256": caller_policy["content_sha256"],
+                "policy_rule_id": "explicit_policy_claim",
+                "cards": ["FIXTURE_CARD"],
+                "action": "use_explicit_policy_claim",
+                "reason_code": "explicit_reviewed_policy",
+            },
+            deck_identity=_deck_identity(),
+            verified_source_receipts=(),
+            policy_profile=caller_policy,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("cards", []),
+        ("cards", ["", ["   "]]),
+        ("action", {}),
+        ("action", {"nested": ["   "]}),
+        ("reason_code", ()),
+        ("reason_code", ([], "   ")),
+    ],
+)
+def test_internal_policy_rejects_empty_nested_required_bindings(
+    field: str,
+    value: Any,
+) -> None:
+    profile = load_policy_profile()
+    claim = {
+        "claim_id": "claim-policy",
+        "claim_kind": "mechanic_usage",
+        "source_type": "versioned_internal_policy",
+        "source_identity": "BOT_NATIVE_PRE_RUN",
+        "as_of_date": "2026-07-29",
+        "policy_id": profile.policy_id,
+        "policy_version": profile.version,
+        "policy_content_sha256": profile.content_sha256,
+        "policy_rule_id": "explicit_policy_claim",
+        "cards": ["FIXTURE_CARD"],
+        "action": "use_explicit_policy_claim",
+        "reason_code": "explicit_reviewed_policy",
+    }
+    claim[field] = value
+
+    with pytest.raises(ValueError, match="^evidence_lane_unclassified$"):
+        classify_evidence_authority(
+            claim=claim,
             deck_identity=_deck_identity(),
             verified_source_receipts=(),
             policy_profile=_policy_mapping(profile),
