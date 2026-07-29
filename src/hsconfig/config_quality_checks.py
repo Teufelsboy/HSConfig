@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import hashlib
-import json
+import builtins
 import re
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from enum import EnumType
 from pathlib import Path
@@ -18,6 +16,7 @@ from typing import Any, NamedTuple
 
 from hsconfig.config_quality_inputs import (
     ConfigQualityInputs,
+    FrozenJsonError,
     FrozenPackageSnapshot,
 )
 from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
@@ -26,10 +25,6 @@ from hsconfig.mechanic_support import (
     NON_MECHANIC_ROLES,
     ROLE_ALIASES,
     mechanic_lowering_policy,
-)
-from hsconfig.pre_run_metrics import (
-    load_disposition_ledger_report,
-    load_globalvalues_decision_ledger_report,
 )
 from hsconfig.role_tokens import (
     EXPLICIT_OPENING_HAND_MULLIGAN_ROLES,
@@ -106,6 +101,24 @@ def _path_name(value: Any) -> str:
         if part not in {"", "."}
     )
     return parts[-1] if parts else ""
+
+
+def _value_counts(values: Sequence[Any] | Any) -> dict[Any, int]:
+    counts: dict[Any, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _count_surplus_elements(
+    minuend: Mapping[Any, int],
+    subtrahend: Mapping[Any, int],
+) -> list[Any]:
+    return [
+        value
+        for value, count in minuend.items()
+        for _index in range(max(0, count - subtrahend.get(value, 0)))
+    ]
 _EXPLICIT_OPENING_HAND_MULLIGAN_ROLES = frozenset(
     EXPLICIT_OPENING_HAND_MULLIGAN_ROLES
 )
@@ -623,7 +636,7 @@ def _typed_input_diagnostics(
             )
         ),
         "disposition_errors": (
-            _disposition_errors(inputs.disposition_ledger)
+            _disposition_errors(inputs)
             if inputs.disposition_ledger
             else []
         ),
@@ -648,7 +661,7 @@ def _typed_input_diagnostics(
 def _semantic_inventory_drift(
     inputs: ConfigQualityInputs,
 ) -> dict[str, list[str]]:
-    semantic_card_ids = Counter(
+    semantic_card_ids = _value_counts(
         _frozen_string_sequence(
             inputs.semantic_inventory.get(
                 "card_identity_rows",
@@ -656,7 +669,7 @@ def _semantic_inventory_drift(
             )
         )
     )
-    semantic_claim_ids = Counter(
+    semantic_claim_ids = _value_counts(
         _frozen_string_sequence(
             inputs.semantic_inventory.get(
                 "claim_identity_rows",
@@ -664,14 +677,14 @@ def _semantic_inventory_drift(
             )
         )
     )
-    disposition_card_ids = Counter(
+    disposition_card_ids = _value_counts(
         card_id
         for row in _frozen_mapping_sequence(
             inputs.disposition_ledger.get("cards")
         )
         if (card_id := _disposition_card_id(row))
     )
-    disposition_claim_ids = Counter(
+    disposition_claim_ids = _value_counts(
         str(row.get("claim_id", "")).strip()
         for row in _frozen_mapping_sequence(
             inputs.disposition_ledger.get("claims")
@@ -680,16 +693,16 @@ def _semantic_inventory_drift(
     )
     return {
         "missing_card_dispositions": sorted(
-            (semantic_card_ids - disposition_card_ids).elements()
+            _count_surplus_elements(semantic_card_ids, disposition_card_ids)
         ),
         "unexpected_card_dispositions": sorted(
-            (disposition_card_ids - semantic_card_ids).elements()
+            _count_surplus_elements(disposition_card_ids, semantic_card_ids)
         ),
         "missing_claim_dispositions": sorted(
-            (semantic_claim_ids - disposition_claim_ids).elements()
+            _count_surplus_elements(semantic_claim_ids, disposition_claim_ids)
         ),
         "unexpected_claim_dispositions": sorted(
-            (disposition_claim_ids - semantic_claim_ids).elements()
+            _count_surplus_elements(disposition_claim_ids, semantic_claim_ids)
         ),
     }
 
@@ -720,8 +733,9 @@ def _disposition_card_id(row: Mapping[str, Any]) -> str:
 
 
 def _disposition_errors(
-    disposition_ledger: Mapping[str, Any],
+    inputs: ConfigQualityInputs,
 ) -> list[dict[str, str]]:
+    disposition_ledger = inputs.disposition_ledger
     errors: list[dict[str, str]] = []
     for kind, rows, identity_key in (
         (
@@ -739,7 +753,7 @@ def _disposition_errors(
             str(row.get(identity_key, "")).strip()
             for row in rows
         ]
-        for identity, count in sorted(Counter(identities).items()):
+        for identity, count in sorted(_value_counts(identities).items()):
             if identity and count > 1:
                 errors.append(
                     {
@@ -747,15 +761,14 @@ def _disposition_errors(
                         "identity": identity,
                     }
                 )
-    try:
-        parsed = load_disposition_ledger_report(
-            _plain_frozen_value(disposition_ledger)
-        )
-    except ValueError as error:
+    validation_error = inputs.package.validation_error(
+        "reports/disposition_ledger.json"
+    )
+    if validation_error:
         errors.append(
             {
                 "kind": "invalid_disposition_ledger",
-                "identity": str(error),
+                "identity": validation_error,
             }
         )
     else:
@@ -770,20 +783,27 @@ def _disposition_errors(
         errors.extend(
             {
                 "kind": "unresolved_card_disposition",
-                "identity": row.composite_card_key,
+                "identity": str(
+                    row.get("composite_card_key", "")
+                ),
             }
-            for row in parsed.cards
-            if row.reason_code in unresolved_reasons
+            for row in _frozen_mapping_sequence(
+                disposition_ledger.get("cards")
+            )
+            if row.get("reason_code") in unresolved_reasons
         )
         errors.extend(
             {
                 "kind": "unresolved_claim_disposition",
                 "identity": (
-                    f"{parsed.deck_fingerprint}:{row.claim_id}"
+                    f"{disposition_ledger.get('deck_fingerprint', '')}:"
+                    f"{row.get('claim_id', '')}"
                 ),
             }
-            for row in parsed.claims
-            if row.reason_code in unresolved_reasons
+            for row in _frozen_mapping_sequence(
+                disposition_ledger.get("claims")
+            )
+            if row.get("reason_code") in unresolved_reasons
         )
     return [
         {"kind": kind, "identity": identity}
@@ -811,8 +831,10 @@ def _typed_runtime_surface_errors(
         ):
             continue
         try:
-            payload = inputs.package.read_json(relative_path)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = _plain_frozen_value(
+                inputs.package.read_json(relative_path)
+            )
+        except FrozenJsonError:
             continue
         if isinstance(payload, Mapping) and _has_runtime_effect_rows(payload):
             physical.add(filename)
@@ -828,7 +850,7 @@ def _declared_runtime_surfaces(inputs: ConfigQualityInputs) -> set[str]:
     if inputs.package.exists(ledger_path):
         try:
             ledger = inputs.package.read_json(ledger_path)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except FrozenJsonError:
             ledger = None
         if isinstance(ledger, Mapping):
             declared: set[str] = set()
@@ -895,18 +917,10 @@ def _evidence_digest_mismatches(
         if not isinstance(document, Mapping):
             continue
         reported = str(document.get("content_sha256", "")).strip()
-        payload = _plain_frozen_value(document)
-        if not isinstance(payload, dict):
+        try:
+            expected = inputs.package.content_sha256_without_self(artifact)
+        except FrozenJsonError:
             continue
-        payload.pop("content_sha256", None)
-        expected = "sha256:" + hashlib.sha256(
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
         if reported != expected:
             mismatches.append(
                 {
@@ -927,7 +941,7 @@ def _globalvalues_decision_errors(
             continue
         try:
             payload = inputs.package.read_json(relative_path)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except FrozenJsonError:
             continue
         if isinstance(payload, Mapping):
             physical_keys.update(
@@ -941,16 +955,15 @@ def _globalvalues_decision_errors(
         )
         if str(row.get("key", "")).strip()
     ]
-    counts = Counter(decision_keys)
+    counts = _value_counts(decision_keys)
     declared = set(decision_keys)
     expected = set(_GLOBALVALUES_BASELINE_DECISION_KEYS)
     invalid_ledger: list[str] = []
-    try:
-        load_globalvalues_decision_ledger_report(
-            _plain_frozen_value(inputs.globalvalues_ledger)
-        )
-    except ValueError as error:
-        invalid_ledger.append(str(error))
+    validation_error = inputs.package.validation_error(
+        "reports/globalvalues_decision_ledger.json"
+    )
+    if validation_error:
+        invalid_ledger.append(validation_error)
     return {
         "missing_decisions": sorted(expected - declared),
         "duplicate_decisions": sorted(
@@ -1215,7 +1228,7 @@ def _runtime_row_trace_inventory_check(
 ) -> dict[str, Any]:
     physical_rows = _runtime_cardid_value_rows(package)
     reported_rows = _meaningful_cardid_rows(card_behavior)
-    physical = Counter(
+    physical = _value_counts(
         _runtime_row_signature(
             str(row["card_id"]),
             str(row["behavior_block"]),
@@ -1223,7 +1236,7 @@ def _runtime_row_trace_inventory_check(
         )
         for row in physical_rows
     )
-    reported = Counter(
+    reported = _value_counts(
         _runtime_row_signature(
             _runtime_owner_card_id(row),
             str(row.get("behavior_block", "")),
@@ -1233,11 +1246,11 @@ def _runtime_row_trace_inventory_check(
     )
     unreported = [
         _runtime_row_from_signature(signature)
-        for signature in sorted((physical - reported).elements())
+        for signature in sorted(_count_surplus_elements(physical, reported))
     ]
     missing_runtime = [
         _runtime_row_from_signature(signature)
-        for signature in sorted((reported - physical).elements())
+        for signature in sorted(_count_surplus_elements(reported, physical))
     ]
     return {
         "status": "clean" if not unreported and not missing_runtime else "attention",
@@ -1802,7 +1815,7 @@ def _runtime_cardid_value_rows(package: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for deck_dir in _custom_config_deck_dirs(package):
         for path in sorted(deck_dir.glob("*.json")):
-            card_id = _diagnostic_card_id(path.name)
+            card_id = _diagnostic_card_id(_path_name(path.as_posix()))
             if not card_id:
                 continue
             payload = _read_json(path)
@@ -2225,11 +2238,12 @@ def _runtime_json_check(
     stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:
         for path in sorted(deck_dir.glob("*.json")):
+            path_basename = _path_name(path.as_posix())
             try:
-                classification = _classify_runtime_surface(path.name)
+                classification = _classify_runtime_surface(path_basename)
             except KeyError:
                 if (
-                    path.name
+                    path_basename
                     not in _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES
                 ):
                     continue
@@ -2237,7 +2251,7 @@ def _runtime_json_check(
             if classification == "forbidden":
                 continue
             if classification == "conditional_card_surface":
-                file_card_id = _file_card_id(path.name)
+                file_card_id = _file_card_id(path_basename)
                 if file_card_id and file_card_id not in expected_card_ids:
                     stray_cardid_files.append(_relative(path, package))
             payload = _read_json(path)
@@ -2259,7 +2273,7 @@ def _runtime_json_check(
                         continue
                     extra_keys = sorted(
                         set(value_row)
-                        - _diagnostic_runtime_value_row_keys(path.name)
+                        - _diagnostic_runtime_value_row_keys(path_basename)
                     )
                     if extra_keys:
                         metadata_leaks.append(
@@ -2283,7 +2297,7 @@ def _legacy_surface_check(package: Path) -> dict[str, Any]:
     if not custom_config.is_dir():
         return {"present": present}
     for path in sorted(custom_config.rglob("*.json")):
-        if path.name in _FORBIDDEN_RUNTIME_SURFACES:
+        if _path_name(path.as_posix()) in _FORBIDDEN_RUNTIME_SURFACES:
             present.append(_relative(path, package))
     return {"present": present}
 
@@ -3153,8 +3167,10 @@ def _int_value(value: Any) -> int:
 
 def _read_json(path: Path) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
+        return _plain_frozen_value(
+            path.package.read_json(path.relative_path)
+        )
+    except (OSError, FrozenJsonError):
         return None
 
 
@@ -3189,13 +3205,26 @@ def _freeze_function_graph(
 ) -> tuple[tuple[FunctionType, ...], tuple[type[Any], ...]]:
     """Clone reachable HSConfig callables into private namespaces."""
 
-    class _DefinitionsBoundJsonApi(NamedTuple):
-        loads: Any
-        dumps: Any
-        JSONDecodeError: type[Exception]
+    private_builtins = dict(vars(builtins))
+    stable_mapping_types = (dict, MappingProxyType)
+    stable_sequence_types = (list, tuple)
+    stable_string_type = str
+    stable_tuple_getitem = tuple.__getitem__
+    stable_value_error_type = ValueError
 
-    class _DefinitionsBoundHashApi(NamedTuple):
-        sha256: Any
+    class _StableMappingMeta(type):
+        def __instancecheck__(self, value: Any) -> bool:
+            return value.__class__ in stable_mapping_types
+
+    class _StableSequenceMeta(type):
+        def __instancecheck__(self, value: Any) -> bool:
+            return value.__class__ in stable_sequence_types
+
+    class _StableMapping(metaclass=_StableMappingMeta):
+        pass
+
+    class _StableSequence(metaclass=_StableSequenceMeta):
+        pass
 
     def immutable_string_enum_projection(enum_type: EnumType) -> type[str]:
         projected_values: tuple[str, ...] = ()
@@ -3204,10 +3233,12 @@ def _freeze_function_graph(
             for projected in projected_values:
                 if projected == value:
                     return projected
-            raise ValueError(f"{value!r} is not a valid {enum_type.__name__}")
+            raise stable_value_error_type(
+                f"{value!r} is not a valid {enum_type.__name__}"
+            )
 
         def value(self: str) -> str:
-            return str(self)
+            return stable_string_type(self)
 
         projected_type = type(
             enum_type.__name__,
@@ -3232,12 +3263,6 @@ def _freeze_function_graph(
         projected_values = tuple(by_value.values())
         return projected_type
 
-    json_api = _DefinitionsBoundJsonApi(
-        loads=json.loads,
-        dumps=json.dumps,
-        JSONDecodeError=json.JSONDecodeError,
-    )
-    hash_api = _DefinitionsBoundHashApi(sha256=hashlib.sha256)
     namespaces: dict[int, dict[str, Any]] = {}
     functions: dict[int, FunctionType] = {}
     protected_classes: dict[int, type[Any]] = {}
@@ -3320,6 +3345,15 @@ def _freeze_function_graph(
                 frozen_members[name] = classmethod(freeze(member.__func__))
             else:
                 frozen_members[name] = staticmethod(freeze(member.__func__))
+        if issubclass(class_, tuple):
+            for index, field_name in enumerate(
+                getattr(class_, "_fields", ()),
+            ):
+                frozen_members[field_name] = property(
+                    lambda self, index=index, getitem=stable_tuple_getitem: (
+                        getitem(self, index)
+                    )
+                )
         frozen = type(
             class_.__name__,
             (class_,),
@@ -3344,10 +3378,11 @@ def _freeze_function_graph(
             return existing
 
         source_globals = function.__globals__
-        frozen_globals = namespaces.setdefault(
-            id(source_globals),
-            dict(source_globals),
-        )
+        frozen_globals = namespaces.get(id(source_globals))
+        if frozen_globals is None:
+            frozen_globals = dict(source_globals)
+            frozen_globals["__builtins__"] = private_builtins
+            namespaces[id(source_globals)] = frozen_globals
         frozen_closure = (
             tuple(freeze_closure_cell(cell) for cell in function.__closure__)
             if function.__closure__ is not None
@@ -3395,10 +3430,10 @@ def _freeze_function_graph(
 
         for name in _referenced_global_names(function.__code__):
             dependency = source_globals.get(name)
-            if dependency is json:
-                frozen_globals[name] = json_api
-            elif dependency is hashlib:
-                frozen_globals[name] = hash_api
+            if dependency is Mapping:
+                frozen_globals[name] = _StableMapping
+            elif dependency is Sequence:
+                frozen_globals[name] = _StableSequence
             elif (
                 isinstance(dependency, FunctionType)
                 and dependency.__module__.startswith("hsconfig.")
@@ -3451,6 +3486,11 @@ def _bind_config_quality_kernel_roots(
             "package_label",
             "_names",
             "_files",
+            "_json_documents",
+            "_canonical_json_bytes",
+            "_canonical_json_sha256",
+            "_content_sha256_without_self",
+            "_validation_errors",
             "derivation_receipt_verified",
             "rederived_runtime_surface_ledger",
         )
@@ -3468,6 +3508,11 @@ def _bind_config_quality_kernel_roots(
             package_label,
             package_names,
             package_files,
+            package_json_documents,
+            package_canonical_json_bytes,
+            package_canonical_json_sha256,
+            package_content_sha256_without_self,
+            package_validation_errors,
             package_derivation_receipt_verified,
             package_rederived_runtime_surface_ledger,
         ) = package_slots
@@ -3476,6 +3521,28 @@ def _bind_config_quality_kernel_roots(
             package_label=package_label.__get__(package, package_type),
             _names=package_names.__get__(package, package_type),
             _files=package_files.__get__(package, package_type),
+            _json_documents=package_json_documents.__get__(
+                package,
+                package_type,
+            ),
+            _canonical_json_bytes=package_canonical_json_bytes.__get__(
+                package,
+                package_type,
+            ),
+            _canonical_json_sha256=package_canonical_json_sha256.__get__(
+                package,
+                package_type,
+            ),
+            _content_sha256_without_self=(
+                package_content_sha256_without_self.__get__(
+                    package,
+                    package_type,
+                )
+            ),
+            _validation_errors=package_validation_errors.__get__(
+                package,
+                package_type,
+            ),
             derivation_receipt_verified=(
                 package_derivation_receipt_verified.__get__(
                     package,

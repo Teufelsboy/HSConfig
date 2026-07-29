@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-from fnmatch import fnmatchcase
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -16,6 +16,10 @@ from hsconfig.package_derivation_receipt import (
     verify_package_derivation_receipt_from_view,
 )
 from hsconfig.package_model import DirectoryPackageView, PackageView
+from hsconfig.pre_run_metrics import (
+    load_disposition_ledger_report,
+    load_globalvalues_decision_ledger_report,
+)
 from hsconfig.runtime_surface_ledger import (
     rederive_runtime_surface_ledger_from_view,
 )
@@ -29,6 +33,10 @@ _GLOBALVALUES_LEDGER_PATH = "reports/globalvalues_decision_ledger.json"
 _DECK_IDENTITY_PATH = "reports/deck_identity.json"
 
 
+class FrozenJsonError(ValueError):
+    """A loader-recorded JSON decoding failure."""
+
+
 @dataclass(frozen=True, slots=True)
 class FrozenPackageSnapshot:
     """A complete, stable byte copy of one package view."""
@@ -36,6 +44,11 @@ class FrozenPackageSnapshot:
     package_label: str
     _names: tuple[str, ...]
     _files: Mapping[str, bytes]
+    _json_documents: Mapping[str, Any]
+    _canonical_json_bytes: Mapping[str, bytes]
+    _canonical_json_sha256: Mapping[str, str]
+    _content_sha256_without_self: Mapping[str, str]
+    _validation_errors: Mapping[str, str]
     derivation_receipt_verified: bool = False
     rederived_runtime_surface_ledger: Mapping[str, Any] | None = None
 
@@ -43,22 +56,47 @@ class FrozenPackageSnapshot:
         return self._names
 
     def read_bytes(self, relative_path: str) -> bytes:
-        path = canonical_relative_path(relative_path)
+        path = _frozen_relative_path(relative_path)
         try:
             return self._files[path]
         except KeyError as error:
             raise FileNotFoundError(path) from error
 
     def read_json(self, relative_path: str) -> Any:
-        return _canonicalize_json_value(
-            json.loads(
-                self.read_bytes(relative_path).decode("utf-8-sig")
-            )
-        )
+        path = _frozen_relative_path(relative_path)
+        try:
+            return self._json_documents[path]
+        except KeyError as error:
+            raise FrozenJsonError(path) from error
+
+    def canonical_json_bytes(self, relative_path: str) -> bytes:
+        path = _frozen_relative_path(relative_path)
+        try:
+            return self._canonical_json_bytes[path]
+        except KeyError as error:
+            raise FrozenJsonError(path) from error
+
+    def canonical_json_sha256(self, relative_path: str) -> str:
+        path = _frozen_relative_path(relative_path)
+        try:
+            return self._canonical_json_sha256[path]
+        except KeyError as error:
+            raise FrozenJsonError(path) from error
+
+    def content_sha256_without_self(self, relative_path: str) -> str:
+        path = _frozen_relative_path(relative_path)
+        try:
+            return self._content_sha256_without_self[path]
+        except KeyError as error:
+            raise FrozenJsonError(path) from error
+
+    def validation_error(self, relative_path: str) -> str | None:
+        path = _frozen_relative_path(relative_path)
+        return self._validation_errors.get(path)
 
     def exists(self, relative_path: str) -> bool:
         try:
-            path = canonical_relative_path(relative_path)
+            path = _frozen_relative_path(relative_path)
         except ValueError:
             return False
         return path in self._files
@@ -77,7 +115,7 @@ class FrozenPackagePath:
     def __truediv__(self, value: object) -> FrozenPackagePath:
         child = str(value).replace("\\", "/")
         joined = "/".join(part for part in (self.relative_path, child) if part)
-        return FrozenPackagePath(self.package, canonical_relative_path(joined))
+        return FrozenPackagePath(self.package, _frozen_relative_path(joined))
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, FrozenPackagePath):
@@ -91,7 +129,7 @@ class FrozenPackagePath:
 
     @property
     def name(self) -> str:
-        return PurePosixPath(self.relative_path).name
+        return _snapshot_path_name(self.relative_path)
 
     def as_posix(self) -> str:
         return self.relative_path
@@ -121,7 +159,7 @@ class FrozenPackagePath:
         return tuple(
             child
             for child in self.iterdir()
-            if child.is_file() and fnmatchcase(child.name, pattern)
+            if child.is_file() and _snapshot_pattern_matches(child.name, pattern)
         )
 
     def rglob(self, pattern: str) -> tuple[FrozenPackagePath, ...]:
@@ -130,18 +168,21 @@ class FrozenPackagePath:
             FrozenPackagePath(self.package, name)
             for name in self.package._names
             if name.startswith(prefix)
-            and fnmatchcase(PurePosixPath(name).name, pattern)
+            and _snapshot_pattern_matches(_snapshot_path_name(name), pattern)
         )
 
-    def relative_to(self, root: FrozenPackagePath) -> PurePosixPath:
+    def relative_to(self, root: FrozenPackagePath) -> FrozenPackagePath:
         if self.package is not root.package:
             raise ValueError("config_quality_package_root_mismatch")
         if not root.relative_path:
-            return PurePosixPath(self.relative_path)
+            return FrozenPackagePath(self.package, self.relative_path)
         prefix = f"{root.relative_path}/"
         if not self.relative_path.startswith(prefix):
             raise ValueError("config_quality_package_root_mismatch")
-        return PurePosixPath(self.relative_path[len(prefix) :])
+        return FrozenPackagePath(
+            self.package,
+            self.relative_path[len(prefix) :],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,10 +207,23 @@ def load_config_quality_inputs(package: PackageView) -> ConfigQualityInputs:
             raise TypeError("config_quality_package_bytes_invalid")
         files[relative_path] = memoryview(value).tobytes()
 
+    (
+        json_documents,
+        canonical_json_bytes,
+        canonical_json_sha256,
+        content_sha256_without_self,
+    ) = _materialize_json_views(files)
     snapshot = FrozenPackageSnapshot(
         package_label=_package_label(package),
         _names=names,
         _files=MappingProxyType(files),
+        _json_documents=MappingProxyType(json_documents),
+        _canonical_json_bytes=MappingProxyType(canonical_json_bytes),
+        _canonical_json_sha256=MappingProxyType(canonical_json_sha256),
+        _content_sha256_without_self=MappingProxyType(
+            content_sha256_without_self
+        ),
+        _validation_errors=MappingProxyType({}),
     )
     receipt = _read_optional_mapping(
         snapshot,
@@ -185,7 +239,7 @@ def load_config_quality_inputs(package: PackageView) -> ConfigQualityInputs:
         receipt_verified, _reasons = (
             verify_package_derivation_receipt_from_view(
                 snapshot,
-                receipt,
+                _plain_frozen_value(receipt),
             )
         )
     if receipt_verified and ledger:
@@ -195,10 +249,18 @@ def load_config_quality_inputs(package: PackageView) -> ConfigQualityInputs:
             )
         except (OSError, TypeError, ValueError):
             rederived_ledger = None
+    validation_errors = _loader_validation_errors(snapshot)
     snapshot = FrozenPackageSnapshot(
         package_label=snapshot.package_label,
         _names=snapshot._names,
         _files=snapshot._files,
+        _json_documents=snapshot._json_documents,
+        _canonical_json_bytes=snapshot._canonical_json_bytes,
+        _canonical_json_sha256=snapshot._canonical_json_sha256,
+        _content_sha256_without_self=(
+            snapshot._content_sha256_without_self
+        ),
+        _validation_errors=MappingProxyType(validation_errors),
         derivation_receipt_verified=receipt_verified,
         rederived_runtime_surface_ledger=rederived_ledger,
     )
@@ -240,6 +302,142 @@ def load_config_quality_inputs(package: PackageView) -> ConfigQualityInputs:
     )
 
 
+def _materialize_json_views(
+    files: Mapping[str, bytes],
+) -> tuple[
+    dict[str, Any],
+    dict[str, bytes],
+    dict[str, str],
+    dict[str, str],
+]:
+    documents: dict[str, Any] = {}
+    canonical_bytes_by_path: dict[str, bytes] = {}
+    canonical_sha256_by_path: dict[str, str] = {}
+    content_sha256_without_self: dict[str, str] = {}
+    for relative_path, raw_bytes in files.items():
+        if not relative_path.endswith(".json"):
+            continue
+        try:
+            document = json.loads(raw_bytes.decode("utf-8-sig"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        canonical_bytes = json.dumps(
+            document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        documents[relative_path] = _freeze(document)
+        canonical_bytes_by_path[relative_path] = canonical_bytes
+        canonical_sha256_by_path[relative_path] = (
+            "sha256:" + hashlib.sha256(canonical_bytes).hexdigest()
+        )
+        if isinstance(document, Mapping) and "content_sha256" in document:
+            without_self = dict(document)
+            without_self.pop("content_sha256", None)
+            without_self_bytes = json.dumps(
+                without_self,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+            content_sha256_without_self[relative_path] = (
+                "sha256:" + hashlib.sha256(without_self_bytes).hexdigest()
+            )
+    return (
+        documents,
+        canonical_bytes_by_path,
+        canonical_sha256_by_path,
+        content_sha256_without_self,
+    )
+
+
+def _loader_validation_errors(
+    snapshot: FrozenPackageSnapshot,
+) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    for relative_path, parser in (
+        (_DISPOSITION_LEDGER_PATH, load_disposition_ledger_report),
+        (_GLOBALVALUES_LEDGER_PATH, load_globalvalues_decision_ledger_report),
+    ):
+        try:
+            document = snapshot.read_json(relative_path)
+        except FrozenJsonError:
+            continue
+        if not isinstance(document, Mapping) or not document:
+            continue
+        try:
+            parser(_plain_frozen_value(document))
+        except ValueError as error:
+            errors[relative_path] = str(error)
+    return errors
+
+
+def _plain_frozen_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _plain_frozen_value(nested)
+            for key, nested in value.items()
+        }
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (str, bytes, bytearray),
+    ):
+        return [_plain_frozen_value(item) for item in value]
+    return value
+
+
+def _frozen_relative_path(value: Any) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or "\x00" in value
+        or ":" in value
+        or value.startswith("/")
+        or value.startswith("//")
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise ValueError("runtime_surface_path_invalid")
+    return value
+
+
+def _snapshot_path_name(value: str) -> str:
+    parts = tuple(
+        part
+        for part in value.replace("\\", "/").split("/")
+        if part not in {"", "."}
+    )
+    return parts[-1] if parts else ""
+
+
+def _snapshot_pattern_matches(value: str, pattern: str) -> bool:
+    value_index = 0
+    pattern_index = 0
+    star_index = -1
+    star_value_index = 0
+    while value_index < len(value):
+        if (
+            pattern_index < len(pattern)
+            and pattern[pattern_index] in {"?", value[value_index]}
+        ):
+            value_index += 1
+            pattern_index += 1
+        elif pattern_index < len(pattern) and pattern[pattern_index] == "*":
+            star_index = pattern_index
+            star_value_index = value_index
+            pattern_index += 1
+        elif star_index >= 0:
+            pattern_index = star_index + 1
+            star_value_index += 1
+            value_index = star_value_index
+        else:
+            return False
+    while pattern_index < len(pattern) and pattern[pattern_index] == "*":
+        pattern_index += 1
+    return pattern_index == len(pattern)
+
+
 def _canonical_file_names(values: Sequence[str]) -> tuple[str, ...]:
     try:
         names = tuple(values)
@@ -268,7 +466,7 @@ def _read_optional_mapping(
         return {}
     try:
         value = package.read_json(relative_path)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except FrozenJsonError:
         return {}
     return dict(value) if isinstance(value, Mapping) else {}
 
@@ -432,6 +630,7 @@ def _canonicalize_json_value(value: Any) -> Any:
 
 __all__ = (
     "ConfigQualityInputs",
+    "FrozenJsonError",
     "FrozenPackagePath",
     "FrozenPackageSnapshot",
     "load_config_quality_inputs",

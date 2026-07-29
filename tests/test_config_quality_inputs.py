@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from collections import Counter
@@ -7,7 +8,10 @@ from typing import Any
 
 import pytest
 
-from hsconfig.config_quality_inputs import load_config_quality_inputs
+from hsconfig.config_quality_inputs import (
+    FrozenJsonError,
+    load_config_quality_inputs,
+)
 
 
 class _MutableMemoryPackageView:
@@ -105,6 +109,46 @@ def test_loader_materializes_a_complete_deeply_immutable_byte_snapshot() -> None
         inputs.semantic_inventory["card_ids"] = ()  # type: ignore[index]
     with pytest.raises(TypeError):
         inputs.disposition_ledger["items"][0]["status"] = "poisoned"  # type: ignore[index]
+
+
+def test_loader_materializes_complete_frozen_json_views_and_digests() -> None:
+    source = _MutableMemoryPackageView(
+        {
+            "reports/valid.json": b'{ "nested": [{"value": 1}] }',
+            "reports/content.json": (
+                b'{"content_sha256":"sha256:reported","value":1}'
+            ),
+            "reports/malformed.json": b"{malformed",
+            "notes/plain.txt": b"plain",
+        }
+    )
+
+    inputs = load_config_quality_inputs(source)
+
+    valid = inputs.package.read_json("reports/valid.json")
+    assert valid == {"nested": ({"value": 1},)}
+    with pytest.raises(TypeError):
+        valid["nested"][0]["value"] = 2  # type: ignore[index]
+
+    canonical = b'{"nested":[{"value":1}]}'
+    assert (
+        inputs.package.canonical_json_bytes("reports/valid.json")
+        == canonical
+    )
+    assert inputs.package.canonical_json_sha256("reports/valid.json") == (
+        "sha256:" + hashlib.sha256(canonical).hexdigest()
+    )
+    assert inputs.package.content_sha256_without_self(
+        "reports/content.json"
+    ) == (
+        "sha256:"
+        + hashlib.sha256(b'{"value":1}').hexdigest()
+    )
+
+    with pytest.raises(FrozenJsonError):
+        inputs.package.read_json("reports/malformed.json")
+    with pytest.raises(FrozenJsonError):
+        inputs.package.read_json("notes/plain.txt")
 
 
 @pytest.mark.parametrize(

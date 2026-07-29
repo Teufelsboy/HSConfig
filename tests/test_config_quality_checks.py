@@ -8,11 +8,13 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import types
+import collections
 from collections.abc import Mapping
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -1005,12 +1007,10 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
     elif mutation_kind == "module_dependencies":
         for name in (
             "ConfigQualityInputs",
-            "Counter",
+            "FrozenJsonError",
             "Mapping",
             "Path",
             "Sequence",
-            "hashlib",
-            "json",
         ):
             monkeypatch.setattr(
                 config_quality_checks_module,
@@ -1025,8 +1025,11 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
             "ConfigQualityInputs",
             "FrozenPackagePath",
             "FrozenPackageSnapshot",
-            "PurePosixPath",
             "_canonicalize_json_value",
+            "_frozen_relative_path",
+            "_plain_frozen_value",
+            "_snapshot_path_name",
+            "_snapshot_pattern_matches",
             "canonical_relative_path",
             "json",
         ):
@@ -1041,9 +1044,13 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
                 (
                     "exists",
                     "file_names",
+                    "canonical_json_bytes",
+                    "canonical_json_sha256",
+                    "content_sha256_without_self",
                     "read_bytes",
                     "read_json",
                     "root_path",
+                    "validation_error",
                 ),
             ),
             (
@@ -1076,7 +1083,7 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
             "load_globalvalues_decision_ledger_report",
         ):
             monkeypatch.setattr(
-                config_quality_checks_module,
+                config_quality_inputs_module,
                 name,
                 poisoned,
             )
@@ -1182,9 +1189,11 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
 @pytest.mark.parametrize(
     "mutation_kind",
     (
+        "counter_init",
         "json_functions",
         "hashlib_sha256",
         "path_name_descriptor",
+        "pure_posix_name_descriptor",
         "package_label_descriptor",
         "evidence_lane_value_map",
     ),
@@ -1219,7 +1228,9 @@ def test_loaded_inputs_are_byte_stable_across_origin_object_mutation(
 
     evidence_lane_map: dict[Any, Any] | None = None
     evidence_lane_snapshot: dict[Any, Any] = {}
-    if mutation_kind == "json_functions":
+    if mutation_kind == "counter_init":
+        monkeypatch.setattr(collections.Counter, "__init__", poisoned)
+    elif mutation_kind == "json_functions":
         monkeypatch.setattr(json, "loads", poisoned)
         monkeypatch.setattr(json, "dumps", poisoned)
     elif mutation_kind == "hashlib_sha256":
@@ -1227,6 +1238,12 @@ def test_loaded_inputs_are_byte_stable_across_origin_object_mutation(
     elif mutation_kind == "path_name_descriptor":
         monkeypatch.setattr(
             Path,
+            "name",
+            property(lambda _self: poisoned()),
+        )
+    elif mutation_kind == "pure_posix_name_descriptor":
+        monkeypatch.setattr(
+            PurePosixPath,
             "name",
             property(lambda _self: poisoned()),
         )
@@ -1247,6 +1264,247 @@ def test_loaded_inputs_are_byte_stable_across_origin_object_mutation(
     finally:
         if evidence_lane_map is not None:
             evidence_lane_map.update(evidence_lane_snapshot)
+
+
+@pytest.mark.parametrize(
+    "mutation_kind",
+    (
+        "counter_update",
+        "counter_module_binding",
+        "mapping_instancecheck",
+        "sequence_instancecheck",
+        "re_match",
+        "fnmatch_compile_pattern",
+        "json_default_decoder",
+        "json_encoder",
+        "json_detect_encoding",
+        "builtin_sorted",
+        "builtin_isinstance",
+        "builtin_str",
+        "builtin_tuple",
+    ),
+)
+def test_loaded_inputs_ignore_transitive_stdlib_origin_mutation(
+    mutation_kind: str,
+) -> None:
+    """Only the loader-owned frozen inputs may influence either evaluator."""
+
+    script = f"""
+import abc
+import builtins
+import collections
+import contextlib
+import fnmatch
+import io
+import json
+import re
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import hsconfig.config_quality_checks as checks
+import hsconfig.package_builder as package_builder
+from hsconfig.config_quality_inputs import load_config_quality_inputs
+from hsconfig.package_model import DirectoryPackageView
+from tests.test_config_quality_checks import (
+    _PoisonableMemoryPackageView,
+    _json_bytes,
+    _typed_quality_files,
+)
+from tests.test_config_quality_contract import minimal_clean_package
+from tests.helpers.fixture_prepare import (
+    load_archetype_matrix,
+    prepare_fixture_deck,
+)
+
+mutation_kind = {mutation_kind!r}
+
+with TemporaryDirectory() as directory:
+    if mutation_kind == "builtin_tuple":
+        package_builder.fetch_latest_cards = lambda timeout=10.0: []
+        shadow = next(
+            row
+            for row in load_archetype_matrix()
+            if row["deck_name"] == "ShadowPriest"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            prepared = prepare_fixture_deck(Path(directory), shadow)
+        assert prepared["exit_code"] == 0
+        inputs = load_config_quality_inputs(
+            DirectoryPackageView(prepared["out"])
+        )
+        assert inputs.package.exists(
+            "CustomConfig/shadowpriest/SW_448.json"
+        )
+    else:
+        files = _typed_quality_files(minimal_clean_package(Path(directory)))
+        files["CustomConfig/shadowpriest/Presume.json"] = _json_bytes({{}})
+        inputs = load_config_quality_inputs(
+            _PoisonableMemoryPackageView(files)
+        )
+    public = checks.evaluate_config_quality
+    typed = checks._typed_input_diagnostics
+    expected_public = public(inputs)
+    expected_typed = typed(inputs)
+
+    def poisoned(*args, **kwargs):
+        raise AssertionError("ambient stdlib dependency: " + mutation_kind)
+
+    if mutation_kind == "counter_update":
+        owner, name = collections.Counter, "update"
+    elif mutation_kind == "counter_module_binding":
+        owner, name = collections, "Counter"
+    elif mutation_kind in {{"mapping_instancecheck", "sequence_instancecheck"}}:
+        owner, name = abc.ABCMeta, "__instancecheck__"
+    elif mutation_kind == "re_match":
+        owner, name = re, "match"
+    elif mutation_kind == "fnmatch_compile_pattern":
+        owner, name = fnmatch, "_compile_pattern"
+    elif mutation_kind == "json_default_decoder":
+        owner, name = json._default_decoder, "decode"
+    elif mutation_kind == "json_encoder":
+        owner, name = json, "JSONEncoder"
+    elif mutation_kind == "json_detect_encoding":
+        owner, name = json, "detect_encoding"
+    elif mutation_kind == "builtin_sorted":
+        owner, name = builtins, "sorted"
+    elif mutation_kind == "builtin_isinstance":
+        owner, name = builtins, "isinstance"
+    elif mutation_kind == "builtin_tuple":
+        owner, name = builtins, "tuple"
+    else:
+        owner, name = builtins, "str"
+
+    original = getattr(owner, name)
+    if mutation_kind in {{"mapping_instancecheck", "sequence_instancecheck"}}:
+        target = checks.Mapping if mutation_kind == "mapping_instancecheck" else checks.Sequence
+
+        def replacement(class_, value):
+            if class_ is target:
+                raise AssertionError("ambient stdlib dependency: " + mutation_kind)
+            return original(class_, value)
+    else:
+        replacement = poisoned
+
+    setattr(owner, name, replacement)
+    try:
+        actual_public = public(inputs)
+        actual_typed = typed(inputs)
+    finally:
+        setattr(owner, name, original)
+
+    assert actual_public == expected_public
+    assert actual_typed == expected_typed
+print("OK")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "OK"
+
+
+def test_mapping_and_sequence_registries_do_not_change_evaluator_bytes() -> None:
+    """ABC registry edits are ambient; sealed callable internals are out of scope."""
+
+    script = """
+import json
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import hsconfig.config_quality_checks as checks
+from hsconfig.config_quality_inputs import load_config_quality_inputs
+from tests.test_config_quality_checks import (
+    _PoisonableMemoryPackageView,
+    _json_bytes,
+    _typed_quality_files,
+)
+from tests.test_config_quality_contract import minimal_clean_package
+
+with TemporaryDirectory() as directory:
+    files = _typed_quality_files(minimal_clean_package(Path(directory)))
+    files["CustomConfig/shadowpriest/Presume.json"] = _json_bytes({})
+    inputs = load_config_quality_inputs(_PoisonableMemoryPackageView(files))
+    dumps = json.dumps
+
+    def canonical(value):
+        return dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+
+    public = checks.evaluate_config_quality
+    typed = checks._typed_input_diagnostics
+    expected_public = canonical(public(inputs))
+    expected_typed = canonical(typed(inputs))
+
+    Mapping.register(str)
+    Sequence.register(dict)
+    assert isinstance("", Mapping)
+    assert isinstance({}, Sequence)
+    assert canonical(public(inputs)) == expected_public
+    assert canonical(typed(inputs)) == expected_typed
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_linked_owner_tuplegetters_are_stable_after_origin_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Origin tuplegetters are ambient; private sealed reflection is out of scope."""
+
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    shadow = next(
+        row
+        for row in load_archetype_matrix()
+        if row["deck_name"] == "ShadowPriest"
+    )
+    prepared = prepare_fixture_deck(tmp_path, shadow)
+    assert prepared["exit_code"] == 0
+    inputs = load_config_quality_inputs(DirectoryPackageView(prepared["out"]))
+    assert inputs.package.exists("CustomConfig/shadowpriest/SW_448.json")
+
+    public = config_quality_checks_module.evaluate_config_quality
+    typed = config_quality_checks_module._typed_input_diagnostics
+    expected_public = _canonical_quality_bytes(public(inputs))
+    expected_typed = _canonical_quality_bytes(typed(inputs))
+
+    def poisoned(_self: Any) -> Any:
+        raise AssertionError("ambient origin tuplegetter")
+
+    owner_type = config_quality_checks_module._LinkedRuntimeOwnerEvidence
+    monkeypatch.setattr(
+        owner_type,
+        "runtime_owner_card_id",
+        property(poisoned),
+    )
+    monkeypatch.setattr(
+        owner_type,
+        "runtime_emitted",
+        property(poisoned),
+    )
+
+    assert _canonical_quality_bytes(public(inputs)) == expected_public
+    assert _canonical_quality_bytes(typed(inputs)) == expected_typed
 
 
 def test_evaluator_kernel_has_no_module_handle() -> None:
