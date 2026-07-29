@@ -2,13 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from hashlib import sha256
 import json
 import re
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from hsconfig.build_inputs import CanonicalBuildInputs, canonicalize_build_inputs
+from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.package_domain import PolicyProfile
+from hsconfig.pre_run_metrics import source_acquisition_input_binding
+from hsconfig.source_acquisition_closure import (
+    AcquisitionClosure,
+    AcquisitionFailure,
+    acquisition_closure_content_sha256,
+    acquisition_closure_payload,
+    policy_provenance_payload,
+)
 
 
 _CONTENT_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -29,6 +40,47 @@ _APPROVED_POLICY_SHA256 = (
 _APPROVED_GLOBALVALUES_BASELINE_RESOURCE_SHA256 = (
     "sha256:67e6f87a792c86ffbd28b10b6289ba6d88ef17c7e8204eff3b7d968be77b5177"
 )
+# Updated only by the reviewed deterministic materialization step. The resolver
+# uses this immutable pin without consulting a catalog, filesystem, or package
+# resource at resolution time.
+_APPROVED_INPUT_SHA256_BY_DECK: Mapping[str, str] = MappingProxyType({
+    "ShadowPriest": (
+        "f74c471984dddcb2a4361d49ceaac68fd6bd4f0a462544e0e0eea5dec6018a20"
+    ),
+    "CtAPaladin": (
+        "2a57f828e15bcfbcdda982ccc9c6b3005fdafa4e593926d3a8e107e79af9f746"
+    ),
+    "PirateRogue": (
+        "f0b9be9a85ab9864ebcd4e35dc06b7a07b226b77f8f75ebbf6f020da308eabb7"
+    ),
+    "BigShaman": (
+        "e9efb8ed3ddd09ae89bef91025909549b012e185087ffe2c7f7d6a6b2747de09"
+    ),
+    "Discolock": (
+        "c772d5fd43510ae7da983f80d9a347915b13a6f6323c4268401fcd4a4b96f465"
+    ),
+    "TreantDruid": (
+        "7a17088148b6fa62d226f48d2a09e7b74f0493d35672e73065b1d30f950ed836"
+    ),
+    "ImbueMage": (
+        "e5d5947421461a840a5d94b1b248993833b41d461ae787e811466deeba6fd1de"
+    ),
+    "MechPala": (
+        "794ce3a78b46a5d51554dd2d034e1c846809a3fc47c78e63d81d5f206c453ee6"
+    ),
+    "Kingslayer": (
+        "50b7518c2516111e031c7e3b102b3d7708d8928ccb4985331889e8dd7e1e9cc1"
+    ),
+    "Boarlock": (
+        "2eb18732058fb88d624ce3974af5ed759b887587e2db5f5d0bf57374c13e015b"
+    ),
+    "PirateDH": (
+        "56aab5f49b85290ea2afd8b09eb1d621c30d8a3810d888979101e1004f1537bb"
+    ),
+    "CuteWarrior": (
+        "050c96cb87b417a91ee48d1b528a4eacf70eb34c602f4bbce25c193f87a7f89b"
+    ),
+})
 _GLOBALVALUES_KEYS = frozenset(
     {
         "ConfigComment",
@@ -76,6 +128,7 @@ _DECK_RESOURCE_FIELDS = frozenset(
         "schema_version",
         "inventory_content_sha256",
         "deck_name",
+        "deck_code_sha256",
         "deck_fingerprint",
         "main_cards",
         "sideboard_modules",
@@ -108,7 +161,13 @@ _POLICY_RULE_FIELDS = frozenset(
     }
 )
 _EVIDENCE_CONTRACT_FIELDS = frozenset(
-    {"schema_version", "deck_fingerprint", "authorities", "content_sha256"}
+    {
+        "schema_version",
+        "deck_fingerprint",
+        "evidence_policy_ids",
+        "authorities",
+        "content_sha256",
+    }
 )
 _AUTHORITY_FIELDS = frozenset(
     {
@@ -134,9 +193,8 @@ _SOURCE_BUNDLE_FIELDS = frozenset(
         "deck",
         "policy",
         "acquisition_closure",
-        "input_binding",
         "sources",
-        "claim_bindings",
+        "claims",
         "content_sha256",
     }
 )
@@ -147,8 +205,11 @@ _SOURCE_POLICY_FIELDS = frozenset(
 _ACQUISITION_FIELDS = frozenset(
     {
         "deck_fingerprint",
+        "attempt_id",
+        "attempted_at",
+        "attempted_urls",
+        "failed_attempts",
         "policy_id",
-        "policy_sha256",
         "status",
         "successful_evidence_ids",
         "checked_dossier",
@@ -157,25 +218,27 @@ _ACQUISITION_FIELDS = frozenset(
     }
 )
 _INPUT_BINDING_FIELDS = frozenset(
-    {
-        "deck_fingerprint",
-        "policy_sha256",
-        "acquisition_closure_sha256",
-        "source_document_sha256s",
-        "content_sha256",
-    }
+    {"policy_provenance", "acquisition_closure"}
 )
 _SOURCE_FIELDS = frozenset(
     {
         "evidence_id",
-        "source_identity",
+        "source_id",
+        "policy_id",
         "as_of_date",
         "content_sha256",
-        "document",
     }
 )
 _SOURCE_CLAIM_FIELDS = frozenset(
-    {"claim_id", "evidence_id", "content_sha256", "claim"}
+    {
+        "evidence_id",
+        "source_id",
+        "policy_id",
+        "as_of_date",
+        "claim_kind",
+        "text",
+        "content_sha256",
+    }
 )
 
 
@@ -230,8 +293,12 @@ def resolve_build_context(
         error="globalvalues_baseline",
     )
 
-    claim_ids = _validate_deck_resource(deck, inputs=inputs)
-    _validate_card_snapshot(snapshot, inputs=inputs)
+    snapshot_card_ids = _validate_card_snapshot(snapshot, inputs=inputs)
+    claim_ids = _validate_deck_resource(
+        deck,
+        inputs=inputs,
+        snapshot_card_ids=snapshot_card_ids,
+    )
     profile = _validate_policy(policy, inputs=inputs)
     _validate_evidence_contract(
         evidence,
@@ -239,21 +306,18 @@ def resolve_build_context(
         profile=profile,
         expected_claim_ids=claim_ids,
     )
-    for (
-        domain_sha256,
-        (_source_bytes, source),
-    ) in zip(inputs.source_bundle_sha256s, source_pairs, strict=True):
-        _validate_source_bundle(
-            source,
-            inputs=inputs,
-            profile=profile,
-            expected_domain_sha256=domain_sha256,
-        )
+    _validate_source_resources(
+        tuple(source for _source_bytes, source in source_pairs),
+        inputs=inputs,
+        profile=profile,
+        expected_domain_sha256s=inputs.source_bundle_sha256s,
+    )
     _validate_globalvalues_baseline(
         baseline,
         resource_sha256=inputs.globalvalues_baseline_resource_sha256,
         expected_keys=deck["globalvalues_decisions"],
     )
+    _validate_approved_inputs(inputs)
 
     return ResolvedBuildContext(
         inputs=inputs,
@@ -290,6 +354,14 @@ def _validate_inputs(inputs: CanonicalBuildInputs) -> None:
         raise ValueError("resolved_build_source_bundle_roots_mismatch")
 
 
+def _validate_approved_inputs(inputs: CanonicalBuildInputs) -> None:
+    if (
+        _APPROVED_INPUT_SHA256_BY_DECK.get(inputs.deck_name)
+        != inputs.input_sha256
+    ):
+        raise ValueError("resolved_build_inputs_not_approved")
+
+
 def _resource(
     resources: BuildResourceStore,
     content_sha256: str,
@@ -308,6 +380,7 @@ def _validate_deck_resource(
     document: Any,
     *,
     inputs: CanonicalBuildInputs,
+    snapshot_card_ids: frozenset[str],
 ) -> tuple[str, ...]:
     if not isinstance(document, Mapping) or set(document) != _DECK_RESOURCE_FIELDS:
         raise ValueError("deck_cards_fields_invalid")
@@ -319,6 +392,8 @@ def _validate_deck_resource(
         or document.get("deck_fingerprint") != inputs.deck_fingerprint
     ):
         raise ValueError("deck_cards_identity_mismatch")
+    if document.get("deck_code_sha256") != inputs.deck_code_sha256:
+        raise ValueError("deck_cards_deck_code_mismatch")
     fingerprint = inputs.deck_fingerprint
     main_cards = document.get("main_cards")
     sideboards = document.get("sideboard_modules")
@@ -353,6 +428,12 @@ def _validate_deck_resource(
         total += count
     if total != 30:
         raise ValueError("deck_cards_multiplicity_invalid")
+    if stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in main_cards
+    ) != fingerprint:
+        raise ValueError("deck_cards_fingerprint_mismatch")
+    if not main_ids.issubset(snapshot_card_ids):
+        raise ValueError("deck_cards_snapshot_card_missing")
 
     sideboard_keys: set[str] = set()
     for card in sideboards:
@@ -374,6 +455,8 @@ def _validate_deck_resource(
             or key in sideboard_keys
         ):
             raise ValueError("deck_cards_sideboard_invalid")
+        if card_id not in snapshot_card_ids:
+            raise ValueError("deck_cards_snapshot_card_missing")
         sideboard_keys.add(key)
 
     claim_ids: list[str] = []
@@ -403,7 +486,7 @@ def _validate_card_snapshot(
     document: Any,
     *,
     inputs: CanonicalBuildInputs,
-) -> None:
+) -> frozenset[str]:
     if (
         not isinstance(document, Mapping)
         or set(document) != {"schema_version", "metadata", "cards"}
@@ -440,6 +523,18 @@ def _validate_card_snapshot(
     ).encode("utf-8")
     if _raw_sha256(domain_bytes) != snapshot_sha256:
         raise ValueError("card_snapshot_sha256_mismatch")
+    card_ids: set[str] = set()
+    for row in document["cards"]:
+        if (
+            not isinstance(row, list)
+            or len(row) < 2
+            or not isinstance(row[1], str)
+            or not row[1]
+            or row[1] in card_ids
+        ):
+            raise ValueError("card_snapshot_card_identity_invalid")
+        card_ids.add(row[1])
+    return frozenset(card_ids)
 
 
 def _validate_policy(
@@ -489,6 +584,13 @@ def _validate_evidence_contract(
         or document.get("deck_fingerprint") != inputs.deck_fingerprint
     ):
         raise ValueError("evidence_contract_identity_invalid")
+    evidence_policy_ids = document.get("evidence_policy_ids")
+    if (
+        not isinstance(evidence_policy_ids, list)
+        or tuple(evidence_policy_ids) != inputs.evidence_policy_ids
+        or profile.policy_id not in evidence_policy_ids
+    ):
+        raise ValueError("evidence_contract_policy_binding_invalid")
     _validate_self_hash(document, error="evidence_contract_hash_stale")
     authorities = document.get("authorities")
     if not isinstance(authorities, list):
@@ -523,31 +625,52 @@ def _validate_evidence_contract(
         raise ValueError("evidence_contract_authority_set_invalid")
 
 
-def _validate_source_bundle(
-    document: Any,
+def _validate_source_resources(
+    documents: tuple[Any, ...],
     *,
     inputs: CanonicalBuildInputs,
     profile: PolicyProfile,
-    expected_domain_sha256: str,
+    expected_domain_sha256s: tuple[str, ...],
 ) -> None:
-    if not isinstance(document, Mapping) or set(document) != _SOURCE_BUNDLE_FIELDS:
+    if len(documents) != 2 or len(expected_domain_sha256s) != 2:
+        raise ValueError("source_bundle_resource_set_invalid")
+    bundles = tuple(
+        document
+        for document in documents
+        if isinstance(document, Mapping)
+        and set(document) == _SOURCE_BUNDLE_FIELDS
+    )
+    bindings = tuple(
+        document
+        for document in documents
+        if isinstance(document, Mapping)
+        and set(document) == _INPUT_BINDING_FIELDS
+    )
+    if len(bundles) != 1 or len(bindings) != 1:
         raise ValueError("source_bundle_fields_invalid")
+    bundle = bundles[0]
+    input_binding = bindings[0]
     if (
-        document.get("schema_version") != 1
-        or document.get("authority") != "diagnostic_only"
-        or document.get("apply_blocking") is not False
+        bundle.get("schema_version") != 1
+        or bundle.get("authority") != "diagnostic_only"
+        or bundle.get("apply_blocking") is not False
     ):
         raise ValueError("source_bundle_contract_invalid")
-    _validate_self_hash(document, error="source_bundle_hash_stale")
-    if document.get("content_sha256") != expected_domain_sha256:
+    _validate_self_hash(bundle, error="source_bundle_hash_stale")
+    observed_domains = {
+        str(bundle.get("content_sha256")),
+        _raw_sha256(_canonical_json(input_binding)),
+    }
+    if observed_domains != set(expected_domain_sha256s):
         raise ValueError("source_bundle_domain_sha256_mismatch")
+    if not isinstance(input_binding, Mapping):
+        raise ValueError("source_bundle_input_binding_invalid")
 
-    deck = document.get("deck")
-    policy = document.get("policy")
-    closure = document.get("acquisition_closure")
-    binding = document.get("input_binding")
-    sources = document.get("sources")
-    claims = document.get("claim_bindings")
+    deck = bundle.get("deck")
+    policy = bundle.get("policy")
+    closure_document = bundle.get("acquisition_closure")
+    sources = bundle.get("sources")
+    claims = bundle.get("claims")
     if (
         not isinstance(deck, Mapping)
         or set(deck) != _SOURCE_DECK_FIELDS
@@ -555,110 +678,193 @@ def _validate_source_bundle(
         or deck.get("fingerprint") != inputs.deck_fingerprint
     ):
         raise ValueError("source_bundle_cross_deck")
+    expected_policy = policy_provenance_payload(profile)
     if (
         not isinstance(policy, Mapping)
         or set(policy) != _SOURCE_POLICY_FIELDS
-        or policy
-        != {
-            "policy_id": profile.policy_id,
-            "version": profile.version,
-            "effective_date": profile.effective_date,
-            "content_sha256": profile.content_sha256,
-        }
+        or policy != expected_policy
     ):
         raise ValueError("source_bundle_policy_mismatch")
-    if (
-        not isinstance(closure, Mapping)
-        or set(closure) != _ACQUISITION_FIELDS
-        or not isinstance(binding, Mapping)
-        or set(binding) != _INPUT_BINDING_FIELDS
-        or not isinstance(sources, list)
-        or not isinstance(claims, list)
-    ):
+    if not isinstance(sources, list) or not isinstance(claims, list):
         raise ValueError("source_bundle_acquisition_invalid")
-    _validate_self_hash(closure, error="source_bundle_acquisition_hash_stale")
-    _validate_self_hash(binding, error="source_bundle_input_binding_hash_stale")
-    if (
-        closure.get("deck_fingerprint") != inputs.deck_fingerprint
-        or closure.get("policy_id") != profile.policy_id
-        or closure.get("policy_sha256") != profile.content_sha256
-        or closure.get("negative_search_documented") is not False
-        or binding.get("deck_fingerprint") != inputs.deck_fingerprint
-        or binding.get("policy_sha256") != profile.content_sha256
-        or binding.get("acquisition_closure_sha256")
-        != closure.get("content_sha256")
-    ):
-        raise ValueError("source_bundle_acquisition_binding_mismatch")
 
-    source_evidence_ids: list[str] = []
-    source_digests: list[str] = []
+    closure = _typed_acquisition_closure(
+        closure_document,
+        inputs=inputs,
+        profile=profile,
+    )
+    expected_binding = source_acquisition_input_binding(
+        {
+            "policy_provenance": expected_policy,
+            "acquisition_closure": acquisition_closure_payload(closure),
+        }
+    )
+    if input_binding != expected_binding:
+        raise ValueError("source_bundle_input_binding_mismatch")
+
+    if not _rows_are_canonical(sources):
+        raise ValueError("source_bundle_source_invalid")
+    source_by_evidence_id: dict[str, Mapping[str, Any]] = {}
     for source in sources:
         if not isinstance(source, Mapping) or set(source) != _SOURCE_FIELDS:
             raise ValueError("source_bundle_source_invalid")
         evidence_id = source.get("evidence_id")
-        source_identity = source.get("source_identity")
-        document_value = source.get("document")
+        source_id = source.get("source_id")
+        policy_id = source.get("policy_id")
+        as_of_date = source.get("as_of_date")
         content_sha256 = source.get("content_sha256")
         if (
             not isinstance(evidence_id, str)
             or _EVIDENCE_ID_RE.fullmatch(evidence_id) is None
-            or not isinstance(source_identity, str)
-            or not source_identity
-            or not isinstance(document_value, Mapping)
-            or document_value.get("source_url") != source_identity
-            or _raw_sha256(_canonical_json(document_value)) != content_sha256
-            or _source_evidence_id(source_identity, content_sha256)
-            != evidence_id
+            or not isinstance(source_id, str)
+            or not source_id
+            or policy_id not in {None, profile.policy_id}
+            or not _valid_date(as_of_date)
+            or not isinstance(content_sha256, str)
+            or _CONTENT_SHA256_RE.fullmatch(content_sha256) is None
+            or evidence_id in source_by_evidence_id
         ):
             raise ValueError("source_bundle_source_invalid")
-        source_evidence_ids.append(evidence_id)
-        source_digests.append(content_sha256)
-    if len(set(source_evidence_ids)) != len(source_evidence_ids):
-        raise ValueError("source_bundle_source_duplicate")
+        source_by_evidence_id[evidence_id] = source
 
-    claim_ids: set[str] = set()
+    if not _rows_are_canonical(claims):
+        raise ValueError("source_bundle_claim_invalid")
     for claim in claims:
         if not isinstance(claim, Mapping) or set(claim) != _SOURCE_CLAIM_FIELDS:
             raise ValueError("source_bundle_claim_invalid")
-        claim_value = claim.get("claim")
-        evidence_id = claim.get("evidence_id")
-        claim_id = claim.get("claim_id")
+        source = source_by_evidence_id.get(str(claim.get("evidence_id")))
         if (
-            not isinstance(claim_value, Mapping)
-            or evidence_id not in source_evidence_ids
-            or _raw_sha256(_canonical_json(claim_value))
-            != claim.get("content_sha256")
-            or _source_claim_id(evidence_id, claim_value) != claim_id
-            or claim_id in claim_ids
+            source is None
+            or claim.get("source_id") != source.get("source_id")
+            or claim.get("policy_id") != source.get("policy_id")
+            or claim.get("as_of_date") != source.get("as_of_date")
+            or claim.get("content_sha256") != source.get("content_sha256")
+            or not isinstance(claim.get("claim_kind"), str)
+            or not claim["claim_kind"]
+            or not isinstance(claim.get("text"), str)
+            or not claim["text"]
         ):
             raise ValueError("source_bundle_claim_evidence_mismatch")
-        claim_ids.add(claim_id)
 
-    status = closure.get("status")
-    successful = closure.get("successful_evidence_ids")
-    if (
-        not isinstance(successful, list)
-        or successful != sorted(source_evidence_ids)
-        or binding.get("source_document_sha256s") != sorted(source_digests)
-    ):
+    source_evidence_ids = tuple(sorted(source_by_evidence_id))
+    if closure.successful_evidence_ids != source_evidence_ids:
         raise ValueError("source_bundle_evidence_binding_mismatch")
-    if status == "closed_with_evidence":
+    if closure.status == "closed_with_evidence":
         if (
             not sources
-            or closure.get("checked_dossier") is not True
-            or not successful
+            or not claims
+            or closure.checked_dossier is not True
+            or closure.negative_search_documented is not False
+            or not closure.attempted_urls
+            or any(
+                failure.source_identity not in closure.attempted_urls
+                for failure in closure.failed_attempts
+            )
         ):
             raise ValueError("source_bundle_positive_closure_invalid")
-    elif status == "open":
+    elif closure.status == "open":
         if (
             sources
             or claims
-            or successful
-            or closure.get("checked_dossier") is not False
+            or closure.successful_evidence_ids
+            or closure.checked_dossier is not False
+            or closure.negative_search_documented is not False
         ):
             raise ValueError("source_bundle_open_contains_evidence")
     else:
         raise ValueError("source_bundle_negative_search_forbidden")
+
+
+def _typed_acquisition_closure(
+    document: Any,
+    *,
+    inputs: CanonicalBuildInputs,
+    profile: PolicyProfile,
+) -> AcquisitionClosure:
+    if not isinstance(document, Mapping) or set(document) != _ACQUISITION_FIELDS:
+        raise ValueError("source_bundle_acquisition_invalid")
+    attempted_urls = document.get("attempted_urls")
+    successful = document.get("successful_evidence_ids")
+    failures = document.get("failed_attempts")
+    if (
+        document.get("deck_fingerprint") != inputs.deck_fingerprint
+        or document.get("policy_id") != profile.policy_id
+        or not isinstance(document.get("attempt_id"), str)
+        or not document["attempt_id"]
+        or not _valid_date(document.get("attempted_at"))
+        or not isinstance(attempted_urls, list)
+        or attempted_urls != sorted(set(attempted_urls))
+        or any(not isinstance(value, str) or not value for value in attempted_urls)
+        or not isinstance(successful, list)
+        or successful != sorted(set(successful))
+        or any(
+            not isinstance(value, str)
+            or _EVIDENCE_ID_RE.fullmatch(value) is None
+            for value in successful
+        )
+        or not isinstance(failures, list)
+        or type(document.get("negative_search_documented")) is not bool
+        or type(document.get("checked_dossier")) is not bool
+        or document.get("status")
+        not in {"closed_with_evidence", "closed_negative_search", "open"}
+        or not isinstance(document.get("content_sha256"), str)
+        or _CONTENT_SHA256_RE.fullmatch(document["content_sha256"]) is None
+    ):
+        raise ValueError("source_bundle_acquisition_invalid")
+    typed_failures: list[AcquisitionFailure] = []
+    for failure in failures:
+        if (
+            not isinstance(failure, Mapping)
+            or set(failure)
+            != {"source_identity", "reason_code", "attempted_at"}
+            or not isinstance(failure.get("source_identity"), str)
+            or not failure["source_identity"]
+            or not isinstance(failure.get("reason_code"), str)
+            or not failure["reason_code"]
+            or not _valid_date(failure.get("attempted_at"))
+        ):
+            raise ValueError("source_bundle_acquisition_invalid")
+        typed_failures.append(AcquisitionFailure(**failure))
+    try:
+        closure = AcquisitionClosure(
+            deck_fingerprint=document["deck_fingerprint"],
+            attempt_id=document["attempt_id"],
+            attempted_at=document["attempted_at"],
+            attempted_urls=tuple(attempted_urls),
+            successful_evidence_ids=tuple(successful),
+            failed_attempts=tuple(typed_failures),
+            negative_search_documented=document["negative_search_documented"],
+            checked_dossier=document["checked_dossier"],
+            policy_id=document["policy_id"],
+            status=document["status"],
+            content_sha256=document["content_sha256"],
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("source_bundle_acquisition_invalid") from error
+    if (
+        acquisition_closure_payload(closure) != document
+        or acquisition_closure_content_sha256(
+            closure,
+            policy_profile=profile,
+        )
+        != closure.content_sha256
+    ):
+        raise ValueError("source_bundle_acquisition_hash_stale")
+    return closure
+
+
+def _rows_are_canonical(value: list[Any]) -> bool:
+    rows = [_canonical_json(row) for row in value]
+    return rows == sorted(set(rows))
+
+
+def _valid_date(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
 
 
 def _validate_globalvalues_baseline(
@@ -734,20 +940,6 @@ def _validate_self_hash(document: Mapping[str, Any], *, error: str) -> None:
 
 def _raw_sha256(value: bytes) -> str:
     return f"sha256:{sha256(value).hexdigest()}"
-
-
-def _source_evidence_id(source_identity: str, content_sha256: str) -> str:
-    payload = f"{source_identity.strip()}\0{content_sha256}".encode("utf-8")
-    return f"evidence:{sha256(payload).hexdigest()}"
-
-
-def _source_claim_id(evidence_id: str, claim: Mapping[str, Any]) -> str:
-    payload = {
-        "evidence_id": evidence_id,
-        "claim": claim,
-    }
-    digest = sha256(_canonical_json(payload)).hexdigest()
-    return f"claim_{digest[:12]}"
 
 
 __all__ = (

@@ -23,6 +23,13 @@ from hsconfig.build_input_catalog import (
     load_audited_build_resource_store,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
+from hsconfig.source_acquisition_closure import (
+    AcquisitionClosure,
+    AcquisitionFailure,
+    acquisition_closure_content_sha256,
+    acquisition_closure_payload,
+    policy_provenance_payload,
+)
 
 
 RESOURCE_ROOT = Path("src/hsconfig/resources")
@@ -161,6 +168,7 @@ def test_resolver_returns_every_exact_hash_verified_context() -> None:
         assert identity.deck_fingerprint == inputs.deck_fingerprint
         assert deck["deck_name"] == inputs.deck_name
         assert deck["deck_fingerprint"] == inputs.deck_fingerprint
+        assert deck["deck_code_sha256"] == inputs.deck_code_sha256
         assert deck["main_cards"] == inventory_row["main_cards"]
         assert deck["sideboard_modules"] == inventory_row["sideboard_modules"]
         assert deck["claims"] == inventory_row["claims"]
@@ -199,6 +207,9 @@ def test_resolver_returns_every_exact_hash_verified_context() -> None:
         evidence_hash = evidence_payload.pop("content_sha256")
         assert _raw_digest(_canonical(evidence_payload)) == evidence_hash
         assert evidence["deck_fingerprint"] == inputs.deck_fingerprint
+        assert evidence["evidence_policy_ids"] == list(
+            inputs.evidence_policy_ids
+        )
         assert [row["claim_id"] for row in evidence["authorities"]] == [
             row["claim_id"] for row in deck["claims"]
         ]
@@ -206,36 +217,93 @@ def test_resolver_returns_every_exact_hash_verified_context() -> None:
         assert len(baseline) == 38
         assert baseline == FALLBACK_GLOBALVALUES_BASELINE
         assert set(baseline) == set(deck["globalvalues_decisions"])
-        for bundle, domain_sha256 in zip(
-            bundles,
-            inputs.source_bundle_sha256s,
-            strict=True,
-        ):
-            bundle_payload = dict(bundle)
-            bundle_hash = bundle_payload.pop("content_sha256")
-            assert _raw_digest(_canonical(bundle_payload)) == bundle_hash
-            assert bundle_hash == domain_sha256
-            assert bundle["deck"]["name"] == inputs.deck_name
-            assert (
-                bundle["deck"]["fingerprint"]
-                == inputs.deck_fingerprint
-            )
-            if inputs.deck_name == "CuteWarrior":
-                assert bundle["acquisition_closure"]["status"] == "open"
-                assert bundle["sources"] == []
-                assert bundle["claim_bindings"] == []
-            else:
-                assert (
-                    bundle["acquisition_closure"]["status"]
-                    == "closed_with_evidence"
-                )
-                assert bundle["sources"]
-            closure_payload = dict(bundle["acquisition_closure"])
-            closure_hash = closure_payload.pop("content_sha256")
-            assert _raw_digest(_canonical(closure_payload)) == closure_hash
-            binding_payload = dict(bundle["input_binding"])
-            binding_hash = binding_payload.pop("content_sha256")
-            assert _raw_digest(_canonical(binding_payload)) == binding_hash
+        assert len(bundles) == 2
+        bundle = next(
+            document
+            for document in bundles
+            if "content_sha256" in document
+        )
+        input_binding = next(
+            document
+            for document in bundles
+            if set(document)
+            == {"policy_provenance", "acquisition_closure"}
+        )
+        assert set(bundle) == {
+            "schema_version",
+            "authority",
+            "apply_blocking",
+            "deck",
+            "policy",
+            "acquisition_closure",
+            "sources",
+            "claims",
+            "content_sha256",
+        }
+        bundle_payload = dict(bundle)
+        bundle_hash = bundle_payload.pop("content_sha256")
+        assert _raw_digest(_canonical(bundle_payload)) == bundle_hash
+        assert {
+            bundle_hash,
+            _raw_digest(_canonical(input_binding)),
+        } == set(inputs.source_bundle_sha256s)
+        assert bundle["deck"]["name"] == inputs.deck_name
+        assert bundle["deck"]["fingerprint"] == inputs.deck_fingerprint
+        assert set(bundle["acquisition_closure"]) == {
+            "deck_fingerprint",
+            "attempt_id",
+            "attempted_at",
+            "attempted_urls",
+            "successful_evidence_ids",
+            "failed_attempts",
+            "negative_search_documented",
+            "checked_dossier",
+            "policy_id",
+            "status",
+            "content_sha256",
+        }
+        assert set(input_binding) == {
+            "policy_provenance",
+            "acquisition_closure",
+        }
+        assert input_binding == {
+            "policy_provenance": policy_provenance_payload(policy),
+            "acquisition_closure": bundle["acquisition_closure"],
+        }
+        closure_document = bundle["acquisition_closure"]
+        closure = AcquisitionClosure(
+            deck_fingerprint=closure_document["deck_fingerprint"],
+            attempt_id=closure_document["attempt_id"],
+            attempted_at=closure_document["attempted_at"],
+            attempted_urls=tuple(closure_document["attempted_urls"]),
+            successful_evidence_ids=tuple(
+                closure_document["successful_evidence_ids"]
+            ),
+            failed_attempts=tuple(
+                AcquisitionFailure(**row)
+                for row in closure_document["failed_attempts"]
+            ),
+            negative_search_documented=closure_document[
+                "negative_search_documented"
+            ],
+            checked_dossier=closure_document["checked_dossier"],
+            policy_id=closure_document["policy_id"],
+            status=closure_document["status"],
+            content_sha256=closure_document["content_sha256"],
+        )
+        assert acquisition_closure_payload(closure) == closure_document
+        assert acquisition_closure_content_sha256(
+            closure,
+            policy_profile=policy,
+        ) == closure.content_sha256
+        if inputs.deck_name == "CuteWarrior":
+            assert closure.status == "open"
+            assert bundle["sources"] == []
+            assert bundle["claims"] == []
+        else:
+            assert closure.status == "closed_with_evidence"
+            assert bundle["sources"]
+            assert bundle["claims"]
 
 
 def test_resolver_rejects_deck_multiplicity_and_fingerprint_replay() -> None:
@@ -262,6 +330,90 @@ def test_resolver_rejects_deck_multiplicity_and_fingerprint_replay() -> None:
         document=replay,
     )
     with pytest.raises(ValueError, match="deck_cards_identity_mismatch"):
+        resolve_build_context(changed, resources=memory)
+
+
+def test_resolver_rejects_freshly_self_hashed_unapproved_inputs() -> None:
+    audited, store = _loaded()
+    inputs = audited.builds[0]
+    payload = json.loads(inputs.canonical_payload)
+    payload["deck_code_sha256"] = "0" * 64
+    payload["evidence_policy_ids"] = ["forged.policy"]
+    forged = canonicalize_build_inputs(payload)
+
+    with pytest.raises(ValueError, match="deck_cards_deck_code_mismatch"):
+        resolve_build_context(forged, resources=store)
+
+
+def test_resolver_rejects_coordinated_self_hashed_input_substitution() -> None:
+    audited, store = _loaded()
+    inputs = audited.builds[0]
+    forged_deck_code = "0" * 64
+    forged_policy_ids = ("BOT_NATIVE_PRE_RUN", "forged.policy")
+
+    deck = json.loads(store.read_by_sha256(inputs.deck_cards_resource_sha256))
+    deck["deck_code_sha256"] = forged_deck_code
+    deck_raw = _canonical(deck)
+    deck_digest = _raw_digest(deck_raw)
+    evidence = json.loads(
+        store.read_by_sha256(inputs.evidence_contract_resource_sha256)
+    )
+    evidence["evidence_policy_ids"] = list(forged_policy_ids)
+    _self_hash(evidence)
+    evidence_raw = _canonical(evidence)
+    evidence_digest = _raw_digest(evidence_raw)
+    payload = json.loads(inputs.canonical_payload)
+    payload["deck_code_sha256"] = forged_deck_code
+    payload["evidence_policy_ids"] = list(forged_policy_ids)
+    payload["deck_cards_resource_sha256"] = deck_digest
+    payload["evidence_contract_resource_sha256"] = evidence_digest
+    forged = canonicalize_build_inputs(payload)
+    memory = _memory_store(inputs, store)
+    memory.values[deck_digest] = deck_raw
+    memory.values[evidence_digest] = evidence_raw
+
+    with pytest.raises(ValueError, match="resolved_build_inputs_not_approved"):
+        resolve_build_context(forged, resources=memory)
+
+
+def test_resolver_recomputes_deck_fingerprint_from_main_roster() -> None:
+    audited, store = _loaded()
+    inputs = audited.builds[0]
+    deck = json.loads(store.read_by_sha256(inputs.deck_cards_resource_sha256))
+    deck["main_cards"][0]["card_id"] = "FAKE_CARD_001"
+    deck["main_cards"][0]["composite_card_key"] = (
+        f"{inputs.deck_fingerprint}:main_deck:FAKE_CARD_001"
+    )
+    changed, memory = _replace_resource(
+        inputs,
+        store,
+        field="deck_cards_resource_sha256",
+        document=deck,
+    )
+
+    with pytest.raises(ValueError, match="deck_cards_fingerprint_mismatch"):
+        resolve_build_context(changed, resources=memory)
+
+
+def test_resolver_rejects_sideboard_card_missing_from_pinned_snapshot() -> None:
+    audited, store = _loaded()
+    inputs = next(
+        row for row in audited.builds if row.deck_name == "MechPala"
+    )
+    deck = json.loads(store.read_by_sha256(inputs.deck_cards_resource_sha256))
+    deck["sideboard_modules"][0]["card_id"] = "FAKE_CARD_001"
+    owner = deck["sideboard_modules"][0]["owner_card_id"]
+    deck["sideboard_modules"][0]["composite_card_key"] = (
+        f"{inputs.deck_fingerprint}:sideboard_module:{owner}:FAKE_CARD_001"
+    )
+    changed, memory = _replace_resource(
+        inputs,
+        store,
+        field="deck_cards_resource_sha256",
+        document=deck,
+    )
+
+    with pytest.raises(ValueError, match="deck_cards_snapshot_card_missing"):
         resolve_build_context(changed, resources=memory)
 
 
@@ -384,38 +536,75 @@ def _changed_source_context(
 ) -> tuple[CanonicalBuildInputs, _MemoryStore]:
     audited, store = _loaded()
     inputs = audited.builds[0]
-    source = json.loads(
-        store.read_by_sha256(inputs.source_bundle_resource_sha256s[0])
+    documents = [
+        json.loads(store.read_by_sha256(digest))
+        for digest in inputs.source_bundle_resource_sha256s
+    ]
+    bundle = next(
+        document for document in documents if "content_sha256" in document
     )
+    binding = next(
+        document
+        for document in documents
+        if set(document) == {"policy_provenance", "acquisition_closure"}
+    )
+    old_bundle_resource = _raw_digest(_canonical(bundle))
+    old_bundle_domain = bundle["content_sha256"]
+    old_binding_resource = _raw_digest(_canonical(binding))
     if mutation == "replay":
-        source["deck"]["name"] = audited.builds[1].deck_name
+        bundle["deck"]["name"] = audited.builds[1].deck_name
     elif mutation == "acquisition_removal":
-        source.pop("acquisition_closure")
+        bundle.pop("acquisition_closure")
     elif mutation == "policy":
-        source["policy"]["policy_id"] = "SUBSTITUTED_POLICY"
+        bundle["policy"]["policy_id"] = "SUBSTITUTED_POLICY"
     elif mutation == "negative_with_evidence":
-        source["acquisition_closure"]["status"] = "closed_negative_search"
-        source["acquisition_closure"]["negative_search_documented"] = True
-        _self_hash(source["acquisition_closure"])
-        source["input_binding"]["acquisition_closure_sha256"] = (
-            source["acquisition_closure"]["content_sha256"]
-        )
-        _self_hash(source["input_binding"])
+        bundle["acquisition_closure"]["status"] = "closed_negative_search"
+        bundle["acquisition_closure"]["negative_search_documented"] = True
     elif mutation == "claim_evidence":
-        source["claim_bindings"][0]["evidence_id"] = "evidence:" + ("0" * 64)
+        bundle["claims"][0]["evidence_id"] = "evidence:" + ("0" * 64)
     else:
-        source["input_binding"]["source_document_sha256s"][0] = (
-            "sha256:" + ("0" * 64)
+        binding["acquisition_closure"]["attempted_urls"].append(
+            "https://example.test/unbound"
         )
-        _self_hash(source["input_binding"])
-    _self_hash(source)
-    return _replace_resource(
-        inputs,
-        store,
-        field="source_bundle_resource_sha256s",
-        document=source,
-        domain_sha256=source["content_sha256"],
+    if mutation != "input_binding":
+        _self_hash(bundle)
+    changed_document = binding if mutation == "input_binding" else bundle
+    old_resource = (
+        old_binding_resource
+        if mutation == "input_binding"
+        else old_bundle_resource
     )
+    old_domain = (
+        old_resource
+        if mutation == "input_binding"
+        else old_bundle_domain
+    )
+    raw = _canonical(changed_document)
+    new_resource = _raw_digest(raw)
+    new_domain = (
+        new_resource
+        if mutation == "input_binding"
+        else changed_document["content_sha256"]
+    )
+    resources = [
+        digest
+        for digest in inputs.source_bundle_resource_sha256s
+        if digest != old_resource
+    ]
+    resources.append(new_resource)
+    domains = [
+        digest
+        for digest in inputs.source_bundle_sha256s
+        if digest != old_domain
+    ]
+    domains.append(new_domain)
+    payload = json.loads(inputs.canonical_payload)
+    payload["source_bundle_resource_sha256s"] = resources
+    payload["source_bundle_sha256s"] = domains
+    changed = canonicalize_build_inputs(payload)
+    memory = _memory_store(inputs, store)
+    memory.values[new_resource] = raw
+    return changed, memory
 
 
 @pytest.mark.parametrize(
