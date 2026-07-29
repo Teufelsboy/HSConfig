@@ -135,9 +135,21 @@ class CardDispositionRow:
         for path in runtime_paths:
             canonical_relative_path(path)
         object.__setattr__(self, "runtime_paths", runtime_paths)
-        _canonical_json(self.official_semantics_canonical_json)
+        canonical_semantics = _canonical_json(
+            self.official_semantics_canonical_json
+        )
         expected_runtime_paths = (f"{self.physical_owner}.json",)
         if self.disposition is CardDisposition.RUNTIME_EMITTED:
+            semantics = json.loads(canonical_semantics)
+            if (
+                not isinstance(semantics, dict)
+                or not self.physical_owner
+                or type(semantics.get("GameCardId")) is not str
+                or semantics["GameCardId"] != self.physical_owner
+            ):
+                raise ValueError(
+                    "card_disposition_physical_semantics_invalid"
+                )
             if runtime_paths != expected_runtime_paths:
                 raise ValueError("card_disposition_runtime_path_mismatch")
         elif runtime_paths:
@@ -239,6 +251,14 @@ class MulliganRuleModel:
             "discard",
         }:
             raise ValueError("mulligan_rule_invalid")
+        if self.claim_id is not None and (
+            not isinstance(self.claim_id, str)
+            or not self.claim_id
+            or self.claim_id != self.claim_id.strip()
+        ):
+            raise ValueError("mulligan_rule_claim_id_invalid")
+        if not self.source_claim_ids and self.claim_id is None:
+            raise ValueError("mulligan_rule_authorization_missing")
         _canonical_json(self.selector_canonical_json)
         _canonical_json(self.condition_canonical_json)
 

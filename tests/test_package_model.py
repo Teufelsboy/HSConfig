@@ -51,6 +51,31 @@ def test_package_artifact_exposes_only_verified_public_fields() -> None:
         PackageArtifact("card.json", b"abc", 3, "0" * 64)
 
 
+@pytest.mark.parametrize("size", [True, 3.0, "3", -1])
+def test_package_artifact_requires_a_nonnegative_exact_integer_size(
+    size: object,
+) -> None:
+    with pytest.raises(ValueError, match="package_artifact_size_invalid"):
+        PackageArtifact(
+            "card.json",
+            b"abc",
+            size,  # type: ignore[arg-type]
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        )
+
+
+def test_package_artifact_accepts_verified_zero_size_for_empty_content() -> None:
+    artifact = PackageArtifact(
+        "empty.bin",
+        b"",
+        0,
+        "e3b0c44298fc1c149afbf4c8996fb924"
+        "27ae41e4649b934ca495991b7852b855",
+    )
+
+    assert artifact.size == 0
+
+
 @pytest.mark.parametrize("relative_path", [Path("/absolute.json"), Path("../escape.json"), Path("folder\\file.json")])
 def test_package_artifact_rejects_unsafe_relative_paths(relative_path: Path) -> None:
     with pytest.raises(ValueError):
@@ -162,6 +187,69 @@ def test_runtime_surface_plan_uses_canonical_cross_model_authorization_ids() -> 
         "GlobalValues.json": ("globalvalues:HeroValue",),
         "Mulligan.json": ("mulligan:claim-mulligan",),
     }
+
+
+def test_globalvalues_ledger_preserves_registry_order_while_refs_sort_separately() -> None:
+    registry_order = (
+        "GameCardId",
+        "ConfigComment",
+        "FirstTurnValueWeight",
+        "SecondTurnValueWeight",
+        "MyHeroPowerValue",
+        "GlobalMinionAttack",
+        "GlobalMinionIntrinsicValue",
+        "MyWeaponValue",
+        "LowHpBoardValuePenalty",
+        "OpponentSpecificMatchupTuning",
+        "PostApplyRegressionTuning",
+        "EnemyHeroPowerValue",
+        "EnemyWeaponValue",
+    )
+    expected_references = (
+        "globalvalues:ConfigComment",
+        "globalvalues:EnemyHeroPowerValue",
+        "globalvalues:EnemyWeaponValue",
+        "globalvalues:FirstTurnValueWeight",
+        "globalvalues:GameCardId",
+        "globalvalues:GlobalMinionAttack",
+        "globalvalues:GlobalMinionIntrinsicValue",
+        "globalvalues:LowHpBoardValuePenalty",
+        "globalvalues:MyHeroPowerValue",
+        "globalvalues:MyWeaponValue",
+        "globalvalues:OpponentSpecificMatchupTuning",
+        "globalvalues:PostApplyRegressionTuning",
+        "globalvalues:SecondTurnValueWeight",
+    )
+    model = package_model()
+    decisions = tuple(
+        GlobalValueDecision(
+            deck_fingerprint="fingerprint",
+            key=key,
+            kind=GlobalValueDecisionKind.COPY_BASELINE,
+            baseline_canonical_json=b'"baseline"',
+            emitted_canonical_json=b'"baseline"',
+            authority_id="baseline",
+            claim_ids=(),
+            reason="fixture",
+        )
+        for key in registry_order
+    )
+    ledger = replace(model.globalvalues_ledger, decisions=decisions)
+
+    plan = build_runtime_surface_plan(
+        mulligan_plan=model.mulligan_plan,
+        globalvalues_ledger=ledger,
+        disposition_ledger=model.disposition_ledger,
+        combo_decision_ids=(),
+    )
+    references = next(
+        surface.decision_ids
+        for surface in plan.surfaces
+        if surface.family == "GlobalValues"
+    )
+
+    assert tuple(decision.key for decision in ledger.decisions) == registry_order
+    assert references == expected_references
 
 
 @pytest.mark.parametrize(
@@ -293,7 +381,9 @@ def test_runtime_emitted_cardid_requires_exact_path_owner_id_parity(
             deck_fingerprint="fingerprint",
             composite_card_key="CARD_A",
             zone="main_deck",
-            official_semantics_canonical_json=b'{"GameCardId":"CARD_A"}',
+            official_semantics_canonical_json=(
+                f'{{"GameCardId":"{physical_owner}"}}'.encode("utf-8")
+            ),
             authority_lane=EvidenceLane.OFFICIAL_CARD_DATA,
             evidence_ids=("evidence-card",),
             claim_ids=(),
@@ -319,6 +409,122 @@ def test_suppressed_cardid_cannot_retain_a_runtime_path() -> None:
             runtime_paths=("CARD_A.json",),
             reason_code="suppressed",
         )
+
+
+@pytest.mark.parametrize(
+    "semantics",
+    [
+        b"[]",
+        b'{"ConfigComment":"missing identity"}',
+        b'{"GameCardId":""}',
+        b'{"GameCardId":"CARD_B"}',
+    ],
+)
+def test_runtime_emitted_cardid_requires_linked_physical_owner_semantics(
+    semantics: bytes,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="card_disposition_physical_semantics_invalid",
+    ):
+        CardDispositionRow(
+            deck_fingerprint="fingerprint",
+            composite_card_key="CARD_A",
+            zone="main_deck",
+            official_semantics_canonical_json=semantics,
+            authority_lane=EvidenceLane.OFFICIAL_CARD_DATA,
+            evidence_ids=("evidence-card",),
+            claim_ids=(),
+            physical_owner="CARD_A",
+            disposition=CardDisposition.RUNTIME_EMITTED,
+            runtime_paths=("CARD_A.json",),
+            reason_code="fixture",
+        )
+
+
+def test_mulligan_rule_rejects_missing_source_and_policy_authorization() -> None:
+    with pytest.raises(ValueError, match="mulligan_rule_authorization_missing"):
+        MulliganRuleModel(
+            card_id="CARD_A",
+            selector_kind="card",
+            selector_canonical_json=b'{"card":"CARD_A"}',
+            action="hold",
+            condition_canonical_json=b'"*"',
+            reason="fixture",
+            confidence="high",
+            source_claim_ids=(),
+        )
+
+
+def test_mulligan_refs_dedupe_shared_sources_and_prefer_explicit_claim_ids() -> None:
+    model = package_model()
+    mulligan = MulliganPlanModel(
+        deck_name="Fixture Deck",
+        rules=(
+            MulliganRuleModel(
+                "CARD_A",
+                "card",
+                b'{"card":"CARD_A"}',
+                "hold",
+                b'"*"',
+                "fixture",
+                "high",
+                ("shared-source",),
+            ),
+            MulliganRuleModel(
+                "CARD_B",
+                "card",
+                b'{"card":"CARD_B"}',
+                "hold",
+                b'"*"',
+                "fixture",
+                "high",
+                ("shared-source",),
+            ),
+            MulliganRuleModel(
+                "CARD_C",
+                "card",
+                b'{"card":"CARD_C"}',
+                "hold",
+                b'"*"',
+                "fixture",
+                "high",
+                ("raw-source",),
+                "canonical-claim",
+            ),
+            MulliganRuleModel(
+                "CARD_D",
+                "card",
+                b'{"card":"CARD_D"}',
+                "hold",
+                b'"*"',
+                "fixture",
+                "high",
+                (),
+                "policy-decision",
+            ),
+        ),
+        suppressed=(),
+        bot_delegated=(),
+        merged_duplicate_rule_count=0,
+    )
+
+    plan = build_runtime_surface_plan(
+        mulligan_plan=mulligan,
+        globalvalues_ledger=model.globalvalues_ledger,
+        disposition_ledger=model.disposition_ledger,
+        combo_decision_ids=(),
+    )
+
+    assert next(
+        surface.decision_ids
+        for surface in plan.surfaces
+        if surface.family == "Mulligan"
+    ) == (
+        "mulligan:canonical-claim",
+        "mulligan:policy-decision",
+        "mulligan:shared-source",
+    )
 
 
 def test_mulligan_authorization_references_remain_sorted_above_100_rows() -> None:

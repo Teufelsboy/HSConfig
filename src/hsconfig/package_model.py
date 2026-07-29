@@ -58,6 +58,8 @@ class PackageArtifact:
         path = _canonical_relative_path(self.relative_path)
         size = len(self.content)
         digest = hashlib.sha256(self.content).hexdigest()
+        if type(self.size) is not int or self.size < 0:
+            raise ValueError("package_artifact_size_invalid")
         if self.size != size:
             raise ValueError("package_artifact_size_mismatch")
         if (
@@ -217,7 +219,12 @@ def build_runtime_surface_plan(
             relative_path="GlobalValues.json",
             owner="globalvalues",
             decision_ids=tuple(
-                f"globalvalues:{row.key}" for row in globalvalues_ledger.decisions
+                sorted(
+                    {
+                        f"globalvalues:{row.key}"
+                        for row in globalvalues_ledger.decisions
+                    }
+                )
             ),
         ),
         RuntimeSurfaceDecision(
@@ -227,9 +234,13 @@ def build_runtime_surface_plan(
             decision_ids=tuple(
                 sorted(
                     {
-                        f"mulligan:{claim_id}"
+                        f"mulligan:{authorization_id}"
                         for rule in mulligan_plan.rules
-                        for claim_id in rule.source_claim_ids
+                        for authorization_id in (
+                            (rule.claim_id,)
+                            if rule.claim_id is not None
+                            else rule.source_claim_ids
+                        )
                     }
                 )
             ),

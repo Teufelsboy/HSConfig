@@ -174,6 +174,7 @@ def test_configure_run_requires_exactly_one_source_alternative(
     "reserved_path",
     [
         "configure_summary.json",
+        "configure_summary.json/child.json",
         "04_package",
         "04_package/reports/caller.json",
         "04_package/CustomConfig/caller.json",
@@ -190,6 +191,29 @@ def test_configure_run_rejects_reserved_paths(reserved_path: str) -> None:
                 reserved_path: b"{}",
             },
         )
+
+
+def test_configure_run_rejects_file_ancestor_collisions_before_destination_creation(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "configure"
+
+    with pytest.raises(
+        ValueError,
+        match="configure_run_artifact_path_collision",
+    ):
+        create_configure_run_model(
+            package=_model(),
+            stage_artifacts={
+                "01_manifest/input.json": b"{}",
+                "02_source_documents/source.json": b"{}",
+                "03_research/research.json": b"{}",
+                "a": b"file",
+                "a/b.json": b"descendant",
+            },
+        )
+
+    assert not destination.exists()
 
 
 def test_configure_tuple_fields_copy_caller_lists() -> None:

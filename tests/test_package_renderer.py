@@ -35,6 +35,23 @@ def test_renderer_derives_runtime_and_reports_from_one_typed_model() -> None:
     assert rendered.content_root_sha256
 
 
+def test_renderer_uses_the_linked_physical_owner_payload_for_cardid() -> None:
+    rendered = render_package_model(_model_with_cardid())
+
+    payload = json.loads(
+        next(
+            artifact.content
+            for artifact in rendered.artifacts
+            if artifact.relative_path == "CARD_A.json"
+        )
+    )
+
+    assert payload == {
+        "ConfigComment": "linked physical owner",
+        "GameCardId": "CARD_A",
+    }
+
+
 def test_renderer_refuses_nonempty_destination_and_verifies_written_tree(tmp_path: Path) -> None:
     rendered = render_package_model(_model())
     destination = tmp_path / "package"
@@ -114,6 +131,38 @@ def test_loader_rejects_unverified_manifest_size_and_digest_records() -> None:
         load_package_model_from_view(_MemoryPackageView(files))
 
 
+def test_loader_accepts_a_verified_zero_size_manifest_record() -> None:
+    rendered = render_package_model(_model())
+    files = {artifact.relative_path: artifact.content for artifact in rendered.artifacts}
+    files["empty.bin"] = b""
+    non_manifest = tuple(
+        PackageArtifact.from_content(relative_path=path, content=content)
+        for path, content in sorted(files.items())
+        if path != "reports/package_manifest.json"
+    )
+    files["reports/package_manifest.json"] = (
+        json.dumps(
+            {
+                "schema_version": 1,
+                "content_root_sha256": content_root_sha256(non_manifest),
+                "artifacts": [
+                    {
+                        "relative_path": artifact.relative_path,
+                        "size": artifact.size,
+                        "sha256": artifact.sha256,
+                    }
+                    for artifact in non_manifest
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+
+    assert load_package_model_from_view(_MemoryPackageView(files)) == _model()
+
+
 def test_package_writer_rejects_a_forged_render_before_writing(
     tmp_path: Path,
 ) -> None:
@@ -159,6 +208,50 @@ def _model() -> PackageModel:
         build_runtime_surface_plan(
             mulligan_plan=mulligan, globalvalues_ledger=globalvalues,
             disposition_ledger=dispositions, combo_decision_ids=(),
+        ),
+    )
+
+
+def _model_with_cardid() -> PackageModel:
+    from hsconfig.package_domain import (
+        CardDisposition,
+        CardDispositionRow,
+        EvidenceLane,
+    )
+
+    model = _model()
+    dispositions = DispositionLedger(
+        "fingerprint",
+        (
+            CardDispositionRow(
+                "fingerprint",
+                "CARD_A",
+                "main_deck",
+                b'{"ConfigComment":"linked physical owner","GameCardId":"CARD_A"}',
+                EvidenceLane.OFFICIAL_CARD_DATA,
+                ("evidence-card",),
+                (),
+                "CARD_A",
+                CardDisposition.RUNTIME_EMITTED,
+                ("CARD_A.json",),
+                "fixture",
+            ),
+        ),
+        (),
+        "dispositions",
+    )
+    return PackageModel(
+        model.deck_name,
+        model.deck_fingerprint,
+        model.mulligan_plan,
+        model.globalvalues_ledger,
+        dispositions,
+        model.evidence_contract,
+        build_runtime_surface_plan(
+            mulligan_plan=model.mulligan_plan,
+            globalvalues_ledger=model.globalvalues_ledger,
+            disposition_ledger=dispositions,
+            combo_decision_ids=(),
         ),
     )
 

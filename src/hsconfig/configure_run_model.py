@@ -29,6 +29,7 @@ class ConfigureRunModel:
         paths = tuple(artifact.relative_path for artifact in self.stage_artifacts)
         if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
             raise ValueError("configure_run_stage_artifacts_not_unique_sorted")
+        _validate_no_file_ancestor_collisions(paths)
         _validate_required_stages(paths)
 
 
@@ -91,6 +92,9 @@ def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun
         ),
     )
     artifacts = tuple(sorted((*all_content, summary), key=lambda artifact: artifact.relative_path))
+    _validate_no_file_ancestor_collisions(
+        tuple(artifact.relative_path for artifact in artifacts)
+    )
     return RenderedConfigureRun(model=model, artifacts=artifacts, content_root_sha256=root)
 
 
@@ -118,6 +122,7 @@ def write_rendered_configure_run(rendered: RenderedConfigureRun, destination: Pa
 def _validate_required_stages(paths: tuple[str, ...]) -> None:
     if any(
         path == "configure_summary.json"
+        or path.startswith("configure_summary.json/")
         or path == "04_package"
         or path.startswith("04_package/")
         for path in paths
@@ -138,6 +143,17 @@ def _validate_required_stages(paths: tuple[str, ...]) -> None:
         or (acquisition_paths and autopilot_02)
     ):
         raise ValueError("configure_run_autopilot_stage_invalid")
+
+
+def _validate_no_file_ancestor_collisions(paths: tuple[str, ...]) -> None:
+    files = set(paths)
+    for path in paths:
+        parts = path.split("/")
+        if any(
+            "/".join(parts[:index]) in files
+            for index in range(1, len(parts))
+        ):
+            raise ValueError("configure_run_artifact_path_collision")
 
 
 def _unavailable_stages(artifacts: tuple[PackageArtifact, ...]) -> dict[str, str]:
