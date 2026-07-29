@@ -14,6 +14,7 @@ from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.config_quality_contract import semantic_handoff_projection
 from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
+from hsconfig.package_domain import MulliganPlanModel
 from hsconfig.package_derivation_receipt import (
     derivation_schema_version_supported,
     package_authority_context_verified,
@@ -157,7 +158,9 @@ def build_operator_summary(
     config_readiness_summary: dict[str, Any] | None = None,
     config_readiness_report: dict[str, Any] | None = None,
     claim_conflict_report: dict[str, Any] | None = None,
-    mulligan_plan_report: dict[str, Any] | None = None,
+    mulligan_plan_report: (
+        Mapping[str, Any] | MulliganPlanModel | None
+    ) = None,
     card_behavior_plan_report: dict[str, Any] | None = None,
     combo_plan_report: dict[str, Any] | None = None,
     globalvalues_profile_report: dict[str, Any] | None = None,
@@ -192,6 +195,9 @@ def build_operator_summary(
     generated_files = generated_files or []
     deck_name = deck_name or ""
     deck_code = deck_code or ""
+    mulligan_plan_report = _mulligan_plan_report_payload(
+        mulligan_plan_report
+    )
     unsupported_conditions = _runtime_unsupported_condition_rows(unsupported_conditions)
     source_apply_eligible = (
         True
@@ -481,7 +487,13 @@ def build_operator_summary(
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
-        "mulligan_policy_status": _mulligan_policy_status(config_usefulness),
+        "mulligan_policy_status": _mulligan_policy_status(
+            config_usefulness,
+            mulligan_plan_report=mulligan_plan_report,
+        ),
+        "mulligan_bot_delegation_summary": (
+            _mulligan_bot_delegation_summary(mulligan_plan_report)
+        ),
         "default_only_runtime_surfaces": default_only_runtime_surfaces,
         "no_default_only_runtime_status": _no_default_only_runtime_status(
             default_only_runtime_surfaces
@@ -541,6 +553,53 @@ def build_operator_summary(
         summary["package_derivation"] = dict(package_derivation)
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
+
+
+def _mulligan_plan_report_payload(
+    report: Mapping[str, Any] | MulliganPlanModel | None,
+) -> dict[str, Any]:
+    if isinstance(report, MulliganPlanModel):
+        return report.to_report()
+    if isinstance(report, Mapping):
+        return dict(report)
+    return {}
+
+
+def _mulligan_bot_delegation_summary(
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
+    rows = report.get("bot_delegated", ())
+    if not isinstance(rows, list):
+        rows = []
+    delegated = [
+        row for row in rows if isinstance(row, Mapping)
+    ]
+    return {
+        "count": len(delegated),
+        "card_ids": sorted(
+            {
+                str(row.get("card_id", "")).strip()
+                for row in delegated
+                if str(row.get("card_id", "")).strip()
+            }
+        ),
+        "policy_ids": sorted(
+            {
+                str(row.get("policy_id", "")).strip()
+                for row in delegated
+                if str(row.get("policy_id", "")).strip()
+            }
+        ),
+        "reason_codes": dict(
+            sorted(
+                Counter(
+                    str(row.get("reason_code", "")).strip()
+                    for row in delegated
+                    if str(row.get("reason_code", "")).strip()
+                ).items()
+            )
+        ),
+    }
 
 
 def _operator_semantic_handoff_report(
@@ -727,7 +786,11 @@ def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict
     ]
 
 
-def _mulligan_policy_status(config_usefulness: dict[str, Any]) -> dict[str, Any]:
+def _mulligan_policy_status(
+    config_usefulness: dict[str, Any],
+    *,
+    mulligan_plan_report: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     surfaces = (
         config_usefulness.get("surfaces", {})
         if isinstance(config_usefulness, dict)
@@ -736,6 +799,36 @@ def _mulligan_policy_status(config_usefulness: dict[str, Any]) -> dict[str, Any]
     mulligan = surfaces.get("mulligan", {}) if isinstance(surfaces, dict) else {}
     if not isinstance(mulligan, dict):
         mulligan = {}
+    report = (
+        mulligan_plan_report
+        if isinstance(mulligan_plan_report, Mapping)
+        else {}
+    )
+    delegated = report.get("bot_delegated", ())
+    delegated_rows = (
+        [row for row in delegated if isinstance(row, Mapping)]
+        if isinstance(delegated, list)
+        else []
+    )
+    rules = report.get("rules", ())
+    physical_rules = (
+        [row for row in rules if isinstance(row, Mapping)]
+        if isinstance(rules, list)
+        else []
+    )
+    if delegated_rows and not physical_rules:
+        return {
+            "status": "bot_delegated",
+            "default_only": False,
+            "policy_lanes": ["E"],
+            "policy_reasons": sorted(
+                {
+                    str(row.get("reason_code", "")).strip()
+                    for row in delegated_rows
+                    if str(row.get("reason_code", "")).strip()
+                }
+            ),
+        }
     return {
         "status": str(mulligan.get("status", "unknown")),
         "default_only": bool(mulligan.get("default_only")),

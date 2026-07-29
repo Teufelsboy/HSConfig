@@ -34,6 +34,7 @@ from hsconfig.disposition_ledger import (
     build_disposition_ledger,
     build_dual_closure,
 )
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.guide_source_depth import build_guide_source_depth_report
@@ -237,9 +238,23 @@ def build_package_payload(
         "claim_conflict_report",
         {"conflict_count": 0, "conflicts": []},
     )
-    runtime_claims = [claim for claim in plan_claims if claim_can_lower_to_runtime(claim)]
+    mulligan_internal_policy_claims = [
+        claim
+        for claim in plan_claims
+        if _is_internal_mulligan_policy_claim(claim)
+    ]
+    source_plan_claims = [
+        claim
+        for claim in plan_claims
+        if not _is_internal_mulligan_policy_claim(claim)
+    ]
+    runtime_claims = [
+        claim
+        for claim in source_plan_claims
+        if claim_can_lower_to_runtime(claim)
+    ]
     initial_lifecycle_rows = build_initial_lifecycle_rows(
-        plan_claims,
+        source_plan_claims,
         conflict_report=source_claim_conflict_report,
     )
     non_mulligan_runtime_claims = [
@@ -335,27 +350,31 @@ def build_package_payload(
             if lifecycle_claim_id(claim) not in globalvalues_decision_claim_ids
         ],
     ]
-    mulligan_plan = build_mulligan_plan(
+    policy_profile = load_policy_profile()
+    mulligan_deck_cards = _policy_mulligan_deck_cards(
+        gameplan_contract.get("cards", {}),
+        card_metadata,
+    )
+    mulligan_internal_policy_claims = [
+        *mulligan_internal_policy_claims,
+        *_explicit_bot_delegation_claims(
+            card_ids=mulligan_deck_cards,
+            existing_claims=mulligan_internal_policy_claims,
+            policy_id=policy_profile.policy_id,
+        ),
+    ]
+    mulligan_plan_model = build_mulligan_plan(
         deck_name=args.deck_name,
         claims=mulligan_report_claims,
         card_roles=card_roles,
-        deck_cards=_policy_mulligan_deck_cards(
-            gameplan_contract.get("cards", {}),
-            card_metadata,
-        ),
-        allow_policy_backed=True,
-        policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
-            mulligan_runtime_claims
-        ),
-        external_policy_vetoes=_mulligan_source_gap_vetoes(
-            mulligan_source_gaps,
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-        ),
+        deck_cards=mulligan_deck_cards,
+        policy_profile=policy_profile,
+        internal_policy_claims=mulligan_internal_policy_claims,
         source_claim_lifecycle_rows=initial_lifecycle_rows,
         deck_identity=deck_identity,
         verified_source_receipts=verified_source_receipts,
     )
+    mulligan_plan = mulligan_plan_model.to_report()
     card_behavior_plan = route_card_behavior_claims(
         cardid_claims,
         identity_links=_card_behavior_identity_links(gameplan_contract),
@@ -481,7 +500,7 @@ def build_package_payload(
     baseline_receipt = load_globalvalues_baseline(args.runtime_root)
     baseline = baseline_receipt["baseline"]
     globalvalues = compile_globalvalues(baseline, gameplan_contract)
-    compiled_mulligan = compile_mulligan(gameplan_contract)
+    compiled_mulligan = compile_mulligan(mulligan_plan_model)
     combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
     runtime_surface_ledger = build_runtime_surface_ledger(
         deck_identity=deck_identity,
@@ -516,7 +535,10 @@ def build_package_payload(
         config_readiness_report=config_readiness_report,
         source_evidence_verification_report=context["source_evidence_report"],
     )
-    surface_intent = build_surface_intent(gameplan_contract)
+    surface_intent = build_surface_intent(
+        gameplan_contract,
+        mulligan_plan_report=mulligan_plan,
+    )
     runtime_files: dict[str, dict[str, Any]] = {
         "GlobalValues.json": globalvalues["config"],
         "Mulligan.json": compiled_mulligan,
@@ -1626,6 +1648,39 @@ def _policy_mulligan_deck_cards(
     return merged
 
 
+def _explicit_bot_delegation_claims(
+    *,
+    card_ids: Mapping[str, Any],
+    existing_claims: list[dict[str, Any]],
+    policy_id: str,
+) -> list[dict[str, Any]]:
+    already_disposed = {
+        card_id
+        for claim in existing_claims
+        for card_id in _claim_card_ids(claim)
+    }
+    delegated_cards = sorted(
+        {
+            str(card_id).strip()
+            for card_id in card_ids
+            if str(card_id).strip()
+            and str(card_id).strip() not in already_disposed
+        }
+    )
+    if not delegated_cards:
+        return []
+    return [
+        {
+            "claim_id": "bot-native-pre-run-explicit-delegation",
+            "claim_kind": "mulligan_bot_delegation",
+            "policy_id": policy_id,
+            "policy_rule_id": "intentional_bot_delegation",
+            "cards": delegated_cards,
+            "reason_code": "unsupported_exact_mulligan_authority",
+        }
+    ]
+
+
 def _policy_mulligan_excluded_card_ids(
     accepted_mulligan_claims: list[dict[str, Any]],
 ) -> set[str]:
@@ -1657,6 +1712,20 @@ def _claim_card_ids(claim: dict[str, Any]) -> set[str]:
     if not isinstance(cards, list):
         return set()
     return {str(card) for card in cards if str(card)}
+
+
+def _is_internal_mulligan_policy_claim(
+    claim: Mapping[str, Any],
+) -> bool:
+    return (
+        normalized_claim_kind(claim) == "mulligan_bot_delegation"
+        or str(claim.get("source_type", "")).strip().lower()
+        == "versioned_internal_policy"
+        or str(claim.get("source_family", "")).strip().lower()
+        == "versioned_internal_policy"
+        or str(claim.get("policy_rule_id", "")).strip()
+        in {"explicit_policy_claim", "intentional_bot_delegation"}
+    )
 
 
 def _metadata_rows_by_card(

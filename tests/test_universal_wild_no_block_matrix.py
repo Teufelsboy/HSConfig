@@ -353,6 +353,12 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
             if isinstance(block, dict)
             for row in block.get("values", [])
         ]
+        if file_name == "Mulligan.json" and not runtime_rows:
+            assert (
+                operator["mulligan_bot_delegation_summary"]["count"]
+                > 0
+            )
+            continue
         assert runtime_rows, f"{file_name} has no visible runtime rows"
 
     assert operator["default_only_runtime_surfaces"] == []
@@ -383,6 +389,7 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
     mulligan_policy = operator["mulligan_policy_status"]
     assert mulligan_policy["default_only"] is False
     assert mulligan_policy["status"] in {
+        "bot_delegated",
         "policy_backed",
         "rich",
         "source_backed",

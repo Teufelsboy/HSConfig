@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mulligan_plan import build_mulligan_plan
@@ -528,6 +529,8 @@ def _builder_runner_result(
             deck_name="Conformance",
             claims=[claim],
             card_roles={"CARD_001": {"roles": ["mulligan_anchor"]}},
+            deck_cards=None,
+            policy_profile=load_policy_profile(),
             deck_identity={
                 "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
             },
@@ -535,9 +538,13 @@ def _builder_runner_result(
                 "canonical_source_receipts"
             ],
         )
-        if any(row.get("source_claim_ids") == [claim["claim_id"]] for row in plan["rules"]):
+        report = plan.to_report()
+        if any(
+            row.get("source_claim_ids") == [claim["claim_id"]]
+            for row in report["rules"]
+        ):
             return {"outcome": "emitted", "reason": "emitted"}
-        return _suppressed_result(plan["suppressed_rules"])
+        return _suppressed_result(report["suppressed_rules"])
     if runner == "build_globalvalues_authority_matrix":
         fixture_source_receipts = (
             _fixture_gameplan_posture_bundle()["globalvalues_source_receipts"]

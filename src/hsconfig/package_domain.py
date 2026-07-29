@@ -490,41 +490,134 @@ class MulliganPlanModel:
             raise ValueError("mulligan_merged_duplicate_count_invalid")
 
     def to_report(self) -> dict[str, Any]:
+        rules = [
+            {
+                "card": rule.card_id,
+                "selector_kind": rule.selector_kind,
+                "selector": json.loads(rule.selector_canonical_json),
+                "action": rule.action,
+                "condition": json.loads(rule.condition_canonical_json),
+                "reason": rule.reason,
+                "confidence": rule.confidence,
+                "source_claim_ids": list(rule.source_claim_ids),
+                "source_type": (
+                    "versioned_internal_policy"
+                    if rule.confidence == "policy_backed"
+                    else "source_claim"
+                ),
+                **({"claim_id": rule.claim_id} if rule.claim_id else {}),
+            }
+            for rule in self.rules
+        ]
+        suppressed_rules = [
+            {
+                "card": row.card_id,
+                "action": row.action,
+                "reason": row.reason_code,
+                "source_claim_ids": list(row.source_claim_ids),
+                **({"claim_id": row.claim_id} if row.claim_id else {}),
+            }
+            for row in self.suppressed
+        ]
+        bot_delegated = [
+            {
+                "card_id": row.card_id,
+                "evidence_lane": row.evidence_lane,
+                "policy_id": row.policy_id,
+                "reason_code": row.reason_code,
+            }
+            for row in self.bot_delegated
+        ]
+        source_rules = [
+            row for row in rules if row["source_type"] == "source_claim"
+        ]
+        policy_rules = [
+            row
+            for row in rules
+            if row["source_type"] == "versioned_internal_policy"
+        ]
+        source_keeps = [
+            row for row in source_rules if row["action"] == "hold"
+        ]
+        policy_keeps = [
+            row for row in policy_rules if row["action"] == "hold"
+        ]
+        suppressed_reasons: dict[str, int] = {}
+        for row in suppressed_rules:
+            reason = str(row["reason"])
+            suppressed_reasons[reason] = (
+                suppressed_reasons.get(reason, 0) + 1
+            )
+        has_concrete_keeps = bool(source_keeps or policy_keeps)
+        if source_keeps:
+            status = "rich"
+            first_gap_reason = "none"
+        elif policy_keeps:
+            status = "policy_backed"
+            first_gap_reason = str(policy_keeps[0]["reason"])
+        elif bot_delegated:
+            status = "bot_delegated"
+            first_gap_reason = "delegated_to_hearthranger_bot"
+        else:
+            status = "thin"
+            first_gap_reason = (
+                str(suppressed_rules[0]["reason"])
+                if suppressed_rules
+                else "no_source_backed_mulligan_keeps"
+            )
+        policy_lanes = sorted(
+            {
+                *(["D"] if policy_rules else []),
+                *(["E"] if bot_delegated else []),
+            }
+        )
+        policy_reasons = sorted(
+            {
+                *(
+                    str(row["reason"])
+                    for row in policy_rules
+                    if str(row["reason"])
+                ),
+                *(
+                    str(row["reason_code"])
+                    for row in bot_delegated
+                    if str(row["reason_code"])
+                ),
+            }
+        )
+        quality: dict[str, Any] = {
+            "has_concrete_keeps": has_concrete_keeps,
+            "status": status,
+            "first_gap_reason": first_gap_reason,
+            "source_backed_rule_count": len(source_rules),
+            "source_backed_keep_rule_count": len(source_keeps),
+            "policy_backed_rule_count": len(policy_rules),
+            "policy_backed_keep_rule_count": len(policy_keeps),
+            "policy_lanes": policy_lanes,
+            "policy_reasons": policy_reasons,
+            "policy_result": {
+                "status": status,
+                "rules": policy_rules,
+                "suppressed": suppressed_rules,
+                "candidate_count": len(policy_rules) + len(bot_delegated),
+                "selected_count": len(policy_rules),
+                "delegated_count": len(bot_delegated),
+                "excluded_count": len(suppressed_rules),
+            },
+            "default_only": not rules and not bot_delegated,
+            "suppressed_rule_count": len(suppressed_rules),
+            "suppressed_reasons": dict(sorted(suppressed_reasons.items())),
+            "merged_duplicate_rule_count": self.merged_duplicate_rule_count,
+            "bot_delegated_count": len(bot_delegated),
+        }
+        if status == "thin":
+            quality["blocked_reason"] = "no_source_backed_mulligan_keeps"
         return {
             "deck_name": self.deck_name,
-            "rules": [
-                {
-                    "card": rule.card_id,
-                    "selector_kind": rule.selector_kind,
-                    "selector": json.loads(rule.selector_canonical_json),
-                    "action": rule.action,
-                    "condition": json.loads(rule.condition_canonical_json),
-                    "reason": rule.reason,
-                    "confidence": rule.confidence,
-                    "source_claim_ids": list(rule.source_claim_ids),
-                    **({"claim_id": rule.claim_id} if rule.claim_id else {}),
-                }
-                for rule in self.rules
-            ],
-            "suppressed_rules": [
-                {
-                    "card": row.card_id,
-                    "action": row.action,
-                    "reason": row.reason_code,
-                    "source_claim_ids": list(row.source_claim_ids),
-                    **({"claim_id": row.claim_id} if row.claim_id else {}),
-                }
-                for row in self.suppressed
-            ],
-            "bot_delegated": [
-                {
-                    "card_id": row.card_id,
-                    "evidence_lane": row.evidence_lane,
-                    "policy_id": row.policy_id,
-                    "reason_code": row.reason_code,
-                }
-                for row in self.bot_delegated
-            ],
+            "rules": rules,
+            "suppressed_rules": suppressed_rules,
+            "quality": quality,
+            "bot_delegated": bot_delegated,
             "merged_duplicate_rule_count": self.merged_duplicate_rule_count,
         }
 

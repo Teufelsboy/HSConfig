@@ -45,13 +45,11 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_suppressed(
     assert mulligan_surface["source_backed_rule_count"] == 0
     assert result["mulligan_plan"]["quality"]["suppressed_reasons"][
         "strategic_provenance_not_live_verified"
-    ] == 5
+    ] == 3
     assert mulligan_values == []
     assert result["mulligan_plan"]["quality"]["policy_backed_keep_rule_count"] == 0
-    assert result["mulligan_plan"]["quality"]["default_only"] is True
-    assert result["mulligan_plan"]["quality"]["suppressed_reasons"][
-        "explicit_source_gap_requires_resolution"
-    ] == 3
+    assert result["mulligan_plan"]["quality"]["default_only"] is False
+    assert len(result["mulligan_plan"]["bot_delegated"]) == 3
 
 
 def test_prepare_rejected_guide_claim_vetoes_policy_fallback_for_that_card(
@@ -109,9 +107,8 @@ def test_prepare_rejected_guide_claim_vetoes_policy_fallback_for_that_card(
 
     assert not any(row.get("card") == CARDS[0]["card_id"] for row in holds)
     assert any(
-        row.get("card") == CARDS[0]["card_id"]
-        and row.get("reason") == "explicit_source_gap_requires_resolution"
-        for row in plan["quality"]["policy_result"]["suppressed"]
+        row.get("card_id") == CARDS[0]["card_id"]
+        for row in plan["bot_delegated"]
     )
 
 
@@ -189,10 +186,16 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
         "diagnostic_source_not_apply_eligible"
     ]
     assert operator["config_usefulness"]["blocking"] is False
-    assert operator["config_usefulness"]["first_usefulness_gap"] == "cardid_thin"
-    assert mulligan_surface["status"] == "rich"
-    assert mulligan_surface["first_gap_reason"] == "none"
-    assert mulligan_surface["next_source_need"] == "none"
+    assert operator["config_usefulness"]["first_usefulness_gap"] == (
+        "runtime_surface_gap"
+    )
+    assert mulligan_surface["status"] == "thin"
+    assert mulligan_surface["first_gap_reason"] == (
+        "no_physical_mulligan_keep"
+    )
+    assert mulligan_surface["next_source_need"] == (
+        "source_backed_or_policy_backed_mulligan_keeps"
+    )
 
 
 def _run_prepare(

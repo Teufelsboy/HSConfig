@@ -4,6 +4,7 @@ from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_mulligan import compile_mulligan
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.mulligan_plan import build_mulligan_plan
@@ -563,10 +564,11 @@ def test_start_of_game_hero_power_effect_does_not_infer_mulligan_keep():
         deck_name="ShadowPriest",
         claims=claims,
         card_roles=research_bundle["card_role_map"],
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
-    runtime_mulligan = compile_mulligan(
-        {"deck_name": "ShadowPriest", "mulligan_plan": mulligan_plan}
-    )
+    runtime_mulligan = compile_mulligan(mulligan_plan)
+    mulligan_report = mulligan_plan.to_report()
 
     assert "hero_power_transform" in contract["cards"]["SW_448"]["roles"]
     contract_hero_power_claim = next(
@@ -605,7 +607,7 @@ def test_start_of_game_hero_power_effect_does_not_infer_mulligan_keep():
 
     assert not any(
         rule["card"] == "SW_448" and rule["action"] == "hold"
-        for rule in mulligan_plan["rules"]
+        for rule in mulligan_report["rules"]
     )
     assert not any(
         row["mulligan"] == "SW_448" and row["value"] == "hold"

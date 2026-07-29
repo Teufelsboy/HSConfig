@@ -271,12 +271,7 @@ def test_captured_shadowpriest_mulligan_runtime_rows_are_policy_unique(
     ]
 
     assert code == 0
-    assert runtime_keys == [
-        ("SCH_514", "*", "hold"),
-        ("NX2_019", "*", "hold"),
-        ("VAC_419", "*", "hold"),
-        ("*", "*", "discard"),
-    ]
+    assert runtime_keys == []
     assert len(runtime_keys) == len(set(runtime_keys))
     assert not any(
         row.get("mulligan") == "SW_448" and row.get("value") == "hold"
@@ -284,7 +279,10 @@ def test_captured_shadowpriest_mulligan_runtime_rows_are_policy_unique(
     )
     assert plan_report["quality"]["merged_duplicate_rule_count"] == 0
     assert plan_report["quality"]["source_backed_keep_rule_count"] == 0
-    assert plan_report["quality"]["policy_backed_keep_rule_count"] == 3
+    assert plan_report["quality"]["policy_backed_keep_rule_count"] == 0
+    assert {"SCH_514", "NX2_019", "VAC_419", "SW_448"} <= {
+        str(row["card_id"]) for row in plan_report["bot_delegated"]
+    }
     assert plan_report["quality"]["suppressed_reasons"][
         "strategic_provenance_not_live_verified"
     ] == 2
@@ -515,12 +513,16 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert "MyHeroPowerValue" not in globalvalues_profile["keys"]
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
-    assert policy_hold_rows
+    assert policy_hold_rows == []
     assert "SW_448" not in policy_hold_text
     assert operator_summary["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
     assert operator_summary["default_only_runtime_surfaces"] == []
     assert operator_summary["mulligan_policy_status"]["default_only"] is False
-    assert plan_report["quality"]["policy_backed_keep_rule_count"] >= 1
+    assert operator_summary["mulligan_policy_status"]["status"] == (
+        "bot_delegated"
+    )
+    assert plan_report["quality"]["policy_backed_keep_rule_count"] == 0
+    assert plan_report["bot_delegated"]
     assert (deck_dir / "DS1_233.json").exists()
     assert darkbishop_source_config.exists()
     assert shadow_hero_power_config.exists()

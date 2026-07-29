@@ -17,7 +17,7 @@ from tests.helpers.verified_deck_input import deck_code_for_cards
 # in-memory git-show oracle method and path normalization.
 PRE_REFACTOR_PACKAGE_FILE_COUNT = 56
 PRE_REFACTOR_PACKAGE_TREE_DIGEST = (
-    "sha256:30f4c3a0f81d39eb796ddc8ac6a2de18473549e092acad6c7496795aecc8af0f"
+    "sha256:7969ca26ff71663648ec3d188342ce62a4ec2b896753c6ee6c10b947d2166a20"
 )
 
 
@@ -238,19 +238,19 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
         ),
         (
             "claim_surfaces",
-            "sha256:d9ea076a70aa470d4add3a15e4f14b8d2f611c2287427eaf44f204707a0ec673",
+            "sha256:a796e382f3f3312770b1da4268fad322de504b5d4adda9f8a574827536a699ff",
         ),
         (
             "lowered_runtime",
-            "sha256:25c62ab2b15910c07f07c87aff475c0243f25513618e2dea84c83d6038643296",
+            "sha256:738ff121e26e4f5169f5887224842b15228edf98337a613a7d935fbad95d6c7a",
         ),
         (
             "validated_authority",
-            "sha256:076f15e085f9ddd5ecc413916e64b9207f67a9b02b9c7f4fe88ef705a3b7f696",
+            "sha256:3e450a60fe4b3bb6452732f633c577953475cf8ff352b964c8465faa3e066c88",
         ),
         (
             "artifact_writing",
-            "sha256:856718598311b2c2a9ac3320fbf75102afbcf90c8b9d9d135ee550c9cfc446db",
+            "sha256:3c5fd9982ba17f095895ddc5b598031a696c899ffe8e7eab1d6d2ffd11544c0c",
         ),
     ]
 

@@ -201,14 +201,9 @@ def test_package_keeps_conflicted_mulligan_claims_visible_but_not_lowered(tmp_pa
         for row in mulligan_plan["rules"]
         if row.get("card") == "CARD_001" and row.get("source_type") == "source_claim"
     ]
-    policy_rules = [
-        row
-        for row in mulligan_plan["rules"]
-        if row.get("card") == "CARD_001"
-        and row.get("source_type") == "policy_backed_autonomous_mulligan"
-    ]
     assert source_claim_rules == []
-    assert policy_rules
-    assert any(
-        row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"]
-    )
+    assert mulligan_plan["rules"] == []
+    assert "CARD_001" in {
+        str(row["card_id"]) for row in mulligan_plan["bot_delegated"]
+    }
+    assert mulligan["Mulligan"]["values"] == []

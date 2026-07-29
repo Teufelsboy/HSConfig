@@ -484,8 +484,15 @@ def test_semantic_archetype_fixture_is_load_safe_diagnostic_and_not_default_only
         assert operator["default_only_runtime_surfaces"] == ["mulligan"]
         assert mulligan["Mulligan"]["values"] == []
     elif not mulligan["Mulligan"]["values"]:
-        assert operator["mulligan_policy_status"]["status"] == "thin"
+        assert operator["mulligan_policy_status"]["status"] == "bot_delegated"
         assert operator["mulligan_policy_status"]["default_only"] is False
+        assert operator["mulligan_bot_delegation_summary"]["count"] == len(
+            fixture["cards"]
+        )
+        assert set(operator["mulligan_bot_delegation_summary"]["card_ids"]) == {
+            str(card["card_id"])
+            for card in fixture["cards"]
+        }
         assert operator["config_usefulness"]["surfaces"]["mulligan"][
             "first_gap_reason"
         ] == "no_physical_mulligan_keep"

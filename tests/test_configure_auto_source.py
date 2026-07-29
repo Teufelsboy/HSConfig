@@ -217,7 +217,11 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
 
     assert gap_card_id not in holds
     assert gap_card_id not in physical_holds
-    assert holds - {gap_card_id}
+    assert holds == set()
+    assert physical_holds == set()
+    assert gap_card_id in {
+        str(row["card_id"]) for row in report["bot_delegated"]
+    }
     gap = next(
         row
         for row in autopilot["explicit_mulligan_source_gaps"]
@@ -226,12 +230,6 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
     assert gap["target_deck_name"] == deck_name
     assert gap["target_deck_fingerprint"] == identity["deck_fingerprint"]
     assert gap["target_deck_code_hash"] == identity["deck_code_hash"]
-    assert {
-        "card": gap_card_id,
-        "reason": "explicit_source_gap_requires_resolution",
-        "policy_lane": "source_veto",
-        "source_type": "policy_backed_autonomous_mulligan",
-    } in report["suppressed_rules"]
 
 
 def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulligan(
@@ -340,7 +338,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         "cards_needing_mechanic_lowering",
     ):
         assert operator["guide_strength_summary"][key] == 0
-    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] == 1
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] == 2
     assert operator["guide_strength_summary"]["cards_needing_target_scope"] == 0
     assert "SW_448" not in mulligan_text
     assert list(package.glob("CustomConfig/*/SW_448.json"))

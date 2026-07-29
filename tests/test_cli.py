@@ -1052,7 +1052,10 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     assert card_role_map["EX1_001"]["confidence"] == "guide_backed"
     assert mulligan_anchor_map["EX1_001"]["intent"] == "neutral"
     assert globalvalue_intent["pressure_bias"] == "high"
-    assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
+    assert mulligan["Mulligan"]["values"] == []
+    assert "EX1_001" in operator_summary[
+        "mulligan_bot_delegation_summary"
+    ]["card_ids"]
     assert not (deck_dir / "Combo.json").exists()
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]
@@ -1391,8 +1394,10 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     assert payload["status"] == "passed"
     assert receipt["source_depth_status"] == "source_backed"
     assert depth["summary"]["report_only_claims"] == 0
-    assert depth["source_depth_status"] == "static_semantics_only"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert depth["source_depth_status"] == "usable_with_runtime_gaps"
+    assert operator_summary["semantic_status"] == (
+        "VALID_BUT_NOT_GUIDE_STRONG"
+    )
     assert plan_diagnostics["ignored_claims"] == [
         {
             "claim_id": "claim_report_only_runtime",
@@ -2807,13 +2812,7 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert [
-        (row["mulligan"], row["value"])
-        for row in mulligan["Mulligan"]["values"]
-    ] == [
-        ("EX1_001", "hold"),
-        ("*", "discard"),
-    ]
+    assert mulligan["Mulligan"]["values"] == []
     canonical_claim_ids = {
         claim["claim_id"] for claim in guide_claim_bundle["claims"]
     }
@@ -3023,13 +3022,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     assert code == 0
     assert payload["status"] == "passed"
     assert canonical_mulligan_rules == []
-    assert {
-        (row.get("mulligan"), row.get("condition"), row.get("value"))
-        for row in mulligan_config["Mulligan"]["values"]
-    } == {
-        ("EX1_004", "*", "hold"),
-        ("*", "*", "discard"),
-    }
+    assert mulligan_config["Mulligan"]["values"] == []
     assert len(canonical_card_rows) == 1
     assert canonical_card_rows[0]["card_id"] == "EX1_002"
     assert canonical_card_rows[0]["behavior_block"] == "InHandBonus"

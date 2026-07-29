@@ -355,7 +355,6 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert blocker_reasons == {
         "cards_need_runtime_surface",
         "contract_gap_not_strong_evidence",
-        "generic_low_confidence_not_strong_evidence",
         "unsupported_conditions_present",
     }
     rejected_mulligan_attention = [

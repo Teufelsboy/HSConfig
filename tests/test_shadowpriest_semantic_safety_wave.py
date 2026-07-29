@@ -208,19 +208,19 @@ def _assert_exact_globalvalues_key_sets(
             "https://example.test/shadowpriest-exact",
             "exact",
             0,
-            3,
+            0,
             set(),
         ),
         (
             "https://example.test/shadowpriest-archetype",
             "partial",
             0,
-            3,
+            0,
             set(),
         ),
     ],
 )
-def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_contract(
+def test_real_configure_paths_preserve_runtime_and_delegation_contract(
     tmp_path,
     monkeypatch,
     source_url,
@@ -376,7 +376,7 @@ def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_cont
     assert readiness["summary"]["runtime_emitted"] == 3
     assert readiness["summary"]["linked_runtime_source"] == 1
     assert readiness["summary"]["linked_runtime_entity"] == 1
-    assert readiness["summary"]["report_only_supported"] == 9
+    assert readiness["summary"]["report_only_supported"] == 12
     assert conflict["conflict_count"] == 0
     assert set(papercraft) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
     assert [
@@ -392,6 +392,7 @@ def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_cont
         "ConfigComment",
         "GameCardId",
     }
+    assert mulligan_config["Mulligan"] == {"values": []}
     assert "SW_448" not in mulligan_config_text
     assert mulligan["quality"]["source_backed_keep_rule_count"] == (
         expected_source_keeps
@@ -399,6 +400,11 @@ def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_cont
     assert mulligan["quality"]["policy_backed_keep_rule_count"] == (
         expected_policy_keeps
     )
+    assert mulligan["quality"]["status"] == "bot_delegated"
+    assert {
+        str(row["card_id"])
+        for row in mulligan["bot_delegated"]
+    } == EXPECTED_CARD_IDS
     assert set(globalvalues["changed_keys"]) == expected_changed_keys
 
 
@@ -499,7 +505,15 @@ def test_shadowpriest_has_six_active_deck_cards_and_one_linked_runtime_entity(pa
     assert readiness["summary"]["runtime_emitted"] == 3
     assert readiness["summary"]["linked_runtime_source"] == 1
     assert readiness["summary"]["linked_runtime_entity"] == 1
-    assert readiness["summary"]["report_only_supported"] == 9
+    assert readiness["summary"]["report_only_supported"] == 12
+
+    mulligan = _report(package, "mulligan_plan_report.json")
+    assert mulligan["quality"]["status"] == "bot_delegated"
+    assert mulligan["quality"]["policy_backed_keep_rule_count"] == 0
+    assert {
+        str(row["card_id"])
+        for row in mulligan["bot_delegated"]
+    } == EXPECTED_CARD_IDS
 
     behavior_plan = _report(package, "card_behavior_plan_report.json")
     signatures = [

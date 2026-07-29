@@ -114,10 +114,15 @@ def test_imbuemage_fir_911_physical_mulligan_parity_uses_surface_ledger(
         if row.get("value") == "hold"
     }
 
-    assert "FIR_911" in compiled_holds
-    assert readiness["cards"]["FIR_911"]["runtime_surfaces"] == ["Mulligan.json"]
-    assert readiness["cards"]["FIR_911"]["readiness_lane"] == "mulligan_only"
-    assert ledger["cards"]["FIR_911"]["runtime_surfaces"] == ["Mulligan.json"]
+    assert compiled_holds == set()
+    assert "FIR_911" in operator["mulligan_bot_delegation_summary"][
+        "card_ids"
+    ]
+    assert readiness["cards"]["FIR_911"]["runtime_surfaces"] == []
+    assert readiness["cards"]["FIR_911"]["readiness_lane"] == (
+        "report_only_supported"
+    )
+    assert ledger["cards"]["FIR_911"]["runtime_surfaces"] == []
     assert operator["surface_ledger_sha256"] == readiness["surface_ledger_sha256"]
     assert readiness["surface_ledger_sha256"] == explainability["surface_ledger_sha256"]
 
@@ -402,33 +407,25 @@ def test_policy_mulligan_honors_named_source_and_role_vetoes(
     assert "DEEP_014" not in hold_cards(kingslayer_plan)
     assert "TOY_330" not in hold_cards(mechpala_plan)
 
-    expected_vetoes = (
-        (boarlock_plan, "WW_092", "explicit_source_gap_requires_resolution"),
-        (kingslayer_plan, "DEEP_014", "explicit_source_gap_requires_resolution"),
-        (mechpala_plan, "TOY_330", "sideboard_owner_not_curve_anchor"),
-    )
-    for plan, card_id, reason in expected_vetoes:
-        assert {
-            "card": card_id,
-            "reason": reason,
-            "policy_lane": "source_veto",
-            "source_type": "policy_backed_autonomous_mulligan",
-        } in plan["suppressed_rules"]
+    for plan, card_id in (
+        (boarlock_plan, "WW_092"),
+        (kingslayer_plan, "DEEP_014"),
+        (mechpala_plan, "TOY_330"),
+    ):
+        assert card_id in {
+            str(row["card_id"]) for row in plan["bot_delegated"]
+        }
 
     assert any(
         row.get("card") == "WW_092"
         and row.get("reason") == "claim_not_runtime_lowerable"
         and row.get("claim_id") in row.get("source_claim_ids", [])
-        and row.get("source_type") == "source_claim"
-        and row.get("source_url")
         for row in boarlock_plan["suppressed_rules"]
     )
     assert any(
         row.get("card") == "DEEP_014"
         and row.get("reason") == "claim_not_runtime_lowerable"
         and row.get("claim_id") in row.get("source_claim_ids", [])
-        and row.get("source_type") == "source_claim"
-        and row.get("source_url")
         for row in kingslayer_plan["suppressed_rules"]
     )
 

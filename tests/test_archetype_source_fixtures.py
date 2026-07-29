@@ -9,6 +9,7 @@ from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.combo_plan import build_combo_plan
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
@@ -364,16 +365,19 @@ def test_effect_only_start_of_game_hero_power_transform_claim_is_suppressed():
                 "confidence": "guide_backed",
             }
         },
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
+    report = plan.to_report()
 
     assert not any(
         rule.get("card") == "SW_448" and rule.get("action") == "hold"
-        for rule in plan["rules"]
+        for rule in report["rules"]
     )
     assert any(
         rule.get("card") == "SW_448"
         and rule.get("reason") == "start_of_game_effect_does_not_require_opening_hand"
-        for rule in plan["suppressed_rules"]
+        for rule in report["suppressed_rules"]
     )
 
 
@@ -509,17 +513,20 @@ def test_kingslayer_unsupported_quick_pick_mulligan_claim_does_not_lower():
         deck_name="Kingslayer",
         claims=bundle["claims"],
         card_roles={},
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
+    report = plan.to_report()
 
     assert not any(
         rule.get("card") == "DEEP_014" and rule.get("action") == "hold"
-        for rule in plan["rules"]
+        for rule in report["rules"]
     )
     assert any(
         rule.get("card") == "DEEP_014"
         and rule.get("action") == "hold"
         and rule.get("reason") == "claim_not_runtime_lowerable"
-        for rule in plan["suppressed_rules"]
+        for rule in report["suppressed_rules"]
     )
 
 
@@ -553,12 +560,15 @@ def test_imbuemage_fixture_mulligan_claims_remain_diagnostic_without_receipts():
         deck_name="ImbueMage",
         claims=bundle["claims"],
         card_roles={},
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
         deck_identity=deck_identity,
         verified_source_receipts=bundle["canonical_source_receipts"],
     )
+    report = plan.to_report()
     source_claim_holds = {
         rule.get("card")
-        for rule in plan["rules"]
+        for rule in report["rules"]
         if rule.get("action") == "hold" and rule.get("source_type") == "source_claim"
     }
 

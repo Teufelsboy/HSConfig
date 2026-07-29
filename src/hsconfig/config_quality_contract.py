@@ -2183,10 +2183,25 @@ def _is_canonical_surface_intent_row(
     if surface == "Combo.json":
         return surface in optional_surfaces and rule_id == "combo_sequences" and not card_id
     if surface == "Mulligan.json":
+        is_bot_delegation = (
+            bool(card_id)
+            and rule_id == f"{card_id}_mulligan_bot_delegation"
+            and str(row.get("intent") or "")
+            == "delegate_to_hearthranger_bot"
+            and str(row.get("intent_source") or "")
+            == "versioned_internal_policy"
+            and str(row.get("evidence_lane") or "") == "E"
+            and str(row.get("policy_id") or "")
+            == "BOT_NATIVE_PRE_RUN"
+            and bool(str(row.get("reason_code") or "").strip())
+        )
         return (
             surface in required_surfaces
             and bool(card_id)
-            and rule_id == f"{card_id}_mulligan_hold"
+            and (
+                rule_id == f"{card_id}_mulligan_hold"
+                or is_bot_delegation
+            )
         )
 
     return (

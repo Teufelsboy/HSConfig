@@ -846,7 +846,9 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
         ["source_confidence"],
         ["source_confidence"],
     ]
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == (
+        "VALID_BUT_NOT_GUIDE_STRONG"
+    )
     assert (
         operator_summary["next_action"]
         == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"

@@ -1594,7 +1594,10 @@ def _assert_deck_specific_invariants(
             if row.get("mulligan") != "*"
         }
         assert physical_mulligan_cards == readiness_mulligan_cards
-        assert "FIR_911" in physical_mulligan_cards
+        assert "FIR_911" not in physical_mulligan_cards
+        assert "FIR_911" in package["operator"][
+            "mulligan_bot_delegation_summary"
+        ]["card_ids"]
 
 
 def _insert_forbidden_semantic_row(

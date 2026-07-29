@@ -191,12 +191,15 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
 
     summary = readiness["summary"]
     assert summary["cards_needing_mulligan_claims"] == 0
-    assert summary["cards_needing_runtime_surface"] == 9
+    assert summary["cards_needing_runtime_surface"] == 12
     assert summary["generic_low_confidence"] == 0
     assert summary["report_only_supported"] > 0
-    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "rich"
+    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "thin"
     assert operator["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
-    assert mulligan_plan["quality"]["policy_backed_keep_rule_count"] > 0
+    assert mulligan_plan["quality"]["policy_backed_keep_rule_count"] == 0
+    assert "WW_092" in {
+        str(row["card_id"]) for row in mulligan_plan["bot_delegated"]
+    }
 
 
 def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(

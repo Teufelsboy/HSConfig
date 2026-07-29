@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.input_loading import guide_documents_from_legacy_claims
@@ -299,10 +300,12 @@ def test_legacy_exact_mulligan_keep_claim_type_requires_canonical_source_authori
             }
         ],
         card_roles={},
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
 
-    assert plan["rules"] == []
-    assert plan["suppressed_rules"][0]["reason"] == (
+    assert plan.rules == ()
+    assert plan.suppressed[0].reason_code == (
         "mulligan_requires_public_guide_source"
     )
 
@@ -319,10 +322,14 @@ def test_broad_legacy_mulligan_claim_type_is_not_accepted_for_runtime():
             }
         ],
         card_roles={},
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
 
-    assert plan["rules"] == []
-    assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
+    assert plan.rules == ()
+    assert plan.suppressed[0].reason_code == (
+        "claim_kind_not_mulligan_surface"
+    )
 
 
 def test_runtime_claim_kind_maps_only_exact_legacy_runtime_types():
@@ -1471,10 +1478,12 @@ def test_explicit_start_of_game_mulligan_keep_is_suppressed():
                 "confidence": "source_backed_static_semantics",
             }
         },
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
     )
 
-    assert plan["rules"] == []
-    assert plan["suppressed_rules"][0]["reason"] == (
+    assert plan.rules == ()
+    assert plan.suppressed[0].reason_code == (
         "start_of_game_effect_does_not_require_opening_hand"
     )
 
@@ -1549,18 +1558,21 @@ def test_explicit_opening_hand_start_of_game_claim_builds_mulligan_rule():
                 "confidence": "source_backed_static_semantics",
             }
         },
+        deck_cards=None,
+        policy_profile=load_policy_profile(),
         deck_identity=deck_identity,
         verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
     assert any(
-        rule.get("card") == "CARD_START" and rule.get("action") == "hold"
-        for rule in plan["rules"]
+        rule.card_id == "CARD_START" and rule.action == "hold"
+        for rule in plan.rules
     )
     assert not any(
-        row.get("card") == "CARD_START"
-        and row.get("reason") == "start_of_game_effect_does_not_require_opening_hand"
-        for row in plan["suppressed_rules"]
+        row.card_id == "CARD_START"
+        and row.reason_code
+        == "start_of_game_effect_does_not_require_opening_hand"
+        for row in plan.suppressed
     )
 
 

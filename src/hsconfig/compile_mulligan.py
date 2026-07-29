@@ -1,125 +1,41 @@
+"""Pure Mulligan runtime compiler for the typed plan boundary."""
+
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.package_domain import MulliganPlanModel
 
 
-def compile_mulligan(
-    contract: dict[str, Any] | None = None,
-    *,
-    deck_name: str | None = None,
-    rows: list[dict[str, Any]] | None = None,
-    add_discard_fallback: bool = True,
-) -> dict[str, Any]:
-    contract = contract or {}
-    deck_name = deck_name or str(contract.get("deck_name", "Deck"))
-    plan = contract.get("mulligan_plan")
-    preserve_order = False
-    if isinstance(plan, dict):
-        anchors = _anchors_from_plan(plan)
-        add_discard_fallback = False
-        preserve_order = True
-    else:
-        anchors = _anchors_from_contract(contract)
-    if rows is not None:
-        anchors.extend(_anchors_from_rows(rows))
+def compile_mulligan(plan: MulliganPlanModel) -> dict[str, Any]:
+    """Serialize an authorized plan to HearthRanger's runtime shape."""
 
-    config: dict[str, Any] = {
+    if not isinstance(plan, MulliganPlanModel):
+        raise TypeError("mulligan_plan_model_required")
+
+    values: list[dict[str, Any]] = []
+    for index, rule in enumerate(plan.rules, start=1):
+        selector = json.loads(rule.selector_canonical_json)
+        condition = json.loads(rule.condition_canonical_json)
+        if rule.selector_kind == "wildcard" or selector == "*":
+            raise ValueError("mulligan_wildcard_rule_forbidden")
+        rule_id = rule.claim_id or (
+            f"{rule.card_id}_mulligan_{index}"
+        )
+        values.append(
+            {
+                "comment": f"{plan.deck_name}: {rule_id}",
+                "mulligan": selector,
+                "condition": condition,
+                "value": rule.action,
+            }
+        )
+
+    return {
         "GameCardId": "Mulligan",
-        "ConfigComment": f"{deck_name} generated mulligan rules",
-        "Mulligan": {"values": []},
+        "ConfigComment": (
+            f"{plan.deck_name} generated mulligan rules"
+        ),
+        "Mulligan": {"values": values},
     }
-    ordered_anchors = anchors if preserve_order else sorted(
-        anchors, key=lambda row: (row["card_id"], row.get("rule_id", ""))
-    )
-    for anchor in ordered_anchors:
-        card_id = str(anchor["card_id"])
-        config["Mulligan"]["values"].append(
-            {
-                "comment": f"{deck_name}: {anchor.get('rule_id', f'{card_id}_mulligan_hold')}",
-                "mulligan": anchor.get("selector", card_id),
-                "condition": anchor.get("condition", "*"),
-                "value": anchor.get("intent", "hold"),
-            }
-        )
-
-    if add_discard_fallback and anchors:
-        config["Mulligan"]["values"].append(
-            {
-                "comment": f"{deck_name}: discard cards not covered by guide-backed holds",
-                "mulligan": "*",
-                "condition": "*",
-                "value": "discard",
-            }
-        )
-    return config
-
-
-def _anchors_from_contract(contract: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        {
-            "rule_id": str(anchor.get("rule_id", f"{anchor['card_id']}_mulligan_hold")),
-            "card_id": str(anchor["card_id"]),
-            "selector_kind": "card",
-            "selector": str(anchor["card_id"]),
-            "intent": str(anchor.get("intent", "hold")),
-            "condition": anchor.get("condition", "*"),
-            "source_claim_ids": list(anchor.get("source_claim_ids", [])),
-            "confidence": anchor.get("confidence", "source_backed"),
-        }
-        for anchor in contract.get("mulligan_anchors", [])
-    ]
-
-
-def _anchors_from_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
-    anchors = []
-    has_previous_non_wildcard_hold = False
-    for index, rule in enumerate(plan.get("rules", []), start=1):
-        if not isinstance(rule, dict):
-            continue
-        selector_info = normalize_mulligan_selector(rule)
-        if not selector_info["supported"]:
-            continue
-        intent = str(rule.get("action", rule.get("intent", "hold")))
-        is_wildcard = selector_info["selector_kind"] == "wildcard"
-        if is_wildcard and intent == "discard" and not has_previous_non_wildcard_hold:
-            continue
-        card_id = str(rule.get("card", selector_info["selector"]))
-        if not card_id:
-            card_id = selector_info["selector"]
-        anchors.append(
-            {
-                "rule_id": str(rule.get("rule_id", f"{card_id}_mulligan_{index}")),
-                "card_id": card_id,
-                "selector_kind": selector_info["selector_kind"],
-                "selector": selector_info["selector"],
-                "intent": intent,
-                "condition": rule.get("condition", "*"),
-                "source_claim_ids": list(rule.get("source_claim_ids", [])),
-                "confidence": rule.get("confidence", "source_backed"),
-            }
-        )
-        if intent == "hold" and not is_wildcard:
-            has_previous_non_wildcard_hold = True
-    return anchors
-
-
-def _anchors_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    anchors = []
-    for row in rows:
-        if row.get("surface") not in {"Mulligan.json", "Mulligan"}:
-            continue
-        anchors.append(
-            {
-                "rule_id": str(row.get("rule_id", f"{row['card_id']}_mulligan_hold")),
-                "card_id": str(row["card_id"]),
-                "selector_kind": "card",
-                "selector": str(row["card_id"]),
-                "intent": str(row.get("intent", "hold")),
-                "condition": row.get("condition", "*"),
-                "source_claim_ids": list(row.get("source_claim_ids", [])),
-                "confidence": row.get("confidence", "source_backed"),
-            }
-        )
-    return anchors

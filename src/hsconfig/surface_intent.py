@@ -6,7 +6,11 @@ from hsconfig.card_intent_taxonomy import classify_card_intent
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 
 
-def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
+def build_surface_intent(
+    contract: dict[str, Any],
+    *,
+    mulligan_plan_report: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     accepted_behavior_rows, owner_collisions = (
         partition_runtime_entity_owner_rows(
             row
@@ -80,6 +84,36 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
                 "condition": anchor.get("condition", "*"),
                 "confidence": anchor.get("confidence", "source_backed"),
                 "source_claim_ids": list(anchor.get("source_claim_ids", [])),
+            }
+        )
+
+    delegated = (
+        mulligan_plan_report.get("bot_delegated", ())
+        if isinstance(mulligan_plan_report, Mapping)
+        else ()
+    )
+    for delegation in delegated if isinstance(delegated, list) else ():
+        if not isinstance(delegation, Mapping):
+            continue
+        card_id = str(delegation.get("card_id", "")).strip()
+        if not card_id:
+            continue
+        rows.append(
+            {
+                "rule_id": f"{card_id}_mulligan_bot_delegation",
+                "card_id": card_id,
+                "surface": "Mulligan.json",
+                "intent": "delegate_to_hearthranger_bot",
+                "intent_source": "versioned_internal_policy",
+                "confidence": "policy_backed",
+                "evidence_lane": str(
+                    delegation.get("evidence_lane", "")
+                ),
+                "policy_id": str(delegation.get("policy_id", "")),
+                "reason_code": str(
+                    delegation.get("reason_code", "")
+                ),
+                "source_claim_ids": [],
             }
         )
 

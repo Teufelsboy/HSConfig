@@ -137,7 +137,14 @@ def test_strict_validation_requires_current_canonical_runtime_surface_ledger(
         deck_dir = next((package / "CustomConfig").iterdir())
         mulligan_path = deck_dir / "Mulligan.json"
         mulligan = json.loads(mulligan_path.read_text(encoding="utf-8"))
-        mulligan["Mulligan"]["values"] = []
+        mulligan["Mulligan"]["values"] = [
+            {
+                "comment": "stale ledger mutation",
+                "mulligan": "STALE_CARD",
+                "condition": "*",
+                "value": "hold",
+            }
+        ]
         mulligan_path.write_text(json.dumps(mulligan), encoding="utf-8")
 
     report = validate_complete_package(package)

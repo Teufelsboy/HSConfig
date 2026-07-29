@@ -109,6 +109,7 @@ def test_fresh_shadowpriest_package_has_complete_closure_and_darkbishop_boundary
         "source_backed",
         "policy_backed",
         "static_semantics_backed",
+        "warning_only",
     }
     assert all(
         row["status"] != "default_only"

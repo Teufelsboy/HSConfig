@@ -128,8 +128,9 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
         + coverage["summary"]["static_semantics_backfilled"]
         > 0
     )
-    assert readiness["summary"]["runtime_emitted"] + readiness["summary"]["mulligan_only"] > 0
-    assert card_behavior["rows"] or mulligan["rules"]
+    assert readiness["summary"]["mulligan_only"] == 0
+    assert operator["mulligan_bot_delegation_summary"]["count"] > 0
+    assert card_behavior["rows"] or mulligan["bot_delegated"]
     assert "allowed_step1_overlays" in globalvalues
     assert "blocked_until_runtime_evidence" in globalvalues
 
