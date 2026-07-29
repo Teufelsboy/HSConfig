@@ -27,7 +27,7 @@ hsconfig = "hsconfig.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-hsconfig = ["policies/*.json"]
+hsconfig = ["policies/*.json", "resources/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _PAYLOAD_FIELDS = frozenset(
     {
         "schema_version",
@@ -26,6 +26,12 @@ _PAYLOAD_FIELDS = frozenset(
         "as_of_date",
         "source_bundle_sha256s",
         "evidence_policy_ids",
+        "deck_cards_resource_sha256",
+        "card_snapshot_resource_sha256",
+        "policy_profile_resource_sha256",
+        "evidence_contract_resource_sha256",
+        "source_bundle_resource_sha256s",
+        "globalvalues_baseline_resource_sha256",
     }
 )
 _RAW_DECK_CODE_FIELDS = frozenset(
@@ -54,6 +60,12 @@ class CanonicalBuildInputs:
     as_of_date: str
     source_bundle_sha256s: tuple[str, ...]
     evidence_policy_ids: tuple[str, ...]
+    deck_cards_resource_sha256: str
+    card_snapshot_resource_sha256: str
+    policy_profile_resource_sha256: str
+    evidence_contract_resource_sha256: str
+    source_bundle_resource_sha256s: tuple[str, ...]
+    globalvalues_baseline_resource_sha256: str
     canonical_payload: bytes
     input_sha256: str
 
@@ -96,6 +108,25 @@ def canonicalize_build_inputs(
         payload["evidence_policy_ids"],
         normalizer=_normalized_stable_identifier,
     )
+    deck_cards_resource_sha256 = _content_sha256(
+        payload["deck_cards_resource_sha256"]
+    )
+    card_snapshot_resource_sha256 = _content_sha256(
+        payload["card_snapshot_resource_sha256"]
+    )
+    policy_profile_resource_sha256 = _content_sha256(
+        payload["policy_profile_resource_sha256"]
+    )
+    evidence_contract_resource_sha256 = _content_sha256(
+        payload["evidence_contract_resource_sha256"]
+    )
+    source_bundle_resource_sha256s = _normalized_reference_sequence(
+        payload["source_bundle_resource_sha256s"],
+        normalizer=_content_sha256,
+    )
+    globalvalues_baseline_resource_sha256 = _content_sha256(
+        payload["globalvalues_baseline_resource_sha256"]
+    )
 
     normalized_payload = {
         "schema_version": _SCHEMA_VERSION,
@@ -111,6 +142,18 @@ def canonicalize_build_inputs(
         "as_of_date": as_of_date,
         "source_bundle_sha256s": source_bundle_sha256s,
         "evidence_policy_ids": evidence_policy_ids,
+        "deck_cards_resource_sha256": deck_cards_resource_sha256,
+        "card_snapshot_resource_sha256": card_snapshot_resource_sha256,
+        "policy_profile_resource_sha256": policy_profile_resource_sha256,
+        "evidence_contract_resource_sha256": (
+            evidence_contract_resource_sha256
+        ),
+        "source_bundle_resource_sha256s": (
+            source_bundle_resource_sha256s
+        ),
+        "globalvalues_baseline_resource_sha256": (
+            globalvalues_baseline_resource_sha256
+        ),
     }
     canonical_payload = json.dumps(
         normalized_payload,
@@ -132,6 +175,14 @@ def canonicalize_build_inputs(
         as_of_date=as_of_date,
         source_bundle_sha256s=source_bundle_sha256s,
         evidence_policy_ids=evidence_policy_ids,
+        deck_cards_resource_sha256=deck_cards_resource_sha256,
+        card_snapshot_resource_sha256=card_snapshot_resource_sha256,
+        policy_profile_resource_sha256=policy_profile_resource_sha256,
+        evidence_contract_resource_sha256=evidence_contract_resource_sha256,
+        source_bundle_resource_sha256s=source_bundle_resource_sha256s,
+        globalvalues_baseline_resource_sha256=(
+            globalvalues_baseline_resource_sha256
+        ),
         canonical_payload=canonical_payload,
         input_sha256=sha256(canonical_payload).hexdigest(),
     )

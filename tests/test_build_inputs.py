@@ -34,7 +34,7 @@ def _digest(character: str) -> str:
 
 def _valid_payload() -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generator_version": "0.1.0",
         "generator_commit": GENERATOR_COMMIT,
         "deck_name": "ShadowPriest",
@@ -47,6 +47,12 @@ def _valid_payload() -> dict[str, Any]:
         "as_of_date": " 2026-07-28 ",
         "source_bundle_sha256s": [_digest("e"), _digest("d")],
         "evidence_policy_ids": ["evidence.z", "evidence.a"],
+        "deck_cards_resource_sha256": _digest("0"),
+        "card_snapshot_resource_sha256": _digest("1"),
+        "policy_profile_resource_sha256": _digest("2"),
+        "evidence_contract_resource_sha256": _digest("3"),
+        "source_bundle_resource_sha256s": [_digest("5"), _digest("4")],
+        "globalvalues_baseline_resource_sha256": _digest("6"),
     }
 
 
@@ -54,32 +60,28 @@ def test_canonicalize_build_inputs_normalizes_and_hashes_exact_json_bytes() -> N
     inputs = canonicalize_build_inputs(_valid_payload())
 
     assert isinstance(inputs, CanonicalBuildInputs)
-    assert inputs.schema_version == 1
+    assert inputs.schema_version == 2
     assert inputs.generator_version == "0.1.0"
     assert inputs.generator_commit == GENERATOR_COMMIT
     assert inputs.deck_name == "ShadowPriest"
     assert inputs.as_of_date == "2026-07-28"
     assert inputs.source_bundle_sha256s == (_digest("d"), _digest("e"))
     assert inputs.evidence_policy_ids == ("evidence.a", "evidence.z")
-    assert inputs.canonical_payload == (
-        b'{"as_of_date":"2026-07-28","card_snapshot_id":'
-        b'"HearthstoneJSON:247416:CardDefs.xml","card_snapshot_sha256":'
-        b'"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
-        b'"deck_code_sha256":'
-        b'"fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2",'
-        b'"deck_fingerprint":'
-        b'"831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327",'
-        b'"deck_name":"ShadowPriest","evidence_policy_ids":'
-        b'["evidence.a","evidence.z"],"generator_commit":'
-        b'"6ff2328ce95e59043013d73c4df18be19dbc8548","generator_version":'
-        b'"0.1.0","policy_profile_id":"policy.v1","policy_profile_sha256":'
-        b'"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",'
-        b'"schema_version":1,"source_bundle_sha256s":'
-        b'["sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",'
-        b'"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]}'
-    )
+    expected_payload = {
+        **_valid_payload(),
+        "as_of_date": "2026-07-28",
+        "source_bundle_sha256s": [_digest("d"), _digest("e")],
+        "evidence_policy_ids": ["evidence.a", "evidence.z"],
+        "source_bundle_resource_sha256s": [_digest("4"), _digest("5")],
+    }
+    assert inputs.canonical_payload == json.dumps(
+        expected_payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
     assert inputs.input_sha256 == (
-        "d6a5ab04b1aae668ce81217cd4ce35014ad8f92bcfc35ba4e7c76f60b411b44f"
+        "0ed7fdd07ba620507c69cea4ec531d78fe793107665974b31a66ea4db9ff7b0c"
     )
     assert inputs.input_sha256 == sha256(inputs.canonical_payload).hexdigest()
     assert not hasattr(inputs, "__dict__")
@@ -162,6 +164,15 @@ def test_pinned_card_data_context_rejects_unpinned_or_drifted_content(
         ("policy_profile_sha256", _digest("c")),
         ("source_bundle_sha256s", [_digest("c"), _digest("d")]),
         ("evidence_policy_ids", ["evidence.a", "evidence.synthetic"]),
+        ("deck_cards_resource_sha256", _digest("c")),
+        ("card_snapshot_resource_sha256", _digest("c")),
+        ("policy_profile_resource_sha256", _digest("c")),
+        ("evidence_contract_resource_sha256", _digest("c")),
+        (
+            "source_bundle_resource_sha256s",
+            [_digest("c"), _digest("4")],
+        ),
+        ("globalvalues_baseline_resource_sha256", _digest("c")),
     ],
 )
 def test_every_synthetic_hash_reference_is_bound_by_input_sha256(
@@ -193,7 +204,7 @@ def test_canonicalize_rejects_raw_deckcodes(forbidden_key: str) -> None:
 
 def test_canonicalize_rejects_unknown_keys() -> None:
     payload = _valid_payload()
-    payload["surprise"] = "not part of schema version 1"
+    payload["surprise"] = "not part of schema version 2"
 
     with pytest.raises(ValueError, match="build_inputs_unknown_keys"):
         canonicalize_build_inputs(payload)
@@ -286,7 +297,17 @@ def test_canonicalize_accepts_namespaced_stable_ascii_identifiers() -> None:
 
 @pytest.mark.parametrize(
     "missing_field",
-    ["as_of_date", "card_snapshot_id", "card_snapshot_sha256"],
+    [
+        "as_of_date",
+        "card_snapshot_id",
+        "card_snapshot_sha256",
+        "deck_cards_resource_sha256",
+        "card_snapshot_resource_sha256",
+        "policy_profile_resource_sha256",
+        "evidence_contract_resource_sha256",
+        "source_bundle_resource_sha256s",
+        "globalvalues_baseline_resource_sha256",
+    ],
 )
 def test_canonicalize_requires_explicit_date_and_pinned_card_data(
     missing_field: str,
@@ -303,6 +324,10 @@ def test_canonicalize_requires_explicit_date_and_pinned_card_data(
     [
         ("source_bundle_sha256s", [_digest("d"), _digest("d")]),
         ("evidence_policy_ids", ["evidence.a", " evidence.a "]),
+        (
+            "source_bundle_resource_sha256s",
+            [_digest("4"), _digest("4")],
+        ),
     ],
 )
 def test_canonicalize_rejects_duplicate_reference_ids(
@@ -319,7 +344,7 @@ def test_canonicalize_rejects_duplicate_reference_ids(
 @pytest.mark.parametrize(
     ("field", "invalid_value"),
     [
-        ("schema_version", 2),
+        ("schema_version", 1),
         ("schema_version", True),
         ("generator_version", None),
         ("generator_commit", 123),
@@ -334,6 +359,13 @@ def test_canonicalize_rejects_duplicate_reference_ids(
         ("source_bundle_sha256s", [_digest("d"), 7]),
         ("evidence_policy_ids", "evidence.a"),
         ("evidence_policy_ids", ["evidence.a", 7]),
+        ("deck_cards_resource_sha256", "f" * 64),
+        ("card_snapshot_resource_sha256", "sha256:NOT_LOWERCASE"),
+        ("policy_profile_resource_sha256", None),
+        ("evidence_contract_resource_sha256", "sha256:short"),
+        ("source_bundle_resource_sha256s", _digest("j")),
+        ("source_bundle_resource_sha256s", [_digest("4"), 7]),
+        ("globalvalues_baseline_resource_sha256", "6" * 64),
     ],
 )
 def test_canonicalize_rejects_invalid_schema_digests_and_types(
