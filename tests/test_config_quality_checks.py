@@ -9,6 +9,8 @@ import shutil
 import socket
 import subprocess
 import time
+import types
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -17,10 +19,14 @@ import pytest
 
 import hsconfig.package_builder as package_builder
 import hsconfig.package_derivation_receipt as package_derivation_receipt
+import hsconfig.pre_run_metrics as pre_run_metrics
 import hsconfig.runtime_surface_ledger as runtime_surface_ledger
 import hsconfig.visionai_registry as visionai_registry
 import hsconfig.config_quality_checks as config_quality_checks_module
+import hsconfig.config_quality_inputs as config_quality_inputs_module
+import hsconfig.globalvalues_decisions as globalvalues_decisions
 import hsconfig.mechanic_support as mechanic_support
+import hsconfig.package_domain as package_domain
 import hsconfig.role_tokens as role_tokens
 import hsconfig.source_document_model as source_document_model
 from hsconfig.config_quality_checks import evaluate_config_quality
@@ -874,6 +880,304 @@ def test_evaluator_ignores_origin_registry_rebinding_after_load(
         [{"claim_kind": "targeting_rule"}]
     )
     assert evaluate_config_quality(inputs) == expected
+
+
+_QUALITY_EVALUATOR_CONSTANTS = (
+    "_BODY_AUTHORITY_ROLES",
+    "_CARDID_SURFACE_FAMILY",
+    "_CARD_ID_SURFACE_RE",
+    "_CONFIG_QUALITY_KERNEL",
+    "_EFFECT_ONLY_START_OF_GAME_ROLES",
+    "_EXPLICIT_OPENING_HAND_MULLIGAN_ROLES",
+    "_FORBIDDEN_RUNTIME_SURFACES",
+    "_GLOBALVALUES_BASELINE_DECISION_KEYS",
+    "_HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_FILES",
+    "_LinkedRuntimeOwnerEvidence",
+    "_MECHANIC_LOWERING_POLICIES",
+    "_MECHANIC_SUPPORT",
+    "_NON_MECHANIC_ROLES",
+    "_NORMAL_APPLY_AUTHORITY",
+    "_NORMAL_RUNTIME_SURFACE_BOUNDARY",
+    "_OPENING_HAND_MULLIGAN_NEGATED_PATTERNS",
+    "_OPENING_HAND_MULLIGAN_POSITIVE_PATTERNS",
+    "_ROLE_ALIASES",
+    "_RUNTIME_BLOCKED_CLAIM_READINESS",
+    "_RUNTIME_BLOCKED_CONFIDENCE_LABELS",
+    "_RUNTIME_LOWERABLE_CLAIM_READINESS",
+    "_RUNTIME_ROW_SCHEMA_KEYS",
+    "_RUNTIME_SURFACE_ALIASES",
+    "_RUNTIME_SURFACE_SPECS",
+    "_UNKNOWN_MECHANIC_LOWERING_POLICY",
+    "DARKBISHOP_CARD_ID",
+    "INTENTIONAL_OPERATOR_LEDGER_STATUSES",
+    "NON_EMITTED_RUNTIME_INTENT_MARKERS",
+    "PUBLIC_GUIDE_SOURCE_FAMILIES",
+    "PUBLIC_GUIDE_SOURCE_LANES",
+    "PUBLIC_GUIDE_SOURCE_TYPES",
+    "RUNTIME_INTENT_DECISIONS",
+    "RUNTIME_INTENT_LOWERING_STATUSES",
+    "RUNTIME_INTENT_RESOLUTION_REASONS",
+    "SEMANTIC_FALLBACK_SOURCE_LANES",
+    "SEMANTIC_HANDOFF_STATUSES",
+    "SOURCE_TRACE_LANES",
+    "SOURCE_TRACE_TYPES",
+    "TARGET_AUTHORITY_TOKENS",
+)
+
+
+def _canonical_quality_bytes(value: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _empty_quality_constant(value: Any) -> Any:
+    if isinstance(value, frozenset):
+        return frozenset()
+    if isinstance(value, tuple):
+        return ()
+    if isinstance(value, str):
+        return ""
+    return {}
+
+
+@pytest.mark.parametrize(
+    "mutation_kind",
+    (
+        "own_helpers",
+        "own_constants",
+        "module_dependencies",
+        "input_class_dependencies",
+        "parser_dependencies",
+        "origin_mutables",
+    ),
+)
+def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_kind: str,
+) -> None:
+    files = _typed_quality_files(minimal_clean_package(tmp_path))
+    files["CustomConfig/shadowpriest/Presume.json"] = _json_bytes({})
+    inputs = load_config_quality_inputs(_PoisonableMemoryPackageView(files))
+    public_evaluator = config_quality_checks_module.evaluate_config_quality
+    typed_evaluator = config_quality_checks_module._typed_input_diagnostics
+    expected_public_report = public_evaluator(inputs)
+    assert expected_public_report["status"] == "attention"
+    assert expected_public_report["checks"]["legacy_surfaces"]["present"] == [
+        "CustomConfig/shadowpriest/Presume.json"
+    ]
+    expected_public = _canonical_quality_bytes(expected_public_report)
+    expected_typed = _canonical_quality_bytes(typed_evaluator(inputs))
+
+    def poisoned(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(f"late-bound evaluator dependency: {mutation_kind}")
+
+    mutable_origins: tuple[tuple[Any, Any], ...] = ()
+    mutated_closure_cells: list[tuple[Any, Any]] = []
+
+    def poison_closure_cells(function: Any) -> None:
+        for cell in function.__closure__ or ():
+            mutated_closure_cells.append((cell, cell.cell_contents))
+            cell.cell_contents = None
+
+    if mutation_kind == "own_helpers":
+        for name, value in tuple(vars(config_quality_checks_module).items()):
+            if (
+                isinstance(value, types.FunctionType)
+                and value.__module__ == config_quality_checks_module.__name__
+            ):
+                monkeypatch.setattr(
+                    config_quality_checks_module,
+                    name,
+                    poisoned,
+                )
+    elif mutation_kind == "own_constants":
+        for name in _QUALITY_EVALUATOR_CONSTANTS:
+            value = getattr(config_quality_checks_module, name)
+            monkeypatch.setattr(
+                config_quality_checks_module,
+                name,
+                _empty_quality_constant(value),
+            )
+    elif mutation_kind == "module_dependencies":
+        for name in (
+            "ConfigQualityInputs",
+            "Counter",
+            "Mapping",
+            "Path",
+            "Sequence",
+            "hashlib",
+            "json",
+        ):
+            monkeypatch.setattr(
+                config_quality_checks_module,
+                name,
+                poisoned,
+            )
+    elif mutation_kind == "input_class_dependencies":
+        inputs_type = config_quality_inputs_module.ConfigQualityInputs
+        snapshot_type = config_quality_inputs_module.FrozenPackageSnapshot
+        path_type = config_quality_inputs_module.FrozenPackagePath
+        for name in (
+            "ConfigQualityInputs",
+            "FrozenPackagePath",
+            "FrozenPackageSnapshot",
+            "PurePosixPath",
+            "_canonicalize_json_value",
+            "canonical_relative_path",
+            "json",
+        ):
+            monkeypatch.setattr(
+                config_quality_inputs_module,
+                name,
+                poisoned,
+            )
+        for class_, method_names in (
+            (
+                snapshot_type,
+                (
+                    "exists",
+                    "file_names",
+                    "read_bytes",
+                    "read_json",
+                    "root_path",
+                ),
+            ),
+            (
+                path_type,
+                (
+                    "__truediv__",
+                    "glob",
+                    "is_dir",
+                    "is_file",
+                    "iterdir",
+                    "read_text",
+                    "relative_to",
+                    "rglob",
+                ),
+            ),
+        ):
+            for method_name in method_names:
+                monkeypatch.setattr(class_, method_name, poisoned)
+        for class_ in (inputs_type, snapshot_type, path_type):
+            poison_closure_cells(class_.__init__)
+            monkeypatch.setattr(class_, "__init__", poisoned)
+        monkeypatch.setattr(
+            path_type,
+            "name",
+            property(lambda _self: poisoned()),
+        )
+    elif mutation_kind == "parser_dependencies":
+        for name in (
+            "load_disposition_ledger_report",
+            "load_globalvalues_decision_ledger_report",
+        ):
+            monkeypatch.setattr(
+                config_quality_checks_module,
+                name,
+                poisoned,
+            )
+        for name in (
+            "_canonical_bytes",
+            "disposition_ledger_document",
+            "globalvalues_decision_report_document",
+            "json",
+        ):
+            monkeypatch.setattr(pre_run_metrics, name, poisoned)
+        for name in (
+            "globalvalues_decision_ledger_document",
+            "json",
+        ):
+            monkeypatch.setattr(globalvalues_decisions, name, poisoned)
+        for name in (
+            "_canonical_json",
+            "_freeze_stable_strings",
+            "canonical_relative_path",
+            "disposition_ledger_content_sha256",
+            "globalvalues_baseline_sha256",
+            "globalvalues_decision_ledger_content_sha256",
+            "json",
+        ):
+            monkeypatch.setattr(package_domain, name, poisoned)
+        for class_ in (
+            package_domain.CardDispositionRow,
+            package_domain.ClaimDispositionRow,
+            package_domain.DispositionLedger,
+            package_domain.GlobalValueDecision,
+            package_domain.GlobalValuesDecisionLedger,
+        ):
+            poison_closure_cells(class_.__init__)
+            monkeypatch.setattr(class_, "__init__", poisoned)
+            monkeypatch.setattr(class_, "__post_init__", poisoned)
+        monkeypatch.setattr(
+            pre_run_metrics,
+            "GLOBALVALUES_BASELINE_DECISION_KEYS",
+            (),
+        )
+    else:
+        mutable_origins = (
+            (
+                mechanic_support.MECHANIC_SUPPORT,
+                dict(mechanic_support.MECHANIC_SUPPORT),
+            ),
+            (
+                mechanic_support.NON_MECHANIC_ROLES,
+                set(mechanic_support.NON_MECHANIC_ROLES),
+            ),
+            (
+                mechanic_support.ROLE_ALIASES,
+                dict(mechanic_support.ROLE_ALIASES),
+            ),
+        )
+        for value, _snapshot in mutable_origins:
+            value.clear()
+        monkeypatch.setattr(
+            visionai_registry,
+            "RUNTIME_SURFACE_REGISTRY",
+            {},
+        )
+        monkeypatch.setattr(
+            visionai_registry,
+            "RUNTIME_ROW_SCHEMA_KEYS",
+            {},
+        )
+        monkeypatch.setattr(
+            visionai_registry,
+            "RUNTIME_SURFACE_ALIASES",
+            {},
+        )
+        monkeypatch.setattr(
+            role_tokens,
+            "EXPLICIT_OPENING_HAND_MULLIGAN_ROLES",
+            frozenset(),
+        )
+        monkeypatch.setattr(
+            source_document_model,
+            "RUNTIME_LOWERABLE_CLAIM_READINESS",
+            frozenset(),
+        )
+        monkeypatch.setattr(
+            globalvalues_decisions,
+            "GLOBALVALUES_BASELINE_DECISION_KEYS",
+            (),
+        )
+
+    try:
+        assert _canonical_quality_bytes(public_evaluator(inputs)) == (
+            expected_public
+        )
+        assert _canonical_quality_bytes(typed_evaluator(inputs)) == (
+            expected_typed
+        )
+    finally:
+        for cell, value in mutated_closure_cells:
+            cell.cell_contents = value
+        for value, snapshot in mutable_origins:
+            value.update(snapshot)
 
 
 def _reverse_mappings(value: Any) -> Any:

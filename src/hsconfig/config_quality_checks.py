@@ -6,10 +6,13 @@ import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from types import MappingProxyType
+from types import CellType, CodeType, FunctionType, MappingProxyType
 from typing import Any, NamedTuple
 
-from hsconfig.config_quality_inputs import ConfigQualityInputs
+from hsconfig.config_quality_inputs import (
+    ConfigQualityInputs,
+    FrozenPackageSnapshot,
+)
 from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
 from hsconfig.mechanic_support import (
     MECHANIC_SUPPORT,
@@ -3141,6 +3144,288 @@ def _relative(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+class _ConfigQualityKernel(NamedTuple):
+    evaluate_config_quality: FunctionType
+    typed_input_diagnostics: FunctionType
+    semantic_handoff_projection: FunctionType
+    file_card_id: FunctionType
+    runtime_value_row_keys: FunctionType
+    inputs_type: type[ConfigQualityInputs]
+    package_snapshot_type: type[FrozenPackageSnapshot]
+
+
+def _referenced_global_names(code: CodeType) -> frozenset[str]:
+    names = set(code.co_names)
+    for value in code.co_consts:
+        if isinstance(value, CodeType):
+            names.update(_referenced_global_names(value))
+    return frozenset(names)
+
+
+def _freeze_function_graph(
+    roots: tuple[FunctionType, ...],
+    class_roots: tuple[type[Any], ...] = (),
+) -> tuple[tuple[FunctionType, ...], tuple[type[Any], ...]]:
+    """Clone reachable HSConfig callables into private namespaces."""
+
+    namespaces: dict[int, dict[str, Any]] = {}
+    functions: dict[int, FunctionType] = {}
+    protected_classes: dict[int, type[Any]] = {}
+    protected_closure_cells: dict[int, CellType] = {}
+
+    def freeze_closure_cell(cell: CellType) -> CellType:
+        existing = protected_closure_cells.get(id(cell))
+        if existing is not None:
+            return existing
+        try:
+            frozen = CellType(cell.cell_contents)
+        except ValueError:
+            frozen = CellType()
+        protected_closure_cells[id(cell)] = frozen
+        return frozen
+
+    def freeze_class(class_: type[Any]) -> type[Any]:
+        existing = protected_classes.get(id(class_))
+        if existing is not None:
+            return existing
+        if type(class_) is not type:
+            return class_
+
+        generated_dataclass_methods = frozenset(
+            {
+                "__delattr__",
+                "__eq__",
+                "__getstate__",
+                "__hash__",
+                "__repr__",
+                "__setattr__",
+            }
+        )
+        members = {
+            name: value
+            for name, value in class_.__dict__.items()
+            if (
+                name not in generated_dataclass_methods
+                and (
+                    isinstance(value, (FunctionType, property))
+                    or isinstance(value, (classmethod, staticmethod))
+                )
+            )
+        }
+        if not members:
+            return class_
+
+        protected_classes[id(class_)] = class_
+        frozen_members: dict[str, Any] = {}
+        for name, member in members.items():
+            if isinstance(member, FunctionType):
+                frozen_members[name] = freeze(member)
+            elif isinstance(member, property):
+                frozen_members[name] = property(
+                    freeze(member.fget)
+                    if isinstance(member.fget, FunctionType)
+                    else member.fget,
+                    freeze(member.fset)
+                    if isinstance(member.fset, FunctionType)
+                    else member.fset,
+                    freeze(member.fdel)
+                    if isinstance(member.fdel, FunctionType)
+                    else member.fdel,
+                    member.__doc__,
+                )
+            elif isinstance(member, classmethod):
+                frozen_members[name] = classmethod(freeze(member.__func__))
+            else:
+                frozen_members[name] = staticmethod(freeze(member.__func__))
+        frozen = type(
+            class_.__name__,
+            (class_,),
+            {
+                "__doc__": class_.__doc__,
+                "__module__": class_.__module__,
+                "__slots__": (),
+                **frozen_members,
+            },
+        )
+        frozen.__qualname__ = class_.__qualname__
+        protected_classes[id(class_)] = frozen
+        for namespace in namespaces.values():
+            for name, value in tuple(namespace.items()):
+                if value is class_:
+                    namespace[name] = frozen
+        return frozen
+
+    def freeze(function: FunctionType) -> FunctionType:
+        existing = functions.get(id(function))
+        if existing is not None:
+            return existing
+
+        source_globals = function.__globals__
+        frozen_globals = namespaces.setdefault(
+            id(source_globals),
+            dict(source_globals),
+        )
+        frozen_closure = (
+            tuple(freeze_closure_cell(cell) for cell in function.__closure__)
+            if function.__closure__ is not None
+            else None
+        )
+        frozen = FunctionType(
+            function.__code__,
+            frozen_globals,
+            function.__name__,
+            function.__defaults__,
+            frozen_closure,
+        )
+        functions[id(function)] = frozen
+        frozen.__annotations__ = dict(function.__annotations__)
+        frozen.__dict__.update(function.__dict__)
+        frozen.__doc__ = function.__doc__
+        frozen.__kwdefaults__ = (
+            dict(function.__kwdefaults__)
+            if function.__kwdefaults__ is not None
+            else None
+        )
+        frozen.__module__ = function.__module__
+        frozen.__qualname__ = function.__qualname__
+
+        if function.__closure__ is not None and frozen_closure is not None:
+            for source_cell, frozen_cell in zip(
+                function.__closure__,
+                frozen_closure,
+                strict=True,
+            ):
+                try:
+                    dependency = source_cell.cell_contents
+                except ValueError:
+                    continue
+                if (
+                    isinstance(dependency, FunctionType)
+                    and dependency.__module__.startswith("hsconfig.")
+                ):
+                    frozen_cell.cell_contents = freeze(dependency)
+                elif (
+                    isinstance(dependency, type)
+                    and dependency.__module__.startswith("hsconfig.")
+                ):
+                    frozen_cell.cell_contents = freeze_class(dependency)
+
+        for name in _referenced_global_names(function.__code__):
+            dependency = source_globals.get(name)
+            if (
+                isinstance(dependency, FunctionType)
+                and dependency.__module__.startswith("hsconfig.")
+            ):
+                frozen_globals[name] = freeze(dependency)
+            elif (
+                isinstance(dependency, type)
+                and dependency.__module__.startswith("hsconfig.")
+            ):
+                frozen_globals[name] = freeze_class(dependency)
+        return frozen
+
+    frozen_roots = tuple(freeze(root) for root in roots)
+    frozen_classes = tuple(freeze_class(class_) for class_ in class_roots)
+    return frozen_roots, frozen_classes
+
+
+def _build_config_quality_kernel() -> _ConfigQualityKernel:
+    roots, classes = _freeze_function_graph(
+        (
+            evaluate_config_quality,
+            _typed_input_diagnostics,
+            semantic_handoff_projection,
+            _file_card_id,
+            _runtime_value_row_keys,
+        ),
+        (ConfigQualityInputs, FrozenPackageSnapshot),
+    )
+    return _ConfigQualityKernel(*roots, *classes)
+
+
+def _bind_config_quality_kernel_roots(
+    kernel: _ConfigQualityKernel,
+) -> tuple[FunctionType, FunctionType, FunctionType, FunctionType, FunctionType]:
+    def protected_inputs(inputs: ConfigQualityInputs) -> ConfigQualityInputs:
+        package = inputs.package
+        protected_package = kernel.package_snapshot_type(
+            package_label=package.package_label,
+            _names=package._names,
+            _files=package._files,
+            derivation_receipt_verified=package.derivation_receipt_verified,
+            rederived_runtime_surface_ledger=(
+                package.rederived_runtime_surface_ledger
+            ),
+        )
+        return kernel.inputs_type(
+            package=protected_package,
+            semantic_inventory=inputs.semantic_inventory,
+            disposition_ledger=inputs.disposition_ledger,
+            source_closure=inputs.source_closure,
+            globalvalues_ledger=inputs.globalvalues_ledger,
+        )
+
+    def evaluate_config_quality(
+        inputs: ConfigQualityInputs,
+    ) -> dict[str, Any]:
+        """Evaluate only the loader-owned immutable package snapshot."""
+
+        return kernel.evaluate_config_quality(protected_inputs(inputs))
+
+    def typed_input_diagnostics(
+        inputs: ConfigQualityInputs,
+    ) -> dict[str, Any]:
+        """Return typed-input defects without changing the public report."""
+
+        return kernel.typed_input_diagnostics(protected_inputs(inputs))
+
+    def semantic_handoff_projection(
+        report: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return kernel.semantic_handoff_projection(report)
+
+    def file_card_id(value: Any) -> str:
+        return kernel.file_card_id(value)
+
+    def runtime_value_row_keys(file_name: str) -> set[str]:
+        return kernel.runtime_value_row_keys(file_name)
+
+    bound = (
+        evaluate_config_quality,
+        typed_input_diagnostics,
+        semantic_handoff_projection,
+        file_card_id,
+        runtime_value_row_keys,
+    )
+    names = (
+        "evaluate_config_quality",
+        "_typed_input_diagnostics",
+        "semantic_handoff_projection",
+        "_file_card_id",
+        "_runtime_value_row_keys",
+    )
+    for function, name in zip(bound, names, strict=True):
+        function.__name__ = name
+        function.__qualname__ = name
+    return bound
+
+
+_CONFIG_QUALITY_KERNEL = _build_config_quality_kernel()
+for _bound_root_name, _bound_root in zip(
+    (
+        "evaluate_config_quality",
+        "_typed_input_diagnostics",
+        "semantic_handoff_projection",
+        "_file_card_id",
+        "_runtime_value_row_keys",
+    ),
+    _bind_config_quality_kernel_roots(_CONFIG_QUALITY_KERNEL),
+    strict=True,
+):
+    globals()[_bound_root_name] = _bound_root
+del _bound_root, _bound_root_name
 
 
 __all__ = ("evaluate_config_quality", "semantic_handoff_projection")
