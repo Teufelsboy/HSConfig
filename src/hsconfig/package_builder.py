@@ -69,6 +69,15 @@ from hsconfig.package_derivation_receipt import (
 )
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
+from hsconfig.pre_run_metrics import (
+    VerifiedEmissionInput,
+    build_layered_evidence_contract_report,
+    build_pre_run_closure_report,
+    build_source_acquisition_closure_report,
+    disposition_ledger_document,
+    globalvalues_decision_report_document,
+    verified_emission_input_from_physical_rows,
+)
 from hsconfig.research_contract import (
     build_research_contract_bundle,
     write_research_contract_bundle,
@@ -76,6 +85,7 @@ from hsconfig.research_contract import (
 )
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.source_claim_conflicts import build_claim_conflict_report
+from hsconfig.source_acquisition_closure import AcquisitionClosure
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
@@ -141,6 +151,7 @@ def prepare_package_payload(
     *,
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+    acquisition_closure: AcquisitionClosure | None = None,
     stage_observer: StageObserver | None = None,
     mulligan_source_gaps: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], int]:
@@ -150,6 +161,7 @@ def prepare_package_payload(
         args,
         current_date=operator_date,
         source_authority_handoff=source_authority_handoff,
+        acquisition_closure=acquisition_closure,
         stage_observer=stage_observer,
         mulligan_source_gaps=mulligan_source_gaps,
     )
@@ -172,6 +184,7 @@ def build_package_payload(
     *,
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+    acquisition_closure: AcquisitionClosure | None = None,
     stage_observer: StageObserver | None = None,
     mulligan_source_gaps: list[dict[str, str]] | None = None,
     include_disposition_diagnostics: bool = False,
@@ -689,9 +702,13 @@ def build_package_payload(
         config_readiness_report=config_readiness_report,
         initial_lifecycle_rows=initial_lifecycle_rows,
         plan_input_diagnostics=plan_input_diagnostics,
-        include_evidence_authority=include_disposition_diagnostics,
+        include_evidence_authority=True,
     )
-    disposition_ledger, dual_closure_status = (
+    (
+        disposition_ledger,
+        dual_closure_status,
+        verified_emissions,
+    ) = (
         _build_package_disposition_ledger(
             deck_identity=deck_identity,
             source_contract_audit_report=source_contract_audit_report,
@@ -706,6 +723,33 @@ def build_package_payload(
                 else "partial"
             ),
         )
+    )
+    classified_authorities = {
+        str(claim_id): row["evidence_authority"]
+        for claim_id, row in source_contract_audit_report.get(
+            "claim_rows",
+            {},
+        ).items()
+        if isinstance(row, Mapping)
+        and isinstance(row.get("evidence_authority"), Mapping)
+    }
+    layered_evidence_report = build_layered_evidence_contract_report(
+        disposition_ledger=disposition_ledger,
+        classified_authorities=classified_authorities,
+    )
+    source_acquisition_report = (
+        build_source_acquisition_closure_report(
+            deck_fingerprint=str(deck_identity["deck_fingerprint"]),
+            acquisition_closure=acquisition_closure,
+        )
+    )
+    pre_run_closure_report = build_pre_run_closure_report(
+        disposition_ledger=disposition_ledger,
+        globalvalues_ledger=globalvalues_ledger,
+        dual_closure=dual_closure_status,
+        layered_evidence_report=layered_evidence_report,
+        source_acquisition_report=source_acquisition_report,
+        verified_emissions=verified_emissions,
     )
     if include_disposition_diagnostics:
         source_contract_audit_report = (
@@ -772,6 +816,26 @@ def build_package_payload(
     write_json(reports_dir / "globalvalues_baseline_receipt.json", baseline_receipt)
     write_json(reports_dir / "globalvalues_profile.json", globalvalues["profile"])
     write_json(reports_dir / "global_values_key_profile_report.json", globalvalues["profile"])
+    write_json(
+        reports_dir / "source_acquisition_closure.json",
+        source_acquisition_report,
+    )
+    write_json(
+        reports_dir / "globalvalues_decision_ledger.json",
+        globalvalues_decision_report_document(globalvalues_ledger),
+    )
+    write_json(
+        reports_dir / "disposition_ledger.json",
+        disposition_ledger_document(disposition_ledger),
+    )
+    write_json(
+        reports_dir / "layered_evidence_contract.json",
+        layered_evidence_report,
+    )
+    write_json(
+        reports_dir / "pre_run_closure.json",
+        pre_run_closure_report,
+    )
 
     report = validate_complete_package(out)
     write_json(reports_dir / "validation_report.json", report)
@@ -803,6 +867,7 @@ def build_package_payload(
         "gameplan_contract": gameplan_contract,
         "deck_input_verification": deck_input_verification,
         "runtime_surface_ledger": runtime_surface_ledger,
+        "pre_run_closure_report": pre_run_closure_report,
     }
     generated_files = _generated_package_files(
         out,
@@ -814,6 +879,11 @@ def build_package_payload(
             "strong_promotion_report.json",
             "output_ownership_manifest.json",
             "source_evidence_closure.json",
+            "source_acquisition_closure.json",
+            "disposition_ledger.json",
+            "globalvalues_decision_ledger.json",
+            "layered_evidence_contract.json",
+            "pre_run_closure.json",
         ),
         expected_package_files=(DERIVATION_RECEIPT_PATH,),
     )
@@ -993,7 +1063,7 @@ def _build_package_disposition_ledger(
                             or f"{runtime_card_id}.json"
                         )
                     )
-        runtime_paths = sorted(set(runtime_paths))
+        runtime_paths = sorted(runtime_paths)
         if runtime_paths:
             physical_emission_index[composite_key] = runtime_paths
             physical_emissions.extend(
@@ -1103,7 +1173,22 @@ def _build_package_disposition_ledger(
         globalvalues_ledger=globalvalues_ledger,
         strategy_source_status=strategy_source_status,
     )
-    return dispositions, dual_closure
+    rejected_physical_rows = [
+        *runtime_surface_ledger.get("physical_errors", ()),
+        *runtime_surface_ledger.get("unexpected_runtime_emissions", ()),
+        *runtime_surface_ledger.get(
+            "linked_runtime_owner_collisions",
+            (),
+        ),
+    ]
+    verified_emissions: VerifiedEmissionInput = (
+        verified_emission_input_from_physical_rows(
+            disposition_ledger=dispositions,
+            physical_rows=physical_emissions,
+            rejected_rows=rejected_physical_rows,
+        )
+    )
+    return dispositions, dual_closure, verified_emissions
 
 
 def _card_evidence_authority_lane(

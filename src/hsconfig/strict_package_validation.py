@@ -10,6 +10,11 @@ from hsconfig.package_io import (
     read_required_baseline,
     read_required_globalvalues_authority_matrix,
 )
+from hsconfig.package_model import DirectoryPackageView
+from hsconfig.pre_run_metrics import (
+    PRE_RUN_REPORT_PATHS,
+    validate_pre_run_package_reports,
+)
 from hsconfig.runtime_entity_owner import (
     AUTHORIZED_HERO_POWER_OWNER,
     LINKED_RUNTIME_ENTITY_RELATION_INVALID,
@@ -59,6 +64,9 @@ def validate_complete_package(
     )
     linked_runtime_errors = _validate_linked_runtime_entities(package_path)
     physical_surface_errors = _validate_runtime_surface_ledger(package_path)
+    pre_run_contract_errors = _validate_pre_run_contract_reports(
+        package_path
+    )
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
         globalvalues_contract_errors.append(
@@ -69,6 +77,7 @@ def validate_complete_package(
         not linked_runtime_errors
         and not physical_surface_errors
         and not globalvalues_contract_errors
+        and not pre_run_contract_errors
     ):
         return report
     return {
@@ -79,8 +88,22 @@ def validate_complete_package(
             *globalvalues_contract_errors,
             *linked_runtime_errors,
             *physical_surface_errors,
+            *pre_run_contract_errors,
         ],
     }
+
+
+def _validate_pre_run_contract_reports(
+    package_path: Path,
+) -> list[str]:
+    view = DirectoryPackageView(package_path)
+    if not any(view.exists(path) for path in PRE_RUN_REPORT_PATHS):
+        return []
+    try:
+        validate_pre_run_package_reports(view)
+    except (OSError, TypeError, ValueError) as error:
+        return [f"pre_run_contract_validation_failed:{error}"]
+    return []
 
 
 def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:

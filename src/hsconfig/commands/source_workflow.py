@@ -28,6 +28,7 @@ from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_status_sync import build_research_status_sync_report
 from hsconfig.source_acquisition import collect_public_source_records, fetchable_source_url
 from hsconfig.source_acquisition_closure import (
+    AcquisitionClosure,
     acquisition_closure_payload,
     build_acquisition_closure,
     freeze_source_bundle,
@@ -317,27 +318,37 @@ def _source_autopilot_payload(
 
 
 def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    payload, status, _handoff = _source_acquire_payload(args)
+    payload, status, _handoff, _closure = _source_acquire_payload(args)
     return payload, status
 
 
 def source_acquire_for_configure(
     args: argparse.Namespace,
-) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff]:
-    payload, status, handoff = _source_acquire_payload(
+) -> tuple[
+    dict[str, Any],
+    int,
+    InternalSourceAuthorityHandoff,
+    AcquisitionClosure,
+]:
+    payload, status, handoff, closure = _source_acquire_payload(
         args,
         issue_authority_handoff=True,
     )
     if handoff is None:
         raise ValueError("source_acquisition_handoff_not_issued")
-    return payload, status, handoff
+    return payload, status, handoff, closure
 
 
 def _source_acquire_payload(
     args: argparse.Namespace,
     *,
     issue_authority_handoff: bool = False,
-) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff | None]:
+) -> tuple[
+    dict[str, Any],
+    int,
+    InternalSourceAuthorityHandoff | None,
+    AcquisitionClosure,
+]:
     out = Path(args.out)
     prepare_research_output_dir(out)
     source_urls = dedupe_acquisition_urls(
@@ -494,7 +505,7 @@ def _source_acquire_payload(
         },
         0,
     )
-    return *payload_and_status, authority_handoff
+    return *payload_and_status, authority_handoff, closure
 
 
 def _candidate_query_texts(

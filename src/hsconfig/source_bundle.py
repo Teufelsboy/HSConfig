@@ -43,6 +43,7 @@ def build_source_bundle(
         "claim_count": len(claims),
         "source_records": [dict(row) for row in source_records],
         "claims": [dict(row) for row in claims],
+        "pre_run_contract": _pre_run_projection(operator_summary),
         "default_only_runtime_surfaces": default_only,
         "card_coverage": [dict(row) for row in card_rows],
         "promotion": {
@@ -68,4 +69,25 @@ def build_source_bundle(
                 operator_summary.get("source_status_apply_blocking", False)
             ),
         },
+    }
+
+
+def _pre_run_projection(
+    operator_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    status = operator_summary.get("pre_run_contract_status")
+    strategy = operator_summary.get("strategy_authority_status")
+    if status not in {"complete", "incomplete"}:
+        return {}
+    if strategy not in {"partial", "strong"}:
+        raise ValueError("strategy_authority_status_invalid")
+    return {
+        "hsconfig_scope": "PRE_RUN_CONTRACT",
+        "gameplay_strategy_owner": "hearthranger_bot",
+        "gameplay_quality": "OUT_OF_SCOPE_ASSUMED_EXTERNAL",
+        "bot_gameplay_assumption": "trusted_external",
+        "pre_run_contract_status": status,
+        "strategy_authority_status": strategy,
+        "diagnostic_only": True,
+        "apply_blocking": False,
     }

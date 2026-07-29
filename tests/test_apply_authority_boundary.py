@@ -31,6 +31,7 @@ DIAGNOSTIC_ONLY_TOKENS = [
     "contract_spine_rows",
     "claim_lifecycle_rows",
     "source_contract_conformance",
+    "pre_run_closure",
 ]
 
 RECEIPT_TAMPERING_CASES = [
@@ -56,6 +57,8 @@ FORBIDDEN_DIAGNOSTIC_IMPORTS = [
     "import hsconfig.source_evidence_closure",
     "from hsconfig.source_contract_conformance",
     "import hsconfig.source_contract_conformance",
+    "from hsconfig.pre_run_metrics",
+    "import hsconfig.pre_run_metrics",
 ]
 
 SHADOWPRIEST_DECK_CODE = (

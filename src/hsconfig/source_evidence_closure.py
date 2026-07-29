@@ -47,6 +47,7 @@ def build_source_evidence_closure_report(
         "apply_blocking": False,
         "operator_gate": "reports/operator_summary.json",
         "normal_apply_authority": "reports/operator_summary.json",
+        **_pre_run_projection(operator_summary),
         "deck_name": deck_name,
         "deck_code": deck_code,
         "technical_status": operator_summary.get("technical_status"),
@@ -89,6 +90,27 @@ def build_source_evidence_closure_report(
             explainability_summary,
             source_to_runtime_summary,
         ),
+    }
+
+
+def _pre_run_projection(
+    operator_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    status = operator_summary.get("pre_run_contract_status")
+    strategy = operator_summary.get("strategy_authority_status")
+    if status not in {"complete", "incomplete"}:
+        return {}
+    if strategy not in {"partial", "strong"}:
+        raise ValueError("strategy_authority_status_invalid")
+    return {
+        "hsconfig_scope": "PRE_RUN_CONTRACT",
+        "gameplay_strategy_owner": "hearthranger_bot",
+        "gameplay_quality": "OUT_OF_SCOPE_ASSUMED_EXTERNAL",
+        "bot_gameplay_assumption": "trusted_external",
+        "pre_run_contract_status": status,
+        "strategy_authority_status": strategy,
+        "pre_run_contract_diagnostic_only": True,
+        "pre_run_contract_apply_blocking": False,
     }
 
 

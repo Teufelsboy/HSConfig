@@ -124,6 +124,7 @@ def configure_payload(
     frozen_source_bundle_path = None
     frozen_source_bundle_sha256 = None
     source_acquisition_closure = None
+    typed_source_acquisition_closure = None
     source_documents_json = None
     source_authority_handoff = None
     research_source_authority_handoff = None
@@ -184,6 +185,7 @@ def configure_payload(
                 acquire_payload,
                 acquire_status,
                 source_authority_handoff,
+                typed_source_acquisition_closure,
             ) = source_acquire_for_configure(
                 acquisition_args
             )
@@ -352,6 +354,7 @@ def configure_payload(
             ),
             current_date=current_date,
             source_authority_handoff=prepare_source_authority_handoff,
+            acquisition_closure=typed_source_acquisition_closure,
             stage_observer=stage_observer,
             mulligan_source_gaps=mulligan_source_gaps,
         )

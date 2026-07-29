@@ -360,6 +360,36 @@ _OWNED_REPORT_SPECS = (
         False,
         "diagnostic_source_evidence_closure",
     ),
+    (
+        "reports/layered_evidence_contract.json",
+        False,
+        False,
+        "diagnostic_pre_run_layered_evidence",
+    ),
+    (
+        "reports/source_acquisition_closure.json",
+        False,
+        False,
+        "diagnostic_pre_run_source_acquisition",
+    ),
+    (
+        "reports/disposition_ledger.json",
+        False,
+        False,
+        "diagnostic_pre_run_disposition_ledger",
+    ),
+    (
+        "reports/globalvalues_decision_ledger.json",
+        False,
+        False,
+        "diagnostic_pre_run_globalvalues_decisions",
+    ),
+    (
+        "reports/pre_run_closure.json",
+        False,
+        False,
+        "diagnostic_pre_run_closure",
+    ),
     ("reports/source_claim_gap_report.json", False, False, "repair_contract"),
     ("reports/strong_promotion_report.json", False, False, "promotion_confirmation"),
     (

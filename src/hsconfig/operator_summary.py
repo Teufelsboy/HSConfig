@@ -175,6 +175,7 @@ def build_operator_summary(
     package_authority: dict[str, Any] | None = None,
     deck_input_verification: dict[str, Any] | None = None,
     runtime_surface_ledger: Mapping[str, Any] | None = None,
+    pre_run_closure_report: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -473,6 +474,7 @@ def build_operator_summary(
             "apply_authority": NORMAL_APPLY_AUTHORITY,
             "authority_scope": "current_package_operator_gate",
         },
+        **_pre_run_contract_projection(pre_run_closure_report),
         "primary_blockers": primary_blockers,
         "warnings": warnings,
         "mechanic_warning_summary": mechanic_warning_summary,
@@ -550,6 +552,35 @@ def build_operator_summary(
         summary["package_derivation"] = dict(package_derivation)
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
+
+
+def _pre_run_contract_projection(
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if report is None:
+        return {}
+    status = report.get("pre_run_contract_status")
+    strategy = report.get("strategy_authority_status")
+    if status not in {"complete", "incomplete"}:
+        raise ValueError("pre_run_contract_status_invalid")
+    if strategy not in {"partial", "strong"}:
+        raise ValueError("strategy_authority_status_invalid")
+    return {
+        "hsconfig_scope": "PRE_RUN_CONTRACT",
+        "gameplay_strategy_owner": "hearthranger_bot",
+        "gameplay_quality": "OUT_OF_SCOPE_ASSUMED_EXTERNAL",
+        "bot_gameplay_assumption": "trusted_external",
+        "pre_run_contract_status": status,
+        "strategy_authority_status": strategy,
+        "exact_guide_authority": (
+            report.get("exact_guide_authority") is True
+        ),
+        "layered_pre_run_source_coverage": dict(
+            report.get("layered_pre_run_source_coverage", {})
+        ),
+        "pre_run_contract_diagnostic_only": True,
+        "pre_run_contract_apply_blocking": False,
+    }
 
 
 def _mulligan_plan_report_payload(

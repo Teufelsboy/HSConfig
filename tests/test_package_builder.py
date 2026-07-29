@@ -15,9 +15,18 @@ from tests.helpers.verified_deck_input import deck_code_for_cards
 
 # Extracted from the f83248f package builder; see the Task 12 report for the
 # in-memory git-show oracle method and path normalization.
-PRE_REFACTOR_PACKAGE_FILE_COUNT = 56
-PRE_REFACTOR_PACKAGE_TREE_DIGEST = (
-    "sha256:7969ca26ff71663648ec3d188342ce62a4ec2b896753c6ee6c10b947d2166a20"
+EXPECTED_PACKAGE_FILE_COUNT = 61
+EXPECTED_PACKAGE_TREE_DIGEST = (
+    "sha256:7ca5a360cf5c490c7983aa6c4b468c67877237a9cc922f006506fb361442d189"
+)
+PRE_RUN_REPORT_PATHS = frozenset(
+    {
+        "reports/layered_evidence_contract.json",
+        "reports/source_acquisition_closure.json",
+        "reports/disposition_ledger.json",
+        "reports/globalvalues_decision_ledger.json",
+        "reports/pre_run_closure.json",
+    }
 )
 
 
@@ -225,8 +234,9 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
 
     assert observed_status == 0
     assert observed_payload["status"] == "passed"
-    assert len(observed_tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
-    assert _semantic_tree_digest(observed_tree) == PRE_REFACTOR_PACKAGE_TREE_DIGEST
+    assert len(observed_tree) == EXPECTED_PACKAGE_FILE_COUNT
+    assert PRE_RUN_REPORT_PATHS <= observed_tree.keys()
+    assert _semantic_tree_digest(observed_tree) == EXPECTED_PACKAGE_TREE_DIGEST
     assert observed_stages == [
         (
             "verified_deck",
@@ -246,11 +256,11 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
         ),
         (
             "validated_authority",
-            "sha256:3e450a60fe4b3bb6452732f633c577953475cf8ff352b964c8465faa3e066c88",
+            "sha256:cea7a595e25b79ee4e9bac217599563deabe3babe23a5c35ab9f28f256c7afee",
         ),
         (
             "artifact_writing",
-            "sha256:3c5fd9982ba17f095895ddc5b598031a696c899ffe8e7eab1d6d2ffd11544c0c",
+            "sha256:edf0d6a8ecf4be422c90058389baab375380df8c1a5f32bad758f177a7e475a1",
         ),
     ]
 
@@ -285,8 +295,8 @@ def test_package_stage_observer_failures_are_diagnostic_only_at_every_boundary(
         "validated_authority",
         "artifact_writing",
     ]
-    assert len(tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
-    assert _semantic_tree_digest(tree) == PRE_REFACTOR_PACKAGE_TREE_DIGEST
+    assert len(tree) == EXPECTED_PACKAGE_FILE_COUNT
+    assert _semantic_tree_digest(tree) == EXPECTED_PACKAGE_TREE_DIGEST
 
 
 def test_lowered_runtime_warnings_feed_public_outputs_and_break_parity_oracle(
@@ -325,8 +335,8 @@ def test_lowered_runtime_warnings_feed_public_outputs_and_break_parity_oracle(
         blocker.get("reason") == "unsupported_conditions_present"
         for blocker in tree["reports/operator_summary.json"]["semantic_blockers"]
     )
-    assert len(tree) == PRE_REFACTOR_PACKAGE_FILE_COUNT
-    assert _semantic_tree_digest(tree) != PRE_REFACTOR_PACKAGE_TREE_DIGEST
+    assert len(tree) == EXPECTED_PACKAGE_FILE_COUNT
+    assert _semantic_tree_digest(tree) != EXPECTED_PACKAGE_TREE_DIGEST
 
 
 def _build_stage_fixture(

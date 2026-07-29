@@ -22,6 +22,7 @@ from hsconfig.package_builder import (
     _with_strategic_receipt_verification,
     prepare_package_payload,
 )
+from hsconfig.source_acquisition_closure import AcquisitionClosure
 from tests.mulligan_authority_fixtures import build_canonical_mulligan_bundle
 from tests.helpers.live_acquisition import acquire_live_test_provenance
 from tests.helpers.verified_deck_input import (
@@ -111,9 +112,14 @@ def _acquire_zero_record_handoff(
         current_date="2026-07-27",
         out=str(tmp_path / "acquisition"),
     )
-    payload, status, handoff = source_acquire_for_configure(args)
+    payload, status, handoff, acquisition_closure = (
+        source_acquire_for_configure(args)
+    )
     assert status == 0
     assert payload["source_claim_compiler_report"]["record_count"] == 0
+    assert isinstance(acquisition_closure, AcquisitionClosure)
+    assert acquisition_closure.status == "open"
+    assert acquisition_closure is not payload["source_acquisition_closure"]
     return args, handoff
 
 

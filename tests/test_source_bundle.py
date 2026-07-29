@@ -36,6 +36,8 @@ def test_source_bundle_exposes_source_claim_runtime_chain():
             "source_status_diagnostic_only": True,
             "source_status_apply_blocking": False,
             "default_only_runtime_surfaces": [],
+            "pre_run_contract_status": "complete",
+            "strategy_authority_status": "strong",
         },
         explainability_report={
             "card_rows": [
@@ -63,6 +65,16 @@ def test_source_bundle_exposes_source_claim_runtime_chain():
     assert bundle["promotion"]["source_status_diagnostic_only"] is True
     assert bundle["promotion"]["source_status_apply_blocking"] is False
     assert bundle["card_coverage"][0]["card_id"] == "SW_448"
+    assert bundle["pre_run_contract"] == {
+        "hsconfig_scope": "PRE_RUN_CONTRACT",
+        "gameplay_strategy_owner": "hearthranger_bot",
+        "gameplay_quality": "OUT_OF_SCOPE_ASSUMED_EXTERNAL",
+        "bot_gameplay_assumption": "trusted_external",
+        "pre_run_contract_status": "complete",
+        "strategy_authority_status": "strong",
+        "diagnostic_only": True,
+        "apply_blocking": False,
+    }
 
 
 def test_source_bundle_uses_operator_summary_as_source_status_authority():

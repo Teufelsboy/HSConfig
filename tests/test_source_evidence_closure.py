@@ -73,6 +73,10 @@ def test_source_evidence_closure_reports_captured_profile_gap(tmp_path: Path):
     assert report["source_status_diagnostic_only"] is True
     assert report["source_status_apply_blocking"] is False
     assert report["apply_blocking"] is False
+    assert report["hsconfig_scope"] == "PRE_RUN_CONTRACT"
+    assert report["pre_run_contract_status"] == "incomplete"
+    assert report["pre_run_contract_diagnostic_only"] is True
+    assert report["pre_run_contract_apply_blocking"] is False
 
 
 def test_source_evidence_closure_recomputes_source_status_from_gap_report():

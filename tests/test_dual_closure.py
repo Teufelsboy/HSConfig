@@ -469,9 +469,13 @@ def test_public_package_builder_opt_in_exposes_and_projects_one_disposition_trut
         "disposition_projection" not in report
         for report in default_reports
     )
-    assert not (
-        default_package / "reports" / "disposition_ledger.json"
-    ).exists()
+    production_ledger = json.loads(
+        (
+            default_package / "reports" / "disposition_ledger.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert production_ledger["content_sha256"].startswith("sha256:")
+    assert production_ledger["deck_fingerprint"]
     assert not (
         default_package / "reports" / "dual_closure_status.json"
     ).exists()
@@ -520,7 +524,7 @@ def test_public_package_builder_opt_in_exposes_and_projects_one_disposition_trut
 
 
 def test_package_ledger_derives_lane_b_from_typed_evidence_authority():
-    dispositions, dual_closure = (
+    dispositions, dual_closure, verified_emissions = (
         package_builder._build_package_disposition_ledger(
             deck_identity={
                 "deck_fingerprint": "deck-fingerprint",
@@ -560,6 +564,7 @@ def test_package_ledger_derives_lane_b_from_typed_evidence_authority():
     assert dispositions.cards[0].evidence_ids == ("B:claim-1",)
     assert dual_closure.exact_guide_authority is True
     assert dual_closure.pre_run_contract_status == "complete"
+    assert verified_emissions.deck_fingerprint == "deck-fingerprint"
 
 
 @pytest.mark.parametrize(
@@ -582,7 +587,7 @@ def test_package_ledger_requires_exact_policy_for_lane_e_bot_delegation(
     expected_lane,
     expected_disposition,
 ):
-    dispositions, dual_closure = (
+    dispositions, dual_closure, verified_emissions = (
         package_builder._build_package_disposition_ledger(
             deck_identity={
                 "deck_fingerprint": "deck-fingerprint",
@@ -617,3 +622,4 @@ def test_package_ledger_requires_exact_policy_for_lane_e_bot_delegation(
     assert dispositions.cards[0].authority_lane.value == expected_lane
     assert dispositions.cards[0].disposition is expected_disposition
     assert dual_closure.exact_guide_authority is False
+    assert verified_emissions.deck_fingerprint == "deck-fingerprint"

@@ -1,6 +1,31 @@
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 
 
+def test_pre_run_reports_are_diagnostic_and_operator_summary_is_the_only_gate():
+    paths = [
+        "reports/operator_summary.json",
+        "reports/layered_evidence_contract.json",
+        "reports/source_acquisition_closure.json",
+        "reports/disposition_ledger.json",
+        "reports/globalvalues_decision_ledger.json",
+        "reports/pre_run_closure.json",
+    ]
+
+    manifest = build_output_ownership_manifest(paths)
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    for path in paths[1:]:
+        assert by_file[path]["classification"] == "diagnostic"
+        assert by_file[path]["diagnostic_only"] is True
+        assert by_file[path]["can_block_apply"] is False
+        assert by_file[path]["authority"].startswith("diagnostic_pre_run_")
+    assert [
+        row["file"]
+        for row in manifest["files"]
+        if row["classification"] == "gate"
+    ] == ["reports/operator_summary.json"]
+
+
 def test_unknown_custom_config_json_names_are_unclassified_not_cardid_surfaces():
     paths = (
         "CustomConfig/deck/FutureOptionalSurface.json",

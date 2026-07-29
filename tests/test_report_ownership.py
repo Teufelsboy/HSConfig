@@ -1,6 +1,30 @@
 from hsconfig.report_ownership import build_report_ownership
 
 
+PRE_RUN_REPORT_PATHS = {
+    "reports/layered_evidence_contract.json",
+    "reports/source_acquisition_closure.json",
+    "reports/disposition_ledger.json",
+    "reports/globalvalues_decision_ledger.json",
+    "reports/pre_run_closure.json",
+}
+
+
+def test_pre_run_reports_are_owned_diagnostics_and_not_operator_gates():
+    rows = build_report_ownership()
+    by_file = {row["file"]: row for row in rows}
+
+    assert PRE_RUN_REPORT_PATHS <= set(by_file)
+    for path in PRE_RUN_REPORT_PATHS:
+        assert by_file[path]["classification"] == "diagnostic"
+        assert by_file[path]["authority"].startswith("diagnostic_pre_run_")
+        assert by_file[path]["open_order"] != "1"
+
+    assert [
+        row["file"] for row in rows if row["classification"] == "gate"
+    ] == ["reports/operator_summary.json"]
+
+
 def test_report_ownership_covers_operator_reports():
     rows = build_report_ownership()
     by_file = {row["file"]: row for row in rows}

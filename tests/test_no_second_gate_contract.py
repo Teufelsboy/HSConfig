@@ -4,6 +4,7 @@ import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import read_json, write_json
+from hsconfig.operator_summary import build_operator_summary
 from tests.helpers.current_apply_eligible_package import (
     write_current_apply_eligible_package,
 )
@@ -42,6 +43,59 @@ def test_contract_spine_rows_are_not_consumed_by_apply_or_runtime_write_paths():
 
     for relative_path in guarded_paths:
         assert "contract_spine_rows" not in _read(relative_path), relative_path
+
+
+def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision():
+    def summary(status: str) -> dict:
+        return build_operator_summary(
+            deck_name="Pre Run Diagnostic",
+            deck_code="AAE=",
+            technical_validation={"status": "passed", "errors": []},
+            pre_run_closure_report={
+                "pre_run_contract_status": status,
+                "strategy_authority_status": "partial",
+                "exact_guide_authority": False,
+                "layered_pre_run_source_coverage": {
+                    "numerator": 0,
+                    "denominator": 0,
+                    "fraction": "0/0",
+                    "value": 1.0,
+                    "vacuous": True,
+                },
+            },
+        )
+
+    complete = summary("complete")
+    incomplete = summary("incomplete")
+
+    assert complete["pre_run_contract_status"] == "complete"
+    assert incomplete["pre_run_contract_status"] == "incomplete"
+    for field in (
+        "runtime_apply_allowed",
+        "runtime_apply_mode",
+        "runtime_apply_reason",
+        "apply_policy",
+        "technical_status",
+    ):
+        assert complete[field] == incomplete[field]
+
+    apply_paths = (
+        "src/hsconfig/apply_gate.py",
+        "src/hsconfig/runtime_apply.py",
+        "src/hsconfig/commands/apply.py",
+    )
+    for relative_path in apply_paths:
+        assert "pre_run_metrics" not in _read(relative_path)
+        assert "pre_run_closure" not in _read(relative_path)
+
+    operator_source = _read("src/hsconfig/operator_summary.py")
+    apply_facts_body = operator_source[
+        operator_source.index("def _operator_apply_facts(") :
+    ]
+    apply_facts_body = apply_facts_body[
+        : apply_facts_body.index("\ndef ", 1)
+    ]
+    assert "pre_run" not in apply_facts_body
 
 
 def test_source_contract_audit_is_summary_only_not_apply_gate_input():
