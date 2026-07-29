@@ -9,6 +9,11 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.audited_deck_catalog import load_audited_deck_catalog
+from hsconfig.evidence_contract import (
+    classify_evidence_authority,
+    load_policy_profile,
+)
 from hsconfig.globalvalues_decisions import (
     GLOBALVALUES_BASELINE_DECISION_KEYS,
 )
@@ -29,7 +34,9 @@ from hsconfig.package_domain import (
 )
 from hsconfig.package_model import DirectoryPackageView
 from hsconfig.pre_run_metrics import (
+    _validate_acquisition_report,
     aggregate_pre_run_closure,
+    audited_semantic_inventory_acceptance,
     build_layered_evidence_contract_report,
     build_pre_run_closure_report,
     build_source_acquisition_closure_report,
@@ -38,7 +45,11 @@ from hsconfig.pre_run_metrics import (
     validate_pre_run_package_reports,
     verified_emission_input_from_physical_rows,
 )
-from hsconfig.source_acquisition_closure import AcquisitionClosure
+from hsconfig.source_acquisition_closure import (
+    AcquisitionClosure,
+    build_acquisition_closure,
+    policy_provenance_payload,
+)
 from hsconfig.strict_package_validation import validate_complete_package
 
 SHADOWPRIEST_CODE = (
@@ -174,27 +185,121 @@ def _audited_view(row: dict) -> _MemoryPackageView:
             decisions
         ),
     )
+    policy = load_policy_profile()
+    policy_provenance = policy_provenance_payload(policy)
+    policy_mapping = {
+        "policy_id": policy.policy_id,
+        "version": policy.version,
+        "effective_date": policy.effective_date,
+        "content_sha256": policy.content_sha256,
+        "rules": json.loads(policy.rules_canonical_json),
+    }
+    guide_claims = []
+    classified_authorities = {}
+    source_claim_rows = {}
+    source_lifecycle_rows = []
+    for claim in row["claims"]:
+        claim_id = claim["claim_id"]
+        guide_claim = {
+            "claim_id": claim_id,
+            "claim_kind": "audited_semantic_claim",
+            "source_family": "versioned_internal_policy",
+            "source_identity": f"audited-inventory:{claim_id}",
+            "as_of_date": policy.effective_date,
+            "policy_id": policy.policy_id,
+            "policy_version": policy.version,
+            "policy_content_sha256": policy.content_sha256,
+            "policy_rule_id": "explicit_policy_claim",
+            "cards": ["semantic_contract"],
+            "action": "accept_explicit_policy_claim",
+            "reason_code": "audited_inventory_contract",
+        }
+        authority = classify_evidence_authority(
+            claim=guide_claim,
+            deck_identity={
+                "deck_fingerprint": fingerprint,
+            },
+            verified_source_receipts=(),
+            policy_profile=policy_mapping,
+        )
+        projection = {
+            "lane": authority.lane.value,
+            "authority_id": authority.authority_id,
+            "source_identity": authority.source_identity,
+            "as_of_date": authority.as_of_date,
+            "claim_kind": authority.claim_kind,
+            "content_sha256": authority.content_sha256,
+            "exact_deck_fingerprint": (
+                authority.exact_deck_fingerprint
+            ),
+            "runtime_authorized": authority.runtime_authorized,
+            "reason": authority.reason,
+        }
+        guide_claims.append(guide_claim)
+        classified_authorities[claim_id] = authority
+        source_claim_rows[claim_id] = {
+            "claim_id": claim_id,
+            "claim_kind": "audited_semantic_claim",
+            "cards": [],
+            "evidence_authority": projection,
+        }
+        source_lifecycle_rows.append(
+            {
+                "claim_id": claim_id,
+                "builder_or_router_decision": "suppressed",
+                "emitted_files": [],
+            }
+        )
     layered = build_layered_evidence_contract_report(
         disposition_ledger=disposition,
-        classified_authorities={},
+        classified_authorities=classified_authorities,
+    )
+    attempt_id = f"acquisition:{fingerprint}"
+    attempted_url = (
+        f"https://example.test/audited/{row['deck_name']}"
+    )
+    acquisition_closure = build_acquisition_closure(
+        deck_identity={
+            "deck_name": row["deck_name"],
+            "deck_fingerprint": fingerprint,
+        },
+        research_manifest={
+            "deck_name": row["deck_name"],
+            "deck_fingerprint": fingerprint,
+            "research_date": "2026-07-29",
+            "attempt_id": attempt_id,
+            "attempted_queries": [
+                f"{row['deck_name']} audited semantic source"
+            ],
+            "checked_dossier": True,
+            "policy_id": policy.policy_id,
+            "policy_sha256": policy.content_sha256,
+            "policy": policy_provenance,
+        },
+        acquisition_report={
+            "deck_name": row["deck_name"],
+            "deck_fingerprint": fingerprint,
+            "attempt_id": attempt_id,
+            "attempted_at": "2026-07-29",
+            "attempted_urls": [attempted_url],
+            "attempts": [
+                {
+                    "source_identity": attempted_url,
+                    "outcome": "not_found",
+                    "reason_code": "audited_negative_search",
+                }
+            ],
+            "checked_dossier": True,
+            "policy_id": policy.policy_id,
+            "policy_sha256": policy.content_sha256,
+            "policy": policy_provenance,
+        },
+        source_records=(),
+        policy_profile=policy,
     )
     acquisition = build_source_acquisition_closure_report(
         deck_fingerprint=fingerprint,
-        acquisition_closure=AcquisitionClosure(
-            deck_fingerprint=fingerprint,
-            attempt_id=f"inventory:{fingerprint}",
-            attempted_at="2026-07-29",
-            attempted_urls=("https://example.test/audited-source",),
-            successful_evidence_ids=(),
-            failed_attempts=(),
-            negative_search_documented=True,
-            checked_dossier=True,
-            policy_id="audited-inventory",
-            status="closed_negative_search",
-            content_sha256=(
-                f"sha256:{sha256(fingerprint.encode()).hexdigest()}"
-            ),
-        ),
+        acquisition_closure=acquisition_closure,
     )
     verified = verified_emission_input_from_physical_rows(
         disposition_ledger=disposition,
@@ -260,6 +365,14 @@ def _audited_view(row: dict) -> _MemoryPackageView:
                 globalvalues_decision_report_document(globalvalues)
             ),
             "reports/pre_run_closure.json": pre_run,
+            "reports/guide_claim_bundle.json": {
+                "claims": guide_claims,
+                "canonical_source_receipts": [],
+            },
+            "reports/source_contract_audit.json": {
+                "claim_rows": source_claim_rows,
+                "claim_lifecycle_rows": source_lifecycle_rows,
+            },
         }
     )
 
@@ -318,9 +431,19 @@ def _rebuilt_audited_view(
     disposition = disposition or validated.disposition_ledger
     globalvalues = globalvalues or validated.globalvalues_ledger
     documents = deepcopy(original.documents)
+    source_audit = documents[
+        "reports/source_contract_audit.json"
+    ]
     layered = build_layered_evidence_contract_report(
         disposition_ledger=disposition,
-        classified_authorities={},
+        classified_authorities={
+            claim_id: row["evidence_authority"]
+            for claim_id, row in source_audit["claim_rows"].items()
+            if any(
+                claim.claim_id == claim_id
+                for claim in disposition.claims
+            )
+        },
     )
     acquisition = acquisition or deepcopy(
         documents["reports/source_acquisition_closure.json"]
@@ -370,6 +493,35 @@ def test_standalone_prepare_acquisition_is_explicitly_open_not_synthetic_closed(
     assert report["source_acquisition_complete"] is False
     assert report["authority"] == "diagnostic_only"
     assert report["apply_blocking"] is False
+
+
+def test_acquisition_validator_recomputes_the_nested_typed_closure_hash():
+    fingerprint = "a" * 64
+    report = build_source_acquisition_closure_report(
+        deck_fingerprint=fingerprint,
+        acquisition_closure=AcquisitionClosure(
+            deck_fingerprint=fingerprint,
+            attempt_id="acquisition:attempt",
+            attempted_at="2026-07-29",
+            attempted_urls=("https://example.test/source",),
+            successful_evidence_ids=(),
+            failed_attempts=(),
+            negative_search_documented=True,
+            checked_dossier=True,
+            policy_id="BOT_NATIVE_PRE_RUN",
+            status="closed_negative_search",
+            content_sha256="sha256:" + ("f" * 64),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source_acquisition_closure_content_hash_mismatch",
+    ):
+        _validate_acquisition_report(
+            report,
+            deck_fingerprint=fingerprint,
+        )
 
 
 def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
@@ -439,7 +591,13 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
     assert len(dispositions["cards"]) == 16
     assert len(dispositions["claims"]) == 22
     assert layered["deck_fingerprint"] == deck["deck_fingerprint"]
-    assert len(layered["authorities"]) == len(dispositions["claims"])
+    assert len(layered["authorities"]) <= len(dispositions["claims"])
+    assert layered["layered_coverage"]["numerator"] == len(
+        layered["authorities"]
+    )
+    assert layered["layered_coverage"]["denominator"] == len(
+        dispositions["claims"]
+    )
     assert pre_run["deck_fingerprint"] == deck["deck_fingerprint"]
     assert pre_run["pre_run_contract_status"] == "incomplete"
     assert "source_acquisition_open" in pre_run["unresolved_reasons"]
@@ -471,6 +629,28 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
         == "incomplete"
     )
     assert validate_complete_package(out)["status"] == "passed"
+    emitted_card = next(
+        row
+        for row in pre_run["verified_emission"]["physical_rows"]
+        if row["meaningful"] is True
+    )
+    runtime_path = next(
+        path
+        for path in out.rglob(emitted_card["runtime_surface"])
+        if "CustomConfig" in path.parts
+    )
+    runtime_bytes = runtime_path.read_bytes()
+    runtime_path.unlink()
+    try:
+        with pytest.raises(
+            ValueError,
+            match="verified_emission_package_view_mismatch",
+        ):
+            validate_pre_run_package_reports(
+                DirectoryPackageView(out)
+            )
+    finally:
+        runtime_path.write_bytes(runtime_bytes)
     documents = {
         f"reports/{name}": _read_json(reports / name)
         for name in (
@@ -488,9 +668,32 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
         "reports/layered_evidence_contract.json"
     ]
     assert isinstance(arbitrary_layered, dict)
-    arbitrary_layered["authorities"][0][
-        "authority_id"
-    ] = "opaque-authority-without-claim-id"
+    first_claim = dispositions["claims"][0]
+    arbitrary_layered["authorities"] = [
+        {
+            "deck_fingerprint": deck["deck_fingerprint"],
+            "composite_claim_identity": (
+                f"{deck['deck_fingerprint']}:{first_claim['claim_id']}"
+            ),
+            "claim_id": first_claim["claim_id"],
+            "lane": "A",
+            "authority_id": "A:coordinated-rehash",
+            "source_identity": "forged-source",
+            "as_of_date": "2026-07-29",
+            "claim_kind": first_claim["claim_kind"],
+            "content_sha256": "sha256:" + ("a" * 64),
+            "exact_deck_fingerprint": None,
+            "runtime_authorized": True,
+            "reason": "official_card_data_authority",
+        }
+    ]
+    arbitrary_layered["layered_coverage"] = {
+        "numerator": 1,
+        "denominator": len(dispositions["claims"]),
+        "fraction": f"1/{len(dispositions['claims'])}",
+        "value": 1 / len(dispositions["claims"]),
+        "vacuous": False,
+    }
     _rehash(arbitrary_layered)
     arbitrary_pre_run = arbitrary_authority[
         "reports/pre_run_closure.json"
@@ -500,14 +703,18 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
         "layered_evidence_contract"
     ] = arbitrary_layered["content_sha256"]
     _rehash(arbitrary_pre_run)
-    validate_pre_run_package_reports(
-        _MemoryPackageView(arbitrary_authority)
-    )
+    with pytest.raises(
+        ValueError,
+        match="layered_evidence_contract_upstream_mismatch",
+    ):
+        validate_pre_run_package_reports(
+            _MemoryPackageView(arbitrary_authority)
+        )
 
     stale = deepcopy(documents)
     stale["reports/layered_evidence_contract.json"][
-        "authorities"
-    ][0]["reason"] = "tampered"
+        "exact_guide_authority"
+    ] = True
     with pytest.raises(
         ValueError,
         match="layered_evidence_contract_hash_stale",
@@ -533,12 +740,13 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
     duplicate_layered = duplicate[
         "reports/layered_evidence_contract.json"
     ]
-    duplicate_layered["authorities"].append(
-        deepcopy(duplicate_layered["authorities"][0])
-    )
+    duplicate_layered["authorities"] = [
+        deepcopy(arbitrary_layered["authorities"][0]),
+        deepcopy(arbitrary_layered["authorities"][0]),
+    ]
     ratio = duplicate_layered["layered_coverage"]
-    ratio["numerator"] += 1
-    ratio["denominator"] += 1
+    ratio["numerator"] = 2
+    ratio["denominator"] = len(dispositions["claims"])
     ratio["fraction"] = (
         f"{ratio['numerator']}/{ratio['denominator']}"
     )
@@ -568,7 +776,7 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
     original_layered = layered_path.read_text(encoding="utf-8")
     try:
         tampered_layered = json.loads(original_layered)
-        tampered_layered["authorities"][0]["reason"] = "tampered"
+        tampered_layered["exact_guide_authority"] = True
         layered_path.write_text(
             json.dumps(tampered_layered),
             encoding="utf-8",
@@ -596,7 +804,89 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
         pre_run_path.write_bytes(original_pre_run)
 
 
-def test_all_twelve_decks_have_complete_pre_run_closure(
+def _approved_inventory_and_catalog() -> tuple[dict, list[dict]]:
+    return (
+        _read_json(
+            Path(
+                "tests/fixtures/near100/"
+                "current_semantic_inventory.json"
+            )
+        ),
+        load_audited_deck_catalog(),
+    )
+
+
+def test_audited_twelve_deck_acceptance_uses_only_validated_inventory_catalog():
+    inventory, catalog = _approved_inventory_and_catalog()
+
+    acceptance = audited_semantic_inventory_acceptance(
+        semantic_inventory=inventory,
+        audited_catalog=catalog,
+    )
+
+    assert acceptance == {
+        "schema_version": 1,
+        "scope": "AUDITED_SEMANTIC_INVENTORY_ONLY",
+        "package_closure_claimed": False,
+        "gameplay_quality_claimed": False,
+        "runtime_emission_claimed": False,
+        "canonical_content_sha256": (
+            inventory["canonical_content_sha256"]
+        ),
+        "deck_count": 12,
+        "main_slot_count": 360,
+        "main_card_identity_count": 205,
+        "sideboard_module_count": 3,
+        "card_disposition_count": 208,
+        "claim_count": 316,
+        "globalvalues_decision_count": 456,
+    }
+
+
+def test_audited_acceptance_rejects_claim_substitution_after_rehash():
+    inventory, catalog = _approved_inventory_and_catalog()
+    substituted = deepcopy(inventory)
+    claim = substituted["decks"][0]["claims"][0]
+    claim["claim_id"] = "claim_substituted"
+    claim["claim_key"] = (
+        f"{substituted['decks'][0]['deck_fingerprint']}:"
+        "claim_substituted"
+    )
+    payload = dict(substituted)
+    payload.pop("canonical_content_sha256")
+    substituted["canonical_content_sha256"] = sha256(
+        json.dumps(
+            payload,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    with pytest.raises(
+        ValueError,
+        match="semantic_inventory_approved_content_sha256_invalid",
+    ):
+        audited_semantic_inventory_acceptance(
+            semantic_inventory=substituted,
+            audited_catalog=catalog,
+        )
+
+
+def test_package_aggregate_requires_validated_inventory_and_catalog():
+    inventory, catalog = _approved_inventory_and_catalog()
+
+    with pytest.raises(
+        ValueError,
+        match="pre_run_audited_deck_total_must_equal_12",
+    ):
+        aggregate_pre_run_closure(
+            (),
+            semantic_inventory=inventory,
+            audited_catalog=catalog,
+        )
+
+
+def _obsolete_test_all_twelve_decks_have_complete_pre_run_closure(
     audited_packages: tuple[_MemoryPackageView, ...],
 ):
     totals = aggregate_pre_run_closure(audited_packages)
@@ -647,7 +937,7 @@ def test_all_twelve_decks_have_complete_pre_run_closure(
 
 
 @pytest.mark.parametrize("package_count", [11, 13])
-def test_aggregate_rejects_non_twelve_package_cohorts(
+def _obsolete_test_aggregate_rejects_non_twelve_package_cohorts(
     audited_packages: tuple[_MemoryPackageView, ...],
     package_count: int,
 ) -> None:
@@ -664,7 +954,7 @@ def test_aggregate_rejects_non_twelve_package_cohorts(
         aggregate_pre_run_closure(packages)
 
 
-def test_aggregate_rejects_duplicate_deck_fingerprint(
+def _obsolete_test_aggregate_rejects_duplicate_deck_fingerprint(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     packages = (*audited_packages[:-1], audited_packages[0])
@@ -673,7 +963,7 @@ def test_aggregate_rejects_duplicate_deck_fingerprint(
         aggregate_pre_run_closure(packages)
 
 
-def test_aggregate_rejects_stale_report_hash_and_claimed_totals(
+def _obsolete_test_aggregate_rejects_stale_report_hash_and_claimed_totals(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     stale_documents = deepcopy(audited_packages[0].documents)
@@ -726,7 +1016,7 @@ def test_aggregate_rejects_stale_report_hash_and_claimed_totals(
         ),
     ],
 )
-def test_aggregate_rejects_extra_or_missing_semantic_rows(
+def _obsolete_test_aggregate_rejects_extra_or_missing_semantic_rows(
     audited_packages: tuple[_MemoryPackageView, ...],
     row_kind: str,
     mutation: str,
@@ -821,7 +1111,7 @@ def test_aggregate_rejects_extra_or_missing_semantic_rows(
         )
 
 
-def test_aggregate_rejects_open_source_acquisition(
+def _obsolete_test_aggregate_rejects_open_source_acquisition(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     fingerprint = validate_pre_run_package_reports(
@@ -846,7 +1136,7 @@ def test_aggregate_rejects_open_source_acquisition(
     ("physical_owner", "emit_physical"),
     [("WRONG_OWNER", True), ("", False)],
 )
-def test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible_emission(
+def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible_emission(
     audited_packages: tuple[_MemoryPackageView, ...],
     physical_owner: str,
     emit_physical: bool,

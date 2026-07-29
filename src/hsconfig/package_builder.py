@@ -71,11 +71,14 @@ from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.pre_run_metrics import (
     VerifiedEmissionInput,
+    PRE_RUN_CONTRACT_SCHEMA_VERSION,
     build_layered_evidence_contract_report,
     build_pre_run_closure_report,
     build_source_acquisition_closure_report,
     disposition_ledger_document,
     globalvalues_decision_report_document,
+    pre_emission_expectations_from_audit,
+    source_acquisition_input_binding,
     verified_emission_input_from_physical_rows,
 )
 from hsconfig.research_contract import (
@@ -625,6 +628,18 @@ def build_package_payload(
     )
     manifest["card_source"] = cards_payload["card_source"]
     manifest["deck_input_verification"] = deck_input_verification
+    source_acquisition_report = (
+        build_source_acquisition_closure_report(
+            deck_fingerprint=str(deck_identity["deck_fingerprint"]),
+            acquisition_closure=acquisition_closure,
+        )
+    )
+    manifest["pre_run_contract_schema_version"] = (
+        PRE_RUN_CONTRACT_SCHEMA_VERSION
+    )
+    manifest["source_acquisition_input_binding"] = (
+        source_acquisition_input_binding(source_acquisition_report)
+    )
     write_json(reports_dir / "input_manifest.json", manifest)
     write_json(reports_dir / "deck_identity.json", deck_identity)
     if cards_payload.get("deckstring_decode_receipt") is not None:
@@ -736,12 +751,6 @@ def build_package_payload(
     layered_evidence_report = build_layered_evidence_contract_report(
         disposition_ledger=disposition_ledger,
         classified_authorities=classified_authorities,
-    )
-    source_acquisition_report = (
-        build_source_acquisition_closure_report(
-            deck_fingerprint=str(deck_identity["deck_fingerprint"]),
-            acquisition_closure=acquisition_closure,
-        )
     )
     pre_run_closure_report = build_pre_run_closure_report(
         disposition_ledger=disposition_ledger,
@@ -1036,19 +1045,18 @@ def _build_package_disposition_ledger(
         )
         composite_key = f"{deck_fingerprint}:{zone}:{card_id}"
         composite_by_card[card_id] = composite_key
-        runtime_paths = []
+        emission_observations: list[tuple[str, str]] = []
         raw_ledger_card = (
             ledger_cards.get(card_id, {})
             if isinstance(ledger_cards, dict)
             else {}
         )
         if isinstance(raw_ledger_card, dict):
-            runtime_paths.extend(
-                str(path)
+            emission_observations.extend(
+                (card_id, str(path))
                 for path in raw_ledger_card.get("runtime_surfaces", [])
                 if str(path) == f"{card_id}.json"
             )
-        physical_owner = card_id
         if isinstance(linked_entities, dict):
             for runtime_card_id, raw_link in linked_entities.items():
                 if (
@@ -1056,24 +1064,46 @@ def _build_package_disposition_ledger(
                     and str(raw_link.get("source_card_id", "")) == card_id
                     and raw_link.get("runtime_emitted") is True
                 ):
-                    physical_owner = str(runtime_card_id)
-                    runtime_paths.append(
-                        str(
+                    linked_owner = str(runtime_card_id)
+                    emission_observations.append(
+                        (
+                            linked_owner,
+                            str(
                             raw_link.get("runtime_surface")
                             or f"{runtime_card_id}.json"
+                            ),
                         )
                     )
-        runtime_paths = sorted(runtime_paths)
+        emission_observations = sorted(
+            set(emission_observations),
+            key=lambda row: (row[1], row[0]),
+        )
+        runtime_paths = sorted(
+            {path for _owner, path in emission_observations}
+        )
+        physical_owner = (
+            card_id
+            if any(
+                owner == card_id
+                for owner, _path in emission_observations
+            )
+            else (
+                emission_observations[0][0]
+                if emission_observations
+                else card_id
+            )
+        )
         if runtime_paths:
             physical_emission_index[composite_key] = runtime_paths
             physical_emissions.extend(
                 {
                     "composite_card_key": composite_key,
-                    "physical_owner": physical_owner,
+                    "physical_owner": owner,
                     "relative_path": path,
                     "meaningful": True,
+                    "schema_supported": True,
                 }
-                for path in runtime_paths
+                for owner, path in emission_observations
             )
         claim_ids = sorted(claims_by_card.get(card_id, set()))
         authority_lane = _card_evidence_authority_lane(
@@ -1186,6 +1216,12 @@ def _build_package_disposition_ledger(
             disposition_ledger=dispositions,
             physical_rows=physical_emissions,
             rejected_rows=rejected_physical_rows,
+            semantic_expectations=(
+                pre_emission_expectations_from_audit(
+                    disposition_ledger=dispositions,
+                    source_contract_audit=source_contract_audit_report,
+                )
+            ),
         )
     )
     return dispositions, dual_closure, verified_emissions

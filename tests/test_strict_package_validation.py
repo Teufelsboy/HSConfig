@@ -586,6 +586,51 @@ def test_legacy_globalvalues_validation_requires_explicit_opt_in(
     assert legacy_report["status"] == "passed"
 
 
+def test_current_pre_run_reports_are_required_and_legacy_is_version_bound(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    reports = package / "reports"
+    for name in (
+        "layered_evidence_contract.json",
+        "source_acquisition_closure.json",
+        "disposition_ledger.json",
+        "globalvalues_decision_ledger.json",
+        "pre_run_closure.json",
+    ):
+        (reports / name).unlink()
+
+    current = validate_complete_package(package)
+    assert current["status"] == "failed"
+    assert any(
+        "pre_run_current_reports_missing" in error
+        for error in current["errors"]
+    )
+
+    manifest_path = reports / "input_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("pre_run_contract_schema_version")
+    manifest.pop("source_acquisition_input_binding")
+    write_json(manifest_path, manifest)
+
+    unversioned = validate_complete_package(package)
+    explicit_legacy = validate_complete_package(
+        package,
+        legacy_pre_run_contract_version=0,
+    )
+    wrong_legacy_version = validate_complete_package(
+        package,
+        legacy_pre_run_contract_version=1,
+    )
+
+    assert unversioned["status"] == "failed"
+    assert wrong_legacy_version["status"] == "failed"
+    assert explicit_legacy["status"] == "passed"
+
+
 @pytest.fixture
 def linked_owner_package(
     tmp_path: Path,
@@ -888,7 +933,7 @@ def test_strict_validation_rejects_linked_runtime_filename_gamecardid_mismatch(
     )
 
 
-def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
+def test_strict_validation_rejects_post_build_linked_runtime_mutation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -936,8 +981,11 @@ def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
 
     report = validate_complete_package(package)
 
-    assert report["status"] == "passed"
-    assert report["errors"] == []
+    assert report["status"] == "failed"
+    assert any(
+        "verified_emission_package_view_mismatch" in error
+        for error in report["errors"]
+    )
 
 
 def test_strict_validation_rejects_linked_relation_masked_as_not_meaningful(

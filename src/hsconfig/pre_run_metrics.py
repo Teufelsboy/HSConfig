@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from hashlib import sha256
 import json
 from typing import Any, Literal
 
 from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.evidence_contract import (
+    classify_evidence_authority,
+    load_policy_profile,
+)
 from hsconfig.globalvalues_decisions import (
     GLOBALVALUES_BASELINE_DECISION_KEYS,
     globalvalues_decision_ledger_document,
@@ -29,9 +33,13 @@ from hsconfig.package_domain import (
     canonical_relative_path,
 )
 from hsconfig.package_model import PackageView
+from hsconfig.semantic_inventory import validate_semantic_inventory
 from hsconfig.source_acquisition_closure import (
     AcquisitionClosure,
+    AcquisitionFailure,
+    acquisition_closure_content_sha256,
     acquisition_closure_payload,
+    policy_provenance_payload,
 )
 
 
@@ -50,16 +58,7 @@ PRE_RUN_REPORT_PATHS = (
     "reports/globalvalues_decision_ledger.json",
     "reports/pre_run_closure.json",
 )
-_AUDITED_PRE_RUN_TOTALS = {
-    "main_slot_count": 360,
-    "main_card_identity_count": 205,
-    "sideboard_module_count": 3,
-    "card_disposition_count": 208,
-    "claim_count": 316,
-    "globalvalues_decision_count": 456,
-}
-
-
+PRE_RUN_CONTRACT_SCHEMA_VERSION = 1
 def _require_text(value: Any, *, field: str) -> str:
     if (
         not isinstance(value, str)
@@ -114,32 +113,33 @@ def build_source_acquisition_closure_report(
     """Project the exact typed acquisition handoff or an explicit open state."""
 
     _require_text(deck_fingerprint, field="deck_fingerprint")
+    policy_profile = load_policy_profile()
     if acquisition_closure is None:
-        closure_document: dict[str, Any] = {
-            "deck_fingerprint": deck_fingerprint,
-            "attempt_id": "",
-            "attempted_at": "",
-            "attempted_urls": [],
-            "successful_evidence_ids": [],
-            "failed_attempts": [],
-            "negative_search_documented": False,
-            "checked_dossier": False,
-            "policy_id": None,
-            "status": "open",
-            "content_sha256": _content_sha256(
-                {
-                    "deck_fingerprint": deck_fingerprint,
-                    "status": "open",
-                    "reason": "standalone_prepare_without_acquisition",
-                }
-            ),
-        }
-    else:
-        if acquisition_closure.deck_fingerprint != deck_fingerprint:
-            raise ValueError("source_acquisition_closure_cross_deck")
-        closure_document = acquisition_closure_payload(
-            acquisition_closure
+        acquisition_closure = AcquisitionClosure(
+            deck_fingerprint=deck_fingerprint,
+            attempt_id="",
+            attempted_at="",
+            attempted_urls=(),
+            successful_evidence_ids=(),
+            failed_attempts=(),
+            negative_search_documented=False,
+            checked_dossier=False,
+            policy_id=None,
+            status="open",
+            content_sha256="sha256:" + ("0" * 64),
         )
+        acquisition_closure = replace(
+            acquisition_closure,
+            content_sha256=acquisition_closure_content_sha256(
+                acquisition_closure,
+                policy_profile=policy_profile,
+            ),
+        )
+    if acquisition_closure.deck_fingerprint != deck_fingerprint:
+        raise ValueError("source_acquisition_closure_cross_deck")
+    closure_document = acquisition_closure_payload(
+        acquisition_closure
+    )
     source_acquisition_complete = closure_document["status"] in {
         "closed_with_evidence",
         "closed_negative_search",
@@ -147,10 +147,29 @@ def build_source_acquisition_closure_report(
     report = {
         **_diagnostic_report_base(deck_fingerprint),
         "source_acquisition_complete": source_acquisition_complete,
+        "policy_provenance": policy_provenance_payload(policy_profile),
         "acquisition_closure": closure_document,
     }
     report["content_sha256"] = _report_content_sha256(report)
     return report
+
+
+def source_acquisition_input_binding(
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind the acquisition attempt and policy into the upstream manifest."""
+
+    closure = report.get("acquisition_closure")
+    policy = report.get("policy_provenance")
+    if not isinstance(closure, Mapping) or not isinstance(
+        policy,
+        Mapping,
+    ):
+        raise ValueError("source_acquisition_input_binding_invalid")
+    return {
+        "policy_provenance": dict(policy),
+        "acquisition_closure": dict(closure),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,6 +283,7 @@ class VerifiedPhysicalEmission:
     schema_supported: bool
     authority_authorized: bool
     meaningful: bool
+    semantic_bindings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.deck_fingerprint, field="deck_fingerprint")
@@ -291,6 +311,21 @@ class VerifiedPhysicalEmission:
         ):
             raise ValueError("verified_emission_claim_id_invalid")
         canonical_relative_path(self.runtime_surface)
+        bindings = tuple(self.semantic_bindings)
+        if not bindings and self.composite_identity is not None:
+            bindings = (self.composite_identity,)
+        if tuple(sorted(set(bindings))) != bindings:
+            raise ValueError(
+                "verified_emission_semantic_bindings_invalid"
+            )
+        if any(
+            not binding.startswith(f"{self.deck_fingerprint}:")
+            for binding in bindings
+        ):
+            raise ValueError(
+                "verified_emission_semantic_bindings_invalid"
+            )
+        object.__setattr__(self, "semantic_bindings", bindings)
         for field_name in (
             "claim_linked",
             "surface_allowed",
@@ -352,12 +387,17 @@ def _authorized_physical_emission(
 ) -> bool:
     return (
         expectation is not None
+        and expectation.composite_identity
+        in physical.semantic_bindings
         and physical.meaningful
         and is_emission_eligible(expectation)
-        and physical.physical_owner == expectation.expected_owner
+        and physical.physical_owner
+        in {
+            expectation.expected_owner,
+            physical.runtime_surface.removesuffix(".json"),
+        }
         and physical.runtime_surface
         in expectation.allowed_runtime_surfaces
-        and physical.claim_id == expectation.claim_id
         and physical.claim_linked
         and physical.surface_allowed
         and physical.schema_supported
@@ -375,9 +415,12 @@ def emission_precision(verified: VerifiedEmissionInput) -> MetricRatio:
         row for row in verified.physical_rows if row.meaningful
     )
     authorized = sum(
-        _authorized_physical_emission(
-            row,
-            expectations.get(row.composite_identity),
+        any(
+            _authorized_physical_emission(
+                row,
+                expectations.get(binding),
+            )
+            for binding in row.semantic_bindings
         )
         for row in physical
     )
@@ -392,20 +435,16 @@ def eligible_emission_recall(
     eligible = tuple(
         row for row in verified.expectations if is_emission_eligible(row)
     )
+    eligible_by_identity = {
+        row.composite_identity: row for row in eligible
+    }
     emitted_identities = {
-        row.composite_identity
+        binding
         for row in verified.physical_rows
+        for binding in row.semantic_bindings
         if _authorized_physical_emission(
             row,
-            next(
-                (
-                    expected
-                    for expected in eligible
-                    if expected.composite_identity
-                    == row.composite_identity
-                ),
-                None,
-            ),
+            eligible_by_identity.get(binding),
         )
     }
     return MetricRatio(len(emitted_identities), len(eligible))
@@ -550,53 +589,6 @@ def evidence_authority_from_projection(
     return authority
 
 
-def _fallback_disposition_authority(
-    *,
-    ledger: DispositionLedger,
-    claim: ClaimDispositionRow,
-) -> EvidenceAuthority:
-    card = next(
-        (
-            row
-            for row in ledger.cards
-            if claim.claim_id in row.claim_ids
-        ),
-        None,
-    )
-    lane = (
-        card.authority_lane
-        if card is not None
-        else EvidenceLane.OFFICIAL_CARD_DATA
-    )
-    source_identity = (
-        next(iter(card.evidence_ids), claim.evidence_id)
-        if card is not None
-        else claim.evidence_id
-    )
-    digest = _content_sha256(
-        {
-            "deck_fingerprint": ledger.deck_fingerprint,
-            "claim_id": claim.claim_id,
-            "evidence_id": claim.evidence_id,
-            "lane": lane.value,
-            "disposition": claim.disposition.value,
-        }
-    )
-    return EvidenceAuthority(
-        lane=lane,
-        authority_id=f"disposition:{digest.removeprefix('sha256:')}",
-        source_identity=source_identity,
-        as_of_date="not_applicable",
-        claim_kind=claim.claim_kind,
-        content_sha256=digest,
-        exact_deck_fingerprint=None,
-        runtime_authorized=(
-            claim.disposition is ClaimDisposition.RUNTIME_EMITTED
-        ),
-        reason="typed_final_disposition_authority_projection",
-    )
-
-
 def build_layered_evidence_contract_report(
     *,
     disposition_ledger: DispositionLedger,
@@ -620,10 +612,7 @@ def build_layered_evidence_contract_report(
         elif isinstance(projected, Mapping):
             authority = evidence_authority_from_projection(projected)
         elif projected is None:
-            authority = _fallback_disposition_authority(
-                ledger=disposition_ledger,
-                claim=claim,
-            )
+            continue
         else:
             raise ValueError("evidence_authority_projection_invalid")
         bound.append(
@@ -865,32 +854,158 @@ def _physical_cardid_observations(
     return observations
 
 
+def pre_emission_expectations_from_audit(
+    *,
+    disposition_ledger: DispositionLedger,
+    source_contract_audit: Mapping[str, Any],
+) -> tuple[VerifiedSemanticExpectation, ...]:
+    """Freeze intended eligibility before final physical disposition."""
+
+    fingerprint = disposition_ledger.deck_fingerprint
+    claim_rows = source_contract_audit.get("claim_rows", {})
+    lifecycle_rows = source_contract_audit.get(
+        "claim_lifecycle_rows",
+        (),
+    )
+    if not isinstance(claim_rows, Mapping) or not isinstance(
+        lifecycle_rows,
+        Sequence,
+    ):
+        raise ValueError("verified_emission_source_audit_invalid")
+    lifecycle_by_id = {
+        str(row.get("claim_id", "")): row
+        for row in lifecycle_rows
+        if isinstance(row, Mapping) and row.get("claim_id")
+    }
+    owner_by_claim: dict[str, CardDispositionRow] = {}
+    for card in disposition_ledger.cards:
+        for claim_id in card.claim_ids:
+            owner_by_claim.setdefault(claim_id, card)
+
+    expectations: list[VerifiedSemanticExpectation] = []
+    claimed_cards = {
+        card.composite_card_key
+        for card in disposition_ledger.cards
+        if card.claim_ids
+    }
+    final_semantics = verified_emission_input_from_ledgers(
+        disposition_ledger=disposition_ledger,
+        runtime_surface_ledger={},
+    ).expectations
+    expectations.extend(
+        row
+        for row in final_semantics
+        if row.row_kind == "card"
+        and row.composite_identity.removeprefix(
+            f"{fingerprint}:card:"
+        )
+        not in claimed_cards
+    )
+    for claim in disposition_ledger.claims:
+        raw_claim = claim_rows.get(claim.claim_id)
+        raw_claim = (
+            raw_claim if isinstance(raw_claim, Mapping) else {}
+        )
+        lifecycle = lifecycle_by_id.get(claim.claim_id, {})
+        intended_paths = tuple(
+            sorted(
+                {
+                    str(path)
+                    for path in lifecycle.get("emitted_files", ())
+                    if isinstance(path, str) and path
+                }
+            )
+        )
+        intended_emission = (
+            lifecycle.get("builder_or_router_decision") == "emitted"
+            and bool(intended_paths)
+        )
+        owner_card = owner_by_claim.get(claim.claim_id)
+        expected_owner = (
+            intended_paths[0].removesuffix(".json")
+            if intended_emission
+            else (
+                owner_card.physical_owner
+                if owner_card is not None
+                else "semantic_contract"
+            )
+        )
+        authority = raw_claim.get("evidence_authority")
+        authority_sufficient = (
+            isinstance(authority, Mapping)
+            and authority.get("runtime_authorized") is True
+        )
+        expectations.append(
+            VerifiedSemanticExpectation(
+                deck_fingerprint=fingerprint,
+                composite_identity=(
+                    f"{fingerprint}:claim:{claim.claim_id}"
+                ),
+                row_kind="claim",
+                disposition=(
+                    ClaimDisposition.RUNTIME_EMITTED.value
+                    if intended_emission
+                    else claim.disposition.value
+                ),
+                expected_owner=expected_owner,
+                allowed_runtime_surfaces=(
+                    intended_paths
+                    if intended_emission
+                    else claim.runtime_paths
+                ),
+                claim_id=claim.claim_id,
+                claim_linked=owner_card is not None,
+                surface_allowed=(
+                    bool(intended_paths)
+                    if intended_emission
+                    else bool(claim.runtime_paths)
+                ),
+                schema_supported=all(
+                    path.endswith(".json")
+                    for path in intended_paths
+                )
+                if intended_emission
+                else True,
+                authority_sufficient=authority_sufficient,
+            )
+        )
+    return tuple(
+        sorted(
+            expectations,
+            key=lambda row: row.composite_identity,
+        )
+    )
+
+
 def verified_emission_input_from_physical_rows(
     *,
     disposition_ledger: DispositionLedger,
     physical_rows: Sequence[Mapping[str, Any]],
     rejected_rows: Sequence[Any] = (),
+    semantic_expectations: Sequence[
+        VerifiedSemanticExpectation
+    ] | None = None,
 ) -> VerifiedEmissionInput:
-    """Join retained physical rows without deduplicating observations."""
+    """Join unique physical observations to separate semantic bindings."""
 
     fingerprint = disposition_ledger.deck_fingerprint
-    semantic_only = verified_emission_input_from_ledgers(
-        disposition_ledger=disposition_ledger,
-        runtime_surface_ledger={},
+    expectations = tuple(
+        semantic_expectations
+        if semantic_expectations is not None
+        else verified_emission_input_from_ledgers(
+            disposition_ledger=disposition_ledger,
+            runtime_surface_ledger={},
+        ).expectations
     )
-    expectations = semantic_only.expectations
-    cards_by_key = {
-        row.composite_card_key: row
-        for row in disposition_ledger.cards
-    }
+    if any(
+        row.deck_fingerprint != fingerprint
+        for row in expectations
+    ):
+        raise ValueError("verified_emission_cross_deck_row")
     raw_identities: list[str] = []
-    normalized_rows: list[tuple[str, str, str, bool]] = []
+    normalized_rows: list[tuple[str, str, bool, bool]] = []
     for raw in physical_rows:
         try:
-            composite_key = _require_text(
-                raw["composite_card_key"],
-                field="composite_card_key",
-            )
             owner = _require_text(
                 raw["physical_owner"],
                 field="physical_owner",
@@ -899,7 +1014,15 @@ def verified_emission_input_from_physical_rows(
                 raw["relative_path"],
                 field="runtime_surface",
             )
-            meaningful = raw["meaningful"] is True
+            meaningful = raw["meaningful"]
+            schema_supported = raw.get(
+                "schema_supported",
+                False,
+            )
+            if type(meaningful) is not bool:
+                raise ValueError("meaningful_invalid")
+            if type(schema_supported) is not bool:
+                raise ValueError("schema_supported_invalid")
         except (KeyError, TypeError, ValueError) as error:
             raise ValueError(
                 "verified_emission_physical_row_invalid"
@@ -910,92 +1033,69 @@ def verified_emission_input_from_physical_rows(
         )
         raw_identities.append(physical_identity)
         normalized_rows.append(
-            (composite_key, owner, surface, meaningful)
+            (owner, surface, meaningful, schema_supported)
         )
     if len(set(raw_identities)) != len(raw_identities):
         raise ValueError("verified_emission_duplicate_physical_row")
 
-    expectation_by_identity = {
-        row.composite_identity: row for row in expectations
-    }
     joined: list[VerifiedPhysicalEmission] = []
     for raw_identity, raw in zip(
         raw_identities,
         normalized_rows,
         strict=True,
     ):
-        composite_key, owner, surface, meaningful = raw
-        card = cards_by_key.get(composite_key)
-        card_identity = f"{fingerprint}:card:{composite_key}"
-        card_expectation = expectation_by_identity.get(card_identity)
-        if card is None or card_expectation is None:
-            joined.append(
-                VerifiedPhysicalEmission(
-                    deck_fingerprint=fingerprint,
-                    physical_identity=raw_identity,
-                    composite_identity=None,
-                    physical_owner=owner,
-                    runtime_surface=surface,
-                    claim_id="",
-                    claim_linked=False,
-                    surface_allowed=False,
-                    schema_supported=False,
-                    authority_authorized=False,
-                    meaningful=meaningful,
-                )
+        owner, surface, meaningful, schema_supported = raw
+        bound_expectations = tuple(
+            row
+            for row in expectations
+            if surface in row.allowed_runtime_surfaces
+            and owner
+            in {
+                row.expected_owner,
+                surface.removesuffix(".json"),
+            }
+        )
+        bindings = tuple(
+            sorted(
+                row.composite_identity
+                for row in bound_expectations
             )
-            continue
+        )
+        claim_ids = tuple(
+            sorted(
+                {
+                    row.claim_id
+                    for row in bound_expectations
+                    if row.claim_id
+                }
+            )
+        )
         joined.append(
             VerifiedPhysicalEmission(
                 deck_fingerprint=fingerprint,
                 physical_identity=raw_identity,
-                composite_identity=card_identity,
+                composite_identity=(
+                    bindings[0] if bindings else None
+                ),
                 physical_owner=owner,
                 runtime_surface=surface,
-                claim_id=card_expectation.claim_id,
-                claim_linked=True,
-                surface_allowed=(
-                    surface
-                    in card_expectation.allowed_runtime_surfaces
+                claim_id=(
+                    claim_ids[0] if len(claim_ids) == 1 else ""
                 ),
-                schema_supported=True,
+                claim_linked=bool(bindings),
+                surface_allowed=bool(bindings),
+                schema_supported=schema_supported,
                 authority_authorized=(
-                    card_expectation.authority_sufficient
+                    bool(bound_expectations)
+                    and all(
+                        row.authority_sufficient
+                        for row in bound_expectations
+                    )
                 ),
                 meaningful=meaningful,
+                semantic_bindings=bindings,
             )
         )
-        for claim_id in card.claim_ids:
-            claim_identity = f"{fingerprint}:claim:{claim_id}"
-            claim_expectation = expectation_by_identity.get(
-                claim_identity
-            )
-            if (
-                claim_expectation is None
-                or surface
-                not in claim_expectation.allowed_runtime_surfaces
-                or owner != claim_expectation.expected_owner
-            ):
-                continue
-            joined.append(
-                VerifiedPhysicalEmission(
-                    deck_fingerprint=fingerprint,
-                    physical_identity=(
-                        f"{raw_identity}:claim:{claim_id}"
-                    ),
-                    composite_identity=claim_identity,
-                    physical_owner=owner,
-                    runtime_surface=surface,
-                    claim_id=claim_id,
-                    claim_linked=True,
-                    surface_allowed=True,
-                    schema_supported=True,
-                    authority_authorized=(
-                        claim_expectation.authority_sufficient
-                    ),
-                    meaningful=meaningful,
-                )
-            )
     for index, rejected in enumerate(rejected_rows):
         digest = sha256(
             json.dumps(
@@ -1020,12 +1120,18 @@ def verified_emission_input_from_physical_rows(
                 schema_supported=False,
                 authority_authorized=False,
                 meaningful=True,
+                semantic_bindings=(),
             )
         )
     return VerifiedEmissionInput(
         deck_fingerprint=fingerprint,
         expectations=expectations,
-        physical_rows=tuple(joined),
+        physical_rows=tuple(
+            sorted(
+                joined,
+                key=lambda row: row.physical_identity,
+            )
+        ),
     )
 
 
@@ -1065,6 +1171,7 @@ def verified_emission_input_document(
                 "schema_supported": row.schema_supported,
                 "authority_authorized": row.authority_authorized,
                 "meaningful": row.meaningful,
+                "semantic_bindings": list(row.semantic_bindings),
             }
             for row in verified.physical_rows
         ],
@@ -1353,6 +1460,9 @@ def _load_verified_emission_input(
                         "authority_authorized"
                     ],
                     meaningful=row["meaningful"],
+                    semantic_bindings=tuple(
+                        row["semantic_bindings"]
+                    ),
                 )
                 for row in document["physical_rows"]
             ),
@@ -1364,10 +1474,120 @@ def _load_verified_emission_input(
     return verified
 
 
+def _verified_emission_from_package_view(
+    *,
+    package: PackageView,
+    disposition_ledger: DispositionLedger,
+    source_contract_audit: Mapping[str, Any],
+) -> VerifiedEmissionInput:
+    try:
+        runtime_ledger = package.read_json(
+            "reports/runtime_surface_ledger.json"
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as error:
+        raise ValueError(
+            "verified_emission_package_view_mismatch"
+        ) from error
+    if (
+        not isinstance(runtime_ledger, Mapping)
+        or runtime_ledger.get("schema_version") != 2
+    ):
+        raise ValueError("verified_emission_package_view_mismatch")
+    reported_observations = _physical_cardid_observations(
+        runtime_ledger
+    )
+    actual_observations: set[tuple[str, str]] = set()
+    payload_by_observation: dict[
+        tuple[str, str],
+        Mapping[str, Any],
+    ] = {}
+    for name in package.file_names():
+        normalized = name.replace("\\", "/")
+        if (
+            not normalized.startswith("CustomConfig/")
+            or not normalized.endswith(".json")
+            or normalized.rsplit("/", 1)[-1]
+            in {"GlobalValues.json", "Mulligan.json", "Combo.json"}
+        ):
+            continue
+        try:
+            payload = package.read_json(normalized)
+        except (OSError, UnicodeDecodeError, ValueError) as error:
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            ) from error
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            )
+        owner = payload.get("GameCardId")
+        if not isinstance(owner, str) or not owner:
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            )
+        meaningful_keys = {
+            key
+            for key in payload
+            if key not in {"GameCardId", "ConfigComment"}
+        }
+        if not meaningful_keys:
+            continue
+        surface = normalized.rsplit("/", 1)[-1]
+        observation = (owner, surface)
+        if observation in payload_by_observation:
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            )
+        actual_observations.add(observation)
+        payload_by_observation[observation] = payload
+    if actual_observations != reported_observations:
+        raise ValueError("verified_emission_package_view_mismatch")
+
+    expectations = pre_emission_expectations_from_audit(
+        disposition_ledger=disposition_ledger,
+        source_contract_audit=source_contract_audit,
+    )
+    physical_rows = tuple(
+        {
+            "physical_owner": owner,
+            "relative_path": surface,
+            "meaningful": True,
+            "schema_supported": (
+                isinstance(
+                    payload_by_observation[(owner, surface)],
+                    Mapping,
+                )
+                and payload_by_observation[(owner, surface)].get(
+                    "GameCardId"
+                )
+                == owner
+            ),
+        }
+        for owner, surface in sorted(actual_observations)
+    )
+    rejected_rows = [
+        *runtime_ledger.get("physical_errors", ()),
+        *runtime_ledger.get("unexpected_runtime_emissions", ()),
+        *runtime_ledger.get(
+            "linked_runtime_owner_collisions",
+            (),
+        ),
+    ]
+    return verified_emission_input_from_physical_rows(
+        disposition_ledger=disposition_ledger,
+        physical_rows=physical_rows,
+        rejected_rows=rejected_rows,
+        semantic_expectations=expectations,
+    )
+
+
 def _validate_layered_evidence_report(
     document: Mapping[str, Any],
     *,
     disposition_ledger: DispositionLedger,
+    source_contract_audit: Mapping[str, Any] | None,
+    guide_claim_bundle: Mapping[str, Any] | None,
+    deck_identity: Mapping[str, Any],
 ) -> None:
     if document.get("content_sha256") != _report_content_sha256(
         document
@@ -1383,6 +1603,52 @@ def _validate_layered_evidence_report(
         f"{fingerprint}:{row.claim_id}"
         for row in disposition_ledger.claims
     }
+    claims_by_id = {
+        row.claim_id: row for row in disposition_ledger.claims
+    }
+    source_claim_rows = (
+        source_contract_audit.get("claim_rows", {})
+        if isinstance(source_contract_audit, Mapping)
+        else {}
+    )
+    guide_claims = (
+        guide_claim_bundle.get("claims", ())
+        if isinstance(guide_claim_bundle, Mapping)
+        else ()
+    )
+    guide_by_id = {
+        str(row.get("claim_id", "")): row
+        for row in guide_claims
+        if isinstance(row, Mapping) and row.get("claim_id")
+    }
+    verified_source_receipts = (
+        guide_claim_bundle.get(
+            "canonical_source_receipts",
+            guide_claim_bundle.get(
+                "globalvalues_source_receipts",
+                (),
+            ),
+        )
+        if isinstance(guide_claim_bundle, Mapping)
+        else ()
+    )
+    profile = load_policy_profile()
+    policy_mapping = {
+        "policy_id": profile.policy_id,
+        "version": profile.version,
+        "effective_date": profile.effective_date,
+        "content_sha256": profile.content_sha256,
+        "rules": json.loads(profile.rules_canonical_json),
+    }
+    raw_identities = [
+        row.get("composite_claim_identity")
+        for row in rows
+        if isinstance(row, Mapping)
+    ]
+    if len(raw_identities) != len(rows):
+        raise ValueError("layered_evidence_contract_malformed")
+    if len(set(raw_identities)) != len(raw_identities):
+        raise ValueError("layered_evidence_contract_duplicate")
     observed: list[str] = []
     for row in rows:
         if not isinstance(row, Mapping):
@@ -1396,10 +1662,65 @@ def _validate_layered_evidence_report(
             claim_id=row["claim_id"],
             authority=authority,
         )
+        claim = claims_by_id.get(bound.claim_id)
+        if (
+            claim is None
+            or authority.claim_kind != claim.claim_kind
+        ):
+            raise ValueError(
+                "layered_evidence_contract_claim_semantics_mismatch"
+            )
+        source_row = (
+            source_claim_rows.get(bound.claim_id)
+            if isinstance(source_claim_rows, Mapping)
+            else None
+        )
+        upstream_projection = (
+            source_row.get("evidence_authority")
+            if isinstance(source_row, Mapping)
+            else None
+        )
+        authority_projection = {
+            "lane": authority.lane.value,
+            "authority_id": authority.authority_id,
+            "source_identity": authority.source_identity,
+            "as_of_date": authority.as_of_date,
+            "claim_kind": authority.claim_kind,
+            "content_sha256": authority.content_sha256,
+            "exact_deck_fingerprint": (
+                authority.exact_deck_fingerprint
+            ),
+            "runtime_authorized": authority.runtime_authorized,
+            "reason": authority.reason,
+        }
+        if upstream_projection != authority_projection:
+            raise ValueError(
+                "layered_evidence_contract_upstream_mismatch"
+            )
+        guide_claim = guide_by_id.get(bound.claim_id)
+        if not isinstance(guide_claim, Mapping):
+            raise ValueError(
+                "layered_evidence_contract_upstream_mismatch"
+            )
+        try:
+            reclassified = classify_evidence_authority(
+                claim=guide_claim,
+                deck_identity=deck_identity,
+                verified_source_receipts=verified_source_receipts,
+                policy_profile=policy_mapping,
+            )
+        except ValueError as error:
+            raise ValueError(
+                "layered_evidence_contract_upstream_mismatch"
+            ) from error
+        if reclassified != authority:
+            raise ValueError(
+                "layered_evidence_contract_upstream_mismatch"
+            )
         observed.append(bound.composite_claim_identity)
     if len(set(observed)) != len(observed):
         raise ValueError("layered_evidence_contract_duplicate")
-    if set(observed) != expected:
+    if not set(observed).issubset(expected):
         raise ValueError("layered_evidence_contract_claim_mismatch")
     ratio = _metric_ratio_from_document(
         document.get("layered_coverage")
@@ -1431,6 +1752,9 @@ def _validate_acquisition_report(
         raise ValueError("source_acquisition_closure_hash_stale")
     if document.get("deck_fingerprint") != deck_fingerprint:
         raise ValueError("source_acquisition_closure_cross_deck")
+    expected_policy = policy_provenance_payload(load_policy_profile())
+    if document.get("policy_provenance") != expected_policy:
+        raise ValueError("source_acquisition_policy_binding_mismatch")
     closure = document.get("acquisition_closure")
     if not isinstance(closure, Mapping):
         raise ValueError("source_acquisition_closure_malformed")
@@ -1511,6 +1835,42 @@ def _validate_acquisition_report(
         )
     if not _is_sha256(closure.get("content_sha256")):
         raise ValueError("source_acquisition_closure_hash_invalid")
+    try:
+        typed_closure = AcquisitionClosure(
+            deck_fingerprint=str(closure["deck_fingerprint"]),
+            attempt_id=str(closure["attempt_id"]),
+            attempted_at=str(closure["attempted_at"]),
+            attempted_urls=tuple(closure["attempted_urls"]),
+            successful_evidence_ids=tuple(
+                closure["successful_evidence_ids"]
+            ),
+            failed_attempts=tuple(
+                AcquisitionFailure(
+                    source_identity=str(row["source_identity"]),
+                    reason_code=str(row["reason_code"]),
+                    attempted_at=str(row["attempted_at"]),
+                )
+                for row in closure["failed_attempts"]
+            ),
+            negative_search_documented=closure[
+                "negative_search_documented"
+            ],
+            checked_dossier=closure["checked_dossier"],
+            policy_id=closure["policy_id"],
+            status=closure["status"],
+            content_sha256=closure["content_sha256"],
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            "source_acquisition_closure_malformed"
+        ) from error
+    if typed_closure.content_sha256 != acquisition_closure_content_sha256(
+        typed_closure,
+        policy_profile=load_policy_profile(),
+    ):
+        raise ValueError(
+            "source_acquisition_closure_content_hash_mismatch"
+        )
     if status == "closed_with_evidence" and (
         not successful
         or closure["negative_search_documented"] is True
@@ -1584,6 +1944,21 @@ def validate_pre_run_package_reports(
             path: package.read_json(path) for path in PRE_RUN_REPORT_PATHS
         }
         deck_identity = package.read_json("reports/deck_identity.json")
+        source_contract_audit = (
+            package.read_json("reports/source_contract_audit.json")
+            if package.exists("reports/source_contract_audit.json")
+            else None
+        )
+        guide_claim_bundle = (
+            package.read_json("reports/guide_claim_bundle.json")
+            if package.exists("reports/guide_claim_bundle.json")
+            else None
+        )
+        input_manifest = (
+            package.read_json("reports/input_manifest.json")
+            if package.exists("reports/input_manifest.json")
+            else None
+        )
     except (OSError, UnicodeDecodeError, ValueError) as error:
         raise ValueError("pre_run_report_malformed") from error
     if (
@@ -1591,6 +1966,18 @@ def validate_pre_run_package_reports(
         or any(
             not isinstance(document, Mapping)
             for document in documents.values()
+        )
+        or (
+            source_contract_audit is not None
+            and not isinstance(source_contract_audit, Mapping)
+        )
+        or (
+            guide_claim_bundle is not None
+            and not isinstance(guide_claim_bundle, Mapping)
+        )
+        or (
+            input_manifest is not None
+            and not isinstance(input_manifest, Mapping)
         )
     ):
         raise ValueError("pre_run_report_malformed")
@@ -1606,11 +1993,28 @@ def validate_pre_run_package_reports(
     _validate_layered_evidence_report(
         documents["reports/layered_evidence_contract.json"],
         disposition_ledger=disposition,
+        source_contract_audit=source_contract_audit,
+        guide_claim_bundle=guide_claim_bundle,
+        deck_identity=deck_identity,
     )
     _validate_acquisition_report(
         documents["reports/source_acquisition_closure.json"],
         deck_fingerprint=fingerprint,
     )
+    if (
+        isinstance(input_manifest, Mapping)
+        and input_manifest.get("pre_run_contract_schema_version")
+        == PRE_RUN_CONTRACT_SCHEMA_VERSION
+        and input_manifest.get("source_acquisition_input_binding")
+        != source_acquisition_input_binding(
+            documents[
+                "reports/source_acquisition_closure.json"
+            ]
+        )
+    ):
+        raise ValueError(
+            "source_acquisition_upstream_manifest_mismatch"
+        )
     pre_run = documents["reports/pre_run_closure.json"]
     if pre_run.get("content_sha256") != _report_content_sha256(
         pre_run
@@ -1651,14 +2055,37 @@ def validate_pre_run_package_reports(
     )
     if verified.deck_fingerprint != fingerprint:
         raise ValueError("verified_emission_cross_deck")
-    expected_semantics = verified_emission_input_from_ledgers(
-        disposition_ledger=disposition,
-        runtime_surface_ledger={},
-    ).expectations
+    expected_semantics = (
+        pre_emission_expectations_from_audit(
+            disposition_ledger=disposition,
+            source_contract_audit=source_contract_audit,
+        )
+        if source_contract_audit is not None
+        else verified_emission_input_from_ledgers(
+            disposition_ledger=disposition,
+            runtime_surface_ledger={},
+        ).expectations
+    )
     if verified.expectations != expected_semantics:
         raise ValueError(
             "verified_emission_semantic_projection_mismatch"
         )
+    if package.exists("reports/runtime_surface_ledger.json"):
+        if source_contract_audit is None:
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            )
+        rederived_verified = _verified_emission_from_package_view(
+            package=package,
+            disposition_ledger=disposition,
+            source_contract_audit=source_contract_audit,
+        )
+        if verified != rederived_verified:
+            raise ValueError(
+                "verified_emission_package_view_mismatch"
+            )
+    elif verified.physical_rows:
+        raise ValueError("verified_emission_package_view_mismatch")
     precision = emission_precision(verified)
     recall = eligible_emission_recall(verified)
     if pre_run.get("emission_precision") != precision.to_document():
@@ -1749,10 +2176,17 @@ def _validate_deck_identity(
 
 def aggregate_pre_run_closure(
     packages: Sequence[PackageView],
+    *,
+    semantic_inventory: Mapping[str, Any],
+    audited_catalog: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Aggregate exactly twelve validated package-local closure reports."""
+    """Aggregate package closure only against the approved audited inventory."""
 
-    if len(packages) != 12:
+    inventory_summary = validate_semantic_inventory(
+        semantic_inventory,
+        audited_catalog=audited_catalog,
+    )
+    if len(packages) != inventory_summary.deck_count:
         raise ValueError("pre_run_audited_deck_total_must_equal_12")
     validated = tuple(
         validate_pre_run_package_reports(package) for package in packages
@@ -1760,6 +2194,47 @@ def aggregate_pre_run_closure(
     fingerprints = tuple(row.deck_fingerprint for row in validated)
     if len(set(fingerprints)) != len(fingerprints):
         raise ValueError("pre_run_duplicate_package")
+    inventory_by_fingerprint = {
+        str(row["deck_fingerprint"]): row
+        for row in semantic_inventory["decks"]
+    }
+    if set(fingerprints) != set(inventory_by_fingerprint):
+        raise ValueError("pre_run_semantic_inventory_mismatch")
+    for package in validated:
+        inventory_row = inventory_by_fingerprint[
+            package.deck_fingerprint
+        ]
+        expected_cards = {
+            str(row["composite_card_key"])
+            for row in (
+                *inventory_row["main_cards"],
+                *inventory_row["sideboard_modules"],
+            )
+        }
+        expected_claims = {
+            str(row["claim_id"])
+            for row in inventory_row["claims"]
+        }
+        if (
+            package.deck_identity.get("deck_name")
+            != inventory_row["deck_name"]
+            or {
+                row.composite_card_key
+                for row in package.disposition_ledger.cards
+            }
+            != expected_cards
+            or {
+                row.claim_id
+                for row in package.disposition_ledger.claims
+            }
+            != expected_claims
+            or tuple(
+                row.key
+                for row in package.globalvalues_ledger.decisions
+            )
+            != tuple(inventory_row["globalvalues_decisions"])
+        ):
+            raise ValueError("pre_run_semantic_inventory_mismatch")
     incomplete = [
         row.deck_fingerprint
         for row in validated
@@ -1835,7 +2310,23 @@ def aggregate_pre_run_closure(
         "claim_count": claim_count,
         "globalvalues_decision_count": globalvalues_count,
     }
-    if audited_totals != _AUDITED_PRE_RUN_TOTALS:
+    expected_totals = {
+        "main_slot_count": inventory_summary.main_slot_count,
+        "main_card_identity_count": (
+            inventory_summary.main_card_identity_count
+        ),
+        "sideboard_module_count": (
+            inventory_summary.sideboard_module_count
+        ),
+        "card_disposition_count": (
+            inventory_summary.disposition_row_count
+        ),
+        "claim_count": inventory_summary.claim_count,
+        "globalvalues_decision_count": (
+            inventory_summary.globalvalues_decision_count
+        ),
+    }
+    if audited_totals != expected_totals:
         raise ValueError("pre_run_audited_totals_mismatch")
     return {
         "deck_count": len(validated),
@@ -1863,4 +2354,38 @@ def aggregate_pre_run_closure(
             recall.normalized_fraction
         ),
         "eligible_emission_recall_ratio": recall.to_document(),
+    }
+
+
+def audited_semantic_inventory_acceptance(
+    *,
+    semantic_inventory: Mapping[str, Any],
+    audited_catalog: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate the approved 12-deck inventory without claiming package closure."""
+
+    summary = validate_semantic_inventory(
+        semantic_inventory,
+        audited_catalog=audited_catalog,
+    )
+    return {
+        "schema_version": 1,
+        "scope": "AUDITED_SEMANTIC_INVENTORY_ONLY",
+        "package_closure_claimed": False,
+        "gameplay_quality_claimed": False,
+        "runtime_emission_claimed": False,
+        "canonical_content_sha256": semantic_inventory[
+            "canonical_content_sha256"
+        ],
+        "deck_count": summary.deck_count,
+        "main_slot_count": summary.main_slot_count,
+        "main_card_identity_count": (
+            summary.main_card_identity_count
+        ),
+        "sideboard_module_count": summary.sideboard_module_count,
+        "card_disposition_count": summary.disposition_row_count,
+        "claim_count": summary.claim_count,
+        "globalvalues_decision_count": (
+            summary.globalvalues_decision_count
+        ),
     }

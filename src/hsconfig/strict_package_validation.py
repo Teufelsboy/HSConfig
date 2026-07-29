@@ -41,6 +41,7 @@ def validate_complete_package(
     package: str | Path,
     *,
     allow_legacy_globalvalues: bool = False,
+    legacy_pre_run_contract_version: int | None = None,
 ) -> dict[str, Any]:
     """Run the strict complete-package contract used by every caller."""
     package_path = Path(package)
@@ -65,7 +66,8 @@ def validate_complete_package(
     linked_runtime_errors = _validate_linked_runtime_entities(package_path)
     physical_surface_errors = _validate_runtime_surface_ledger(package_path)
     pre_run_contract_errors = _validate_pre_run_contract_reports(
-        package_path
+        package_path,
+        legacy_contract_version=legacy_pre_run_contract_version,
     )
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
@@ -95,10 +97,27 @@ def validate_complete_package(
 
 def _validate_pre_run_contract_reports(
     package_path: Path,
+    *,
+    legacy_contract_version: int | None,
 ) -> list[str]:
     view = DirectoryPackageView(package_path)
     if not any(view.exists(path) for path in PRE_RUN_REPORT_PATHS):
-        return []
+        marker = None
+        if view.exists("reports/input_manifest.json"):
+            try:
+                manifest = view.read_json("reports/input_manifest.json")
+            except (OSError, UnicodeDecodeError, ValueError):
+                manifest = None
+            if isinstance(manifest, Mapping):
+                marker = manifest.get(
+                    "pre_run_contract_schema_version"
+                )
+        if legacy_contract_version == 0 and marker is None:
+            return []
+        return [
+            "pre_run_contract_validation_failed:"
+            "pre_run_current_reports_missing"
+        ]
     try:
         validate_pre_run_package_reports(view)
     except (OSError, TypeError, ValueError) as error:

@@ -25,6 +25,11 @@ from hsconfig.package_domain import (
     globalvalues_decision_ledger_content_sha256,
 )
 from hsconfig.package_builder import build_package_payload
+from hsconfig.pre_run_metrics import (
+    build_layered_evidence_contract_report,
+    eligible_emission_recall,
+    emission_precision,
+)
 from hsconfig.source_contract_audit import (
     project_source_contract_audit_from_dispositions,
 )
@@ -565,6 +570,137 @@ def test_package_ledger_derives_lane_b_from_typed_evidence_authority():
     assert dual_closure.exact_guide_authority is True
     assert dual_closure.pre_run_contract_status == "complete"
     assert verified_emissions.deck_fingerprint == "deck-fingerprint"
+
+
+def test_pre_emission_eligibility_survives_a_missing_physical_runtime_row():
+    dispositions, _dual_closure, verified_emissions = (
+        package_builder._build_package_disposition_ledger(
+            deck_identity={
+                "deck_fingerprint": "deck-fingerprint",
+                "cards": [{"card_id": "CARD_001", "count": 1}],
+            },
+            source_contract_audit_report={
+                "claim_rows": {
+                    "claim-1": {
+                        "claim_id": "claim-1",
+                        "claim_kind": "card_play",
+                        "cards": ["CARD_001"],
+                        "evidence_authority": {
+                            "lane": "B",
+                            "authority_id": "B:claim-1",
+                            "runtime_authorized": True,
+                        },
+                    }
+                },
+                "claim_lifecycle_rows": [
+                    {
+                        "claim_id": "claim-1",
+                        "builder_or_router_decision": "emitted",
+                        "emitted_files": ["CARD_001.json"],
+                    }
+                ],
+            },
+            runtime_surface_ledger={
+                "cards": {},
+                "linked_runtime_entities": {},
+            },
+            globalvalues_ledger=_complete_globalvalues(),
+            strategy_source_status="strong",
+        )
+    )
+
+    assert dispositions.claims[0].disposition is (
+        ClaimDisposition.SUPPRESSED_UNSUPPORTED_SURFACE
+    )
+    assert eligible_emission_recall(
+        verified_emissions
+    ).to_document() == {
+        "numerator": 0,
+        "denominator": 1,
+        "fraction": "0/1",
+        "value": 0.0,
+        "vacuous": False,
+    }
+
+
+def test_one_physical_row_keeps_one_owner_and_one_precision_observation():
+    dispositions, _dual_closure, verified_emissions = (
+        package_builder._build_package_disposition_ledger(
+            deck_identity={
+                "deck_fingerprint": "deck-fingerprint",
+                "cards": [{"card_id": "CARD_001", "count": 1}],
+            },
+            source_contract_audit_report={
+                "claim_rows": {
+                    "claim-1": {
+                        "claim_id": "claim-1",
+                        "claim_kind": "card_play",
+                        "cards": ["CARD_001"],
+                        "evidence_authority": {
+                            "lane": "B",
+                            "authority_id": "B:claim-1",
+                            "runtime_authorized": True,
+                        },
+                    }
+                },
+                "claim_lifecycle_rows": [
+                    {
+                        "claim_id": "claim-1",
+                        "builder_or_router_decision": "emitted",
+                        "emitted_files": [
+                            "CARD_001.json",
+                            "LINKED_001.json",
+                        ],
+                    }
+                ],
+            },
+            runtime_surface_ledger={
+                "cards": {
+                    "CARD_001": {
+                        "runtime_surfaces": ["CARD_001.json"],
+                    }
+                },
+                "linked_runtime_entities": {
+                    "LINKED_001": {
+                        "source_card_id": "CARD_001",
+                        "runtime_surface": "LINKED_001.json",
+                        "runtime_emitted": True,
+                    }
+                },
+            },
+            globalvalues_ledger=_complete_globalvalues(),
+            strategy_source_status="strong",
+        )
+    )
+
+    assert {
+        (row.physical_owner, row.runtime_surface)
+        for row in verified_emissions.physical_rows
+    } == {
+        ("CARD_001", "CARD_001.json"),
+        ("LINKED_001", "LINKED_001.json"),
+    }
+    assert len(verified_emissions.physical_rows) == 2
+    assert emission_precision(verified_emissions).denominator == 2
+    assert dispositions.cards[0].runtime_paths == ("CARD_001.json",)
+
+
+def test_layered_evidence_never_synthesizes_missing_classified_authority():
+    ledger = _explicit_ledger()
+
+    report = build_layered_evidence_contract_report(
+        disposition_ledger=ledger,
+        classified_authorities={},
+    )
+
+    assert report["authorities"] == []
+    assert report["layered_coverage"] == {
+        "numerator": 0,
+        "denominator": 1,
+        "fraction": "0/1",
+        "value": 0.0,
+        "vacuous": False,
+    }
 
 
 @pytest.mark.parametrize(

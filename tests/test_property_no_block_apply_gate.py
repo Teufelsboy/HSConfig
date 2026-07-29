@@ -10,6 +10,7 @@ from hsconfig.io import read_json, write_json
 from tests.helpers.current_apply_eligible_package import (
     DEFAULT_RUNTIME_FILES,
     write_current_apply_eligible_package,
+    write_current_pre_run_contract,
 )
 from tests.helpers.current_runtime_surface_ledger_contract import (
     write_current_runtime_surface_ledger,
@@ -66,6 +67,7 @@ def _add_runtime_file_after_build(package: Path, filename: str) -> None:
         },
     )
     write_current_runtime_surface_ledger(package)
+    write_current_pre_run_contract(package)
 
 
 @pytest.mark.parametrize(

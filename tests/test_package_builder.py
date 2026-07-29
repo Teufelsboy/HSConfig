@@ -17,7 +17,7 @@ from tests.helpers.verified_deck_input import deck_code_for_cards
 # in-memory git-show oracle method and path normalization.
 EXPECTED_PACKAGE_FILE_COUNT = 61
 EXPECTED_PACKAGE_TREE_DIGEST = (
-    "sha256:7ca5a360cf5c490c7983aa6c4b468c67877237a9cc922f006506fb361442d189"
+    "sha256:c27bf79491d46ea1fa65dd9bc05d83bd700dda7119981c3ab415f3caf5298203"
 )
 PRE_RUN_REPORT_PATHS = frozenset(
     {
@@ -256,11 +256,11 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
         ),
         (
             "validated_authority",
-            "sha256:cea7a595e25b79ee4e9bac217599563deabe3babe23a5c35ab9f28f256c7afee",
+            "sha256:e6bc485131f84370ba1e0d1184358bcbc39887dd0f53a02eae3ec02a7f44d4ae",
         ),
         (
             "artifact_writing",
-            "sha256:edf0d6a8ecf4be422c90058389baab375380df8c1a5f32bad758f177a7e475a1",
+            "sha256:09af426e445fb43fcb5c65559c479c819118b4d52eac66b47474af36de441f54",
         ),
     ]
 

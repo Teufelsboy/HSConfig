@@ -277,6 +277,27 @@ def acquisition_closure_payload(closure: AcquisitionClosure) -> dict[str, Any]:
     return _closure_payload(closure)
 
 
+def acquisition_closure_content_sha256(
+    closure: AcquisitionClosure,
+    *,
+    policy_profile: PolicyProfile | Mapping[str, Any],
+) -> str:
+    """Recompute the typed closure digest with its packaged policy binding."""
+
+    (
+        _policy_id,
+        policy_sha256,
+        policy_version,
+        policy_effective_date,
+    ) = _policy_binding(policy_profile)
+    return _closure_content_digest(
+        closure,
+        policy_sha256=policy_sha256,
+        policy_version=policy_version,
+        policy_effective_date=policy_effective_date,
+    )
+
+
 def normalize_acquisition_date(value: Any) -> str:
     """Normalize a date or ISO timestamp to the canonical acquisition date."""
 

@@ -25,6 +25,9 @@ from tests.helpers.current_globalvalues_contract import (
     GLOBALVALUES_AUTHORITY_MATRIX_PATH,
     write_current_globalvalues_contract,
 )
+from tests.helpers.current_apply_eligible_package import (
+    write_current_pre_run_contract,
+)
 from tests.helpers.current_runtime_surface_ledger_contract import (
     write_current_runtime_surface_ledger,
 )
@@ -100,6 +103,7 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     if not (reports / "card_behavior_plan_report.json").is_file():
         write_json(reports / "card_behavior_plan_report.json", {"rows": []})
     write_current_runtime_surface_ledger(package)
+    write_current_pre_run_contract(package)
     generated = payload.get("generated_files", [])
     generated_files = list(generated) if isinstance(generated, list) else []
     ownership = build_output_ownership_manifest(

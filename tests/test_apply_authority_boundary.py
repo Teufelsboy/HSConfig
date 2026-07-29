@@ -10,6 +10,7 @@ from hsconfig.io import read_json, write_json
 from hsconfig.runtime_apply import apply_package
 from tests.helpers.current_apply_eligible_package import (
     write_current_apply_eligible_package,
+    write_current_pre_run_contract,
 )
 from tests.helpers.current_runtime_surface_ledger_contract import (
     write_current_runtime_surface_ledger,
@@ -139,6 +140,7 @@ def _install_linked_owner_authority(package: Path) -> None:
         },
     )
     write_current_runtime_surface_ledger(package)
+    write_current_pre_run_contract(package)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     generated_path = owner_path.relative_to(package).as_posix()
@@ -160,6 +162,7 @@ def _remove_linked_owner_authority(package: Path) -> None:
         {"rows": []},
     )
     write_current_runtime_surface_ledger(package)
+    write_current_pre_run_contract(package)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     summary["generated_files"] = [

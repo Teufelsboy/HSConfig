@@ -45,7 +45,26 @@ def test_contract_spine_rows_are_not_consumed_by_apply_or_runtime_write_paths():
         assert "contract_spine_rows" not in _read(relative_path), relative_path
 
 
-def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision():
+def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import hsconfig.operator_summary as operator_summary_module
+
+    observed_facts = []
+    original_build_apply_decision = (
+        operator_summary_module.build_apply_decision
+    )
+
+    def capture_apply_facts(facts):
+        observed_facts.append(facts)
+        return original_build_apply_decision(facts)
+
+    monkeypatch.setattr(
+        operator_summary_module,
+        "build_apply_decision",
+        capture_apply_facts,
+    )
+
     def summary(status: str) -> dict:
         return build_operator_summary(
             deck_name="Pre Run Diagnostic",
@@ -68,6 +87,8 @@ def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision():
     complete = summary("complete")
     incomplete = summary("incomplete")
 
+    assert len(observed_facts) == 2
+    assert observed_facts[0] == observed_facts[1]
     assert complete["pre_run_contract_status"] == "complete"
     assert incomplete["pre_run_contract_status"] == "incomplete"
     for field in (
