@@ -38,10 +38,13 @@ from hsconfig.pre_run_metrics import (
     aggregate_pre_run_closure,
     audited_semantic_inventory_acceptance,
     build_layered_evidence_contract_report,
+    build_pre_run_authority_handoff,
     build_pre_run_closure_report,
     build_source_acquisition_closure_report,
     disposition_ledger_document,
     globalvalues_decision_report_document,
+    pre_emission_expectations_from_audit,
+    source_acquisition_input_binding,
     validate_pre_run_package_reports,
     verified_emission_input_from_physical_rows,
 )
@@ -51,6 +54,9 @@ from hsconfig.source_acquisition_closure import (
     policy_provenance_payload,
 )
 from hsconfig.strict_package_validation import validate_complete_package
+from tests.helpers.current_apply_eligible_package import (
+    write_current_apply_eligible_package,
+)
 
 SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
@@ -254,6 +260,10 @@ def _audited_view(row: dict) -> _MemoryPackageView:
         disposition_ledger=disposition,
         classified_authorities=classified_authorities,
     )
+    authority_handoff = build_pre_run_authority_handoff(
+        disposition_ledger=disposition,
+        classified_authorities=classified_authorities,
+    )
     attempt_id = f"acquisition:{fingerprint}"
     attempted_url = (
         f"https://example.test/audited/{row['deck_name']}"
@@ -365,6 +375,13 @@ def _audited_view(row: dict) -> _MemoryPackageView:
                 globalvalues_decision_report_document(globalvalues)
             ),
             "reports/pre_run_closure.json": pre_run,
+            "reports/input_manifest.json": {
+                "pre_run_contract_schema_version": 1,
+                "source_acquisition_input_binding": (
+                    source_acquisition_input_binding(acquisition)
+                ),
+                "pre_run_authority_handoff": authority_handoff,
+            },
             "reports/guide_claim_bundle.json": {
                 "claims": guide_claims,
                 "canonical_source_receipts": [],
@@ -434,7 +451,31 @@ def _rebuilt_audited_view(
     source_audit = documents[
         "reports/source_contract_audit.json"
     ]
+    disposition_claim_ids = {
+        row.claim_id for row in disposition.claims
+    }
+    source_audit["claim_rows"] = {
+        claim_id: row
+        for claim_id, row in source_audit["claim_rows"].items()
+        if claim_id in disposition_claim_ids
+    }
+    source_audit["claim_lifecycle_rows"] = [
+        row
+        for row in source_audit["claim_lifecycle_rows"]
+        if row.get("claim_id") in disposition_claim_ids
+    ]
     layered = build_layered_evidence_contract_report(
+        disposition_ledger=disposition,
+        classified_authorities={
+            claim_id: row["evidence_authority"]
+            for claim_id, row in source_audit["claim_rows"].items()
+            if any(
+                claim.claim_id == claim_id
+                for claim in disposition.claims
+            )
+        },
+    )
+    authority_handoff = build_pre_run_authority_handoff(
         disposition_ledger=disposition,
         classified_authorities={
             claim_id: row["evidence_authority"]
@@ -448,9 +489,14 @@ def _rebuilt_audited_view(
     acquisition = acquisition or deepcopy(
         documents["reports/source_acquisition_closure.json"]
     )
+    semantic_expectations = pre_emission_expectations_from_audit(
+        disposition_ledger=disposition,
+        source_contract_audit=source_audit,
+    )
     verified = verified_emission_input_from_physical_rows(
         disposition_ledger=disposition,
         physical_rows=physical_rows,
+        semantic_expectations=semantic_expectations,
     )
     pre_run = build_pre_run_closure_report(
         disposition_ledger=disposition,
@@ -476,8 +522,45 @@ def _rebuilt_audited_view(
                 globalvalues_decision_report_document(globalvalues)
             ),
             "reports/pre_run_closure.json": pre_run,
+            "reports/input_manifest.json": {
+                **documents["reports/input_manifest.json"],
+                "pre_run_contract_schema_version": 1,
+                "source_acquisition_input_binding": (
+                    source_acquisition_input_binding(acquisition)
+                ),
+                "pre_run_authority_handoff": authority_handoff,
+            },
         }
     )
+    if physical_rows:
+        runtime_cards: dict[str, dict[str, list[str]]] = {}
+        for row in physical_rows:
+            owner = str(row["physical_owner"])
+            surface = str(row["relative_path"])
+            runtime_cards.setdefault(
+                owner,
+                {"runtime_surfaces": []},
+            )["runtime_surfaces"].append(surface)
+            documents[f"CustomConfig/deck/{surface}"] = {
+                "GameCardId": owner,
+                "ConfigComment": "audited physical fixture",
+                "BeforePlayCardBonus": {
+                    "values": [
+                        {
+                            "condition": "*",
+                            "value": "1",
+                        }
+                    ]
+                },
+            }
+        documents["reports/runtime_surface_ledger.json"] = {
+            "schema_version": 2,
+            "cards": runtime_cards,
+            "linked_runtime_entities": {},
+            "physical_errors": [],
+            "unexpected_runtime_emissions": [],
+            "linked_runtime_owner_collisions": [],
+        }
     return _MemoryPackageView(documents)
 
 
@@ -521,6 +604,151 @@ def test_acquisition_validator_recomputes_the_nested_typed_closure_hash():
         _validate_acquisition_report(
             report,
             deck_fingerprint=fingerprint,
+        )
+
+
+def test_complete_pre_run_rejects_forged_acquisition_without_input_manifest():
+    inventory = _read_json(
+        Path("tests/fixtures/near100/current_semantic_inventory.json")
+    )
+    package = _audited_view(inventory["decks"][0])
+    package.documents.pop("reports/input_manifest.json")
+
+    assert (
+        package.documents["reports/pre_run_closure.json"][
+            "pre_run_contract_status"
+        ]
+        == "complete"
+    )
+    with pytest.raises(
+        ValueError,
+        match="pre_run_input_manifest_missing",
+    ):
+        validate_pre_run_package_reports(package)
+
+
+@pytest.mark.parametrize(
+    "schema_version",
+    [None, 0, "1", True],
+    ids=("missing", "downgraded", "string", "boolean"),
+)
+def test_current_pre_run_requires_exact_manifest_schema_version(
+    schema_version: object,
+) -> None:
+    inventory = _read_json(
+        Path("tests/fixtures/near100/current_semantic_inventory.json")
+    )
+    package = _audited_view(inventory["decks"][0])
+    manifest = package.documents["reports/input_manifest.json"]
+    assert isinstance(manifest, dict)
+    if schema_version is None:
+        manifest.pop("pre_run_contract_schema_version")
+    else:
+        manifest["pre_run_contract_schema_version"] = schema_version
+
+    with pytest.raises(
+        ValueError,
+        match="pre_run_contract_schema_version_invalid",
+    ):
+        validate_pre_run_package_reports(package)
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [None, {}, {"acquisition_closure": {}}],
+    ids=("missing", "empty", "partial"),
+)
+def test_current_pre_run_requires_exact_acquisition_manifest_binding(
+    binding: object,
+) -> None:
+    inventory = _read_json(
+        Path("tests/fixtures/near100/current_semantic_inventory.json")
+    )
+    package = _audited_view(inventory["decks"][0])
+    manifest = package.documents["reports/input_manifest.json"]
+    assert isinstance(manifest, dict)
+    if binding is None:
+        manifest.pop("source_acquisition_input_binding")
+    else:
+        manifest["source_acquisition_input_binding"] = binding
+
+    with pytest.raises(
+        ValueError,
+        match="source_acquisition_upstream_manifest_mismatch",
+    ):
+        validate_pre_run_package_reports(package)
+
+
+def test_pre_run_authority_handoff_hash_is_validated() -> None:
+    inventory = _read_json(
+        Path("tests/fixtures/near100/current_semantic_inventory.json")
+    )
+    package = _audited_view(inventory["decks"][0])
+    manifest = package.documents["reports/input_manifest.json"]
+    assert isinstance(manifest, dict)
+    handoff = manifest["pre_run_authority_handoff"]
+    assert isinstance(handoff, dict)
+    handoff["authorities"][0]["reason"] = "coordinated-but-stale"
+
+    with pytest.raises(
+        ValueError,
+        match="pre_run_authority_handoff_hash_stale",
+    ):
+        validate_pre_run_package_reports(package)
+
+
+def test_coordinated_raw_authority_reports_cannot_self_sign_without_typed_handoff():
+    inventory = _read_json(
+        Path("tests/fixtures/near100/current_semantic_inventory.json")
+    )
+    package = _audited_view(inventory["decks"][0])
+    acquisition = package.documents[
+        "reports/source_acquisition_closure.json"
+    ]
+    package.documents["reports/input_manifest.json"] = {
+        "pre_run_contract_schema_version": 1,
+        "source_acquisition_input_binding": (
+            source_acquisition_input_binding(acquisition)
+        ),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="pre_run_authority_handoff_missing",
+    ):
+        validate_pre_run_package_reports(package)
+
+
+def test_pre_run_rejects_schema_invalid_runtime_row_even_with_current_ledger(
+    tmp_path: Path,
+) -> None:
+    package = write_current_apply_eligible_package(
+        tmp_path / "package",
+        runtime_files={
+            "DS1_233.json": {
+                "GameCardId": "DS1_233",
+                "ConfigComment": "coordinated but schema-invalid",
+                "BeforePlayCardBonus": {
+                    "values": [{"unsupported": "self-signed"}]
+                },
+            }
+        },
+    )
+    strict = validate_complete_package(package)
+
+    assert strict["status"] == "failed"
+    assert any(
+        "missing condition" in error
+        or "missing value" in error
+        or "unsupported keys" in error
+        for error in strict["errors"]
+    )
+    with pytest.raises(
+        ValueError,
+        match="verified_emission_runtime_schema_invalid",
+    ):
+        validate_pre_run_package_reports(
+            DirectoryPackageView(package)
         )
 
 
@@ -660,6 +888,8 @@ def test_standalone_package_emits_owned_acquisition_and_globalvalues_reports(
             "disposition_ledger.json",
             "globalvalues_decision_ledger.json",
             "pre_run_closure.json",
+            "input_manifest.json",
+            "source_contract_audit.json",
         )
     }
 
@@ -816,6 +1046,17 @@ def _approved_inventory_and_catalog() -> tuple[dict, list[dict]]:
     )
 
 
+def _aggregate_audited_packages(
+    packages: tuple[_MemoryPackageView, ...],
+) -> dict:
+    inventory, catalog = _approved_inventory_and_catalog()
+    return aggregate_pre_run_closure(
+        packages,
+        semantic_inventory=inventory,
+        audited_catalog=catalog,
+    )
+
+
 def test_audited_twelve_deck_acceptance_uses_only_validated_inventory_catalog():
     inventory, catalog = _approved_inventory_and_catalog()
 
@@ -886,10 +1127,10 @@ def test_package_aggregate_requires_validated_inventory_and_catalog():
         )
 
 
-def _obsolete_test_all_twelve_decks_have_complete_pre_run_closure(
+def test_all_twelve_decks_have_complete_pre_run_closure(
     audited_packages: tuple[_MemoryPackageView, ...],
 ):
-    totals = aggregate_pre_run_closure(audited_packages)
+    totals = _aggregate_audited_packages(audited_packages)
 
     assert totals == {
         "deck_count": 12,
@@ -937,7 +1178,7 @@ def _obsolete_test_all_twelve_decks_have_complete_pre_run_closure(
 
 
 @pytest.mark.parametrize("package_count", [11, 13])
-def _obsolete_test_aggregate_rejects_non_twelve_package_cohorts(
+def test_aggregate_rejects_non_twelve_package_cohorts(
     audited_packages: tuple[_MemoryPackageView, ...],
     package_count: int,
 ) -> None:
@@ -951,19 +1192,19 @@ def _obsolete_test_aggregate_rejects_non_twelve_package_cohorts(
         ValueError,
         match="pre_run_audited_deck_total_must_equal_12",
     ):
-        aggregate_pre_run_closure(packages)
+        _aggregate_audited_packages(packages)
 
 
-def _obsolete_test_aggregate_rejects_duplicate_deck_fingerprint(
+def test_aggregate_rejects_duplicate_deck_fingerprint(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     packages = (*audited_packages[:-1], audited_packages[0])
 
     with pytest.raises(ValueError, match="pre_run_duplicate_package"):
-        aggregate_pre_run_closure(packages)
+        _aggregate_audited_packages(packages)
 
 
-def _obsolete_test_aggregate_rejects_stale_report_hash_and_claimed_totals(
+def test_aggregate_rejects_stale_report_hash_and_claimed_totals(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     stale_documents = deepcopy(audited_packages[0].documents)
@@ -974,7 +1215,7 @@ def _obsolete_test_aggregate_rejects_stale_report_hash_and_claimed_totals(
         ValueError,
         match="layered_evidence_contract_hash_stale",
     ):
-        aggregate_pre_run_closure(
+        _aggregate_audited_packages(
             (
                 _MemoryPackageView(stale_documents),
                 *audited_packages[1:],
@@ -989,7 +1230,7 @@ def _obsolete_test_aggregate_rejects_stale_report_hash_and_claimed_totals(
         ValueError,
         match="pre_run_closure_totals_mismatch",
     ):
-        aggregate_pre_run_closure(
+        _aggregate_audited_packages(
             (
                 _MemoryPackageView(false_totals),
                 *audited_packages[1:],
@@ -1016,7 +1257,7 @@ def _obsolete_test_aggregate_rejects_stale_report_hash_and_claimed_totals(
         ),
     ],
 )
-def _obsolete_test_aggregate_rejects_extra_or_missing_semantic_rows(
+def test_aggregate_rejects_extra_or_missing_semantic_rows(
     audited_packages: tuple[_MemoryPackageView, ...],
     row_kind: str,
     mutation: str,
@@ -1106,12 +1347,12 @@ def _obsolete_test_aggregate_rejects_extra_or_missing_semantic_rows(
     )
 
     with pytest.raises(ValueError, match=expected_error):
-        aggregate_pre_run_closure(
+        _aggregate_audited_packages(
             (mutated, *audited_packages[1:])
         )
 
 
-def _obsolete_test_aggregate_rejects_open_source_acquisition(
+def test_aggregate_rejects_open_source_acquisition(
     audited_packages: tuple[_MemoryPackageView, ...],
 ) -> None:
     fingerprint = validate_pre_run_package_reports(
@@ -1127,16 +1368,16 @@ def _obsolete_test_aggregate_rejects_open_source_acquisition(
     )
 
     with pytest.raises(ValueError, match="pre_run_contract_incomplete"):
-        aggregate_pre_run_closure(
+        _aggregate_audited_packages(
             (mutated, *audited_packages[1:])
         )
 
 
 @pytest.mark.parametrize(
     ("physical_owner", "emit_physical"),
-    [("WRONG_OWNER", True), ("", False)],
+    [("WRONG_001", True), ("", False)],
 )
-def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible_emission(
+def test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible_emission(
     audited_packages: tuple[_MemoryPackageView, ...],
     physical_owner: str,
     emit_physical: bool,
@@ -1166,6 +1407,7 @@ def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible
             "physical_owner": runtime_card.physical_owner,
             "relative_path": runtime_card.runtime_paths[0],
             "meaningful": True,
+            "schema_supported": True,
         },
     )
     baseline = _rebuilt_audited_view(
@@ -1173,7 +1415,7 @@ def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible
         disposition=runtime_disposition,
         physical_rows=matching_physical,
     )
-    assert aggregate_pre_run_closure(
+    assert _aggregate_audited_packages(
         (baseline, *audited_packages[1:])
     )["eligible_emission_recall"] == 1.0
 
@@ -1182,6 +1424,7 @@ def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible
             {
                 **matching_physical[0],
                 "physical_owner": physical_owner,
+                "relative_path": f"{physical_owner}.json",
             },
         )
         if emit_physical
@@ -1194,6 +1437,6 @@ def _obsolete_test_aggregate_rejects_physical_owner_mismatch_or_missing_eligible
     )
 
     with pytest.raises(ValueError, match="pre_run_contract_incomplete"):
-        aggregate_pre_run_closure(
+        _aggregate_audited_packages(
             (mutated, *audited_packages[1:])
         )

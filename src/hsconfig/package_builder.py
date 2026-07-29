@@ -73,6 +73,7 @@ from hsconfig.pre_run_metrics import (
     VerifiedEmissionInput,
     PRE_RUN_CONTRACT_SCHEMA_VERSION,
     build_layered_evidence_contract_report,
+    build_pre_run_authority_handoff,
     build_pre_run_closure_report,
     build_source_acquisition_closure_report,
     disposition_ledger_document,
@@ -748,6 +749,13 @@ def build_package_payload(
         if isinstance(row, Mapping)
         and isinstance(row.get("evidence_authority"), Mapping)
     }
+    manifest["pre_run_authority_handoff"] = (
+        build_pre_run_authority_handoff(
+            disposition_ledger=disposition_ledger,
+            classified_authorities=classified_authorities,
+        )
+    )
+    write_json(reports_dir / "input_manifest.json", manifest)
     layered_evidence_report = build_layered_evidence_contract_report(
         disposition_ledger=disposition_ledger,
         classified_authorities=classified_authorities,

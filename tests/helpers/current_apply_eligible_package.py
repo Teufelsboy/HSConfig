@@ -22,6 +22,7 @@ from hsconfig.package_derivation_receipt import (
 from hsconfig.pre_run_metrics import (
     PRE_RUN_CONTRACT_SCHEMA_VERSION,
     build_layered_evidence_contract_report,
+    build_pre_run_authority_handoff,
     build_pre_run_closure_report,
     build_source_acquisition_closure_report,
     disposition_ledger_document,
@@ -368,5 +369,11 @@ def write_current_pre_run_contract(package: Path) -> None:
     )
     manifest["source_acquisition_input_binding"] = (
         source_acquisition_input_binding(acquisition)
+    )
+    manifest["pre_run_authority_handoff"] = (
+        build_pre_run_authority_handoff(
+            disposition_ledger=disposition,
+            classified_authorities={},
+        )
     )
     write_json(manifest_path, manifest)

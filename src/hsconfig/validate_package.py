@@ -36,6 +36,35 @@ CARD_ID_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+[A-Za-z0-9]*$")
 NUMERIC_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$")
 
 
+def validate_card_runtime_payload(
+    path: Path,
+    data: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Validate one card-ID payload through the canonical strict schema."""
+
+    if not supported_surface(path.name):
+        return (f"{path}: unsupported VisionAI surface",)
+    if (
+        path.name
+        in {
+            GLOBALVALUES_RUNTIME_FILE,
+            MULLIGAN_RUNTIME_FILE,
+            COMBO_RUNTIME_FILE,
+            PRESUME_RUNTIME_FILE,
+            CONCEDE_RUNTIME_FILE,
+            *SERIALIZED_SPECIAL_RUNTIME_SURFACES,
+        }
+        or not isinstance(data, dict)
+    ):
+        return (f"{path}: expected card-ID runtime payload",)
+    return tuple(
+        [
+            *_validate_top_level(path, data),
+            *_validate_card_behavior_blocks(path, data),
+        ]
+    )
+
+
 def validate_config_package(
     package_root: str | Path,
     *,

@@ -7,13 +7,11 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 from hashlib import sha256
 import json
+from pathlib import Path
 from typing import Any, Literal
 
 from hsconfig.deck_identity import stable_deck_fingerprint
-from hsconfig.evidence_contract import (
-    classify_evidence_authority,
-    load_policy_profile,
-)
+from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.globalvalues_decisions import (
     GLOBALVALUES_BASELINE_DECISION_KEYS,
     globalvalues_decision_ledger_document,
@@ -41,6 +39,7 @@ from hsconfig.source_acquisition_closure import (
     acquisition_closure_payload,
     policy_provenance_payload,
 )
+from hsconfig.validate_package import validate_card_runtime_payload
 
 
 _EMITTABLE_DISPOSITIONS = frozenset(
@@ -59,6 +58,8 @@ PRE_RUN_REPORT_PATHS = (
     "reports/pre_run_closure.json",
 )
 PRE_RUN_CONTRACT_SCHEMA_VERSION = 1
+
+
 def _require_text(value: Any, *, field: str) -> str:
     if (
         not isinstance(value, str)
@@ -534,6 +535,122 @@ class BoundEvidenceAuthority:
             raise ValueError("evidence_authority_cross_deck")
 
 
+_BOUND_EVIDENCE_AUTHORITY_FIELDS = frozenset(
+    {
+        "deck_fingerprint",
+        "composite_claim_identity",
+        "claim_id",
+        "lane",
+        "authority_id",
+        "source_identity",
+        "as_of_date",
+        "claim_kind",
+        "content_sha256",
+        "exact_deck_fingerprint",
+        "runtime_authorized",
+        "reason",
+    }
+)
+
+
+def _bound_evidence_authority_document(
+    row: BoundEvidenceAuthority,
+) -> dict[str, Any]:
+    return {
+        "deck_fingerprint": row.deck_fingerprint,
+        "composite_claim_identity": row.composite_claim_identity,
+        "claim_id": row.claim_id,
+        "lane": row.authority.lane.value,
+        "authority_id": row.authority.authority_id,
+        "source_identity": row.authority.source_identity,
+        "as_of_date": row.authority.as_of_date,
+        "claim_kind": row.authority.claim_kind,
+        "content_sha256": row.authority.content_sha256,
+        "exact_deck_fingerprint": (
+            row.authority.exact_deck_fingerprint
+        ),
+        "runtime_authorized": row.authority.runtime_authorized,
+        "reason": row.authority.reason,
+    }
+
+
+def _bind_evidence_authorities(
+    *,
+    disposition_ledger: DispositionLedger,
+    classified_authorities: Mapping[
+        str,
+        Mapping[str, Any] | EvidenceAuthority,
+    ],
+) -> tuple[BoundEvidenceAuthority, ...]:
+    expected_claim_ids = tuple(
+        row.claim_id for row in disposition_ledger.claims
+    )
+    if len(set(expected_claim_ids)) != len(expected_claim_ids):
+        raise ValueError("layered_evidence_duplicate_claim")
+    extra_claim_ids = set(classified_authorities) - set(
+        expected_claim_ids
+    )
+    if extra_claim_ids:
+        raise ValueError("layered_evidence_unexpected_claim")
+    bound: list[BoundEvidenceAuthority] = []
+    claims_by_id = {
+        row.claim_id: row for row in disposition_ledger.claims
+    }
+    for claim_id in expected_claim_ids:
+        projected = classified_authorities.get(claim_id)
+        if isinstance(projected, EvidenceAuthority):
+            authority = projected
+        elif isinstance(projected, Mapping):
+            authority = evidence_authority_from_projection(projected)
+        elif projected is None:
+            continue
+        else:
+            raise ValueError("evidence_authority_projection_invalid")
+        if authority.claim_kind != claims_by_id[claim_id].claim_kind:
+            raise ValueError(
+                "layered_evidence_contract_claim_semantics_mismatch"
+            )
+        bound.append(
+            BoundEvidenceAuthority(
+                deck_fingerprint=disposition_ledger.deck_fingerprint,
+                composite_claim_identity=(
+                    f"{disposition_ledger.deck_fingerprint}:{claim_id}"
+                ),
+                claim_id=claim_id,
+                authority=authority,
+            )
+        )
+    identities = tuple(row.composite_claim_identity for row in bound)
+    if len(set(identities)) != len(identities):
+        raise ValueError("layered_evidence_duplicate_binding")
+    return tuple(bound)
+
+
+def build_pre_run_authority_handoff(
+    *,
+    disposition_ledger: DispositionLedger,
+    classified_authorities: Mapping[
+        str,
+        Mapping[str, Any] | EvidenceAuthority,
+    ],
+) -> dict[str, Any]:
+    """Freeze typed authority projections into the audited input manifest."""
+
+    bound = _bind_evidence_authorities(
+        disposition_ledger=disposition_ledger,
+        classified_authorities=classified_authorities,
+    )
+    handoff = {
+        "schema_version": 1,
+        "deck_fingerprint": disposition_ledger.deck_fingerprint,
+        "authorities": [
+            _bound_evidence_authority_document(row) for row in bound
+        ],
+    }
+    handoff["content_sha256"] = _report_content_sha256(handoff)
+    return handoff
+
+
 def evidence_authority_from_projection(
     projection: Mapping[str, Any],
 ) -> EvidenceAuthority:
@@ -599,35 +716,10 @@ def build_layered_evidence_contract_report(
     expected_claim_ids = tuple(
         row.claim_id for row in disposition_ledger.claims
     )
-    if len(set(expected_claim_ids)) != len(expected_claim_ids):
-        raise ValueError("layered_evidence_duplicate_claim")
-    extra_claim_ids = set(classified_authorities) - set(expected_claim_ids)
-    if extra_claim_ids:
-        raise ValueError("layered_evidence_unexpected_claim")
-    bound: list[BoundEvidenceAuthority] = []
-    for claim in disposition_ledger.claims:
-        projected = classified_authorities.get(claim.claim_id)
-        if isinstance(projected, EvidenceAuthority):
-            authority = projected
-        elif isinstance(projected, Mapping):
-            authority = evidence_authority_from_projection(projected)
-        elif projected is None:
-            continue
-        else:
-            raise ValueError("evidence_authority_projection_invalid")
-        bound.append(
-            BoundEvidenceAuthority(
-                deck_fingerprint=disposition_ledger.deck_fingerprint,
-                composite_claim_identity=(
-                    f"{disposition_ledger.deck_fingerprint}:{claim.claim_id}"
-                ),
-                claim_id=claim.claim_id,
-                authority=authority,
-            )
-        )
-    identities = tuple(row.composite_claim_identity for row in bound)
-    if len(set(identities)) != len(identities):
-        raise ValueError("layered_evidence_duplicate_binding")
+    bound = _bind_evidence_authorities(
+        disposition_ledger=disposition_ledger,
+        classified_authorities=classified_authorities,
+    )
     exact_guide_authority = any(
         row.authority.lane is EvidenceLane.EXACT_LIVE_GUIDE
         and row.authority.exact_deck_fingerprint
@@ -642,26 +734,7 @@ def build_layered_evidence_contract_report(
             len(expected_claim_ids),
         ).to_document(),
         "authorities": [
-            {
-                "deck_fingerprint": row.deck_fingerprint,
-                "composite_claim_identity": (
-                    row.composite_claim_identity
-                ),
-                "claim_id": row.claim_id,
-                "lane": row.authority.lane.value,
-                "authority_id": row.authority.authority_id,
-                "source_identity": row.authority.source_identity,
-                "as_of_date": row.authority.as_of_date,
-                "claim_kind": row.authority.claim_kind,
-                "content_sha256": row.authority.content_sha256,
-                "exact_deck_fingerprint": (
-                    row.authority.exact_deck_fingerprint
-                ),
-                "runtime_authorized": (
-                    row.authority.runtime_authorized
-                ),
-                "reason": row.authority.reason,
-            }
+            _bound_evidence_authority_document(row)
             for row in bound
         ],
     }
@@ -1520,6 +1593,13 @@ def _verified_emission_from_package_view(
             raise ValueError(
                 "verified_emission_package_view_mismatch"
             )
+        if validate_card_runtime_payload(
+            Path(normalized),
+            payload,
+        ):
+            raise ValueError(
+                "verified_emission_runtime_schema_invalid"
+            )
         owner = payload.get("GameCardId")
         if not isinstance(owner, str) or not owner:
             raise ValueError(
@@ -1552,16 +1632,7 @@ def _verified_emission_from_package_view(
             "physical_owner": owner,
             "relative_path": surface,
             "meaningful": True,
-            "schema_supported": (
-                isinstance(
-                    payload_by_observation[(owner, surface)],
-                    Mapping,
-                )
-                and payload_by_observation[(owner, surface)].get(
-                    "GameCardId"
-                )
-                == owner
-            ),
+            "schema_supported": True,
         }
         for owner, surface in sorted(actual_observations)
     )
@@ -1581,13 +1652,89 @@ def _verified_emission_from_package_view(
     )
 
 
+def _load_pre_run_authority_handoff(
+    document: Mapping[str, Any],
+    *,
+    disposition_ledger: DispositionLedger,
+) -> dict[str, EvidenceAuthority]:
+    if set(document) != {
+        "schema_version",
+        "deck_fingerprint",
+        "authorities",
+        "content_sha256",
+    }:
+        raise ValueError("pre_run_authority_handoff_malformed")
+    if (
+        type(document.get("schema_version")) is not int
+        or document["schema_version"] != 1
+    ):
+        raise ValueError("pre_run_authority_handoff_schema_invalid")
+    if document.get("content_sha256") != _report_content_sha256(
+        document
+    ):
+        raise ValueError("pre_run_authority_handoff_hash_stale")
+    if (
+        document.get("deck_fingerprint")
+        != disposition_ledger.deck_fingerprint
+    ):
+        raise ValueError("pre_run_authority_handoff_cross_deck")
+    rows = document.get("authorities")
+    if not isinstance(rows, list):
+        raise ValueError("pre_run_authority_handoff_malformed")
+    claim_ids: list[str] = []
+    identities: list[str] = []
+    classified_authorities: dict[str, EvidenceAuthority] = {}
+    for row in rows:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != _BOUND_EVIDENCE_AUTHORITY_FIELDS
+        ):
+            raise ValueError("pre_run_authority_handoff_malformed")
+        try:
+            authority = evidence_authority_from_projection(row)
+            bound = BoundEvidenceAuthority(
+                deck_fingerprint=row["deck_fingerprint"],
+                composite_claim_identity=row[
+                    "composite_claim_identity"
+                ],
+                claim_id=row["claim_id"],
+                authority=authority,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                "pre_run_authority_handoff_malformed"
+            ) from error
+        claim_ids.append(bound.claim_id)
+        identities.append(bound.composite_claim_identity)
+        classified_authorities[bound.claim_id] = authority
+    if (
+        len(set(claim_ids)) != len(claim_ids)
+        or len(set(identities)) != len(identities)
+    ):
+        raise ValueError("pre_run_authority_handoff_duplicate")
+    try:
+        canonical_bound = _bind_evidence_authorities(
+            disposition_ledger=disposition_ledger,
+            classified_authorities=classified_authorities,
+        )
+    except ValueError as error:
+        raise ValueError(
+            "pre_run_authority_handoff_claim_mismatch"
+        ) from error
+    if rows != [
+        _bound_evidence_authority_document(row)
+        for row in canonical_bound
+    ]:
+        raise ValueError("pre_run_authority_handoff_malformed")
+    return classified_authorities
+
+
 def _validate_layered_evidence_report(
     document: Mapping[str, Any],
     *,
     disposition_ledger: DispositionLedger,
     source_contract_audit: Mapping[str, Any] | None,
-    guide_claim_bundle: Mapping[str, Any] | None,
-    deck_identity: Mapping[str, Any],
+    authority_handoff: Mapping[str, EvidenceAuthority],
 ) -> None:
     if document.get("content_sha256") != _report_content_sha256(
         document
@@ -1599,47 +1746,6 @@ def _validate_layered_evidence_report(
     rows = document.get("authorities")
     if not isinstance(rows, list):
         raise ValueError("layered_evidence_contract_malformed")
-    expected = {
-        f"{fingerprint}:{row.claim_id}"
-        for row in disposition_ledger.claims
-    }
-    claims_by_id = {
-        row.claim_id: row for row in disposition_ledger.claims
-    }
-    source_claim_rows = (
-        source_contract_audit.get("claim_rows", {})
-        if isinstance(source_contract_audit, Mapping)
-        else {}
-    )
-    guide_claims = (
-        guide_claim_bundle.get("claims", ())
-        if isinstance(guide_claim_bundle, Mapping)
-        else ()
-    )
-    guide_by_id = {
-        str(row.get("claim_id", "")): row
-        for row in guide_claims
-        if isinstance(row, Mapping) and row.get("claim_id")
-    }
-    verified_source_receipts = (
-        guide_claim_bundle.get(
-            "canonical_source_receipts",
-            guide_claim_bundle.get(
-                "globalvalues_source_receipts",
-                (),
-            ),
-        )
-        if isinstance(guide_claim_bundle, Mapping)
-        else ()
-    )
-    profile = load_policy_profile()
-    policy_mapping = {
-        "policy_id": profile.policy_id,
-        "version": profile.version,
-        "effective_date": profile.effective_date,
-        "content_sha256": profile.content_sha256,
-        "rules": json.loads(profile.rules_canonical_json),
-    }
     raw_identities = [
         row.get("composite_claim_identity")
         for row in rows
@@ -1649,84 +1755,74 @@ def _validate_layered_evidence_report(
         raise ValueError("layered_evidence_contract_malformed")
     if len(set(raw_identities)) != len(raw_identities):
         raise ValueError("layered_evidence_contract_duplicate")
-    observed: list[str] = []
-    for row in rows:
-        if not isinstance(row, Mapping):
-            raise ValueError("layered_evidence_contract_malformed")
-        authority = evidence_authority_from_projection(row)
-        bound = BoundEvidenceAuthority(
-            deck_fingerprint=row["deck_fingerprint"],
-            composite_claim_identity=row[
-                "composite_claim_identity"
-            ],
-            claim_id=row["claim_id"],
-            authority=authority,
+    canonical_bound = _bind_evidence_authorities(
+        disposition_ledger=disposition_ledger,
+        classified_authorities=authority_handoff,
+    )
+    canonical_rows = [
+        _bound_evidence_authority_document(row)
+        for row in canonical_bound
+    ]
+    if rows != canonical_rows:
+        raise ValueError(
+            "layered_evidence_contract_upstream_mismatch"
         )
-        claim = claims_by_id.get(bound.claim_id)
+    source_claim_rows = (
+        source_contract_audit.get("claim_rows", {})
+        if isinstance(source_contract_audit, Mapping)
+        else {}
+    )
+    if not isinstance(source_claim_rows, Mapping):
+        raise ValueError(
+            "layered_evidence_contract_upstream_mismatch"
+        )
+    source_authorities: dict[str, Mapping[str, Any]] = {}
+    for raw_claim_id, source_row in source_claim_rows.items():
         if (
-            claim is None
-            or authority.claim_kind != claim.claim_kind
+            isinstance(source_row, Mapping)
+            and "evidence_authority" in source_row
         ):
-            raise ValueError(
-                "layered_evidence_contract_claim_semantics_mismatch"
-            )
-        source_row = (
-            source_claim_rows.get(bound.claim_id)
-            if isinstance(source_claim_rows, Mapping)
-            else None
+            projection = source_row["evidence_authority"]
+            if projection is None:
+                continue
+            if not isinstance(projection, Mapping):
+                raise ValueError(
+                    "layered_evidence_contract_upstream_mismatch"
+                )
+            claim_id = str(raw_claim_id)
+            if (
+                source_row.get("claim_id") not in {None, claim_id}
+                or claim_id in source_authorities
+            ):
+                raise ValueError(
+                    "layered_evidence_contract_upstream_mismatch"
+                )
+            source_authorities[claim_id] = projection
+    try:
+        source_bound = _bind_evidence_authorities(
+            disposition_ledger=disposition_ledger,
+            classified_authorities=source_authorities,
         )
-        upstream_projection = (
-            source_row.get("evidence_authority")
-            if isinstance(source_row, Mapping)
-            else None
+    except ValueError as error:
+        raise ValueError(
+            "layered_evidence_contract_upstream_mismatch"
+        ) from error
+    if [
+        _bound_evidence_authority_document(row)
+        for row in source_bound
+    ] != canonical_rows:
+        raise ValueError(
+            "layered_evidence_contract_upstream_mismatch"
         )
-        authority_projection = {
-            "lane": authority.lane.value,
-            "authority_id": authority.authority_id,
-            "source_identity": authority.source_identity,
-            "as_of_date": authority.as_of_date,
-            "claim_kind": authority.claim_kind,
-            "content_sha256": authority.content_sha256,
-            "exact_deck_fingerprint": (
-                authority.exact_deck_fingerprint
-            ),
-            "runtime_authorized": authority.runtime_authorized,
-            "reason": authority.reason,
-        }
-        if upstream_projection != authority_projection:
-            raise ValueError(
-                "layered_evidence_contract_upstream_mismatch"
-            )
-        guide_claim = guide_by_id.get(bound.claim_id)
-        if not isinstance(guide_claim, Mapping):
-            raise ValueError(
-                "layered_evidence_contract_upstream_mismatch"
-            )
-        try:
-            reclassified = classify_evidence_authority(
-                claim=guide_claim,
-                deck_identity=deck_identity,
-                verified_source_receipts=verified_source_receipts,
-                policy_profile=policy_mapping,
-            )
-        except ValueError as error:
-            raise ValueError(
-                "layered_evidence_contract_upstream_mismatch"
-            ) from error
-        if reclassified != authority:
-            raise ValueError(
-                "layered_evidence_contract_upstream_mismatch"
-            )
-        observed.append(bound.composite_claim_identity)
-    if len(set(observed)) != len(observed):
-        raise ValueError("layered_evidence_contract_duplicate")
-    if not set(observed).issubset(expected):
-        raise ValueError("layered_evidence_contract_claim_mismatch")
+    expected = {
+        f"{fingerprint}:{row.claim_id}"
+        for row in disposition_ledger.claims
+    }
     ratio = _metric_ratio_from_document(
         document.get("layered_coverage")
     )
     if (
-        ratio.numerator != len(observed)
+        ratio.numerator != len(canonical_rows)
         or ratio.denominator != len(expected)
     ):
         raise ValueError("layered_evidence_contract_totals_mismatch")
@@ -1949,11 +2045,6 @@ def validate_pre_run_package_reports(
             if package.exists("reports/source_contract_audit.json")
             else None
         )
-        guide_claim_bundle = (
-            package.read_json("reports/guide_claim_bundle.json")
-            if package.exists("reports/guide_claim_bundle.json")
-            else None
-        )
         input_manifest = (
             package.read_json("reports/input_manifest.json")
             if package.exists("reports/input_manifest.json")
@@ -1971,16 +2062,23 @@ def validate_pre_run_package_reports(
             source_contract_audit is not None
             and not isinstance(source_contract_audit, Mapping)
         )
-        or (
-            guide_claim_bundle is not None
-            and not isinstance(guide_claim_bundle, Mapping)
-        )
-        or (
-            input_manifest is not None
-            and not isinstance(input_manifest, Mapping)
-        )
     ):
         raise ValueError("pre_run_report_malformed")
+    if input_manifest is None:
+        raise ValueError("pre_run_input_manifest_missing")
+    if not isinstance(input_manifest, Mapping):
+        raise ValueError("pre_run_input_manifest_malformed")
+    if (
+        type(
+            input_manifest.get("pre_run_contract_schema_version")
+        )
+        is not int
+        or input_manifest["pre_run_contract_schema_version"]
+        != PRE_RUN_CONTRACT_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "pre_run_contract_schema_version_invalid"
+        )
     disposition = _load_disposition_ledger(
         documents["reports/disposition_ledger.json"]
     )
@@ -1990,27 +2088,31 @@ def validate_pre_run_package_reports(
     fingerprint = disposition.deck_fingerprint
     if globalvalues.deck_fingerprint != fingerprint:
         raise ValueError("pre_run_report_cross_deck")
+    authority_handoff_document = input_manifest.get(
+        "pre_run_authority_handoff"
+    )
+    if authority_handoff_document is None:
+        raise ValueError("pre_run_authority_handoff_missing")
+    if not isinstance(authority_handoff_document, Mapping):
+        raise ValueError("pre_run_authority_handoff_malformed")
+    authority_handoff = _load_pre_run_authority_handoff(
+        authority_handoff_document,
+        disposition_ledger=disposition,
+    )
     _validate_layered_evidence_report(
         documents["reports/layered_evidence_contract.json"],
         disposition_ledger=disposition,
         source_contract_audit=source_contract_audit,
-        guide_claim_bundle=guide_claim_bundle,
-        deck_identity=deck_identity,
+        authority_handoff=authority_handoff,
     )
     _validate_acquisition_report(
         documents["reports/source_acquisition_closure.json"],
         deck_fingerprint=fingerprint,
     )
-    if (
-        isinstance(input_manifest, Mapping)
-        and input_manifest.get("pre_run_contract_schema_version")
-        == PRE_RUN_CONTRACT_SCHEMA_VERSION
-        and input_manifest.get("source_acquisition_input_binding")
-        != source_acquisition_input_binding(
-            documents[
-                "reports/source_acquisition_closure.json"
-            ]
-        )
+    if input_manifest.get(
+        "source_acquisition_input_binding"
+    ) != source_acquisition_input_binding(
+        documents["reports/source_acquisition_closure.json"]
     ):
         raise ValueError(
             "source_acquisition_upstream_manifest_mismatch"
@@ -2218,7 +2320,10 @@ def aggregate_pre_run_closure(
         if (
             package.deck_identity.get("deck_name")
             != inventory_row["deck_name"]
-            or {
+        ):
+            raise ValueError("pre_run_semantic_inventory_mismatch")
+        if (
+            {
                 row.composite_card_key
                 for row in package.disposition_ledger.cards
             }
@@ -2228,13 +2333,13 @@ def aggregate_pre_run_closure(
                 for row in package.disposition_ledger.claims
             }
             != expected_claims
-            or tuple(
+            or {
                 row.key
                 for row in package.globalvalues_ledger.decisions
-            )
-            != tuple(inventory_row["globalvalues_decisions"])
+            }
+            != set(inventory_row["globalvalues_decisions"])
         ):
-            raise ValueError("pre_run_semantic_inventory_mismatch")
+            raise ValueError("pre_run_audited_totals_mismatch")
     incomplete = [
         row.deck_fingerprint
         for row in validated
