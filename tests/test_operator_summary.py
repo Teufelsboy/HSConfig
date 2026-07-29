@@ -1,9 +1,16 @@
 import ast
+import hashlib
+import inspect
+import json
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
 from hsconfig.operator_summary import _closure_matches_surface, build_operator_summary
+from hsconfig.package_domain import MulliganPlanModel
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
@@ -91,6 +98,452 @@ def _strong_candidate_with_lane_counts(lane_counts):
             "CustomConfig/lanecountfixture/Mulligan.json",
         ],
     )
+
+
+_BASE_OID_REPORT_SHA256 = {
+    "valid": "sha256:6ec599fbb62316116e2a18b70f42a984180e9c93094ec90b013ab9f7156eafd1",
+    "warning": "sha256:b43b45cef01eb5a86b53de058be9859dc9c18948e4d1ff45d282b7e88cc7fdfa",
+    "technical_invalid": "sha256:c1e2c367cdaa67b1a9d3a1c6bbf200561438e155ff90d962c866757df50a37e6",
+    "source_acquisition_blocked": "sha256:411ffe8466e2089c0770cad2753257cfc39d1eb02cfdecb8dcdde0251e0fbd0b",
+}
+
+
+def _canonical_report_sha256(value):
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("case", "summary"),
+    [
+        (
+            "valid",
+            lambda: _strong_candidate_with_lane_counts(
+                {"deck_matched_public_guide": 3}
+            ),
+        ),
+        (
+            "warning",
+            lambda: build_operator_summary(
+                deck_name="Warning",
+                deck_code="AAE=",
+                technical_validation={"status": "passed", "errors": []},
+            ),
+        ),
+        (
+            "technical_invalid",
+            lambda: build_operator_summary(
+                deck_name="Invalid",
+                deck_code="AAE=",
+                technical_validation={
+                    "status": "failed",
+                    "errors": [{"code": "bad"}],
+                },
+            ),
+        ),
+        (
+            "source_acquisition_blocked",
+            lambda: build_operator_summary(
+                deck_name="Blocked",
+                deck_code="AAE=",
+                technical_validation={"status": "passed", "errors": []},
+                package_authority={
+                    "source_apply_eligible": False,
+                    "source_apply_eligibility_reasons": [
+                        "source_acquisition_not_eligible"
+                    ],
+                    "canonical_receipt_count": 0,
+                    "exact_source_closed": False,
+                },
+            ),
+        ),
+    ],
+)
+def test_complete_public_report_matches_base_oid_oracle(case, summary):
+    assert _canonical_report_sha256(summary()) == (
+        _BASE_OID_REPORT_SHA256[case]
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {
+                "technical_validation": {"status": "passed", "errors": []},
+                "config_readiness_report": {
+                    "surface_ledger_sha256": "sha256:a"
+                },
+                "source_to_runtime_explainability_report": {
+                    "surface_ledger_sha256": "sha256:b"
+                },
+            },
+            "runtime_surface_ledger_hash_mismatch",
+        ),
+        (
+            {
+                "pre_run_closure_report": {
+                    "pre_run_contract_status": "bad",
+                    "strategy_authority_status": "partial",
+                }
+            },
+            "pre_run_contract_status_invalid",
+        ),
+        (
+            {
+                "pre_run_closure_report": {
+                    "pre_run_contract_status": "complete",
+                    "strategy_authority_status": "bad",
+                }
+            },
+            "strategy_authority_status_invalid",
+        ),
+    ],
+)
+def test_public_error_matches_base_oid_oracle(kwargs, message):
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        build_operator_summary(**kwargs)
+
+
+def test_legacy_keyword_signature_matches_base_oid_exactly():
+    assert str(inspect.signature(build_operator_summary)) == (
+        "(*, deck_name: 'str | None' = None, deck_code: 'str | None' = None, "
+        "technical_validation: 'dict[str, Any] | None' = None, "
+        "guide_source_depth: 'dict[str, Any] | None' = None, "
+        "unsupported_conditions: 'list[dict[str, Any]] | None' = None, "
+        "globalvalue_authority: 'dict[str, Any] | None' = None, "
+        "generated_files: 'list[str] | None' = None, "
+        "claim_coverage_report: 'dict[str, Any] | None' = None, "
+        "config_readiness_summary: 'dict[str, Any] | None' = None, "
+        "config_readiness_report: 'dict[str, Any] | None' = None, "
+        "claim_conflict_report: 'dict[str, Any] | None' = None, "
+        "mulligan_plan_report: 'Mapping[str, Any] | MulliganPlanModel | None' = None, "
+        "card_behavior_plan_report: 'dict[str, Any] | None' = None, "
+        "combo_plan_report: 'dict[str, Any] | None' = None, "
+        "globalvalues_profile_report: 'dict[str, Any] | None' = None, "
+        "semantic_enrichment_report: 'dict[str, Any] | None' = None, "
+        "mechanic_drift_report: 'dict[str, Any] | None' = None, "
+        "validation_report: 'dict[str, Any] | None' = None, "
+        "guide_source_depth_report: 'dict[str, Any] | None' = None, "
+        "source_claim_gap_report: 'dict[str, Any] | None' = None, "
+        "source_contract_audit_report: 'dict[str, Any] | None' = None, "
+        "source_to_runtime_explainability_report: 'dict[str, Any] | None' = None, "
+        "strong_promotion_report: 'dict[str, Any] | None' = None, "
+        "output_ownership_manifest: 'dict[str, Any] | None' = None, "
+        "gameplan_contract: 'dict[str, Any] | None' = None, "
+        "package_derivation: 'dict[str, Any] | None' = None, "
+        "package_authority: 'dict[str, Any] | None' = None, "
+        "deck_input_verification: 'dict[str, Any] | None' = None, "
+        "runtime_surface_ledger: 'Mapping[str, Any] | None' = None, "
+        "pre_run_closure_report: 'Mapping[str, Any] | None' = None) "
+        "-> 'dict[str, Any]'"
+    )
+
+
+def test_strong_promotion_compatibility_argument_is_exact_noop():
+    base = {
+        "deck_name": "Noop",
+        "deck_code": "AAE=",
+        "technical_validation": {"status": "passed", "errors": []},
+    }
+    variants = (
+        None,
+        {},
+        {"promotion_ready": False},
+        {"promotion_ready": True, "unexpected": ["ignored"]},
+    )
+
+    reports = [
+        json.dumps(
+            build_operator_summary(
+                **base,
+                strong_promotion_report=variant,
+            ),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        for variant in variants
+    ]
+
+    assert reports == [reports[0]] * len(variants)
+
+
+def test_alias_precedence_and_empty_object_semantics_match_base_oid():
+    technical = build_operator_summary(
+        technical_validation={"status": "failed", "errors": ["explicit"]},
+        validation_report={"status": "passed", "errors": []},
+    )
+    empty_technical = build_operator_summary(
+        technical_validation={},
+        validation_report={"status": "passed", "errors": []},
+    )
+    guide = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={},
+        guide_source_depth_report={
+            "source_depth_status": "source_backed",
+            "claim_count": 99,
+        },
+    )
+
+    assert technical["technical_status"] == "INVALID_PACKAGE"
+    assert technical["primary_blockers"] == [{"reason": "explicit"}]
+    assert empty_technical["technical_status"] == "INVALID_PACKAGE"
+    assert guide["semantic_status"] == "NEEDS_MORE_RESEARCH"
+
+
+def test_malformed_derivation_keeps_base_oid_primary_reason() -> None:
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        package_derivation={},
+    )
+
+    assert summary["technical_status"] == "INVALID_PACKAGE"
+    assert summary["primary_blockers"] == [
+        {"reason": "technical_validation_failed"}
+    ]
+    assert summary["runtime_apply_reason"] == (
+        "technical_validation_failed"
+    )
+
+
+def test_readiness_empty_summary_uses_per_card_second_stage_fallback():
+    report = {
+        "cards": {
+            "CARD_A": {
+                "readiness_lane": "generic_low_confidence",
+                "first_missing_link": "needs_guide_claim",
+            }
+        }
+    }
+
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        config_readiness_summary={},
+        config_readiness_report=report,
+    )
+
+    assert summary["guide_strength_summary"]["generic_low_confidence_cards"] == 1
+    assert summary["guide_strength_summary"]["cards_needing_guide_claims"] == 1
+
+
+def test_mulligan_model_and_its_mapping_projection_are_byte_identical():
+    model = MulliganPlanModel(
+        deck_name="Mulligan",
+        rules=(),
+        suppressed=(),
+        bot_delegated=(),
+        merged_duplicate_rule_count=0,
+    )
+    base = {
+        "deck_name": "Mulligan",
+        "deck_code": "AAE=",
+        "technical_validation": {"status": "passed", "errors": []},
+    }
+
+    typed = build_operator_summary(**base, mulligan_plan_report=model)
+    mapped = build_operator_summary(
+        **base,
+        mulligan_plan_report=model.to_report(),
+    )
+
+    assert typed == mapped
+
+
+def test_frozen_summary_ignores_transitive_origin_mutation() -> None:
+    script = textwrap.dedent(
+        r"""
+        import hashlib
+        import json
+        import re
+
+        import hsconfig.apply_decision as apply_decision
+        import hsconfig.config_usefulness as config_usefulness
+        import hsconfig.no_block_failure_modes as no_block
+        import hsconfig.operator_guidance as operator_guidance
+        import hsconfig.operator_status as operator_status
+        import hsconfig.operator_summary as operator_summary
+        import hsconfig.report_ownership as report_ownership
+        import hsconfig.source_status_resolver as source_status
+        import hsconfig.strong_closure_profiles as strong_closure
+        import hsconfig.visionai_registry as registry
+        from hsconfig.operator_summary_inputs import (
+            freeze_operator_summary_inputs,
+        )
+
+        inputs = freeze_operator_summary_inputs(
+            deck_name="Ambient",
+            deck_code="AAE=",
+            technical_validation={"status": "passed", "errors": []},
+            guide_source_depth={
+                "source_depth_status": "source_backed",
+                "claim_count": 1,
+            },
+            generated_files=[
+                "CustomConfig\\ambient\\GlobalValues.json",
+                "CustomConfig\\ambient\\Mulligan.json",
+            ],
+        )
+        canonical = lambda value: json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        expected = canonical(
+            operator_summary.build_operator_summary_from_inputs(inputs)
+        )
+
+        assert not hasattr(
+            operator_summary,
+            "_SEALED_OPERATOR_SUMMARY_EVALUATOR",
+        )
+        assert not hasattr(
+            operator_status,
+            "_SEALED_BUILD_OPERATOR_STATUS",
+        )
+        assert not hasattr(
+            operator_status,
+            "_install_operator_status_kernel",
+        )
+        assert getattr(
+            operator_status.build_operator_status,
+            "__closure__",
+            None,
+        ) is None
+        assert getattr(
+            operator_summary.build_operator_summary_from_inputs,
+            "__closure__",
+            None,
+        ) is None
+        assert getattr(
+            operator_summary.build_operator_summary,
+            "__closure__",
+            None,
+        ) is None
+        operator_summary._evaluate_operator_summary_inputs = (
+            lambda inputs: {"poisoned": True}
+        )
+        operator_status.build_operator_status = lambda inputs: (
+            (_ for _ in ()).throw(
+                AssertionError("live status alias used")
+            )
+        )
+        operator_summary._build_operator_summary_unfrozen = (
+            lambda **kwargs: {"poisoned": True}
+        )
+        operator_summary._technical_status = lambda *a, **k: "POISONED"
+        operator_summary.SOURCE_BACKED_STRONG_REQUIREMENTS.append(
+            "poisoned"
+        )
+        operator_summary.READINESS_SUMMARY_KEY_BY_BLOCKER_REASON.clear()
+        operator_summary.STRONG_SOURCE_QUALITY_LANES.clear()
+        operator_guidance.SOURCE_INFORMED_EXPERT_STATUSES.clear()
+        no_block.SOURCE_DEPTH_WARNING_REASONS.clear()
+        config_usefulness.GAP_REPORTS.clear()
+        strong_closure.PROFILE_REQUIREMENTS.clear()
+        strong_closure.evaluate_closure_profile = (
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("origin closure evaluator used")
+            )
+        )
+        registry.NORMAL_APPLY_AUTHORITY = "poisoned.json"
+        registry.report_spec = lambda path: (_ for _ in ()).throw(
+            AssertionError("origin report registry used")
+        )
+        report_ownership.build_report_ownership = lambda: [
+            {"poisoned": True}
+        ]
+        apply_decision.build_apply_decision = lambda facts: (
+            (_ for _ in ()).throw(
+                AssertionError("origin apply decision used")
+            )
+        )
+        source_status.resolve_source_status = lambda **kwargs: (
+            (_ for _ in ()).throw(
+                AssertionError("origin source resolver used")
+            )
+        )
+        hashlib.sha256 = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("origin hashlib used")
+        )
+        re.fullmatch = lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("origin regex used")
+        )
+
+        actual = canonical(
+            operator_summary.build_operator_summary_from_inputs(inputs)
+        )
+        assert actual == expected
+        """
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
+
+
+def test_conditional_top_level_omissions_preserve_empty_mapping_presence():
+    omitted = build_operator_summary()
+    deck_input_empty = build_operator_summary(deck_input_verification={})
+    derivation_empty = build_operator_summary(package_derivation={})
+    pre_run = build_operator_summary(
+        pre_run_closure_report={
+            "pre_run_contract_status": "complete",
+            "strategy_authority_status": "partial",
+        }
+    )
+
+    assert "deck_input_verification" not in omitted
+    assert "package_derivation" not in omitted
+    assert "pre_run_contract_status" not in omitted
+    assert deck_input_empty["deck_input_verification"] == {}
+    assert derivation_empty["package_derivation"] == {}
+    assert pre_run["pre_run_contract_status"] == "complete"
+    assert pre_run["strategy_authority_status"] == "partial"
+
+
+def test_public_error_precedence_matches_base_oid():
+    with pytest.raises(
+        ValueError,
+        match="^runtime_surface_ledger_hash_mismatch$",
+    ):
+        build_operator_summary(
+            config_readiness_report={
+                "surface_ledger_sha256": "sha256:a"
+            },
+            source_to_runtime_explainability_report={
+                "surface_ledger_sha256": "sha256:b"
+            },
+            pre_run_closure_report={
+                "pre_run_contract_status": "bad",
+                "strategy_authority_status": "bad",
+            },
+        )
+    with pytest.raises(
+        ValueError,
+        match="^pre_run_contract_status_invalid$",
+    ):
+        build_operator_summary(
+            pre_run_closure_report={
+                "pre_run_contract_status": "bad",
+                "strategy_authority_status": "bad",
+            }
+        )
 
 
 def test_operator_summary_separates_pre_run_assurance_dimensions():

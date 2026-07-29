@@ -48,6 +48,8 @@ RECEIPT_TAMPERING_CASES = [
 ]
 
 FORBIDDEN_DIAGNOSTIC_IMPORTS = [
+    "from hsconfig.operator_diagnostics",
+    "import hsconfig.operator_diagnostics",
     "from hsconfig.contract_doctor",
     "import hsconfig.contract_doctor",
     "from hsconfig.source_contract_audit",
@@ -395,6 +397,25 @@ def test_report_ownership_has_no_second_apply_gate():
     gate_rows = [row for row in build_report_ownership() if row.get("classification") == "gate"]
 
     assert [row["file"] for row in gate_rows] == ["reports/operator_summary.json"]
+
+
+def test_registry_and_ownership_have_one_literal_apply_authority():
+    from hsconfig.report_ownership import build_report_ownership
+    from hsconfig.visionai_registry import REPORT_REGISTRY
+
+    registry_gates = [
+        path
+        for path, spec in REPORT_REGISTRY.items()
+        if spec.apply_authority is True
+    ]
+    ownership_gates = [
+        row["file"]
+        for row in build_report_ownership()
+        if row.get("classification") == "gate"
+    ]
+
+    assert registry_gates == ["reports/operator_summary.json"]
+    assert ownership_gates == ["reports/operator_summary.json"]
 
 
 def _write_minimal_runtime_package(package: Path) -> None:

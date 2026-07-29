@@ -50,19 +50,13 @@ def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision(
 ):
     import hsconfig.operator_summary as operator_summary_module
 
-    observed_facts = []
-    original_build_apply_decision = (
-        operator_summary_module.build_apply_decision
-    )
-
-    def capture_apply_facts(facts):
-        observed_facts.append(facts)
-        return original_build_apply_decision(facts)
+    def reject_live_apply_decision(_facts):
+        raise AssertionError("live apply decision alias reused")
 
     monkeypatch.setattr(
         operator_summary_module,
         "build_apply_decision",
-        capture_apply_facts,
+        reject_live_apply_decision,
     )
 
     def summary(status: str) -> dict:
@@ -87,8 +81,6 @@ def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision(
     complete = summary("complete")
     incomplete = summary("incomplete")
 
-    assert len(observed_facts) == 2
-    assert observed_facts[0] == observed_facts[1]
     assert complete["pre_run_contract_status"] == "complete"
     assert incomplete["pre_run_contract_status"] == "incomplete"
     for field in (
