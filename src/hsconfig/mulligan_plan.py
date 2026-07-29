@@ -209,29 +209,6 @@ def build_mulligan_plan(
     )
 
 
-def mulligan_rule_key(
-    rule: MulliganRuleModel | Mapping[str, Any],
-) -> tuple[Any, ...]:
-    """Return stable rule identity for typed and report compatibility reads."""
-
-    if isinstance(rule, MulliganRuleModel):
-        return rule.identity
-    selector_cards = rule.get("selector_cards", ())
-    if isinstance(selector_cards, str):
-        selector_cards = (selector_cards,)
-    if not isinstance(selector_cards, Sequence):
-        selector_cards = ()
-    return (
-        rule.get("card"),
-        rule.get("selector_kind"),
-        rule.get("selector"),
-        tuple(str(item) for item in selector_cards),
-        rule.get("action"),
-        rule.get("condition", "*"),
-        rule.get("source_type", ""),
-    )
-
-
 def _lane_b_rows(
     claim: Mapping[str, Any],
     *,

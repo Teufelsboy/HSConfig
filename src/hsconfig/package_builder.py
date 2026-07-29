@@ -1779,26 +1779,6 @@ def _runtime_claim_ids_for_surface(
     return claim_ids
 
 
-def _filter_mulligan_plan(
-    plan: dict[str, Any],
-    allowed_claim_ids: set[str],
-) -> dict[str, Any]:
-    result = dict(plan)
-    filtered_rules = _filter_runtime_rows_by_claim_ids(
-        plan.get("rules", []),
-        allowed_claim_ids,
-    )
-    if _has_concrete_mulligan_hold(filtered_rules):
-        filtered_rules.extend(
-            row
-            for row in plan.get("rules", [])
-            if _is_unreferenced_wildcard_discard(row)
-            and not any(_is_unreferenced_wildcard_discard(existing) for existing in filtered_rules)
-        )
-    result["rules"] = filtered_rules
-    return result
-
-
 def _filter_card_behavior_plan(
     plan: dict[str, Any],
     allowed_claim_ids: set[str],
@@ -1965,26 +1945,6 @@ def _row_claim_ids(row: dict[str, Any]) -> set[str]:
         if isinstance(value, list):
             claim_ids.update(str(item) for item in value if str(item))
     return claim_ids
-
-
-def _has_concrete_mulligan_hold(rows: list[dict[str, Any]]) -> bool:
-    return any(
-        str(row.get("action", row.get("intent", ""))) == "hold"
-        and str(row.get("selector_kind", "")) != "wildcard"
-        for row in rows
-    )
-
-
-def _is_unreferenced_wildcard_discard(row: Any) -> bool:
-    if not isinstance(row, dict):
-        return False
-    if _row_claim_ids(row):
-        return False
-    return (
-        str(row.get("action", row.get("intent", ""))) == "discard"
-        and str(row.get("selector_kind", "")) == "wildcard"
-        and str(row.get("selector", row.get("card", ""))) == "*"
-    )
 
 
 def _card_behavior_identity_links(gameplan_contract: dict[str, Any]) -> dict[str, Any]:

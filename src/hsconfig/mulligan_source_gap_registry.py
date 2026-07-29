@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -82,61 +82,6 @@ def build_bound_mulligan_source_gap_rows(
             }
         )
     return rows
-
-
-def validated_mulligan_source_gap_vetoes(
-    source_gaps: Sequence[Mapping[str, Any]] | None,
-    *,
-    deck_name: str,
-    deck_identity: Mapping[str, Any],
-) -> dict[str, str]:
-    current_fingerprint = _nonempty_text(
-        deck_identity.get("deck_fingerprint")
-    )
-    current_deck_code_hash = _nonempty_text(
-        deck_identity.get("deck_code_hash")
-    )
-    identity_deck_name = _nonempty_text(deck_identity.get("deck_name"))
-    normalized_deck_name = normalize_registered_deck_name(deck_name)
-    if (
-        not current_fingerprint
-        or not current_deck_code_hash
-        or not identity_deck_name
-        or normalize_registered_deck_name(identity_deck_name)
-        != normalized_deck_name
-    ):
-        return {}
-
-    deck_card_ids = _deck_card_ids(deck_identity)
-    vetoes: dict[str, str] = {}
-    for row in source_gaps or ():
-        if not isinstance(row, Mapping):
-            continue
-        card_id = _exact_text(row.get("card_id"))
-        registration = registered_mulligan_source_gap(
-            deck_name,
-            card_id,
-        )
-        if (
-            registration is None
-            or card_id not in deck_card_ids
-            or _exact_text(row.get("target_deck_name"))
-            != registration.deck_name
-            or normalize_registered_deck_name(
-                _exact_text(row.get("target_deck_name"))
-            )
-            != normalized_deck_name
-            or _exact_text(row.get("target_deck_fingerprint"))
-            != current_fingerprint
-            or _exact_text(row.get("target_deck_code_hash"))
-            != current_deck_code_hash
-            or _exact_text(row.get("first_missing_source_action"))
-            != registration.first_missing_source_action
-            or _exact_text(row.get("reason")) != registration.reason
-        ):
-            continue
-        vetoes[registration.card_id] = registration.reason
-    return dict(sorted(vetoes.items()))
 
 
 def normalize_registered_deck_name(value: str) -> str:

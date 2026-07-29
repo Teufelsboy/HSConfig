@@ -1,3 +1,4 @@
+import ast
 import re
 from pathlib import Path
 
@@ -49,6 +50,13 @@ REQUIRED_DOC_PHRASES = (
 FORBIDDEN_AUTONOMOUS_MULLIGAN_SOURCE_TYPE = (
     "policy_backed_autonomous_mulligan"
 )
+FORBIDDEN_LEGACY_MULLIGAN_HELPERS = {
+    "_filter_mulligan_plan",
+    "_has_concrete_mulligan_hold",
+    "_is_unreferenced_wildcard_discard",
+    "mulligan_rule_key",
+    "validated_mulligan_source_gap_vetoes",
+}
 
 
 def _forbidden_source_concepts(text):
@@ -153,6 +161,20 @@ def test_active_code_has_no_obsolete_autonomous_mulligan_source_type():
                 continue
             if FORBIDDEN_AUTONOMOUS_MULLIGAN_SOURCE_TYPE in text:
                 offenders.append(str(path))
+
+    assert offenders == []
+
+
+def test_hsconfig_src_has_no_obsolete_mulligan_compatibility_helpers():
+    offenders = []
+    for path in sorted(Path("src/hsconfig").rglob("*.py")):
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(module):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in FORBIDDEN_LEGACY_MULLIGAN_HELPERS
+            ):
+                offenders.append(f"{path}:{node.lineno}:{node.name}")
 
     assert offenders == []
 
