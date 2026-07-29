@@ -9,6 +9,7 @@ from hsconfig.package_domain import PolicyProfile
 from hsconfig.source_acquisition_closure import (
     acquisition_attempt_id,
     normalize_acquisition_date,
+    policy_provenance_payload,
 )
 
 DECK_ALIASES = {
@@ -93,6 +94,7 @@ def build_source_research_manifest(
         "checked_dossier": checked_dossier is True,
         "policy_id": profile.policy_id,
         "policy_sha256": profile.content_sha256,
+        "policy": policy_provenance_payload(profile),
         "search_aliases": aliases,
         "primary_archetype": str(candidate_archetypes.get("primary_archetype", "")),
         "mechanic_focus": mechanics,

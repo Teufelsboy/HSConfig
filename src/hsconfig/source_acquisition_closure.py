@@ -11,15 +11,21 @@ import re
 from typing import Any, Literal
 
 from hsconfig.package_domain import PolicyProfile
+from hsconfig.source_acquisition_provenance import (
+    acquisition_provenance_is_canonical,
+)
 
 
-_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_EVIDENCE_ID_RE = re.compile(r"evidence:[0-9a-f]{64}\Z")
 _RAW_DECK_CODE_RE = re.compile(
     r"(?<![A-Za-z0-9+/])AAE[A-Za-z0-9+/]{21,}={0,2}(?![A-Za-z0-9+/=])"
 )
-_ABSOLUTE_PATH_RE = re.compile(
-    r"(?:^|[\s\"'])(?:[A-Za-z]:[\\/]|/(?:home|Users|var|tmp)/)"
+_HTTPS_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_WINDOWS_ABSOLUTE_PATH_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|\\\\(?:[?.]\\|[^\\/\s]+[\\/]))"
 )
+_POSIX_ABSOLUTE_PATH_RE = re.compile(r"(?<![\w])/(?![ /\t\r\n])")
 _SUCCESS_OUTCOMES = frozenset({"acquired", "success", "succeeded"})
 
 
@@ -94,12 +100,21 @@ def build_acquisition_closure(
         == _text(acquisition_report.get("deck_name"))
     )
     date_matches = bool(attempted_at) and attempted_at == manifest_date
+    expected_policy = policy_provenance_payload(policy_profile)
     policy_matches = (
         bool(policy_id)
         and _text(research_manifest.get("policy_id")) == policy_id
         and _text(acquisition_report.get("policy_id")) == policy_id
         and _text(research_manifest.get("policy_sha256")) == policy_sha256
         and _text(acquisition_report.get("policy_sha256")) == policy_sha256
+        and _policy_provenance_matches(
+            research_manifest.get("policy"),
+            expected_policy,
+        )
+        and _policy_provenance_matches(
+            acquisition_report.get("policy"),
+            expected_policy,
+        )
     )
     checked_dossier = (
         research_manifest.get("checked_dossier") is True
@@ -126,11 +141,16 @@ def build_acquisition_closure(
         )
     )
 
-    record_evidence_ids, records_are_bound = _record_evidence_ids(source_records)
+    (
+        record_evidence_ids,
+        record_evidence_bindings,
+        records_are_bound,
+    ) = _record_evidence_bindings(source_records)
     success_is_bound = (
         bool(reported_successful_evidence_ids)
         and records_are_bound
         and record_evidence_ids == reported_successful_evidence_ids
+        and record_evidence_bindings == _successful_evidence_bindings(attempts)
     )
     successful_evidence_ids = (
         reported_successful_evidence_ids if success_is_bound else ()
@@ -245,8 +265,7 @@ def freeze_source_bundle(
         "sources": sources,
         "claims": claims,
     }
-    serialized = _canonical_json(payload).decode("utf-8")
-    if _RAW_DECK_CODE_RE.search(serialized) or _ABSOLUTE_PATH_RE.search(serialized):
+    if _contains_nonportable_string(payload):
         raise ValueError("source_bundle_not_portable")
     payload["content_sha256"] = _content_digest(payload)
     return payload
@@ -273,6 +292,33 @@ def acquisition_attempt_id(deck_fingerprint: str, attempted_at: Any) -> str:
         return ""
     digest = sha256(f"{fingerprint}\0{normalized_date}".encode("utf-8")).hexdigest()
     return f"acquisition:{digest}"
+
+
+def source_evidence_id(source_identity: str, content_sha256: str) -> str:
+    """Build the canonical typed identity for one acquired source payload."""
+
+    identity = _text(source_identity)
+    digest = _text(content_sha256)
+    if not identity or _SHA256_RE.fullmatch(digest) is None:
+        raise ValueError("source_evidence_binding_invalid")
+    bound = sha256(f"{identity}\0{digest}".encode("utf-8")).hexdigest()
+    return f"evidence:{bound}"
+
+
+def policy_provenance_payload(
+    policy_profile: PolicyProfile | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project the complete policy identity shared by source workflow artifacts."""
+
+    policy_id, content_sha256, version, effective_date = _policy_binding(
+        policy_profile
+    )
+    return {
+        "policy_id": policy_id,
+        "version": version,
+        "effective_date": effective_date,
+        "content_sha256": content_sha256,
+    }
 
 
 def _closure_payload(closure: AcquisitionClosure) -> dict[str, Any]:
@@ -315,6 +361,9 @@ def _frozen_claims(
 ) -> list[dict[str, Any]]:
     claims: list[dict[str, Any]] = []
     for record in source_records:
+        record_evidence_id, record_is_bound = _record_evidence_binding(record)
+        if not record_is_bound:
+            raise ValueError("source_evidence_binding_incomplete")
         nested = record.get("claims")
         rows = (
             [row for row in nested if isinstance(row, Mapping)]
@@ -371,6 +420,7 @@ def _frozen_claims(
             if not all(
                 (
                     evidence_id,
+                    evidence_id == record_evidence_id,
                     source_id or policy_id,
                     as_of_date,
                     claim_kind,
@@ -379,12 +429,6 @@ def _frozen_claims(
                 )
             ):
                 raise ValueError("source_claim_binding_incomplete")
-            if (
-                _RAW_DECK_CODE_RE.search(text)
-                or _ABSOLUTE_PATH_RE.search(text)
-                or _ABSOLUTE_PATH_RE.search(source_id)
-            ):
-                raise ValueError("source_bundle_not_portable")
             claims.append(
                 {
                     "evidence_id": evidence_id,
@@ -396,16 +440,7 @@ def _frozen_claims(
                     "content_sha256": content_sha256,
                 }
             )
-    return sorted(
-        claims,
-        key=lambda row: (
-            str(row["evidence_id"]),
-            str(row["source_id"] or ""),
-            str(row["policy_id"] or ""),
-            str(row["claim_kind"]),
-            str(row["text"]),
-        ),
-    )
+    return _canonicalized_rows(claims)
 
 
 def _frozen_sources(
@@ -413,7 +448,7 @@ def _frozen_sources(
 ) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     for record in source_records:
-        evidence_id = _text(record.get("evidence_id"))
+        evidence_id, record_is_bound = _record_evidence_binding(record)
         source_id = _first_text(
             record,
             record,
@@ -435,14 +470,13 @@ def _frozen_sources(
         if not all(
             (
                 evidence_id,
+                record_is_bound,
                 source_id or policy_id,
                 as_of_date,
                 _SHA256_RE.fullmatch(content_sha256),
             )
         ):
             raise ValueError("source_evidence_binding_incomplete")
-        if _ABSOLUTE_PATH_RE.search(source_id):
-            raise ValueError("source_bundle_not_portable")
         sources.append(
             {
                 "evidence_id": evidence_id,
@@ -452,14 +486,7 @@ def _frozen_sources(
                 "content_sha256": content_sha256,
             }
         )
-    return sorted(
-        sources,
-        key=lambda row: (
-            str(row["evidence_id"]),
-            str(row["source_id"] or ""),
-            str(row["policy_id"] or ""),
-        ),
-    )
+    return _canonicalized_rows(sources)
 
 
 def _record_has_claim_signal(record: Mapping[str, Any]) -> bool:
@@ -510,9 +537,27 @@ def _successful_evidence_ids(
         if _text(attempt.get("outcome")).lower() not in _SUCCESS_OUTCOMES:
             continue
         evidence_id = _text(attempt.get("evidence_id"))
-        if evidence_id:
+        if _EVIDENCE_ID_RE.fullmatch(evidence_id):
             ids.append(evidence_id)
     return tuple(sorted(set(ids)))
+
+
+def _successful_evidence_bindings(
+    attempts: Sequence[Mapping[str, Any]],
+) -> tuple[tuple[str, str], ...]:
+    bindings: list[tuple[str, str]] = []
+    for attempt in attempts:
+        if _text(attempt.get("outcome")).lower() not in _SUCCESS_OUTCOMES:
+            continue
+        evidence_id = _text(attempt.get("evidence_id"))
+        source_identity = _text(attempt.get("source_identity"))
+        if (
+            _EVIDENCE_ID_RE.fullmatch(evidence_id) is None
+            or not source_identity
+        ):
+            return ()
+        bindings.append((evidence_id, source_identity))
+    return tuple(sorted(set(bindings)))
 
 
 def _failed_attempts(
@@ -543,30 +588,46 @@ def _failed_attempts(
     )
 
 
-def _record_evidence_ids(
+def _record_evidence_bindings(
     source_records: Sequence[Mapping[str, Any]],
-) -> tuple[tuple[str, ...], bool]:
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], bool]:
     if not source_records:
-        return (), True
+        return (), (), True
     evidence_ids: list[str] = []
+    bindings: list[tuple[str, str]] = []
     for record in source_records:
-        direct = _text(record.get("evidence_id"))
-        nested = record.get("claims")
-        nested_ids = (
-            [
-                _text(row.get("evidence_id"))
-                for row in nested
-                if isinstance(row, Mapping)
-            ]
-            if isinstance(nested, Sequence)
-            and not isinstance(nested, (str, bytes, bytearray))
-            else []
-        )
-        record_ids = [value for value in (direct, *nested_ids) if value]
-        if not record_ids:
-            return (), False
-        evidence_ids.extend(record_ids)
-    return tuple(sorted(set(evidence_ids))), True
+        evidence_id, is_bound = _record_evidence_binding(record)
+        source_identity = _text(record.get("source_identity"))
+        if not is_bound:
+            return (), (), False
+        evidence_ids.append(evidence_id)
+        bindings.append((evidence_id, source_identity))
+    return (
+        tuple(sorted(set(evidence_ids))),
+        tuple(sorted(set(bindings))),
+        True,
+    )
+
+
+def _record_evidence_binding(
+    record: Mapping[str, Any],
+) -> tuple[str, bool]:
+    evidence_id = _text(record.get("evidence_id"))
+    source_identity = _text(record.get("source_identity"))
+    content_sha256 = _text(record.get("content_sha256"))
+    provenance = record.get("acquisition_provenance")
+    if (
+        _EVIDENCE_ID_RE.fullmatch(evidence_id) is None
+        or not source_identity
+        or _SHA256_RE.fullmatch(content_sha256) is None
+        or not acquisition_provenance_is_canonical(provenance)
+        or _text(provenance.get("content_sha256")) != content_sha256
+    ):
+        return "", False
+    return (
+        evidence_id,
+        evidence_id == source_evidence_id(source_identity, content_sha256),
+    )
 
 
 def _stable_strings(value: Any) -> tuple[str, ...]:
@@ -616,6 +677,48 @@ def _policy_binding(
     ):
         raise ValueError("policy_profile_binding_invalid")
     return policy_id, content_sha256, version, effective_date
+
+
+def _policy_provenance_matches(
+    value: Any,
+    expected: Mapping[str, Any],
+) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value) == set(expected)
+        and type(value.get("version")) is int
+        and all(value.get(key) == expected[key] for key in expected)
+    )
+
+
+def _canonicalized_rows(
+    rows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    keyed = {_canonical_json(row): row for row in rows}
+    return [keyed[key] for key in sorted(keyed)]
+
+
+def _contains_nonportable_string(value: Any) -> bool:
+    if isinstance(value, str):
+        if _RAW_DECK_CODE_RE.search(value):
+            return True
+        without_urls = _HTTPS_URL_RE.sub("", value)
+        return (
+            _WINDOWS_ABSOLUTE_PATH_RE.search(without_urls) is not None
+            or _POSIX_ABSOLUTE_PATH_RE.search(without_urls) is not None
+        )
+    if isinstance(value, Mapping):
+        return any(
+            _contains_nonportable_string(key)
+            or _contains_nonportable_string(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (bytes, bytearray),
+    ):
+        return any(_contains_nonportable_string(item) for item in value)
+    return False
 
 
 def _first_value(

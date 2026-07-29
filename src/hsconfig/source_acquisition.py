@@ -17,6 +17,8 @@ from hsconfig.package_domain import PolicyProfile
 from hsconfig.source_acquisition_closure import (
     acquisition_attempt_id,
     normalize_acquisition_date,
+    policy_provenance_payload,
+    source_evidence_id,
 )
 from hsconfig.source_acquisition_provenance import (
     CAPTURED_RECORD,
@@ -207,7 +209,7 @@ def collect_public_source_records(
             ),
             content=body,
         )
-        evidence_id = _source_evidence_id(url, provenance["content_sha256"])
+        evidence_id = source_evidence_id(url, provenance["content_sha256"])
         record = {
             "evidence_id": evidence_id,
             "source_id": _source_id(url),
@@ -261,6 +263,7 @@ def collect_public_source_records(
         "checked_dossier": checked_dossier is True,
         "policy_id": profile.policy_id,
         "policy_sha256": profile.content_sha256,
+        "policy": policy_provenance_payload(profile),
         "attempted_url_count": len(deduped_urls),
         "candidate_registry_url_count": min(
             max(0, int(candidate_registry_url_count)),
@@ -333,11 +336,6 @@ def _acquisition_attempts(
 
 def _source_id(url: str) -> str:
     return f"source:{sha256(url.encode('utf-8')).hexdigest()}"
-
-
-def _source_evidence_id(url: str, content_sha256: str) -> str:
-    digest = sha256(f"{url}\0{content_sha256}".encode("utf-8")).hexdigest()
-    return f"evidence:{digest}"
 
 
 def _report_first_missing_source_action(records: Sequence[Mapping[str, Any]]) -> str:

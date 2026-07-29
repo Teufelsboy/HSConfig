@@ -13,6 +13,10 @@ from hsconfig.source_acquisition_closure import (
     build_acquisition_closure,
     freeze_source_bundle,
 )
+from hsconfig.source_acquisition_provenance import (
+    FIXTURE_MAP,
+    build_acquisition_provenance,
+)
 from hsconfig.source_research_manifest import build_source_research_manifest
 
 
@@ -35,6 +39,15 @@ def _deck_identity() -> dict[str, object]:
     }
 
 
+def _policy_provenance(policy: PolicyProfile) -> dict[str, object]:
+    return {
+        "policy_id": policy.policy_id,
+        "version": policy.version,
+        "effective_date": policy.effective_date,
+        "content_sha256": policy.content_sha256,
+    }
+
+
 def _manifest(policy: PolicyProfile) -> dict[str, object]:
     return {
         "deck_name": "CuteWarrior",
@@ -45,6 +58,7 @@ def _manifest(policy: PolicyProfile) -> dict[str, object]:
         "checked_dossier": True,
         "policy_id": policy.policy_id,
         "policy_sha256": policy.content_sha256,
+        "policy": _policy_provenance(policy),
     }
 
 
@@ -65,19 +79,36 @@ def _negative_report(policy: PolicyProfile) -> dict[str, object]:
         "checked_dossier": True,
         "policy_id": policy.policy_id,
         "policy_sha256": policy.content_sha256,
+        "policy": _policy_provenance(policy),
     }
+
+
+def _canonical_evidence_id(source_identity: str, content_sha256: str) -> str:
+    payload = f"{source_identity.strip()}\0{content_sha256}"
+    return f"evidence:{hashlib.sha256(payload.encode()).hexdigest()}"
 
 
 def _positive_record() -> dict[str, object]:
     claim_text = "Keep Town Crier in the opening hand."
+    source_url = "https://example.test/cute-warrior-guide"
+    provenance = build_acquisition_provenance(
+        mode=FIXTURE_MAP,
+        content=claim_text,
+    )
+    evidence_id = _canonical_evidence_id(
+        source_url,
+        provenance["content_sha256"],
+    )
     return {
-        "evidence_id": "evidence:cute-warrior-guide",
+        "evidence_id": evidence_id,
         "source_id": "source:cute-warrior-guide",
-        "source_url": "https://example.test/cute-warrior-guide",
+        "source_identity": source_url,
+        "source_url": source_url,
         "as_of_date": "2026-07-29",
         "claim_kind": "mulligan_keep",
         "claim_text": claim_text,
-        "content_sha256": f"sha256:{hashlib.sha256(claim_text.encode()).hexdigest()}",
+        "content_sha256": provenance["content_sha256"],
+        "acquisition_provenance": provenance,
         "local_cache_path": r"C:\private\research\cute-warrior.html",
         "deck_code": "AAEBA-raw-secret-deck-code",
     }
@@ -193,6 +224,35 @@ def test_attempt_timestamp_must_match_the_normalized_research_date() -> None:
     assert closure.negative_search_documented is False
 
 
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("version", 2),
+        ("effective_date", "2026-07-30"),
+    ],
+)
+def test_matching_manifest_and_report_cannot_rebind_packaged_policy_provenance(
+    field: str,
+    replacement: object,
+) -> None:
+    policy = _policy_profile()
+    manifest = _manifest(policy)
+    report = _negative_report(policy)
+    manifest["policy"][field] = replacement
+    report["policy"][field] = replacement
+
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=manifest,
+        acquisition_report=report,
+        source_records=(),
+        policy_profile=policy,
+    )
+
+    assert closure.status == "open"
+    assert closure.negative_search_documented is False
+
+
 def test_successful_acquisition_closes_only_with_positive_evidence_ids() -> None:
     policy = _policy_profile()
     record = _positive_record()
@@ -215,7 +275,7 @@ def test_successful_acquisition_closes_only_with_positive_evidence_ids() -> None
 
     assert closure.status == "closed_with_evidence"
     assert closure.negative_search_documented is False
-    assert closure.successful_evidence_ids == ("evidence:cute-warrior-guide",)
+    assert closure.successful_evidence_ids == (record["evidence_id"],)
     assert closure.failed_attempts == ()
 
     missing_id = deepcopy(record)
@@ -229,6 +289,68 @@ def test_successful_acquisition_closes_only_with_positive_evidence_ids() -> None
     )
     assert open_closure.status == "open"
     assert open_closure.successful_evidence_ids == ()
+
+
+@pytest.mark.parametrize(
+    "invented_evidence_id",
+    [
+        "not-a-typed-id",
+        "evidence:" + ("0" * 64),
+    ],
+)
+def test_matching_caller_invented_evidence_ids_cannot_self_authorize(
+    invented_evidence_id: str,
+) -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    record["evidence_id"] = invented_evidence_id
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": invented_evidence_id,
+        }
+    ]
+
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    assert closure.status == "open"
+    assert closure.successful_evidence_ids == ()
+
+
+def test_positive_evidence_id_requires_canonical_acquisition_lineage() -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    record["acquisition_provenance"] = build_acquisition_provenance(
+        mode=FIXTURE_MAP,
+        content="different source bytes",
+    )
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    assert closure.status == "open"
+    assert closure.successful_evidence_ids == ()
 
 
 def test_frozen_bundle_is_deterministic_portable_and_fully_bound() -> None:
@@ -272,7 +394,7 @@ def test_frozen_bundle_is_deterministic_portable_and_fully_bound() -> None:
     assert first["apply_blocking"] is False
     assert first["claims"] == [
         {
-            "evidence_id": "evidence:cute-warrior-guide",
+            "evidence_id": record["evidence_id"],
             "source_id": "source:cute-warrior-guide",
             "policy_id": None,
             "as_of_date": "2026-07-29",
@@ -285,6 +407,124 @@ def test_frozen_bundle_is_deterministic_portable_and_fully_bound() -> None:
     assert r"C:\private" not in serialized
     assert "AAEBA-raw-secret-deck-code" not in serialized
     assert first["content_sha256"].startswith("sha256:")
+
+
+def test_frozen_bundle_sorts_claims_by_every_serialized_field() -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    claim_base = {
+        "claim_kind": "mulligan_keep",
+        "claim_text": "Keep Town Crier.",
+    }
+    first_claim = {
+        **claim_base,
+        "as_of_date": "2026-07-28",
+        "content_sha256": "sha256:" + hashlib.sha256(b"first").hexdigest(),
+    }
+    second_claim = {
+        **claim_base,
+        "as_of_date": "2026-07-29",
+        "content_sha256": "sha256:" + hashlib.sha256(b"second").hexdigest(),
+    }
+    record["claims"] = [first_claim, second_claim]
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    forward = freeze_source_bundle(
+        deck_identity=_deck_identity(),
+        closure=closure,
+        source_records=[record],
+        policy_profile=policy,
+    )
+    reversed_record = deepcopy(record)
+    reversed_record["claims"] = list(reversed(reversed_record["claims"]))
+    reverse = freeze_source_bundle(
+        deck_identity=_deck_identity(),
+        closure=closure,
+        source_records=[reversed_record],
+        policy_profile=policy,
+    )
+
+    assert forward == reverse
+    assert forward["content_sha256"] == reverse["content_sha256"]
+
+
+def test_frozen_bundle_canonically_deduplicates_projected_claims() -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_text": "Keep Town Crier.",
+        "as_of_date": "2026-07-29",
+        "content_sha256": "sha256:" + hashlib.sha256(b"claim").hexdigest(),
+    }
+    record["claims"] = [claim, deepcopy(claim)]
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    bundle = freeze_source_bundle(
+        deck_identity=_deck_identity(),
+        closure=closure,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    assert len(bundle["claims"]) == 1
+
+
+def test_frozen_bundle_canonically_deduplicates_projected_sources() -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    bundle = freeze_source_bundle(
+        deck_identity=_deck_identity(),
+        closure=closure,
+        source_records=[record, deepcopy(record)],
+        policy_profile=policy,
+    )
+
+    assert len(bundle["sources"]) == 1
 
 
 def test_frozen_bundle_fails_closed_on_incomplete_claim_binding() -> None:
@@ -348,7 +588,7 @@ def test_frozen_bundle_can_keep_bound_source_evidence_without_adopting_a_claim()
     assert bundle["claims"] == []
     assert bundle["sources"] == [
         {
-            "evidence_id": "evidence:cute-warrior-guide",
+            "evidence_id": record["evidence_id"],
             "source_id": "source:cute-warrior-guide",
             "policy_id": None,
             "as_of_date": "2026-07-29",
@@ -407,6 +647,86 @@ def test_frozen_bundle_rejects_policy_rebinding_after_closure() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "absolute_path",
+    [
+        "/etc/hsconfig/source.txt",
+        "/root/hsconfig/source.txt",
+        "/opt/hsconfig/source.txt",
+        "/srv/hsconfig/source.txt",
+        "/workspace/hsconfig/source.txt",
+        "/custom/absolute/source.txt",
+        r"C:\hsconfig\source.txt",
+        "D:/hsconfig/source.txt",
+        r"\\server\share\source.txt",
+        r"\\?\C:\hsconfig\source.txt",
+        r"\\.\C:\hsconfig\source.txt",
+    ],
+)
+def test_frozen_bundle_rejects_absolute_paths_in_every_projected_string(
+    absolute_path: str,
+) -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    record["claim_text"] = f"Source notes: {absolute_path}"
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    with pytest.raises(ValueError, match="source_bundle_not_portable"):
+        freeze_source_bundle(
+            deck_identity=_deck_identity(),
+            closure=closure,
+            source_records=[record],
+            policy_profile=policy,
+        )
+
+
+def test_frozen_bundle_allows_urls_and_ordinary_slash_text() -> None:
+    policy = _policy_profile()
+    record = _positive_record()
+    record["claim_text"] = (
+        "See https://example.test/guides/cute-warrior and use attack/weapon "
+        "sequencing; keep / discard language is ordinary prose."
+    )
+    report = _negative_report(policy)
+    report["attempts"] = [
+        {
+            "source_identity": record["source_identity"],
+            "outcome": "acquired",
+            "evidence_id": record["evidence_id"],
+        }
+    ]
+    closure = build_acquisition_closure(
+        deck_identity=_deck_identity(),
+        research_manifest=_manifest(policy),
+        acquisition_report=report,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    bundle = freeze_source_bundle(
+        deck_identity=_deck_identity(),
+        closure=closure,
+        source_records=[record],
+        policy_profile=policy,
+    )
+
+    assert bundle["claims"][0]["text"] == record["claim_text"]
+
+
 def test_cute_warrior_manifest_has_human_search_alias() -> None:
     manifest = build_source_research_manifest(
         deck_name="CuteWarrior",
@@ -459,6 +779,7 @@ def test_manifest_and_acquisition_report_share_exact_attempt_policy_binding() ->
         == report["policy_sha256"]
         == policy.content_sha256
     )
+    assert manifest["policy"] == report["policy"] == _policy_provenance(policy)
     assert report["attempts"] == [
         {
             "source_identity": "https://example.test/cute-warrior-guide",
