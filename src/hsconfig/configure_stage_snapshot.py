@@ -304,8 +304,26 @@ def _stage_file_signature(
         *_stage_identity(node_stat),
         int(node_stat.st_size),
         int(node_stat.st_mtime_ns),
-        int(node_stat.st_ctime_ns),
+        _stage_file_time_token(node_stat),
     )
+
+
+def _stage_file_time_token(
+    node_stat: os.stat_result,
+    *,
+    platform_name: str | None = None,
+) -> int:
+    effective_platform_name = (
+        os.name if platform_name is None else platform_name
+    )
+    if effective_platform_name == "nt":
+        try:
+            birthtime_ns = node_stat.st_birthtime_ns
+        except AttributeError:
+            pass
+        else:
+            return int(birthtime_ns)
+    return int(node_stat.st_ctime_ns)
 
 
 def _stage_identity(node_stat: os.stat_result) -> tuple[int, int]:

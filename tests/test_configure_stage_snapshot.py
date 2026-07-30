@@ -187,6 +187,65 @@ def test_stage_artifacts_reject_torn_or_concurrently_mutated_file(
         collect_configure_stage_artifacts(output_root)
 
 
+@pytest.mark.parametrize(
+    (
+        "platform_name",
+        "path_ctime_ns",
+        "handle_ctime_ns",
+        "path_birthtime_ns",
+        "handle_birthtime_ns",
+        "expected_match",
+    ),
+    [
+        pytest.param(
+            "nt", 10, 20, 30, 30, True, id="windows_matching_birthtime"
+        ),
+        pytest.param(
+            "nt",
+            10,
+            20,
+            None,
+            None,
+            False,
+            id="windows_missing_birthtime_uses_ctime",
+        ),
+        pytest.param(
+            "posix", 10, 20, 30, 30, False, id="posix_uses_ctime"
+        ),
+        pytest.param(
+            "nt", 10, 10, 30, 40, False, id="windows_birthtime_mismatch"
+        ),
+    ],
+)
+def test_stage_file_time_token_uses_platform_specific_timestamp(
+    platform_name: str,
+    path_ctime_ns: int,
+    handle_ctime_ns: int,
+    path_birthtime_ns: int | None,
+    handle_birthtime_ns: int | None,
+    expected_match: bool,
+) -> None:
+    path_stat = _TimestampOverlay(
+        ctime_ns=path_ctime_ns,
+        birthtime_ns=path_birthtime_ns,
+    )
+    handle_stat = _TimestampOverlay(
+        ctime_ns=handle_ctime_ns,
+        birthtime_ns=handle_birthtime_ns,
+    )
+
+    path_token = snapshot._stage_file_time_token(
+        path_stat,
+        platform_name=platform_name,
+    )
+    handle_token = snapshot._stage_file_time_token(
+        handle_stat,
+        platform_name=platform_name,
+    )
+
+    assert (path_token == handle_token) is expected_match
+
+
 def _stage_snapshot_fixture(tmp_path: Path) -> tuple[Path, Path]:
     output_root = tmp_path / "configure"
     manifest_root = output_root / "01_manifest"
@@ -209,3 +268,18 @@ class _StatOverlay:
 
     def __getattr__(self, name: str):
         return getattr(self._base, name)
+
+
+class _TimestampOverlay:
+    def __init__(
+        self,
+        *,
+        ctime_ns: int,
+        birthtime_ns: int | None,
+    ) -> None:
+        self.st_ctime_ns = ctime_ns
+        if birthtime_ns is not None:
+            self.st_birthtime_ns = birthtime_ns
+
+    def __getattr__(self, name: str):
+        raise AttributeError(name)
