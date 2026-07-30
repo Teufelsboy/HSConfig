@@ -11,6 +11,7 @@ import hsconfig.commands.configure as configure_command
 from hsconfig.cli_parser import build_parser
 from hsconfig.configure_models import ConfigureRequest, ConfigureResult
 from hsconfig.configure_run_model import ConfigureRunModel
+from hsconfig.configure_run_stage_contract import configure_summary_bytes
 from hsconfig.configure_stages import ConfigureFaultPoint
 from hsconfig.configure_workflow import execute_configure
 from hsconfig.package_assembler import PackageModel
@@ -199,6 +200,21 @@ def test_execute_configure_returns_stable_in_memory_result(
         for artifact in result.configure_run_model.stage_artifacts
     }
     assert stage_artifacts["configure_summary.json"] == (
+        configure_summary_bytes(
+            deck_name=result.configure_run_model.deck_name,
+            deck_fingerprint=(
+                result.configure_run_model.deck_fingerprint
+            ),
+            paths=tuple(
+                sorted(
+                    path
+                    for path in stage_artifacts
+                    if path != "configure_summary.json"
+                )
+            ),
+        )
+    )
+    assert stage_artifacts["configure_summary.json"] != (
         request.output_root / "configure_summary.json"
     ).read_bytes()
     assert stage_artifacts["02_source_documents/stage_status.json"] == (

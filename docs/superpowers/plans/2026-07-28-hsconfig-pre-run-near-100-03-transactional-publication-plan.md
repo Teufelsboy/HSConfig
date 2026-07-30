@@ -151,31 +151,31 @@ def write_tree_manifest(manifest: TreeManifest) -> bytes: ...
 def verify_tree_manifest(revision: PackageView) -> TreeManifest: ...
 ```
 
-- [ ] **Step 1: Write failing manifest tests**
+- [x] **Step 1: Write failing manifest tests**
 
 Cover stable order, path/size/content binding, extra-file rejection, missing-file rejection, single-byte tamper rejection, manifest self-exclusion from its entry list, and deterministic `content_root_sha256`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 python -m pytest tests/test_run_manifest.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 3: Implement schema version 1**
+- [x] **Step 3: Implement schema version 1**
 
 Store the canonical manifest at revision root `package_manifest.json`. Its entries cover every other publishable configure-run artifact, including all stages and `04_package`. Compute the content root from `path + NUL + decimal_size + NUL + sha256 + LF`, exactly matching `ConfigureRunModel`; the manifest is excluded from its own entries.
 
-- [ ] **Step 4: Integrate manifest assembly and strict validation**
+- [x] **Step 4: Integrate manifest assembly and strict validation**
 
 The configure-run renderer adds exactly one root manifest. Strict run validation verifies it before package semantic checks and emits `run_manifest_invalid` on any mismatch; package validation then evaluates the verified `04_package` view.
 
-- [ ] **Step 5: Run GREEN and tamper regressions**
+- [x] **Step 5: Run GREEN and tamper regressions**
 
 ```powershell
 python -m pytest tests/test_run_manifest.py tests/test_configure_run_model.py tests/test_strict_package_validation.py tests/test_validate_package.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/hsconfig/run_manifest.py src/hsconfig/strict_run_validation.py src/hsconfig/configure_run_model.py src/hsconfig/strict_package_validation.py tests/test_run_manifest.py tests/test_configure_run_model.py tests/test_strict_package_validation.py

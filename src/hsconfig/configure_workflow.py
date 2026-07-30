@@ -121,11 +121,16 @@ def execute_configure(
             if len(observed_models) != 1:
                 raise ValueError("configure_package_model_observation_invalid")
             package_model = observed_models[0]
+            collected_stage_artifacts = (
+                collect_configure_stage_artifacts(request.output_root)
+            )
             configure_run_model = create_configure_run_model(
                 package=package_model,
-                stage_artifacts=collect_configure_stage_artifacts(
-                    request.output_root
-                ),
+                stage_artifacts={
+                    path: content
+                    for path, content in collected_stage_artifacts.items()
+                    if path != "configure_summary.json"
+                },
             )
     except Exception as exc:
         summary = build_stage_failure_summary("configure", exc)

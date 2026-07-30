@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -10,10 +11,26 @@ import pytest
 import hsconfig.strict_package_validation as strict_package_validation
 from hsconfig.cli import main
 from hsconfig.compile_globalvalues import compile_globalvalues
+from hsconfig.configure_run_model import (
+    RenderedConfigureRun,
+    create_configure_run_model,
+    render_configure_run_model,
+)
 from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import read_json, write_json
+from hsconfig.package_assembler import assemble_package
+from hsconfig.package_compiler import compile_package
+from hsconfig.package_render_authority import AuthorityArtifact
+from hsconfig.run_manifest import (
+    build_tree_manifest_from_artifacts,
+    write_tree_manifest,
+)
 from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
-from hsconfig.strict_package_validation import validate_complete_package
+from hsconfig.strict_package_validation import (
+    validate_complete_configure_run_from_view,
+    validate_complete_package,
+)
+from tests.helpers.audited_package_request import audited_request
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
 
@@ -33,6 +50,366 @@ def test_strict_validation_passed_requires_clean_passed_report(
     from hsconfig.strict_package_validation import strict_validation_passed
 
     assert strict_validation_passed(report) is expected
+
+
+class _OneReadPackageView:
+    def __init__(self, files: dict[str, bytes]) -> None:
+        self.files = dict(files)
+        self.read_counts: dict[str, int] = {}
+        self.enumerations = 0
+
+    def file_names(self) -> tuple[str, ...]:
+        self.enumerations += 1
+        if self.enumerations > 1:
+            raise AssertionError("live view enumerated more than once")
+        return tuple(reversed(sorted(self.files)))
+
+    def read_bytes(self, relative_path: str) -> bytes:
+        count = self.read_counts.get(relative_path, 0) + 1
+        self.read_counts[relative_path] = count
+        if count > 1:
+            raise AssertionError(f"live file read more than once: {relative_path}")
+        try:
+            return self.files[relative_path]
+        except KeyError as error:
+            raise FileNotFoundError(relative_path) from error
+
+    def read_json(self, relative_path: str) -> Any:
+        raise AssertionError(f"live JSON read bypassed snapshot: {relative_path}")
+
+    def exists(self, relative_path: str) -> bool:
+        raise AssertionError(f"live existence check bypassed snapshot: {relative_path}")
+
+
+@pytest.fixture(scope="module")
+def strict_run(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> RenderedConfigureRun:
+    root = tmp_path_factory.mktemp("strict-run")
+    package = assemble_package(
+        compile_package(audited_request(root, "ShadowPriest"))
+    )
+    return render_configure_run_model(
+        create_configure_run_model(
+            package=package,
+            stage_artifacts={
+                "01_manifest/input.json": b"{}\n",
+                "02_source_documents/source.json": b"{}\n",
+                "03_research/research.json": b"{}\n",
+            },
+        )
+    )
+
+
+def _run_files(rendered: RenderedConfigureRun) -> dict[str, bytes]:
+    return {
+        artifact.relative_path: artifact.content
+        for artifact in rendered.artifacts
+    }
+
+
+def _remanifest_run_files(
+    rendered: RenderedConfigureRun,
+    files: dict[str, bytes],
+) -> dict[str, bytes]:
+    changed = dict(files)
+    artifacts = tuple(
+        AuthorityArtifact.from_content(
+            relative_path=path,
+            content=content,
+        )
+        for path, content in sorted(changed.items())
+        if path != "package_manifest.json"
+    )
+    changed["package_manifest.json"] = write_tree_manifest(
+        build_tree_manifest_from_artifacts(
+            deck_name=rendered.model.deck_name,
+            deck_fingerprint=rendered.model.deck_fingerprint,
+            artifacts=artifacts,
+        )
+    )
+    return changed
+
+
+def test_strict_run_validation_snapshots_once_then_validates_package(
+    strict_run: RenderedConfigureRun,
+) -> None:
+    source = _OneReadPackageView(_run_files(strict_run))
+
+    report = validate_complete_configure_run_from_view(source)
+
+    assert report["status"] == "passed"
+    assert report["errors"] == []
+    assert source.enumerations == 1
+    assert set(source.read_counts) == set(source.files)
+    assert set(source.read_counts.values()) == {1}
+
+
+def test_strict_run_validation_rejects_manifest_before_package_semantics(
+    strict_run: RenderedConfigureRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = _run_files(strict_run)
+    files["01_manifest/input.json"] = b'{"tampered":true}\n'
+    source = _OneReadPackageView(files)
+    monkeypatch.setattr(
+        strict_package_validation,
+        "validate_complete_package_from_view",
+        lambda _package: pytest.fail(
+            "package semantics ran before manifest verification"
+        ),
+    )
+
+    report = validate_complete_configure_run_from_view(source)
+
+    assert report == {
+        "status": "failed",
+        "errors": ["run_manifest_invalid"],
+        "checked_files": 0,
+    }
+
+
+def test_strict_run_validation_rejects_remanifested_forged_summary(
+    strict_run: RenderedConfigureRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = _run_files(strict_run)
+    summary = json.loads(files["configure_summary.json"])
+    summary["deck_fingerprint"] = "0" * 64
+    files["configure_summary.json"] = (
+        json.dumps(
+            summary,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    files = _remanifest_run_files(strict_run, files)
+    monkeypatch.setattr(
+        strict_package_validation,
+        "validate_complete_package_from_view",
+        lambda _package: pytest.fail(
+            "package semantics ran after forged configure summary"
+        ),
+    )
+
+    report = validate_complete_configure_run_from_view(
+        _OneReadPackageView(files)
+    )
+
+    assert report == {
+        "status": "failed",
+        "errors": ["run_manifest_invalid"],
+        "checked_files": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing_required_stages", "forged_unavailable_stages"),
+)
+def test_strict_run_rejects_self_consistent_invalid_stage_tree(
+    strict_run: RenderedConfigureRun,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    files = _run_files(strict_run)
+    if mutation == "missing_required_stages":
+        files = {
+            path: content
+            for path, content in files.items()
+            if not path.startswith(("01_", "02_", "03_"))
+        }
+    else:
+        summary = json.loads(files["configure_summary.json"])
+        summary["unavailable_stages"] = {}
+        files["configure_summary.json"] = (
+            json.dumps(
+                summary,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ).encode("utf-8")
+            + b"\n"
+        )
+    files = _remanifest_run_files(strict_run, files)
+    monkeypatch.setattr(
+        strict_package_validation,
+        "validate_complete_package_from_view",
+        lambda _package: pytest.fail(
+            "package semantics ran after invalid stage tree"
+        ),
+    )
+
+    report = validate_complete_configure_run_from_view(
+        _OneReadPackageView(files)
+    )
+
+    assert report == {
+        "status": "failed",
+        "errors": ["run_manifest_invalid"],
+        "checked_files": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    "alias_path",
+    ("04_PACKAGE/evil.json", "04_Package/evil.json"),
+)
+def test_strict_run_rejects_remanifested_package_root_alias(
+    strict_run: RenderedConfigureRun,
+    monkeypatch: pytest.MonkeyPatch,
+    alias_path: str,
+) -> None:
+    files = _run_files(strict_run)
+    content = b"hostile\n"
+    files[alias_path] = content
+    payload = json.loads(files["package_manifest.json"])
+    payload["entries"].append(
+        {
+            "relative_path": alias_path,
+            "size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    )
+    payload["entries"].sort(key=lambda row: row["relative_path"])
+    records = b"".join(
+        (
+            f"{row['relative_path']}\0{row['size']}\0"
+            f"{row['sha256']}\n"
+        ).encode("utf-8")
+        for row in payload["entries"]
+    )
+    payload["content_root_sha256"] = hashlib.sha256(
+        records
+    ).hexdigest()
+    files["package_manifest.json"] = (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    monkeypatch.setattr(
+        strict_package_validation,
+        "validate_complete_package_from_view",
+        lambda _package: pytest.fail(
+            "package semantics ran after package-root alias"
+        ),
+    )
+
+    report = validate_complete_configure_run_from_view(
+        _OneReadPackageView(files)
+    )
+
+    assert report == {
+        "status": "failed",
+        "errors": ["run_manifest_invalid"],
+        "checked_files": 0,
+    }
+
+
+@pytest.mark.parametrize("mutation", ("missing", "malformed"))
+def test_strict_run_maps_verified_package_structure_errors_to_failed_report(
+    strict_run: RenderedConfigureRun,
+    mutation: str,
+) -> None:
+    files = _run_files(strict_run)
+    baseline_path = (
+        "04_package/reports/globalvalues_baseline.json"
+    )
+    if mutation == "missing":
+        del files[baseline_path]
+    else:
+        files[baseline_path] = b"{"
+    files = _remanifest_run_files(strict_run, files)
+
+    report = validate_complete_configure_run_from_view(
+        _OneReadPackageView(files)
+    )
+
+    assert report == {
+        "status": "failed",
+        "errors": ["package_validation_invalid"],
+        "checked_files": 0,
+    }
+
+
+def test_strict_run_validation_propagates_base_exception(
+    strict_run: RenderedConfigureRun,
+) -> None:
+    class InjectedBaseFault(BaseException):
+        pass
+
+    class InterruptedView(_OneReadPackageView):
+        def read_bytes(self, relative_path: str) -> bytes:
+            if relative_path == "package_manifest.json":
+                raise InjectedBaseFault("interrupt")
+            return super().read_bytes(relative_path)
+
+    with pytest.raises(InjectedBaseFault, match="interrupt"):
+        validate_complete_configure_run_from_view(
+            InterruptedView(_run_files(strict_run))
+        )
+
+
+def test_strict_run_validation_propagates_package_semantic_base_exception(
+    strict_run: RenderedConfigureRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InjectedBaseFault(BaseException):
+        pass
+
+    monkeypatch.setattr(
+        strict_package_validation,
+        "validate_complete_package_from_view",
+        lambda _package: (_ for _ in ()).throw(
+            InjectedBaseFault("semantic interrupt")
+        ),
+    )
+
+    with pytest.raises(InjectedBaseFault, match="semantic interrupt"):
+        validate_complete_configure_run_from_view(
+            _OneReadPackageView(_run_files(strict_run))
+        )
+
+
+def test_strict_run_validation_uses_verified_package_snapshot_for_semantics(
+    strict_run: RenderedConfigureRun,
+) -> None:
+    files = _run_files(strict_run)
+    globalvalues_path = next(
+        path
+        for path in files
+        if path.startswith("04_package/CustomConfig/")
+        and path.endswith("/GlobalValues.json")
+    )
+    files[globalvalues_path] = b"{}\n"
+    artifacts = tuple(
+        AuthorityArtifact.from_content(
+            relative_path=path,
+            content=content,
+        )
+        for path, content in sorted(files.items())
+        if path != "package_manifest.json"
+    )
+    files["package_manifest.json"] = write_tree_manifest(
+        build_tree_manifest_from_artifacts(
+            deck_name=strict_run.model.deck_name,
+            deck_fingerprint=strict_run.model.deck_fingerprint,
+            artifacts=artifacts,
+        )
+    )
+
+    report = validate_complete_configure_run_from_view(
+        _OneReadPackageView(files)
+    )
+
+    assert report["status"] == "failed"
+    assert "run_manifest_invalid" not in report["errors"]
 
 
 def test_strict_validation_rejects_unexpected_physical_sideboard_emission(

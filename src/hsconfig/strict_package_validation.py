@@ -26,6 +26,7 @@ from hsconfig.runtime_surface_ledger import (
     rederive_runtime_surface_ledger_from_package,
     rederive_runtime_surface_ledger_from_view,
 )
+from hsconfig.strict_run_validation import verify_configure_run_package
 from hsconfig.validate_package import (
     _reject_nonstandard_json_constant,
     _validate_blocks,
@@ -45,6 +46,29 @@ LINKED_RUNTIME_OWNER_EVIDENCE_INVALID = (
 
 def strict_validation_passed(report: dict[str, Any]) -> bool:
     return report.get("status") == "passed" and not report.get("errors")
+
+
+def validate_complete_configure_run_from_view(
+    revision: PackageView,
+) -> dict[str, Any]:
+    """Verify a full run before validating its snapshotted package subtree."""
+
+    try:
+        _manifest, package = verify_configure_run_package(revision)
+    except ValueError:
+        return {
+            "status": "failed",
+            "errors": ["run_manifest_invalid"],
+            "checked_files": 0,
+        }
+    try:
+        return validate_complete_package_from_view(package)
+    except Exception:
+        return {
+            "status": "failed",
+            "errors": ["package_validation_invalid"],
+            "checked_files": 0,
+        }
 
 
 def validate_complete_package(
