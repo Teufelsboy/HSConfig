@@ -65,7 +65,7 @@ class ExclusiveFileLock:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None: ...
 ```
 
-- [ ] **Step 1: Write failing atomic-replace tests**
+- [x] **Step 1: Write failing atomic-replace tests**
 
 Parameterize injected failure at:
 
@@ -80,11 +80,11 @@ after_parent_flush
 
 Before the commit point, the old bytes must remain. After the commit point, either old or complete new bytes are acceptable, never truncation or mixed JSON.
 
-- [ ] **Step 2: Write cross-process lock tests**
+- [x] **Step 2: Write cross-process lock tests**
 
 Start one child process holding a lock and assert a second process times out with `LockTimeoutError`. After the holder exits, assert the next acquisition succeeds. Do not rely only on threads.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_atomic_io.py tests/test_atomic_io_process_lock.py -q -p no:cacheprovider
@@ -92,21 +92,21 @@ python -m pytest tests/test_atomic_io.py tests/test_atomic_io_process_lock.py -q
 
 Expected: missing `hsconfig.atomic_io`.
 
-- [ ] **Step 4: Implement durable same-directory replacement**
+- [x] **Step 4: Implement durable same-directory replacement**
 
 Write a uniquely named sibling temp file with exclusive creation, flush content, call `os.fsync`, `os.replace`, then best-effort flush the parent directory. On Windows, explicitly document and test the directory-flush limitation; file replacement correctness remains mandatory.
 
-- [ ] **Step 5: Implement platform lock adapters**
+- [x] **Step 5: Implement platform lock adapters**
 
 Use `msvcrt.locking` on Windows and `fcntl.flock` on POSIX behind the same class. The lock file may persist as an empty coordination inode; it is not a backup or package artifact.
 
-- [ ] **Step 6: Run GREEN**
+- [x] **Step 6: Run GREEN**
 
 ```powershell
 python -m pytest tests/test_atomic_io.py tests/test_atomic_io_process_lock.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/hsconfig/atomic_io.py tests/test_atomic_io.py tests/test_atomic_io_process_lock.py
