@@ -1,0 +1,4767 @@
+{
+  "schema_version": 1,
+  "decks": {
+    "ShadowPriest": {
+      "deck_fingerprint": "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/shadowpriest/CFM_637.json",
+          "size": 97,
+          "sha256": "9d011a762e3a32072e1e258851045e7e0f47b4c7505403ff7035d4d170dc2e49"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/DRG_056.json",
+          "size": 97,
+          "sha256": "e609d4689978a22cbd940dd87e89cb472cd5bb21d37e3ec30927c35638d19873"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/DS1_233.json",
+          "size": 293,
+          "sha256": "3d2661475d06c15c080f41917fdb8ddd31802d016a5384990ceff9ca94bd4d40"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/EX1_625t.json",
+          "size": 288,
+          "sha256": "f4604fb4b65ad12352d69f30cb84a5acc93c774d0b6a4402c73387a4a4b90146"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/GVG_009.json",
+          "size": 97,
+          "sha256": "f01903a83aebb8bb54b09b96d230d92c8ed7fcb5d7bddb9af752ba12928e6c32"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/Mulligan.json",
+          "size": 129,
+          "sha256": "672ba2edfca51ea317343ebd06087ecfe7b3f98e866d2d3904d211f075f0250b"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/NX2_019.json",
+          "size": 97,
+          "sha256": "5845e7115d6cbd1398702b3001ab0dfc495b2fb83a17e71af98ec0a967555b90"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/REV_290.json",
+          "size": 272,
+          "sha256": "353acc97665e154d1f4f14b519ace9d5077d6fe47c1e6b8a1d97113483c0107b"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/SCH_514.json",
+          "size": 97,
+          "sha256": "dd33be8993de8be63a9666b9681b3c2c1815f64fef7848acbb5973bbe66bd5a3"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/SW_444.json",
+          "size": 95,
+          "sha256": "f3d53c4ca0cdd52fda68b78092e3b7ceb34966950e7786c31b1d1189b147f6dd"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/SW_446.json",
+          "size": 266,
+          "sha256": "6b939c7ca6082c06b327538b1caa5f08142e79a838ffccc156566a955b42b4de"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/SW_448.json",
+          "size": 95,
+          "sha256": "119822c5b31661ff0d73c69cf7e202d43f8bb5dbfdae8cd2e42b826f60a8973f"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/TOY_381.json",
+          "size": 270,
+          "sha256": "9876ee4bae4ca529134548f5a6806f5825802c8f684435b2b7ff5dafc905d5b3"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/TOY_518.json",
+          "size": 263,
+          "sha256": "2f835eb1151706a0220d01ebc7172c981590d9c61d19239b99f0fc147c4f1d54"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/VAC_419.json",
+          "size": 97,
+          "sha256": "8d02e2df447d68ebf6188ae0ed3d4a983f60208f377372e553c8d097605ad295"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/VAC_512.json",
+          "size": 97,
+          "sha256": "69224a790fcfe21ec30dd3933fc188b7f428d8f970622ef9ed5f4e74fbff0e30"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/WON_065.json",
+          "size": 263,
+          "sha256": "cfc495feb6c0db2527f37686f5ed8e4d704f314d7ef778bef15732eac590ef9e"
+        },
+        {
+          "relative_path": "CustomConfig/shadowpriest/YOD_032.json",
+          "size": 97,
+          "sha256": "5768cc9078b3137efb841156935a5d49131ff5dc79e3b49128367416b7f33eb8"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3566,
+          "sha256": "4608cd6d3fab96c9329273b2c62b6862fc2289014340c43f9acd56b22eb27b93"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 411,
+          "sha256": "7a2d43b1f73b614b16db361b6ba819ba384ee317870bdbd2de7cb035a96efaed"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 29207,
+          "sha256": "f483503da2fbfaef0aa92863c37c9635eefd7808d03e3e14a06afd44fbd574d6"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 10572,
+          "sha256": "2becff4131d0a95a875e7b9d90599e2909e357ea57b49f4ac69ae4506a427efa"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1791,
+          "sha256": "13ad47aa8128eef73542502a5a8fca5e6aec7a69b27decd0c252a629a944a2ae"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1534,
+          "sha256": "cf2d99c70beb0219db576f0f1389f4390261e9e6064bd2090195eab40d970930"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4434,
+          "sha256": "525d50032d3ae63491c82d80f3f11a36c6bcb34508147126dab552fdf2826796"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1231,
+          "sha256": "dea4712d15fc251170ac3157defa3e1f193e8bdc226f7088896dbb2a650e88e8"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4094,
+          "sha256": "6547e40bb956d569450408d4f5cdaf475f5a081649673f34007b8b7fc51f2836"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "d237af00ef88e9c6b87a474d1c611d9087e6ae1f8bdbb40acf8afbe99d5977e8"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 32835,
+          "sha256": "4ac505ea7219f3e7e9d7ca165b7d5e55ec1637243cf71519d3efd9af91655c28"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 336602,
+          "sha256": "6b7b9677c94f7504a44bd1f52120b8a9536098a8d6bcefa0daa54ca01de96349"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 1717,
+          "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1144,
+          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "c7a075fc6c0f36d055c3c0145ee03576dabe1b1157882c719a31b13c09edd309"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 295,
+          "sha256": "4d09dd4fd7c043aa4d983f83a953eafac07bf34fa8336976a61af5aec568ea55"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 87294,
+          "sha256": "9bd8bc3af3f2e597edbed062634f2d75e8ea823f6b0f49dbc0c311549357e0b9"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 2727,
+          "sha256": "720643b60737e7edc39a6e1cfbfcf2420ceb7e7446ff6da71753a16a29b44357"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 19642,
+          "sha256": "75c5598b784804735bdbd5e27e9818bed583a71de9554659b72f0b3646e229b6"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 140,
+          "sha256": "eb326f177ed9adfc4f23385631f8a32197d98aba411c41e7d793b81b190b6a83"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 849,
+          "sha256": "e807fc77d24603eb016211985ee848c3b3a95363ab81e744a76376c83245655d"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 1665,
+          "sha256": "7e11e7652087edd31aaac4b47aa2b7a6a01322ffdba2b32b1c708383b46b5568"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 568,
+          "sha256": "0f2744284497105e554e362cefcce486d1e0ea45f6c0e6c45b404c7f1c3b5943"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 3376,
+          "sha256": "33c085c444fbd7e356423faabc43868d31f4f22e68ec1032b90a3228da292b41"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 15677,
+          "sha256": "de103a6b460eff2325f55dd3202e336afb10b622231dbb5c095aa6b097429953"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 38558,
+          "sha256": "458c72c043f36912d5641ee99c161291264f711e195d26f4d27de2e8f7d9ed7d"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22586,
+          "sha256": "8d6f1b74aff2d8064c9baf863fa05b827be07c22339114d129967bd31215565f"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 40537,
+          "sha256": "1c97ac581f1f32c5e5bd93cad940e334c21c8d6ae7f4aa6e3b4e3f8e05e9ac2c"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 33347,
+          "sha256": "4ee252ebbc906a8a40c81f2b52d880b37fd6dce0ba804f962156c8b35b1b41d5"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1224,
+          "sha256": "d184ce2217d870e623ca65abcc3ff74d97fd18402b10336e3a3bed28c8934aa4"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7514,
+          "sha256": "5ecfa3b6d8c5ecbc1447fffb8157ede1da3f716eb0d9f2fc758577352e4ed363"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3904,
+          "sha256": "007aad53dd35406ecc3e85949d53f7a773290014e6c7c202ee7123505279d374"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 66271,
+          "sha256": "89ec7324b5e3570acc16605dfe46e6655afe4649a880daac1b182ddc4d735b40"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "21b5d8983dc3c60772cb7e5569771874c91355963d8e01604223ab18d85c4cc9"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 455,
+          "sha256": "0150f8713112a29e3c6bb96e69ebb566328b1495d185a9133c65362196f710aa"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 87294,
+          "sha256": "9bd8bc3af3f2e597edbed062634f2d75e8ea823f6b0f49dbc0c311549357e0b9"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 455,
+          "sha256": "4bfb6e0c69ec0bc0070282942c7dc393c6a2bfc2f3f3116b666aca03626793eb"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3887,
+          "sha256": "c94e8ef21f8f69fe1bd88f7a2dc5a20f68eb48d041bfda1cc17fb1358ce2f65c"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 7042,
+          "sha256": "5a37fe6145ee8606f656872b4ef5d988c95095afd2af8e33f36c93730c184fd6"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 26800,
+          "sha256": "9bbf38c5e30580238d4318ceb29547dcf5f868830c7d4b2d745e643c1d1733d2"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "301bd86276e0a63e6b1a12716d81fa6f64af3ce7c2e5c95a57ea4b523cd86833"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 36537,
+          "sha256": "234455c0ce323cfbe309e973c79a341a23b2bb864ea91da7bd527a3993f24418"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 103142,
+          "sha256": "41d2f007c19195119dda7f02a8098450a79cf5b70b8f85fa112b91fdde125a2a"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6463,
+          "sha256": "67d88f51f6c133a2af669285a0f9157f555e89c911106c11ca761f1fec0bcc6f"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3016,
+          "sha256": "6ae8761e819d16bb1dd8b43a3b057d4d1105de965611a546112c69d20d1cd529"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 10240,
+          "sha256": "14189cf35744a3ddc22d32fa3e1f95a16b1908f57bd16c939499433b4395b791"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 7801,
+          "sha256": "1ef575fe2bd3d5e49256043608d781167c0ac21d6a1f70523344426a2a43f475"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 88359,
+          "sha256": "c78c951d09ac75d1125d1980d8cb22a15f8d66e1eda4941e28244d06e8fb1d22"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3000,
+          "sha256": "a881abf06b26f775d175070aecd84378faf677801f2b5e5b3b095acccd56c116"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 17840,
+          "sha256": "88d5f87d0cb1cffb946eff8b145d74ef2d854afc01e034dcaecb150fa4b8c246"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
+        }
+      ],
+      "content_root_sha256": "19675847a1e04ce66420d14a52e0eb858f68d0fb1e5f167c1339967ca6d61930"
+    },
+    "CtAPaladin": {
+      "deck_fingerprint": "5886da60364f5ac7431bb4ca39d8ecce333c58cc838b3c01b3adf8fbee71aa99",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/ctapaladin/AV_137.json",
+          "size": 93,
+          "sha256": "fab2446e93abc85b734271d9e868d094dc326543f6ec5f64d6c87d5211b16080"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/BAR_875.json",
+          "size": 95,
+          "sha256": "d874ba0850ff8f94d026cdf9ef44182daddc10dc69ebb059d229585499c14dbe"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/CATA_479.json",
+          "size": 97,
+          "sha256": "137b757d2c810dc1ccc9c3e90219aa0db99352942a52e694a7eb633e960a327d"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/CORE_ICC_038.json",
+          "size": 105,
+          "sha256": "f7116dcb860b0ffcafc77469a43bf79e12180030d194707ab5fe2e04b1e2cc1b"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/DMF_236.json",
+          "size": 95,
+          "sha256": "924313418cd1d8e1560d6d5cb06d90123dd76d486795bb3cf5dd5d6af754fc2b"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/ETC_318.json",
+          "size": 95,
+          "sha256": "816bc6f9f5230d37185c9a760c40d75fed5e570f86050782680a27ff4271622f"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/EX1_136.json",
+          "size": 95,
+          "sha256": "d13e8dec715e103d521956253b8075e9cd89059ef13556788fd777813142a50f"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/FP1_017.json",
+          "size": 95,
+          "sha256": "535caa0aba22247c9c22a8fdcb8b66f3a9dba1845bdf1c1130ab2054bae54539"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/GIL_903.json",
+          "size": 95,
+          "sha256": "2b2a98ef4e218addf499ae72b1c9e3912b5a7f677d1c1daf7a0ccad209c634b2"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/LEG_TTN_908.json",
+          "size": 103,
+          "sha256": "0874c744e547646c3c9adda03be6189a3ab94b8d51adf11d1c6e59f04151621c"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/LOOT_093.json",
+          "size": 97,
+          "sha256": "04ba0d0a5e4e662a8368c8fd638d0918b825aa1c1de05af894ee9bef26a8c415"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/Mulligan.json",
+          "size": 127,
+          "sha256": "212320d037a4989ca2ea5a309c06df2e30dbe5078d3e164f662c59e55c2c8f2c"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/RLK_924.json",
+          "size": 95,
+          "sha256": "97aff0810c1e7ab76a90c04792c22e9bcc464c628ec8172b1d25bd58d7012216"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/TOY_882.json",
+          "size": 95,
+          "sha256": "cc6597bbc4d722be41cba19555953414bc89fe3afdbd86d1f1dbbafee8de9191"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/WW_051.json",
+          "size": 93,
+          "sha256": "6127f45cb6883a95309f500c516c40d324a2898f52ba33937bf50065a16254d9"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/WW_331.json",
+          "size": 93,
+          "sha256": "b940670e7e6227cc946fff1b9070138d8c4acc2ca540a732a67a673de08b088c"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/WW_336.json",
+          "size": 93,
+          "sha256": "a8c6e3f54b12a3263fed4cdcae78b250806db970950d4106cbebddf0fa7e1419"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/WW_391.json",
+          "size": 93,
+          "sha256": "d2d06b318b54c8c42ad3579d8a4c11aa3f2c23c5338fc0a44bada21c07c3af18"
+        },
+        {
+          "relative_path": "CustomConfig/ctapaladin/YOP_031.json",
+          "size": 95,
+          "sha256": "3d451493535e12c4b4d49efe3acd6a408708f14c30db92f4f7b29decff4bf723"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3472,
+          "sha256": "a57aa2e086d8828acfc7a703d021078850e735e1cfad3279dafd25d3418316ec"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 385,
+          "sha256": "552983357f0dd638c8ecf989c99cc8a73bf64fdc2e714a692689f4d9e4da93ae"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 15083,
+          "sha256": "b887dcf53908a5e511265a1edfe38bde981ab919ff7adc8746b7f03e018d984e"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 13727,
+          "sha256": "3abbf15f6789172d81d1f38dc53d50c5b1e5168b40ef4fd4337f18c6c97ea73c"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1995,
+          "sha256": "556fc5c6b373ce2c167556343e1f4fa67bdf50fe6921213ed89336c9ac256edc"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1186,
+          "sha256": "619c922aebeca0c607eef0894d6cffada460c941c3cb27054377a2372699cf22"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4586,
+          "sha256": "ae9cd6e6baa2977936855eee8aa1da3c557d8c9b121b490720ded8a9171f7e40"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1354,
+          "sha256": "587a2c72087df162932b2a4956b36b070962ec307162b08a0eddcf14c1050e2b"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4506,
+          "sha256": "e604c3d4f7fe63b2694b4aac5d3f320de9db7a46981a4ca51367ce736734600a"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "92f49a96f41dcb0fa239bf2f923cfbfdfd5bf4bf0862c81373d8e25d87e9fad8"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 30380,
+          "sha256": "fa6b556c0c75c14e8ef43add7f3d893c3dccc654217a104e9dac0e62a8a1e195"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 269423,
+          "sha256": "b52b3936c09e4793b612a65e8c6e6c9b8ab4de44d55a3118c657842dc3385190"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 1717,
+          "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1144,
+          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "320b41a3951bfb8b484bb10b5576fd2cfcdf618268dc85ed2ea98c0a2a749480"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 292,
+          "sha256": "099e5d70ed4616b430e9bddc8098bfd9f721f3e69375dcb29f569f1004505843"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 63886,
+          "sha256": "dbe9f6c7003f28b06242a970d6ef933572dddf3a4103db8aab2cb9779999bf13"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3469,
+          "sha256": "6632368a100eb17825e79fe577f34547d303195adeb8a3d298b926260d6ee4a2"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 6558,
+          "sha256": "211ce108ca3b6cb90ef15a1765a1e4cf5a06a94c0cb175d9567a2fd751735fa5"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 138,
+          "sha256": "6a4ac1915c07981d96fa36f5931feb56d84fb4ccaaa622db12f327ac0936406d"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 892,
+          "sha256": "404e0ffce8961d80e1958b02156efa2c3ea80f490c3bf42fe9a2a48e9c62b10e"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 1671,
+          "sha256": "2db21dcd33ff586ac29d07b68d4705d179467189a847dd099ca63197a2d46178"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 568,
+          "sha256": "03a64c86aa3708038515252112b4f89bef7f7554e8221d007d3c7fb179fc8560"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 7498,
+          "sha256": "d546780ab6199323b38324cb838c4f814f8a8521aa925cee767cf9566288255e"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 15335,
+          "sha256": "3b3d745b3222478f4fd37f082a590a51e7e67ae96e8ae5e49cfa65d27ea08c21"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 40278,
+          "sha256": "e7c3b92d31587d9120cdd03d9e15be01ef6a21a071876b8fb4dae648bf8a47de"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22487,
+          "sha256": "413cd1d00c69de74ada5425a343b56de6115c4af0297a1c9722aee45d69c76ac"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 38584,
+          "sha256": "e78bc4e71076399f96ffc147f242db51bc36934197bb972b4ea984ad0dedfd7e"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 22890,
+          "sha256": "a19c5d0a886393e9da1e21f0b1f76bc62249736a0d24224ee3ff9a1244946e22"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1089,
+          "sha256": "10937c8c6eff0e9bee4e4cd9837b10366970d5a9d9c25ab074a0239127971f4f"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7125,
+          "sha256": "7b9e10fa24fdebcd1ef6bea77db273998a0a94ee8047ac5940b256a67e249328"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 4103,
+          "sha256": "5d6699fb00548901f93dc17177882eed307c0606377edf099411252dcaf4eebc"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 52326,
+          "sha256": "460b9cc592b4b2ebf05e440d235cd1fe40abc18ad2bacabef384b3e493e32420"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "e457fe7a71fcbf464f78ca1719b3e040470a3e9e94e5e9c68f54d536b9623e9f"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 63886,
+          "sha256": "dbe9f6c7003f28b06242a970d6ef933572dddf3a4103db8aab2cb9779999bf13"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 223,
+          "sha256": "e6450e538414a8d6fcd2c8d70846141caf9bed17f48057d8101508c0018bb547"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 4135,
+          "sha256": "bcd6a6476d8164f1df10e0bf6c73612b13f846fad86a38931790d36711bc233a"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4899,
+          "sha256": "c618dba29bc33f04dc1aa2de26fdcca2fef0d7edfa1cce8f65e7fec4629a0893"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 29181,
+          "sha256": "babe20efdf480f00bf351b1f1a8019801c0d07861eb295f41295beb41dbe22cb"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "420c634b194375a0f47b77e216e0807a91b7981d05180cffa5be5a123f25952b"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 42628,
+          "sha256": "b4fb62f7f4b673ecc395e0003ce224eb8fef7626f8a107dfee32c93c4862a25f"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 89699,
+          "sha256": "19699cea5bd6b1c6177938e0e9b87323a1c7e796b5aabbf09660eec3a60a53b5"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6807,
+          "sha256": "db0b5fbab2d89f64dd560f0345279335205c26e942e2c8057e3663e934754853"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 2936,
+          "sha256": "fb4e83a328be16223d06d126182ad367eb1eb939eff10b984ccde2fc18d812d2"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1849,
+          "sha256": "31552ab3a157ef3668d105b81c8e5a859e832e6398b42d6b3886e2e5ab672f58"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 5126,
+          "sha256": "d1227184282f446b3058bbab1d55ed63e7b4a4fa173c75eee991ce77b79a1e3b"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 85591,
+          "sha256": "1151738d8b44905c154b8a06516410c89404ec140dc933796a677ff6ac43e21a"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3814,
+          "sha256": "a17592b15dcd9dc01f186418a10eb1cd481b2e53d9d395501d6136100829fa47"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 18094,
+          "sha256": "ebb573e1dadca0c72b3f831353e7050eb173a69cb18c181f36c2fdb29a0d4c4a"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
+        }
+      ],
+      "content_root_sha256": "2ab0d81a2941dfa18e63a460d8d176794b891d1b4dd056588ff42fb48e4507a1"
+    },
+    "PirateRogue": {
+      "deck_fingerprint": "3ff3cfdaf9e0a788ae3c2a4bfbb88924e1d84a761d75397ab4298ca148213197",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/piraterogue/CFM_637.json",
+          "size": 96,
+          "sha256": "f83c9bf51660701c7bf321f7164525c775cbf338a96252a0bace525f4c82778c"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/CORE_NEW1_022.json",
+          "size": 108,
+          "sha256": "43f280dcfef8b907cb0ae1d1ab4aee1c112d11e08e1632555cf9268423e5376c"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/CORE_NEW1_027.json",
+          "size": 108,
+          "sha256": "e0de7528dd95bcafe659ffe7b388d52e1f0a68a9abcf425899c0d276543bcbb9"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/CS2_073.json",
+          "size": 96,
+          "sha256": "cce20d2245fd291f91bfd9246f774223ebd507920b47df3708a72f0f0a2aaee7"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/CS2_146.json",
+          "size": 96,
+          "sha256": "52aaa58bae0c98cf45710f4b3407362cf65c34cdfdbb128eba55007b0c19f68f"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/DMF_519.json",
+          "size": 96,
+          "sha256": "30a4301a07b506324727cb1409b74d79a7631913c049124c50d12992e30ad53d"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/DRG_056.json",
+          "size": 96,
+          "sha256": "9af35ab25c89549350bec33b5c4e23fd886ef8c2077903a230a2e967ab1ca851"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/GVG_075.json",
+          "size": 96,
+          "sha256": "02794bc83f9b677e7d932e180c1181f7747be0f03929255aa1e1f50d0d4202d1"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/LOOT_033.json",
+          "size": 98,
+          "sha256": "6b4f309c726970d31da819102bdb37590bdf51ded79071e0c0c62a0e4c87e38d"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/Mulligan.json",
+          "size": 128,
+          "sha256": "6579c471a27f0abdad8be8f64e0fa24de342dc4c4d791c70f727d3fbab5eba62"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/NX2_006.json",
+          "size": 96,
+          "sha256": "6ad4580ce39df2343ba41fb02d496a898ceb01c1e5ae6b67190d943d1660c02d"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/TOY_505.json",
+          "size": 96,
+          "sha256": "df5baabcb425fed02267f13b27d730d4ec57ac9ff77ceaca985cce96fbd8aa3d"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/TOY_518.json",
+          "size": 268,
+          "sha256": "4bcebf158f90fd4764fe219ab55b59770232b3143cf9c84abdf4d3854f2be3f7"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/TSC_086.json",
+          "size": 96,
+          "sha256": "01eb69e786cff74fc229e73ddffebf0c5b18d96021750af098abc6e27858ec68"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/TSC_963.json",
+          "size": 96,
+          "sha256": "64b110c41a8a92941d4438d07f23f60458c7c497dd731e506c7b49589dec24b3"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/TTN_922.json",
+          "size": 96,
+          "sha256": "50ca8c1b5f47cfdd46395585afce1e8584a399a7a431ba0a8885e349b3825ad3"
+        },
+        {
+          "relative_path": "CustomConfig/piraterogue/VAC_938.json",
+          "size": 96,
+          "sha256": "3161d336d8ee5b216b18e788518dc12afc36e333484e031d99cce7c3162a7a2c"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3271,
+          "sha256": "f967657b270fe5a9d60a84b1d79d36a61346f6f7c79ea4b6a3afa760d4a9a803"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 404,
+          "sha256": "785a27aecf9ed5dc02c780f62bbe85b436cde0eb301ece15724258672b4f33e7"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 16506,
+          "sha256": "7996a55dbf0ac019bc9b71df28d9fc5313bc75cb01ace2a0f04b83874067c6f3"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 12547,
+          "sha256": "70250b5e606e412065f98356d6735529cd336419036021bdfa6adda41b670d8c"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1775,
+          "sha256": "c5347094b337a0fc08182d9d52006da00ee97b9b57126623c0b007ec8e65fc13"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1087,
+          "sha256": "3253f80137a3f0b6fe54f17afafa4d7b026c6512394744d21ef6d1e0b6b7f456"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4269,
+          "sha256": "7980da2155dbd2c8965b2748260e1add1567f1c375eb0332a73b5d2c3b8ee90f"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1246,
+          "sha256": "72a455a74641d4e85afc5fdc006e6d00ca55315ae8e403714e9a63df0bac3e89"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4066,
+          "sha256": "a2c9560ba8c9b7c83b07036fc07f82c83ce6fb02160526c8bd852bc08aa47b27"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "adbb79cdd3d6bb75b6893fc18fc96cf4ed1feb94b9138229353a0555ac8cb66a"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 29768,
+          "sha256": "cbfe7cd362303db768702705d6b36af5f6b6cd167a1b91c4ccaad6e5860e4dcb"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 269560,
+          "sha256": "b6d2b35a7d9db1d54270356a170729ea246de9b94dfb2815b9bc87ce98c7e1eb"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2305,
+          "sha256": "88836bd168568625a1b9dc6589bc9012af2a1d2f9d63d7b96972f7d76664684a"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1698,
+          "sha256": "db9277133550b41df5dbfff3c2f6b834b333df7460e448e5ac48c2ddababeade"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "6276d3074ccb9da0fc468651ee80dc61b34cf089378de420dc9fa09068a612d6"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 293,
+          "sha256": "238b9d587b7549c0f870a68c04e90ef9e232c17e65c26ed8d672167a1fb73244"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 62401,
+          "sha256": "d0b18ae897d509783931b356addcbe1c7dd20aaa6a74791944661a217fe36a9d"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3213,
+          "sha256": "7378a17addd8a13356b6cec1da89c372638df5bb1910f1d1350433679ab22357"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 6185,
+          "sha256": "c57d944a9e27d99dba890b3b682bbe913906461f051d9660489388b6531db8b0"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 139,
+          "sha256": "2aaefb1db5de31effcb8493764c0f1a974ed78c65f49106c621f8059288e6d22"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 864,
+          "sha256": "1a71b51b501b7152373bae23cbfe900469c2440838738a98d593d4919730350e"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 3207,
+          "sha256": "a3b9e9eddfbb0cfcad443cff0780a0a9e8412592efbb18c2cd8c002635221ec5"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 2069,
+          "sha256": "066da2feb728d1adf17cf195d988fe03d7aa8c318647a019469f7c36f344a0ed"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 3189,
+          "sha256": "1326c034e8aaac6c44711954456ba28e5ee7864d45ca324e7b9a2a3e7e7b2009"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 14328,
+          "sha256": "31582258b954cf70da8b0b5e79a746937cecde3fec67fa6c75ad073d12ae038e"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 39120,
+          "sha256": "42fcb65b4b26bf3d967b6f7bef0dd9695fe4a00f0c406fa6527393883aadd9e8"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 21910,
+          "sha256": "f1b1c957c0c049d6c83f88e3e727ac2a55aa15dcd431a6d641ac2fb7c281989e"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 33863,
+          "sha256": "6463125f5b63a0b94a8e71df301721f1007276bb0117a396f1023a62d37da143"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 24635,
+          "sha256": "a7f704c99b367cfbda13bda078842012af8b11c68d45583bb6424f7bf2358618"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1143,
+          "sha256": "d17120567ad085ff448525fd33c34f58693bfb0dd7e0e396382ce44dcaac81f0"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 6488,
+          "sha256": "a1c51c99b5f32c4a80917b18c7ad9f1cc660bf939a2302cabf8cce9b4809ba2c"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3793,
+          "sha256": "a18ccd9b37e6601378c79060386a0e77cd2bafd07a5bf4b3365242f5b4e4830b"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 53914,
+          "sha256": "3c3bc99031546dc79209202e7f8b0dc7c828a18ea4448a55ef15b8446f531b53"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "62d5c91b1b8dd821dd58f868e3f13ea8b6594a7bdbe7e4a91ee083050569de5c"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 62401,
+          "sha256": "d0b18ae897d509783931b356addcbe1c7dd20aaa6a74791944661a217fe36a9d"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 210,
+          "sha256": "cd87ab63e4e7b5f0a749865214946e974c3b87ab652ff120457421675b722ec3"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3825,
+          "sha256": "a166d5984c677679df6430d3b4199b58bdab2238c50872ae07ec7e2c45148003"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4900,
+          "sha256": "e95c0f95b122d0ed590cce4e20e5cf1e6024f9750127fb3eecf7d74246fb5534"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 25332,
+          "sha256": "3761017bbc728bc4d7aba2f855aa21041ce8d9f0efdfa654d800dfb8fcd9227d"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "0e21dc4e991087995972792cdc17628582e772da5c5abb58e1d6ffdf764c3608"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 38699,
+          "sha256": "2dbe3974ca7affcccd41d13fb36bdf031226e34f228869b2a6f41baa5707275e"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 91397,
+          "sha256": "d3ad259f247cc97f0cdf0c6ece8aaa5de06c8974ebfb4e71078de599cb785332"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6565,
+          "sha256": "f31592d7f0d245dc8bf0b2e4d9495e90b9f0b7d1b1961e84fa3cf8d8997f0baf"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3013,
+          "sha256": "54c49657964c992bd3711a8658a1b09ff973724966f415c613fc79f39265c267"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1185,
+          "sha256": "856c0f4f58fa33c6019e1320ff694916cde6d20ca506e39ef880a1b5d0f1aea3"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 5094,
+          "sha256": "8167c9b9fd0e734aa9e52945dcf8c8be6ca91f5a14956b44708d6e855a49ea8b"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 81872,
+          "sha256": "bdc73ab62852f1f3bd7d2c2cf64d097a92087ef2f4895876dbe6504a7d4170e3"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 4077,
+          "sha256": "5fbd9b15c9af4f1369e3aebe2501a8620b429cf76490a2fcb52650a66684e829"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 16566,
+          "sha256": "974c3c1cd14b917a69fb74b1e9ba971883014ce6fddcb8c7a3f8c59f4579e4ca"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
+        }
+      ],
+      "content_root_sha256": "f9a8473426e1778e62b9964978714f97a670ad4777fd1c2d8fdc9265e30215bc"
+    },
+    "BigShaman": {
+      "deck_fingerprint": "29d99c31fdb5421594ca40b5a0a1c7dc63cbd5830eb3c7fd6ab7fa77c58928a1",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/bigshaman/AT_053.json",
+          "size": 92,
+          "sha256": "96620d343f502505ea863873e81ab5a2a1d0441187a0628e026ffa807f422c49"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/CFM_696.json",
+          "size": 94,
+          "sha256": "9bb8ba46748cc5c1ffb96d946c4058653e5f018779910e9d80e04ae5f8632cda"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/CS2_038.json",
+          "size": 269,
+          "sha256": "b63714819cf581626a6e1fe10e9f08e0fddfb7ea40416bc026a9fd2a5702073d"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/DAL_052.json",
+          "size": 94,
+          "sha256": "4f6556129e95b2b294df662cde8c52e6b7d576f3769addea1f791dd0e687ea2e"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/EDR_031.json",
+          "size": 94,
+          "sha256": "5df2e2568b0a4d36839b00b08d23d299454a8433e8ccdbb069c25eb95ef490e1"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/GDB_451.json",
+          "size": 94,
+          "sha256": "68e495b18c2518c3fa962a42c7a7f38290ea3dcc094fe68c82f6bb27fc1e4afa"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/GDB_479.json",
+          "size": 94,
+          "sha256": "cf80aa8c803c99ec67b116d52264fb255113114ec8fb3bd3971112f0269e7dc6"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/GVG_029.json",
+          "size": 94,
+          "sha256": "d2a11e2aa941b6238890ef64b2c1f1a2d673d723bdcdeb9438e562e8305000b7"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/JAM_013.json",
+          "size": 94,
+          "sha256": "0103b5af1403b4d262c33681b6c4e13770e203ece6923306e5c75ee0ff3042f4"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/Mulligan.json",
+          "size": 126,
+          "sha256": "ac19467c3e5af322c705e8fee7e150961bb40de8da72a100b1d7c0f64135e99d"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/SW_025.json",
+          "size": 92,
+          "sha256": "d748c202ddd3c0034ef8dfd94c2d911249b234f62544a7b4574220a45b5e887a"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/TID_712.json",
+          "size": 94,
+          "sha256": "99678779f9fc7217cfd963b41e55d538be79ed2a1e79e491998180f25a39acf6"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/TOY_507.json",
+          "size": 94,
+          "sha256": "abd67c3d1ccea1e64c8d68230c1858e0edd3665de9a1f7d1176f558f78ba6bed"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/TOY_877.json",
+          "size": 94,
+          "sha256": "fb62b2e14f87e0c680dcc736cb408967a3aa37dce41401bfc2fa42ea902bce87"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/TSC_637.json",
+          "size": 94,
+          "sha256": "16b0d7e97eabc9b273f6b87e7154814718bd9d3b3143ca30cf9721f3e14b07e1"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/WON_335.json",
+          "size": 269,
+          "sha256": "7c750102fe14d382e0799d80ebbfa331011cca53af8c7639a37c57a32350bf5c"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/WW_382.json",
+          "size": 92,
+          "sha256": "280162cbedb92a3258dd349f09642567cc9cc372655add123533cf6ad917787d"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/WW_440.json",
+          "size": 266,
+          "sha256": "30d1bd60217cfd0b86baa557f9d8daea4f063ff90e529a102d31bf0f8041c427"
+        },
+        {
+          "relative_path": "CustomConfig/bigshaman/YOD_041.json",
+          "size": 94,
+          "sha256": "c060cb365ed47936f9d29ab9724115974acc985b69a9aab723c4e81481225a67"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3442,
+          "sha256": "1ba1971e9ec22584cc8475b19ccb25fe5300b1bdd707f098a753472b376d9f9a"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 373,
+          "sha256": "c571d79bd47959d764e6f549a5612c64e2a125f12df63b576e92039df1bd3eab"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 27277,
+          "sha256": "5f24b1b489010592703c0abb816e15d95c5dcca5211e1cbbba18c3c0a932bfe8"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 14079,
+          "sha256": "58d30fd07d6b22d7632435a3a9d5bd2b104f622b3ee40c2bf7d41ec2201cc75a"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1985,
+          "sha256": "cd9d6b154277d6c67d5b4d518e8b5e35f9b44b643c9f3d3ef539cea69a541975"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1215,
+          "sha256": "fb3fb8e3e8bf46506f4914c21b415096275e73c6e4860d69cc228352d930d4ee"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4920,
+          "sha256": "a601f838b43fa2b9aa09b6fb4c4e57a719da0f28d211b0477d9307dd7de0650d"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1343,
+          "sha256": "f5474b18ecbf6aefd27f09e8c48defb02afd3e6fba6a4ddb5f4d813fcd6f2771"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4485,
+          "sha256": "451a296d8266751a33210d758d82dfcaa651b8409031f8053fc254139baa1330"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 421,
+          "sha256": "4a686443b84e5d7ed1a493717275938f204efeb5cce772fc983895d234f16c2e"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 34329,
+          "sha256": "97de45c90c1bab286b6bb37184b8a05d75e92b332ab0c955a923cd0edb38d4f4"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 313145,
+          "sha256": "99ac841a9f9d02c03183264e25d497ae81bcd6669327cf025ebd8b87ac690cf0"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2432,
+          "sha256": "e0934e01dbcb5f78ee6057806b3c597a92d36d340e511df775be0b80bdca85f2"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1821,
+          "sha256": "3dec7165f72890c7dc58f8d40d5aa839e1bd10834374a93754d959fe2494d175"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "6f50af08b3d7471f832e6d511a8987fcaa0c0f9843ba5c9ea24adf0a28d5ec59"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 291,
+          "sha256": "d642b3dee5907ebe624966d607cabe198f88f03855d2c45a292e4afc36f1bd63"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 71706,
+          "sha256": "6b321a63c930ea214eff9a348490ccb04724b8a9dac4a4530a3f3c95b29c341c"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3535,
+          "sha256": "cd98a44b2054c0c384306bfd2094e1f0fef0094a3c2bc27789d5bbc23cd47f8b"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 12530,
+          "sha256": "3e9c61522b9728cc61cc86e5da789f166cc5f67eb7e0202e837c366c3b3ca2d7"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 137,
+          "sha256": "b7845d6c27378fe7f667bdc94eec689d00eaf0a6b3d6c9b4b47f615e89df29d8"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 882,
+          "sha256": "c6e382c282d6478aef15b6863399c5da08c4225e716166d6bd34cf0c44fbc9da"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 5403,
+          "sha256": "1a7f20e55f43903e0e88484a64ab0213d17f60c56332a052d72dfa0e9d1446b8"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 4175,
+          "sha256": "33ad4e927d6338833024e0f5377c26e24f5e66893167f09c63faad5663e65e50"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 9149,
+          "sha256": "c7927d9380aa74b761fff1ad59d9de6b042f63aac4fb236eab348b4fbf4f6f97"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 15121,
+          "sha256": "ef0a8963444bea235505880e3b66c2a5bd2197ca3bba877b98ef15450637721e"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 41306,
+          "sha256": "b5994a6efc59f44482cd7c407e7350b0e9c7e62a6a93ab2648eb599429ae1b00"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22457,
+          "sha256": "ec724946807499ad5625ee56c1829f04547b6cf0e9379343463252b30ad6bd5c"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 42808,
+          "sha256": "85c0b4367e1762833c02ee7d0e4c0338bff8c8f876c18201a13ae6a8beb68b6b"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 30370,
+          "sha256": "708361608d3975e6b3c6b4aab13975206cb3a12e9fd708f6b581b00e53e0a2b4"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1192,
+          "sha256": "78fbb968cfd251d740b102c54db1c93d61d628c00c3b85775464ed8c3e6fe8b1"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7403,
+          "sha256": "4c313963fa296e8b0aae1e01c88e80270d2b03b34125408b1b1aa7f47a1f5ecf"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 4255,
+          "sha256": "f890b79df1cb467c88e50a803eddd7461149304c79823de2994de156509ac3a2"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 59336,
+          "sha256": "8f6356dd2ad7d134b68fc8ac79ec81615fcafad1471620e37fe1a741251ac5c2"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "b5a3f8ca902de72905ed2b7be47bd983df0b82c55907f2cdfbd0ea99125abbe7"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 71706,
+          "sha256": "6b321a63c930ea214eff9a348490ccb04724b8a9dac4a4530a3f3c95b29c341c"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 1380,
+          "sha256": "25d006d8315bb314da3e470c9bffed6a52bf23cfbd19f1447fb4f6b7de22afd7"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 4287,
+          "sha256": "e9820688f7b130c005ae8f75ef7c2ef2ee73082831c39037ebdbe3c266573372"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 5895,
+          "sha256": "1649e6d805aae63ac6145aab1301279aef6074e13dcac419118fa72b3027720c"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 30391,
+          "sha256": "88a9d84b833ff1d0f4e30d7728b1c71905c944e6f5574618b9e3b9ad9c5c8ea4"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "bc7f655d5ceb483313814b5957b627f32e86298a0275c3bf7a1a64f00f6524ac"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 44511,
+          "sha256": "1ae421ea83dcda99bf793c99f0e62566de6a5195f3ffa5d58f247863680fdcc6"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 108295,
+          "sha256": "2c8a7f801cd5ab2e6446493b871e541d19feffcd50c8752c072932d596687668"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6903,
+          "sha256": "2c7cdd8026f8eca98116dc0ad4ba4ceb73aacece6f39538fb50775684a14bd25"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3019,
+          "sha256": "16fc2a41f454cd3972a0f57e5d3bea2cb46c1b98d0caaf2a87d940c38cb89c6c"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1135,
+          "sha256": "612b2ca8c3c9fcdc47917f8b9977a084abf16caf255ae448ee2b7b03bdcc2892"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 5199,
+          "sha256": "3bb5314170aa023a19d7c20036afbc22458640dfcc9bd126706b1e2479f69187"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 96451,
+          "sha256": "d36c9c6ce59a12dadc6436e6f540c8b4e1551f9b6e58b21629643ad0c4b8b83b"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3884,
+          "sha256": "52c52e50816f0c8eb4fc16fdc8019d8d283ed66b9f96a633200db9bd3c9a2f98"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 18410,
+          "sha256": "c8146271f36dfaac9d35996d2bc31859faa440ea3ee8c2090546060268c57101"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
+        }
+      ],
+      "content_root_sha256": "da4422b355fca8192c6cff4d4f5e0d59d40d99d4783bd3b49dc069d1509c7ab0"
+    },
+    "Discolock": {
+      "deck_fingerprint": "f3f59f19bfe0b977ac66fe83e27bcada6d385fbe552b3937c2a158084c3ca59a",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/discolock/BOT_568.json",
+          "size": 94,
+          "sha256": "53a38bf1fc91a9e6f6d56546055b9fcadbbe5fd03391880d1385836c1b1ad581"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/BT_300.json",
+          "size": 92,
+          "sha256": "c558d998d9a71a93de1415bc2098e8790434af61abf8b2578cdc999f61d8a618"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/CATA_490.json",
+          "size": 96,
+          "sha256": "184c7bd72358483c8937afff52fdcc53ef09cbe00d31e7f19b13df16b2c13448"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/CATA_493.json",
+          "size": 96,
+          "sha256": "015295d7e6b38e2d584354605789923175cb48be04b41c5dfb09554f00fa5c1a"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/CATA_499.json",
+          "size": 96,
+          "sha256": "08c9dc6719f5500fa14d288dc3abf7a710560c493c673d0403d8a4b8dd0a0d52"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/DMF_119.json",
+          "size": 94,
+          "sha256": "7cdc033925bb86e78585e6ff216f516bdc9b422668983d5a841aaa1fe3ba5504"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/END_016.json",
+          "size": 94,
+          "sha256": "6bd26a35d2b94a02209ce0b65f597336401f8841fd1f30157670b198bf5b1823"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/EX1_308.json",
+          "size": 94,
+          "sha256": "301f437fa40b5dc7c493cabab3b12e85ee8acf3363dc5204aad9bda55785d0e4"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/Mulligan.json",
+          "size": 126,
+          "sha256": "e9529ab12a04c2b57ff28cbff99aa10a1d25386bc29900d8880eb9d40f023e40"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/RLK_532.json",
+          "size": 94,
+          "sha256": "f9a55f1d30e7e20db3228bc9df15be345c9a851581ec8d6b8646eb7fc1f53c3d"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/RLK_534.json",
+          "size": 94,
+          "sha256": "5b1c375ed8232667968629c97318cdb3ff312ccd6287a7c74b9fd90e0a9a41e1"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/SCH_147.json",
+          "size": 94,
+          "sha256": "1907d796fe22ccc1f952ec82260b373e1105950c5e5ac436b9da531147403c69"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/TIME_026.json",
+          "size": 96,
+          "sha256": "1e764210d9dc0847b4969ded9be49a8b87b9bb223fea91e58d561d87f7c7ce0c"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/TLC_451.json",
+          "size": 94,
+          "sha256": "bae46079f136df394338b083d23c885442f3d4da1273e4a589cd373507944539"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/TLC_603.json",
+          "size": 94,
+          "sha256": "532567ee1a92cabcf8e7651b420c1ea22baa5a985e0e572b4bc4d3e11b3f3b3f"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/VAC_940.json",
+          "size": 94,
+          "sha256": "a29ff5ba3e8a73a873784b34c67e853f90200739b02aa8d4ad39aed95935cc30"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/WON_098.json",
+          "size": 94,
+          "sha256": "757e25c00e5760bb31d4baf7f37efaecc05dd4e12f6507fb128adc0f51bf7a8c"
+        },
+        {
+          "relative_path": "CustomConfig/discolock/WON_103.json",
+          "size": 94,
+          "sha256": "6467e10e55a2657b2fb346480250a84169e30896da816f2dc81ed330ff1367a7"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3337,
+          "sha256": "25e4ea50895b9737834e89d5c4b4c2379ccce1e85cce7ae98e4bd52fcce13448"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 373,
+          "sha256": "c0b840dcceef5d16b35c9e2ff07d38f4d85032dc0ccfb18269466a2afff0e5c5"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 21308,
+          "sha256": "40999f9f670011e8bb9e365446ce120b79d04787200d9896f1eab9305c05865a"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 19210,
+          "sha256": "81e9f03686aa0dc7d22490ad3fefc25cd73bf70e39dc27099b9bdc360c6131b4"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1889,
+          "sha256": "710c3817b55eb291c46d279a1fe86ce5b28ae529af84bd609db9b01f7c89c02e"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1215,
+          "sha256": "5da5207db1d9d3dd97e26dc5bcaab809b4c00729f747577aca52eeb64343267c"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 5106,
+          "sha256": "54f2cdb26730a616a84bd1154628b3b45d07ba13b5ade63f09a68461ec3e32d9"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1292,
+          "sha256": "46077dcb3c980db3464cc46a91d99767a0f0337319ae8e39546dc8b63f9e38ce"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4278,
+          "sha256": "a19463d9a08e4f6c210ac88da5505fb7ecd9a455abdd367d21e7fc4b332820f7"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "448875c8406fbd6078d833ff6f0ce7b1622d4ea109ac914d635c4b150fceb54e"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 36720,
+          "sha256": "9e308e9744aa8bac6b08ee585ca688b542d4ebef1bb0fb12d906edb6b6cf2890"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 336835,
+          "sha256": "e340bc1cd8d442f3418d1c4a7016c62334acbe89246b92e91e1a398ef0f3cf2f"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2490,
+          "sha256": "ce3a4b47960bfca23054f23ce770858c3559bf691cc25250de4017d40cdafcd9"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1879,
+          "sha256": "9447311b730af13b5556fbee0e77c60975c0e4fc0aeaafdbddf00dfcd19695f3"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "f287a0d51477005ff9f4106c6e19522058c4af8232d58552e9d122537611a3b8"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 291,
+          "sha256": "67e59166ccef9e79eade3c42ae79baea2f626a53031a4db713480d62f7bd3e81"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 82564,
+          "sha256": "79e841270086d8e735b048405844ce69e05e3add988e2312bbf0fc3fa204bc21"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3354,
+          "sha256": "6a150e6f2b04ec7fbe12ffb9e134772eed851b579ea73da1b5cd17d2a2a53d1d"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 13468,
+          "sha256": "ca93a3985460f939aeb15da9c4e44664b32c3e96dbd2f9be54715b2fa13921bd"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 137,
+          "sha256": "3157cd4165059017c5017dfaabe0e0aaf7b4fcca9e98484bea208279bfe7921b"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 870,
+          "sha256": "527427f4ae803aca12477b4d3c36f1c0004e5592f2211b365cf00d2c9c47011d"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 5489,
+          "sha256": "d547d62a1b8e51cce9cf3c594c42475db845743d0ec1895e89d3925ef0f6c530"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 4265,
+          "sha256": "5e2a7a77ca048748c8fc0b2a78d077f9e8d62f193d8e5b9e3b8d6fcd758220a2"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 5974,
+          "sha256": "b22ebc0945f6955db28cc4e67553d574eff5caa7a1ac2d9198d9501fdc2de636"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 15151,
+          "sha256": "ca15649b1977c6073a365b473b7ad805126dd07d01d818fff054fcb72e3b4ee9"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 40830,
+          "sha256": "1fa20572ba166ac2fcbc7cb5d357df1332f3de5d6786b65b14fc019453613c69"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22164,
+          "sha256": "382828f1e24e51295f088a936fd2590ff3a1bce285118b20ccf45018946085cb"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 44251,
+          "sha256": "ce37d9885f29badb0494a2888e94b85ad431706047b36b85462f4f185c68e28b"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 30405,
+          "sha256": "e96cfff395ccd254ca83d49a1bdf88b6252463f48a435ba1d7f5ab3483e23707"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1373,
+          "sha256": "c083cd2635aff83c4d46ec45d7f5f6bcff6e34dd4d9ffafd310ed2a6b568be88"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7372,
+          "sha256": "da99dd102e29f3819c16fa6b19b86fc08641471b5ce7cedc0fd95ceb2da2e38d"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 4205,
+          "sha256": "4ae189f2a114270b02ca80fa65423c465a455fe3d68672d7bca93470f9b5c31c"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 66557,
+          "sha256": "de7d6509109a5085f9a2aeaeb3649556dc62d4b20dfcd460a52ddbc8c41c587e"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "552bf74d24f144ad84facc35cc36e4886d2bc73c856bd31457e24b1dab595d2e"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 82564,
+          "sha256": "79e841270086d8e735b048405844ce69e05e3add988e2312bbf0fc3fa204bc21"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 4233,
+          "sha256": "5d04910f4961116ec674cbd1efa380446957ca5e3042fd45767a4d0addd3c431"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4721,
+          "sha256": "f95b3caa6d3dcf7233806c83438d972c04ce640e4ddb9e855feb1b924284ecf4"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 28945,
+          "sha256": "ba784c08c6ceae0ff00b484ec970d0920d8862a79a1499d800f046cb0d9f5558"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "33c06d35c87506a0a601dbd43267f06327b6c719373c3c02b51501b6192ae742"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 45660,
+          "sha256": "3b7488aa697b1237b7aeb6499c3e5b0f1e5f3053769bcf11c2ed39fa934813a2"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 120304,
+          "sha256": "53ef297606c421c022b114e58ee686adba3459457a01f994625bab17c468c6fb"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6688,
+          "sha256": "b1a87df292f059e34f07da37b42df526c57013735a6ec2a867db954b3fc8e56a"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 2932,
+          "sha256": "72f1a1979fbfc8fd9c273ee1dec64b0116d3a20d753ecca3931d166f3b1f8e13"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1155,
+          "sha256": "2e7ae237c46b2d8191ae0a6fb8f8095076934b830210b484f87fddf6c0ba21de"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 6953,
+          "sha256": "daab97bfacb2b04e1d4e6d2fe136ad68c060c2bde0d814f49bce7240a8091199"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 101989,
+          "sha256": "ff00d2161ebfedd48c3047987eb628fa241d083b118c8698f274663b8edd688b"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3953,
+          "sha256": "1aac243442ee9c9367ebcf261cebeeb76cba79dcf97a6d1ad6ae55b1a5445784"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 18000,
+          "sha256": "e3b2b163566d566a340e98108653ba75166888c6a576215338f928a8ea542678"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
+        }
+      ],
+      "content_root_sha256": "3ea94710e9d3a111c8ae7626c803cd17407b9527ed02777d25466cd67af54d0e"
+    },
+    "TreantDruid": {
+      "deck_fingerprint": "1a529fb1c5a1a774eeb84706d07eaeed8717479edb916aff12db46a3b9b75530",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/treantdruid/BOT_420.json",
+          "size": 96,
+          "sha256": "2327481a85ef4a19e6c031e0574efac156da762a4f54e4a03d57ca15c89f2cb9"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/CFM_614.json",
+          "size": 96,
+          "sha256": "1064ff272adb607b12a163b444fe2a2648c5592c1b494f2c2e46a9ac5d30ddbd"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/DED_002.json",
+          "size": 96,
+          "sha256": "46c4147bed4cd8784cee70d42b6bafed3513db6b7f65586458a9031dfd5d3d3c"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/DMF_060.json",
+          "size": 96,
+          "sha256": "11a13d74e86afe17b71e41f9c1827495d23b7e8b260a4855ed98620de388e10c"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/DRG_311.json",
+          "size": 96,
+          "sha256": "1503735f7cfab888e64b25d105f7ae55f920c30aed0e3530eeb06abc942061b4"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/DRG_314.json",
+          "size": 96,
+          "sha256": "48a2cb7004c3ae52ba0a58963cedfed1773d1231dab2f450e65c7dcd9e5d1b93"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/END_009.json",
+          "size": 96,
+          "sha256": "36c03dbc0d4da7f5138b5236918f2fd0ad219ee479a5bf8b2404f8466b95bca5"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/GDB_852.json",
+          "size": 96,
+          "sha256": "ee17bba53e087b89b7d20201a9485c02979bba22fe8dcedbfa491447a75a7603"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/GIL_663.json",
+          "size": 96,
+          "sha256": "e7af30d568d412d1c3112e2be87e7d71168e277d00a0b552f090a9db69d8a416"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/JAM_028.json",
+          "size": 96,
+          "sha256": "72799d3336d03f784d5373d5d482ae8f8d34947e95e6300f8e0d32386b3c61ee"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/MIS_301.json",
+          "size": 96,
+          "sha256": "51df0c361f3c6d7f0a1a9b19260abc9794400975ba406dbda3e131b51bcc0544"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/Mulligan.json",
+          "size": 128,
+          "sha256": "5f762fc1650e3b7c9b2379a9f32948337ab783be7117640a83f45b3abfdd166c"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/REV_307.json",
+          "size": 96,
+          "sha256": "87f286abb0c19747afa00c951a014d155e60dfd70006a8019fbad2ecfc6522e4"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/SW_422.json",
+          "size": 94,
+          "sha256": "d995d5c8868d51c09c1ab7ddd63ba0badbef90bc8a25453f2ff932bc2ff3e9ab"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/TSC_654.json",
+          "size": 96,
+          "sha256": "eca0da506b7e4dcae1aef5904619e8afb2affea325239873d4a85e379e22352a"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/TTN_950.json",
+          "size": 96,
+          "sha256": "1e5d55facc7d96f106becb878337994f553599f3316e7ab838180538028c0b80"
+        },
+        {
+          "relative_path": "CustomConfig/treantdruid/TTN_954.json",
+          "size": 96,
+          "sha256": "17b1079d77a05627fc7ed30627638a922667e12c27b56975418534724b9fb7f8"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3257,
+          "sha256": "18c71bd575a83c79a1d577957c5d7ee22e145019b8b075cd49ff02fcdfff4a91"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 388,
+          "sha256": "348cce0cf8be5d0e29f7c8a8cb406c7ce8b3ea59853c3081f3b301e6224b664f"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 16899,
+          "sha256": "6d10afbfac9efd520bbd184b93dd59967a7016f02443e8dc66d1b2ece9f90c15"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 15056,
+          "sha256": "b698adb9634d88d056a5857d24d02ffe92d95d0e4dcdc343057a98418037ccfb"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1771,
+          "sha256": "15eb3542960c992228af7f3a759335bcff01a42cad0cf6311f48111033491b0f"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1015,
+          "sha256": "cc5a6f6e82710d1390a1964c1565c358eb950a8612bcad62dc0dcb0d4e097cbd"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4320,
+          "sha256": "2ac5ccf6f201e6619d134d6e97f567e2615544b6830cd25663f37cf3952bcdcb"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1232,
+          "sha256": "a19dc570c629c01975228dd7f70137de624e77b9c07d24d5392319af462f21e0"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4050,
+          "sha256": "25ece660c7fbce46fcf6d2d40e759426576b0cf8a109326a7b790ca8cce7e3f4"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "cce7406b83968fe55bb84cab80202550f7d73be284a07617f3ae43582752c6ce"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 29749,
+          "sha256": "f6f6edfeb4e1ad52e632396fe5d1f13a0c5deb44f1f050a01df647c917672858"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 273913,
+          "sha256": "4e52aab41e2ee5481efa5084c242bdfd20bb148e77110ed5e47408870f74d2b5"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2297,
+          "sha256": "ba9882c0f62d9e41b3bae1d20ebc4f1171b7c23452e60bfda4aa947767235ead"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1690,
+          "sha256": "1bf107331d4205ebb303be6f2b71c432a15d7820f3ff48bb947388fe59ba7135"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "2910d3f8ba877c3f03536bf1e84131b8c0be683d1dd09f52c2197b98d4ddab26"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 293,
+          "sha256": "93926f24299b0a7281c6abd11462ef2448958c66386391bb2fa3ad76e8a3173b"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 66398,
+          "sha256": "ec81ec420271253b3bd545e11f3d0656c2dd77757e88223281c72b7376634c70"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3282,
+          "sha256": "f8235ac42ba9239b94191dd7e5a383a5acaf949a965db6661fe1af62343c0767"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 8465,
+          "sha256": "4528be5d1a832ecf4083ab1c79421366c692991ffe22d71d314963dfbd7455c3"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 139,
+          "sha256": "12814e793f3a8083bd7be228cddf29e29bcae45bd5f9e69c6c53dca1bc12ecdf"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 850,
+          "sha256": "cd3c0152bc9896f86174588bf01739f6a758020fe042f13528ee164a5debc5eb"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 3951,
+          "sha256": "6dca5a16f7da153c065a689bc195281cb258be1dc8cd1cca3689e5e457d3ac6a"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 2781,
+          "sha256": "a573bc922ac614b4ecf8c27ce39f44e72aaf56126e6cfe16d75a343594401c2a"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 4010,
+          "sha256": "a411a490cfdaa8e03a58330abc5891b9ace945e7f8867fa0b95988a7e0480511"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 14737,
+          "sha256": "a1e81236407882e5112551f3148f2c7e803d3ba268f32f1b442b679121053307"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 39355,
+          "sha256": "c992404036a9214b44f320f4cf1f674903341e276e7a90aa623bee052dde146c"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 21896,
+          "sha256": "be20f04d4991ed3437752ed8a40c579830664c6414dd7fee5e9e9e555e72d0c9"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 29513,
+          "sha256": "c47f50867c13413aebd167644cbf1f93cab96ed7a624779fa2f758e1be4cf3d5"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 23472,
+          "sha256": "2b5897c80a310941f43cbebf9ee401fb149f9060aa30968aa85ed6c105320c59"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 1117,
+          "sha256": "77392686c657a1ea2351d135c7bd38e7723b01b683525c986a580edad481a3e7"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 6172,
+          "sha256": "f859816d7367e5ffddadc7b2b7340cfc06a5eb4b18dbedfa3a7f861db0165911"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3723,
+          "sha256": "b454b7b8c10c7c5f9f81be67f07290aeee135545c2806a251c9cd1d754f593e5"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 55876,
+          "sha256": "51b4115fd3169cf282905e61b75df7b840b9c065dc6ebc9a3b265d655df8ad10"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "8f9082ba92ebd68935013b86be2778d59bf5c1ec0d242fb23fff816b462c5233"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 66398,
+          "sha256": "ec81ec420271253b3bd545e11f3d0656c2dd77757e88223281c72b7376634c70"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3753,
+          "sha256": "b7657fe17d0c82307c456ebf846d3b3f97b68860e5914e4f5190b00b8a165c5a"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4541,
+          "sha256": "4870b9c955e634c236661121608deef41fdf7bcd1f1df493c9511187afeafba4"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 24353,
+          "sha256": "13429e742165e61166e07089f7178183b57381d64f8ba6945ad5b0e750b1a890"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "978a9369e8da398ea7ba403e4d785a097f6b6f4273a4eaafede406e88b553a6b"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 39381,
+          "sha256": "cda48920fa67493dd044137710b28c3d64eafadaee1057c1443c56c6aa1fe3df"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 91727,
+          "sha256": "d4886e204bc83412b9a0afb40d915ceaa41b969bb518349a1c02debf0a207922"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6531,
+          "sha256": "c0355e3765499e689055b450ae754f618d039585dc4892b2c04e31af36aa00a5"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 2959,
+          "sha256": "7d916d55b63de4ada7dac5e7f53098e1de332ac9988c79279d6a2e65ea1dfaa6"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1167,
+          "sha256": "8f23ad6c3e71da74b6947a77ddb9b792ac9925e0ecbf069f03d45720d2768b1b"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 6353,
+          "sha256": "52ed89a50dfae62a131fa6f2da5ecb67eec5d56ac6106dec427837bbdf18e9e2"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 81885,
+          "sha256": "44bece3cd109a5b45125f5df3e0050dd45a402c24c4cf6d15a1e1c343c3af6e9"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 4059,
+          "sha256": "ab11d1d05fdef8563ca8b7c81a45eb6ef2a810d54211796802e356f437a926b6"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 16160,
+          "sha256": "f3679dc851382b496061635265463f8f70307ba3947c66441d4cfc84e0499f81"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
+        }
+      ],
+      "content_root_sha256": "c3fdaca750454378c6adde0fb665ae0505304da0bbafa01463c4f9f48d675b8a"
+    },
+    "ImbueMage": {
+      "deck_fingerprint": "24d0fdb97228f6bafca4441dc0d0c032f7280a4e24198a924e0e1040391096a7",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/imbuemage/BAR_544.json",
+          "size": 94,
+          "sha256": "1c1e0384819cac539038f13b2e69a03c7ae73eee2ef09820c5f0a7d244a1eef9"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/BAR_546.json",
+          "size": 94,
+          "sha256": "8819de4d73f95198293ce1eeb78fa7fedfd9afd2f2fd5df62f4ccaf5c879b52c"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EDR_519.json",
+          "size": 94,
+          "sha256": "74dc7e13a9cd7e043c37718b2dc767913b6c9d7a2c12b883875c9ea119c163db"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EDR_800.json",
+          "size": 94,
+          "sha256": "625073917b9849aa88a59393f8c21612b89a3141b766455444062eaa7dc64c9d"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EDR_804.json",
+          "size": 94,
+          "sha256": "054b139a1e26b3e26abc7e57f51a68ce255cac03c80153d941d282dc62c75d1f"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EDR_852.json",
+          "size": 94,
+          "sha256": "61dcb42d7219624a3f931c57396f3ed5e9e5d8bae0dc90684cd9a9f963c17348"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EDR_871.json",
+          "size": 94,
+          "sha256": "46f330877cfe18527ffc60583ed6ad181ddbc0fb966c9d185c161a604a659218"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/ETC_534.json",
+          "size": 94,
+          "sha256": "851ba81fc2e8e69c4f024695b84fc76fdc3a4691ce0180b7b0bd350a5d87a281"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/EX1_295.json",
+          "size": 94,
+          "sha256": "8c5261169c5fb907b2b5924077f2d6aaaed4d8c24b8ff3a42a8b742aa8548edd"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/FIR_911.json",
+          "size": 94,
+          "sha256": "5c8b53c48c7a4a10fac6c8bed0622f282743cce6cccdc4165627fee2d9d69acd"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/FIR_921.json",
+          "size": 94,
+          "sha256": "aa84a610d6cac239cf0440b9d56c47a170a443d5396b75161a40d4aef795b1af"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/LOE_077.json",
+          "size": 94,
+          "sha256": "f63d0fa52763e15a3eff2520addbc9f60a7cf8ab88cb324b59e8b62ebe45e507"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/MAW_006.json",
+          "size": 94,
+          "sha256": "717844ea32232693b9c539a0916e29409a39463043cec27130f79ed1e2d9ba99"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/Mulligan.json",
+          "size": 126,
+          "sha256": "fbffea8ef6628a8466ff69b6a684f131b200764202a88e415f2ff866ce15b6aa"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/SCH_312.json",
+          "size": 94,
+          "sha256": "e878c0620ab244d121f757383a6ac236355fcc504320d947317de111a15ed9b2"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/TOY_528.json",
+          "size": 94,
+          "sha256": "d16a70a43b50e6a2071bb5c96ac17abdd5b8c8ec2312d6bbd96fa13bc0c1769e"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/ULD_726.json",
+          "size": 94,
+          "sha256": "3573c660934aba530b8acf63fadd91735303dd3d0fa3f4f68d82ee713789faa8"
+        },
+        {
+          "relative_path": "CustomConfig/imbuemage/VAC_520.json",
+          "size": 94,
+          "sha256": "873d62d45cddd7888270b4e4a842e2048379291a5535a1013f7bb61b67aab346"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3334,
+          "sha256": "8792c55e6a64318fc69e97ee05e774f0c7f91d94c4cb567d72db36e87134e1f6"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 379,
+          "sha256": "8e20efa0db48b5917d075a746a5df53fe7bab7139df96d33a60c8ab2757d5e25"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 19103,
+          "sha256": "42ad0594ca76884c76fbea57d664e4859050299899cefab58b02c4239a53bd1b"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 13518,
+          "sha256": "2b29bd72298877e05d4f2246e3783497945c0f071e300ca3d92a436dbc4752b8"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1884,
+          "sha256": "3ecfd0a0ecb4e26f14edcd08e87731cd6aa167646b1ab18f82389aed1586ee5d"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1260,
+          "sha256": "8f4c77a63a70db98d962b1378959d728d3a88df320a63931d43c543dd71cb55e"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4502,
+          "sha256": "055cd3990df98c595e45d575f28f0e532da411cedc1d3bf8572e7c0ecd4044d2"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1289,
+          "sha256": "ce9545a7d43807392283d6b17daf954338404e900218fcd87611ad9fa67b8613"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4272,
+          "sha256": "c3117c01558ae05be6644670910033c7351642cb359d02a3d0caecd6d184ae31"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "09343ccba9c11793b0f7da2f8e763b0b8a5683c60f4188af5b6ffd8a32f4d69a"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 29206,
+          "sha256": "aeb6dc955aabe3176f5752a8da978e5c51e26081a4525668bed63cdd3a9654a6"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 258992,
+          "sha256": "64f19ea52c42c2a54f24ab5b107a07398280ff4a90bdd2ec3dbbbab248a0e7f7"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 1717,
+          "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1144,
+          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "ca71622164ca90db7b6e2f8f19e2295186e70fe54eee819e8f716712e0be7211"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 291,
+          "sha256": "e5eaf8af9337c547300630f75651723a60afe0fcdf4658ce93eab7f77fd6a07d"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 59807,
+          "sha256": "25eeaceb5b7573a946cbe07fc2ce98d3cccdd2a77034c5c1a4a1fbbe5f810964"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3307,
+          "sha256": "b258f1f679282ac7d0a531a9dc365a384900119fad4e7ca0e0ccc025a1883cff"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 14817,
+          "sha256": "7e2a31187ab180c493f092f683c38c0035e07a9f9f1ab1bd59ac5ad5221e3612"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 137,
+          "sha256": "fa21a222ed749c9bf12c75171e0cbbfbd35bd6c2016148a13581a26c7d8744d4"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 867,
+          "sha256": "6bcd6146257d7aded5ad631b29610f83518b7a8f7320797701edaf8db519e412"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 1666,
+          "sha256": "92ccd71a18169d535d4ce94b514a0575909fbbc7d580cacf465f715edefcc026"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 568,
+          "sha256": "450a1eb83b10119001a6b5371e29f554e816e4c2a9110efae0da0437874547f9"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 4197,
+          "sha256": "8450f24290b5f5eeef40069735931ba6249b96bdc87c0ce67cd20448bdedd46a"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 15095,
+          "sha256": "f0ea3443ce87ae2616eeeafa4fe08a4504daa5069d2dd579391d21da08010e0c"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 38999,
+          "sha256": "20a85c4ed25104c5077c76c6ff4add57e5b989534e063404bd39fdc3d8cfccf3"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22161,
+          "sha256": "422b2a6bcf08b5b8bee6dfcc00b01f8dd39299ec48cee5a0acbbfdb588580b1a"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 45122,
+          "sha256": "392305f7006b8a7beff51eaaa0a9f300fe7979978c5d1cdc6dcc06faf048e46d"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 21770,
+          "sha256": "866baa5ea1aebad37efabcfe52252960879aca664528baeed17160240325e8a7"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 984,
+          "sha256": "3b8d64e4ba5ce811d4c5eb1514c230472bf26d04077f6446a1b79babc4b54cbb"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7308,
+          "sha256": "7bb1b14207a60c08e1ea1319a0becca5f3ccab33d1c10675a9cd4f07de0f7883"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3915,
+          "sha256": "ab10b316c0f64607298e437bd8a05b6ff06f2207cd9dbc884f6f1ae1201acc7f"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 48714,
+          "sha256": "27fa94f57e4be562ec3a9bec741414f95d48575a165cfcb427371183d1905f9e"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "a77e60c5b3e268e9e3536006ae842f955ca89691eb38dfbf9a6ac8a327bc296c"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 59807,
+          "sha256": "25eeaceb5b7573a946cbe07fc2ce98d3cccdd2a77034c5c1a4a1fbbe5f810964"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3933,
+          "sha256": "1019ef21470c759c73049bf69f1ed0a014553963a81a5b11a7bc4f5f1c47b10e"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4715,
+          "sha256": "eae1907c896f2c0a3e1eef8160fe3587423fcc9e2dbd730317c0f0aefe97be43"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 28669,
+          "sha256": "a10432ccba9a7ca469d0a1af2747eb079f5d74f3c269babaa9685a76cc9f7b26"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "f2f8bcab8ebecaf513665dfd5b2c0bc32fcc0f72ce08ea00eec1b8842c6b9958"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 40765,
+          "sha256": "1b25c5ed01f034390eed768dbcbb4e8d1c2c803068ca3a595f1f25f541915993"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 85360,
+          "sha256": "1f6c068b94f4e2c8d7ec8641ce6c5100f7ef9ff12486b282ae4b3a9107a53450"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6672,
+          "sha256": "219492a1fad0a5145564c85620942e17eae23bdea3aab9c14d822669720ded49"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 2932,
+          "sha256": "5a3e665867ac787d5998c705e2c82c65f1f56ba7e0ca41d3408ccf5b693edc83"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1115,
+          "sha256": "604bfb5924e543bbb806268f67c93b2747c76a32d3e7a80681cca4a6b0a4fac2"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 4483,
+          "sha256": "d45dc782ba7cf4a1aa2cf401c7dfa26d89511348f89f746a7ed4b17c80864570"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 85263,
+          "sha256": "0bc384765faa370423b4b8c04aa15f34f7eb4484162d7b3ee22d7168d05281a9"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3905,
+          "sha256": "896c640c586601ed28851c7cc6453c22c19b3cbc258de8e9326d0b1d6630619e"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 17434,
+          "sha256": "b4f9d1b17d6c9118aca3d1b343eed5a0a575df28307f4ea2276e1ed81b797ec7"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
+        }
+      ],
+      "content_root_sha256": "ff7997d1fd3b89daa713ba70674ac6bbfa91d633903ab1710aa161b3782bead0"
+    },
+    "MechPala": {
+      "deck_fingerprint": "caf6755f4cc426c4ac2922637eff300fef2d3c65f1cfb7b15c4c05070e6aaeda",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/mechpala/BOT_020.json",
+          "size": 93,
+          "sha256": "52a06c98bc2ea96cc38c261ef54cab99a2148a8ddbc21a570f2ddcd82a3a31ee"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/BOT_906.json",
+          "size": 93,
+          "sha256": "585bd8b2083b2a21d3aac0b0b5d943af1b3428911b470a3333a16e50993c96d9"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/BOT_907.json",
+          "size": 93,
+          "sha256": "27c1c0ba9a9ab5b01581888eb41b67bafc06a06f5c93c02bebf33f685195d5aa"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/DRG_225.json",
+          "size": 93,
+          "sha256": "7e13cf7de30a4270527f814af84c7b3bb8b7ea92b7fc180517d45fb531de77cf"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/ETC_106.json",
+          "size": 93,
+          "sha256": "6c8e00bfa8f673c44df5a99ca8c50866ff53a6a8a98bd1d9efc0873cbf192b75"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/LEG_TTN_908.json",
+          "size": 101,
+          "sha256": "1fa9662c74db62d0b98f8556b3a1a9a51cc4938c2a69ba57d85aad5bbe6dd246"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/Mulligan.json",
+          "size": 125,
+          "sha256": "01d7928177afc8b0aab353e0167b55b8cf84463ba36fb8d9f1c0694b062c8763"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/SC_401.json",
+          "size": 91,
+          "sha256": "f64bad34ed5146aa4d5574c683275262743760dddd230e49bdfa27c19a5ba203"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/SC_405.json",
+          "size": 91,
+          "sha256": "6ce5e48f543f63919117d2c6ddbe72725e4ff2d651f01412648ed624c25e6d26"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TLC_438.json",
+          "size": 93,
+          "sha256": "989a49fa880341cf2306c041e01365109da7dcf6eaa338add1226fa10c95bce1"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TOY_330.json",
+          "size": 93,
+          "sha256": "375adc8b2048b75b84d4d9b88134b13e1d8d7aeeeaa80bb52768d2b46763b44a"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TSC_059.json",
+          "size": 93,
+          "sha256": "bccc715282402519cd0300a1596dc1b7be5da8e40c27bf5868bd7a08e229147b"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TSC_079.json",
+          "size": 93,
+          "sha256": "bf2b8f9c71d46c1265546aa39bc5f07390d21f8db57143e77eeb815d775a7ae9"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TSC_632.json",
+          "size": 93,
+          "sha256": "900b71c333fd84bab48e6e1672152909c49c692d953748a1d04853260521af1a"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TSC_928.json",
+          "size": 93,
+          "sha256": "f878d927890a03a95ecf8a41ff3d172655a5e0316011d7f2fb4fc064cc2721af"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/TTN_860.json",
+          "size": 93,
+          "sha256": "ffd32835977af8a61056fd110dfb8173f7cf5ca9f5f17ef6d3221d2d9cdcdc42"
+        },
+        {
+          "relative_path": "CustomConfig/mechpala/WORK_002.json",
+          "size": 95,
+          "sha256": "2b72d32a59b57517c6a7e3cffb1762451d0aa1af7980ca325350402dbe001784"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3207,
+          "sha256": "fac96553492f50a4c57e2b81ce40c3b3385f9d42383e56571b15728e21dc656d"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 381,
+          "sha256": "56ae298cfde4391e766403b9694657fbcebcc15a5bf7519de538e2745836f89a"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 9198,
+          "sha256": "2bb709bfb73cdee2d238338139731e7f906c5e04057fe47dccf99bbde2adb66f"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 8234,
+          "sha256": "834434d6b652239b4c7d9111ad13559d89baab9860f660825ce1893dd7c72e29"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1760,
+          "sha256": "4baf3ddafd4ce9113c85534149d6112702b5dbaebad6fad5894e655ac1987d34"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1187,
+          "sha256": "aa8fdb7505d7a269bc9a542760c3ee9d8c302799dd1c8b78fb302aeb014bc38d"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 3867,
+          "sha256": "0df913b291a2cfea948d3f3d91c5d3026c598fd2aed177750eb3b7bde0d7bf36"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1233,
+          "sha256": "c39f1ee9b8f203720e6501f0c834ceceac1eb4b406e049f7081a5fd44840432f"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4573,
+          "sha256": "4b5e424c643f9439b64ef079d1eec6f28940fd99f0a7c38b56ab10518ff21e84"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 421,
+          "sha256": "38074453c8bd3d66a4d1c057bc4bb43ddc2a969b7755b402ffcc3f044a2bcbcd"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 25072,
+          "sha256": "231c07bd7cfe07a19dd7940217350f5d9f60cf5effba81ddfc8c199d7d65a065"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 196674,
+          "sha256": "5ea0dd2364873268bf101c48ea3fec9f26eeaa2c70821779e8ab94843577d2c1"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2294,
+          "sha256": "c38807f2a37b80bcc9d3227dd5bea2f99b78a6c5cf66b9c65cbf5bc5efeb0f0a"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1687,
+          "sha256": "6d0fe1193bdc6a8d13853abdb7968bf6ddff59074ab3c7160cc269c5f1f73774"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "50b4c19437a399d327ae27bdc36c5e83cebe92396c165d905e57e0ba140c59f2"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 290,
+          "sha256": "bd73397f545f6e39a25af82eb6bf2ee33d429b84fcac6168ed204399c0539d5b"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 45733,
+          "sha256": "b5a0301d7f3af28dab03a36b57af55837ce78d4dc5a6736de81d7259240c0256"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3145,
+          "sha256": "ad5fc65931bcdbc0bde5afb67ff59f0e474b6584e4ab5b8dab076b59dc61f1f1"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 7498,
+          "sha256": "aaa1560104ee3a09ed98c98def184a0e9b6c02a66a8304fee51c03fcfee8ba27"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 136,
+          "sha256": "adcb4abfcf848efbcf6a4f0e55566537270b56fe8f5eb1cc35ae13934b15ede3"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 916,
+          "sha256": "7991555fd6d04b7ac710b14529a87354674eef80f3f1214933bfe72aeb8608e6"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 3214,
+          "sha256": "da7a72a6a0a54fb9a3dbdeba94503cab63c97c4936ff061850dd694b4b5190fd"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 2032,
+          "sha256": "3c9b79b6fa31249905e70ddbbffce56d5dbb6f251cd03349736e41939d18469f"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 3423,
+          "sha256": "14871926cdc4bd0ccd3d5afac3a83a1d8abdbcc67a06f3126057743358c00027"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 12997,
+          "sha256": "eed034007ca2570393063acebc8cb9634ad88dcf12ef187a5028eacdfb23f2c5"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 37439,
+          "sha256": "ccd7718ebfb5712da4e866ace5bab179e955d83ef54b7e979dd73d6a34c1292d"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 21846,
+          "sha256": "cdadca2c6389646701482ca590a9d340f2bf29f9ef6cb63c8b9ac695d9f9dbbf"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 33033,
+          "sha256": "2b73ec648c1f3332b48b4d4589f958153d3844d6c7802a337daa88086e6745bb"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 18459,
+          "sha256": "6707a8deae4a1db2a31f31b5e72261cc511db49cb589e078e88bffab2198e243"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 823,
+          "sha256": "75f9c2f2c7c74e5d1659fa77eeda69347f7a7a746638211802124a257376d05e"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 6009,
+          "sha256": "dd49e208c7a424248ad08e80fad6ab72ecbda3556df039a3c17119423ea00051"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3437,
+          "sha256": "41e8a29fb69e44cf52607ec8e1d9bf9248c7cc7c832a661243abe127701f9a73"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 35466,
+          "sha256": "92f80c8b4e34cb755d47d9cca794e4246de4924becd63e5f88dc6acf67365d60"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "62d5c91b1b8dd821dd58f868e3f13ea8b6594a7bdbe7e4a91ee083050569de5c"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 77,
+          "sha256": "73520b4dd644341b24be8c4974dc8c30bf7251737e63a81e0dcd0f19b1ddfc8c"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 45733,
+          "sha256": "b5a0301d7f3af28dab03a36b57af55837ce78d4dc5a6736de81d7259240c0256"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3469,
+          "sha256": "7667c7e171ae2478e62cda690089aa04cdb76ea52c6f7c6f7d18e3c0f7be34a8"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 5101,
+          "sha256": "43de5ef3eb6900f4f8dcbaf2f161a0a2a30b1f7e0cc04761f80ba9447cd4b843"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 30312,
+          "sha256": "b245f00800dd0ed58349db67ff382b6f695ccdbea279836ac324fdded95113b8"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "0cd51ddc62f6ed874e6859270dd0593148f8ecf2fede214f42a0f256446a34f8"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 40644,
+          "sha256": "f480df434fe27d066bbc54c2dbf1e7ce7cdba8aeb7819fe228e1599ca0ae339f"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 67351,
+          "sha256": "dfa14409df22c430cc1d3274d33c5689fc490c21c686f4df4874f5e0808b67c1"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6097,
+          "sha256": "c94090793c5157624df3fe09d45088eaba46ec8744c6537f71bd7c2cbe91ee43"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3032,
+          "sha256": "f698c4976fa15ad31bcfc5ac52522674adb4f44eba4778b8a8ad3ac855b9aee4"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 3504,
+          "sha256": "c2f8a19661f0280e0a4d10c6319ac0206bc17802603c3f3ae308e88c010c9499"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 2971,
+          "sha256": "1cc54c6fadb580fbfb4f71f84b02a31d0fca0aa83dedd2af419e8ae3afdcccfc"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 74008,
+          "sha256": "7eadacafa0dc367bd73e430b10c3f979b23caa014ff34103ce4a00d70c26a830"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3618,
+          "sha256": "22c53e6c2443894856641f001c78132c173054bacbb8e2ce3fd8817d709bc003"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 15620,
+          "sha256": "72640b9fd4c51f4b72ffdb5c76a176b1f3c364b3d9ec2a79ea79090fe4990a6b"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
+        }
+      ],
+      "content_root_sha256": "ed0c4f527c56e7d00b130a28ec84c8fcf502ef87a94dbe41718abb77b88cd133"
+    },
+    "Kingslayer": {
+      "deck_fingerprint": "d0ef7b45d6e6b3a2b9da937eb8c735d998d8bafe4b2cfdea74d947491ad9a20e",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/kingslayer/CFM_637.json",
+          "size": 95,
+          "sha256": "a6afcbf88307e05d082bd55d36e8bf4bd030b41f2979a9a8f9958733bef8f5b3"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/CORE_RLK_567.json",
+          "size": 105,
+          "sha256": "4838de21bae0bbc609412cb27e2ee98a2ae9f59d23b0021a66c7dc96e67707af"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/CS2_073.json",
+          "size": 95,
+          "sha256": "1700569c5d0bef55bd6c0033b8e8d47b4b48cd79ab3b847118d9a66e7787d82f"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/CS2_146.json",
+          "size": 95,
+          "sha256": "1491c217b8bb388cd0ad635ede13aca86b39c2b726d7ed437e464a98d0197bd6"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/DEEP_014.json",
+          "size": 97,
+          "sha256": "57d4a17c1ff9baf2aecd9f744111b0cf16c0b8c31466f46d34bde79f6d9d5464"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/DRG_056.json",
+          "size": 95,
+          "sha256": "df66e10457c71f85236ebf0212e107d50d025242ed6343382bb36ce3008ba8cc"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/EDR_846.json",
+          "size": 277,
+          "sha256": "6b890add0e480778c7f190255778f2a4bcba62bc6139ce73e9a52f71d2b1cc66"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/Mulligan.json",
+          "size": 127,
+          "sha256": "a0d76c3df844ae9df89b734d32fb7ee63eb864458819df67053cc7062dd87ad3"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/NX2_006.json",
+          "size": 95,
+          "sha256": "243d873091c6e0c720be4e5aa7aa4862c3314512ebdb10666fdc70b19a0291e1"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TIME_875.json",
+          "size": 97,
+          "sha256": "88da247f5301f52b13eb351b6991cc85c3eed60179018c766062f50172f42ea8"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TIME_875t.json",
+          "size": 99,
+          "sha256": "d2074bfc09c01ea878d3d5f24a8168b10b4b0f6544e9c290d40de92057777b48"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TIME_875t1.json",
+          "size": 101,
+          "sha256": "df0f5dbcea2b1de641be070fda467da226034408e2e7a4a82b3e1e04a52eea07"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TOY_505.json",
+          "size": 269,
+          "sha256": "8a0519e646178cfef372dead86bda5bdc77cac82b91e7f102187d22948eb2187"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TOY_518.json",
+          "size": 95,
+          "sha256": "4d972480e30a13b66c4a031a713cc973bc92fb729f525db8860ca4879653bfe2"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TSC_936.json",
+          "size": 95,
+          "sha256": "252e354b492ae8ca9a834b6ad25d49359f0959bf1e64f087f2313bf8d4e11074"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/TSC_963.json",
+          "size": 95,
+          "sha256": "5791e337cf12dbbfbe584ad7f26cb2f9c0ffa7e6825324d104f878bb71b7ef60"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/VAC_701.json",
+          "size": 95,
+          "sha256": "6cfa426db724110b5e6853617ef378e229d7d0273911b69979ce1b13173ef5de"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/VAC_937.json",
+          "size": 95,
+          "sha256": "7c4457c21ef765bc977e1cce57d5c563a593749f59c1deb53106444287f084fd"
+        },
+        {
+          "relative_path": "CustomConfig/kingslayer/VAC_938.json",
+          "size": 95,
+          "sha256": "092e3654e6b25d1419bcff363aa5c29ec8056c4b9169101228cbe2553d6658f7"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3478,
+          "sha256": "a7ad7ae0668faba2bdf588ae168a54860efddc95aaaae7f391c44970b74d74f0"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 366,
+          "sha256": "e7a7881f94db63e06b6bd3a1732642158180f78dfce202f31be206159b1237af"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 20384,
+          "sha256": "7ea12caf18bf9a3ce666cda38cf41e10efe80126288ed62f037d72c8d15e9c2b"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 14059,
+          "sha256": "823144b84cf7808115c7038c6329dd7f3469bc7631c9174b7dd66c30b80b4644"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 2022,
+          "sha256": "a746f6dc4bc42fe62ef259712bcecd3aa1e8bab1f6f2db6832b35e452d16168d"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1239,
+          "sha256": "b95b5d17719ade3fa7cca730629a6fa766263db6a5ffa3e97e7a0c1203f9f2f2"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4571,
+          "sha256": "e59103c60df167b7dc750a6dd0eb4e0f9d0510b63a45a9e140d9a88919be941a"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1360,
+          "sha256": "1dcfb49247d60354d8c176216eedc1a9ae2ff36ca839fa361f926982543ae1f7"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4554,
+          "sha256": "ad61e8f37cbb4eda30e12f590341728e433dea05ff21e6f2369407dd3d01927d"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "af72af741cab802c9bbeeae517a992a53ee12fb6a1c16391e4c4cd90c884b47e"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 28300,
+          "sha256": "6fd24df9fa2aafbe72af1f99532e6a1591e79d3f5b072220b74b7eb8256cee14"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 244339,
+          "sha256": "ef9121f5b087d7c7eb0bcd4f9d54bfbc0490ba1f7073eb5b4c1114f799d6ed84"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2411,
+          "sha256": "a0fb8d6374fb7676a856f36ae980833823fba659a1e04f8f7e3e86c1b8911250"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1800,
+          "sha256": "237ff312ca8a0151f321dd186f01910f068e7c10846895644ef30270636ac14c"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "984769d8289ae87827c426c1c29ea3e71e9204857c33486fcbb58bd313947a28"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 292,
+          "sha256": "7c4460bd099d9386e69adf29496c9c9659fa461a550ab43d7cd93275dd41daf5"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 54042,
+          "sha256": "a0329b19d8cbe7035216b3210dd75015a5fb3d98d29726a9d3da034bf7416369"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3393,
+          "sha256": "d8c4db40476f64a740a817cc6245fb1d46e423bd76d08e8fd05aadf5753b2577"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 21051,
+          "sha256": "f40eb155ffb27e79f1b30e3c3e44131db2de4c0bc31fd71a51de3f8e82a13967"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 138,
+          "sha256": "1a702374a40ecb982a159c0428e665841f1835beb365ec23aa348a7ac1296b30"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 898,
+          "sha256": "971a248b5247225dc9cea18afc032fd822ecfe66f9e7a771920c20d144e0c669"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 1671,
+          "sha256": "54a866cf8aa5f66326de2eb4ace3ba92ab765e1c27158160481170032818116d"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 568,
+          "sha256": "3e7d8998764f38d6a8fb6284fbf82dd4b86a1d9b2f26a539c4206b2429b8c0c2"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 3487,
+          "sha256": "0256a0929280ce815f43eda79d14897571ac4b7802382794c27ebb1756c389ca"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 16465,
+          "sha256": "5efb8ef580610996c3ebbcbbeef01ab4c205006fcd566dfe398e67e6d7bdc093"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 38244,
+          "sha256": "f3125dd29fc14786ec075789b6276d50ff1ae29ca91eb25e6fbc45b2e091a3f7"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22493,
+          "sha256": "2b867a5c1d8741db7b0f7f49a0b135ea0cc981f48d32b33dd6e81a0de1d533bf"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 38082,
+          "sha256": "5a2c9932d67e486abd63bbda4e5e52e7bd7325b6a8659fc01f359d1c647a25d8"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 22099,
+          "sha256": "635c8559a5c9491ebfec9c250b0cabd690f8e0a365cd3a4396efc4e9674592f9"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 908,
+          "sha256": "4283e94763f30cb5b5d074de2f3e6aa1c1adcbda5c79772cc7a75230adf0e269"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7068,
+          "sha256": "ca6d3c77bd066465e78cea4dfad52b5cf84c15dd62b8806507538dcd9fcbaed0"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3935,
+          "sha256": "24a080bd1383ecd65f82d5f0354df4403778860f1215e9b49168b56f6353de50"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 42887,
+          "sha256": "b8d0240efa60b7123fc80ca8a1a54ce67c4277c2d852dd1420d2faaaf60b649a"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "cfd1d069e98fb116f26880f9255177899601d07852acf1c1421f89f405dfdfeb"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 54042,
+          "sha256": "a0329b19d8cbe7035216b3210dd75015a5fb3d98d29726a9d3da034bf7416369"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 497,
+          "sha256": "1986dad0ccb2351c60bc899fc99ca976019ac18ab4dc8457d8a3c57c98901130"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3959,
+          "sha256": "f9e571682fb9d768e819f3ed417df954a725ae00f5b8e69ab98d4500d70d1fe6"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 5579,
+          "sha256": "e18ef56f455e59436ae0b94eaf156db5a15f0380a99d334476b26b8462e86fb5"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 28719,
+          "sha256": "0c21cb719eda0ea90d93294eff6192fc881e357fd8b38372b17e1fc6572839a3"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "cb473b881156a1384e5afb1e36391eac7e65617f71c13a9d8168916f7c58f0d7"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 40384,
+          "sha256": "16e62b1adce497f015f345208bf9cc688b6ebd2b16ba44e1677a38abde892504"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 79675,
+          "sha256": "77fc06d1f2ed7bfa27d240d828d4854c500d2299720f1b804684a8a88358cf39"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6890,
+          "sha256": "4a8760abb1100d463db431dde75d23be4d6fca4e5bb20cb83d2308683fbbd21f"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3020,
+          "sha256": "79fe11f3638c7e260b57f248041e566f62b7243d9ed6d906f02082526e32f67f"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1158,
+          "sha256": "9721a1e9651057d66f42dd81da7c896d6fcab9cc925a3cbe7a6e2e632656b9e5"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 3693,
+          "sha256": "6f9c56342ce9616f205de14d348b9936d55effa5e4b74cc54189cf44863e8567"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 83939,
+          "sha256": "d87707ccb5f2b951c5358667cc278a4fd492f88339b19ce34e2065c4e100209b"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 4008,
+          "sha256": "cd6445760b08790f9871022f9cdeff26014ffb2e1a73e49df02e38b2c452c0c2"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 17879,
+          "sha256": "32f70bae0d9258ecdc69f9f9f6961d82f1692cba47cac39581c7b79ae3d60925"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
+        }
+      ],
+      "content_root_sha256": "1a77748ae93d34aea16f8c9e77ec795c3aa064028dc0139e911f48e763d7912a"
+    },
+    "Boarlock": {
+      "deck_fingerprint": "8d5297d672850a225ff78040b91cc3b1e74eca8e0a454feeb04a04bc6bb63db6",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/boarlock/CORE_UNG_205.json",
+          "size": 103,
+          "sha256": "3168eaf2f65595739b57160b782a26974148e7b757680d9652d38d6e20d6f917"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/DEEP_032.json",
+          "size": 95,
+          "sha256": "c7aaaac7a0f5694fb60c36994a49c5a51062ffc4d8842bc864a3605ac68a8a45"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/DINO_402.json",
+          "size": 95,
+          "sha256": "5487e92e6898f12c89e720b70ce9b3e31d1bc40ce7088a02c189f5a9550e4786"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/EDR_482.json",
+          "size": 93,
+          "sha256": "e5848ad32f03aa13223bd81bb733442cd51056b02a5eaafeb1a9b4e7b146ed42"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/ETC_084.json",
+          "size": 93,
+          "sha256": "a2e5b002f299e267f8941eec41aedeaf8a7e3d1c47af824741001ca7389d9597"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/EX1_062.json",
+          "size": 93,
+          "sha256": "2f229a626d8dd2d6f34c4ae4a8bf9f87b7b0d2d99b6148b5f4bc21ddf46199ad"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/FIR_954.json",
+          "size": 93,
+          "sha256": "764ad9c016fa413b3a7ed386084903ab999352fbdbc10f34c121e84742423764"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/LOOT_014.json",
+          "size": 95,
+          "sha256": "8330817285e5f2f9ffb2f9c0c66b4684288c657e87483d313bd18c9a208abff4"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/MIS_027.json",
+          "size": 93,
+          "sha256": "a8650ca441c403e6ad6b6fa5d9c68b98eee2cfb97cd73fbe59189a63756a1b2e"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/Mulligan.json",
+          "size": 125,
+          "sha256": "811fdd63c2cf7eb2ecb81fe1358fdf6780d58097a22407f7e87627aa12c749db"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/REV_374.json",
+          "size": 93,
+          "sha256": "c04bbb43fd1d4137f4f7c6b55d3e3835bfd7d164eb1115b1fc8de1ae97278a07"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/SCH_312.json",
+          "size": 93,
+          "sha256": "e38f1312b53fcfce2bc7435fa6e6fdbc351abc1858b06e6bb0aceb7cb7dc1d99"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/SW_075.json",
+          "size": 91,
+          "sha256": "e58ecdeab4a21cc5320b5ab5f5d9c91a13ee7ac2dd2f14faec111f912cd9b710"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/TLC_451.json",
+          "size": 93,
+          "sha256": "f1db876729ba2ffdf443abe767181608f460a3d32857499111123cbeb05c59d9"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/ULD_717.json",
+          "size": 93,
+          "sha256": "136aa161ff180ba7ed369c5326c91b79f4a5bbd6e1c77df447b9ff5a699d2f84"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/UNG_832.json",
+          "size": 93,
+          "sha256": "daa0d64b251f04e719fe8d76e835c2ead2c4dcf3a5a45a4af47f4cbd5ba00d64"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/VAC_939.json",
+          "size": 93,
+          "sha256": "908e4eff486c330ee48b618edcc81c6f9ef50f5907f898c9f3fee3a1dade1399"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/WON_095.json",
+          "size": 93,
+          "sha256": "1a95bea97a8931c96fbc77382266530426e7be2f09dca575c5c4f81bebb0e72d"
+        },
+        {
+          "relative_path": "CustomConfig/boarlock/WW_092.json",
+          "size": 91,
+          "sha256": "a80027f5ba2db451028003ca71656f2b8501da2d0dd6a239b92ec89f0a14a4b4"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3432,
+          "sha256": "3e2732087cde5bdd43d9a3a24bfc226e4ccaa7abaf0987323717d74bfb0f1a72"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 389,
+          "sha256": "2495959b490a02448e2d156d82be9c03ad21b5475f8878f8a30fe67dc16083a4"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 11650,
+          "sha256": "36a8cfb5acb382c4ef3b2623551a0015de1ebbfaf8245525a199849ebc265a27"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 9048,
+          "sha256": "c4115e8e9c77a51c1a68e91c6e8141d75e7050f734542afec502733a767636e6"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1965,
+          "sha256": "1a8a8b217e8308f9592e29abb6345f24e7a2ab2129fb018c812717228c3f8339"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1153,
+          "sha256": "c76a229bc190fa062460c8cd8aee37b1598573d5288720faa237ed35d102c09b"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 4576,
+          "sha256": "537b12b61c67e790f8926837bff59d370480b85f6eb3d258b2a71e77d9b1ae12"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1352,
+          "sha256": "90714155c047a9155beb81c69af14e597006880bb7e25e4c6a67e099e4931bda"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4434,
+          "sha256": "a1c8b8f185c40d52387ac71ec3a1699c1ccefd5166841a09d441acd783c537e8"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 420,
+          "sha256": "f5848962575f3f1d3e13f4b5e46b075a39eaac7b0a80876241df9c1f40b8f866"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 28813,
+          "sha256": "4ff329bafcef0895d424cba771b809be5c1239e75226892226ebb3241d0455f1"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 237242,
+          "sha256": "ef22ddcbf49eb54dea5ec5ce827fb74d5ad9423967fe57923bd15d0a7085a549"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2313,
+          "sha256": "c49a1f682d528877c7561fc54204f1378683360f6207520829e0f0b7c5513d87"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1706,
+          "sha256": "b8a3db819a623c8491e1ba3438b958e589e28e7794c194d54e7b5af6e9ca5f97"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "22d525ebf178041d96042895661a98f93909ef70732c66dc251713a08845a996"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 290,
+          "sha256": "715edbd78fd9d247c3de0e11ed79b2245e288df462989bbde9bba8543c17fe99"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 55465,
+          "sha256": "0e78ee8f91ec3c17d9588237810d4d504e47ace0187124f6acd61259ca062e05"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3527,
+          "sha256": "ab5a8cab728fd24b47b218a0837616bcece06918f157595dbe7631ccbc48a978"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 9984,
+          "sha256": "62aa67df3a70e5f4f0cf43dedd2833bd0445b53bea1de634d24b6ca6129f095f"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 136,
+          "sha256": "d1fcfcee5469d8ade27de25cb497b792ca06b3008372d7f2a033b1110927a0b8"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 890,
+          "sha256": "16f7379dd08369fbf960dc4e06b002af7abcd05c5ba583dc296650e0c8804184"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 3981,
+          "sha256": "89e61c6eab3e17f89f684cb64963afcc486490706ee04fde0163793dd8257213"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 2810,
+          "sha256": "0e479aadf7c155d2b5836254d95a3f0e2d2e7b772ea87fb4dbfd1c946cf8dab9"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 4353,
+          "sha256": "025dc97ea6854071042b61ba369d5ab57c6b5ba0288869722b4ad747ac409ced"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 14225,
+          "sha256": "2e7a135a1e43feccd1ee6f5542c835f44dff92c6c3bf92bdf686d12667b468ef"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 37862,
+          "sha256": "6e57b353af8806f2dab51014d0f044a7af1d5b127fdb2011699a82b47f6d28ef"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22447,
+          "sha256": "2b0586c6ae63d7cee4810c9b356ae0ac8f2782543ad31d3f6700970e98f1acc4"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 40607,
+          "sha256": "28ec0848566b1989c117b267bebc0895a21e2ad94b4249c345c8c5751935d40e"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 21216,
+          "sha256": "d41d1b3d993aecfadff85f0b41eeb2d50db4635742b75b7bb415472484e48526"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 930,
+          "sha256": "b57ad704879f7e3f163884b353131a93a4a84a439e227695f4e28380c446a664"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 7185,
+          "sha256": "0655ffa0517c07e6b6d60d9734ffb93e2c72427686b94919acead819171c501a"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 4011,
+          "sha256": "c04b8dca0482996f22d82c1997c81bdbbe43e07f9be7ececf76374a8a0e5ce0f"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 41126,
+          "sha256": "7272d72cbeb97e58209b3887cb7dec81b1928c27096ae6acd6556b04e58b2dc9"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "00a32ced3a6819f08239d6ed7b83b76906201d0fed0069c89ca48cb3aa8be0e7"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 55465,
+          "sha256": "0e78ee8f91ec3c17d9588237810d4d504e47ace0187124f6acd61259ca062e05"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 503,
+          "sha256": "f33cbd882bcbf2a4e5ef7c07abb4bd8447a4685157f30227db4ad736ec856625"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 4033,
+          "sha256": "bcead91aa8233dcc89553357229944d1a241b1d542563519fc59c9a639cc4e23"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 4899,
+          "sha256": "f161a73c74663cebe32f3abc48c091c30ab919c6a2b03ba6237ff43fdb012c5e"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 28961,
+          "sha256": "14e7151074ff50af3f46caf2e3b1802376c6094d19be0027feea38c406f23392"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "f7cc491723adc40fabc852c8ba75aa9a86f01eecc6a77e61041797f538314f64"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 42167,
+          "sha256": "775167d5cd5d694921f7c9e61d9a5ce4853e840da398353fe2c3fee267e6cc55"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 85579,
+          "sha256": "389b892b2ebce03e1da807c6261e4a2d13979e1e68f1ece25ba781898700a4c1"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 6838,
+          "sha256": "b721afddbaec1c36c228061c196b9dba7531bb85354545c0158288ef5e2a4aa8"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 2934,
+          "sha256": "179b3549ac72fb7624077787c789e74199173586b48569e31b2f13fc19d1b884"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 3092,
+          "sha256": "435b9fe129e33fc9857698c9dde177d8f4d06b7e272301f58ffef2489c3e2472"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 2445,
+          "sha256": "764239fdf5931926f5e01b60112b434ec9703002a1586d7d39ae962c20ae41f0"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 83199,
+          "sha256": "8554a250b349d0a63ac270f54e0817491134b24aec66a178b382c935d3bbb252"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3625,
+          "sha256": "3fb44db6838dfc5e6c71fc32961cc21da143d3dbdd3197061c94421e9380c9ce"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 18263,
+          "sha256": "355a2fb540a538f40594e7129975e715578b4ea1428861893615bf5ea5e2caf1"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
+        }
+      ],
+      "content_root_sha256": "0b49d377b7aad2f2c6e9252b1658213de373fa4f69c95856eb5aca394630c920"
+    },
+    "PirateDH": {
+      "deck_fingerprint": "6ec70fb3e2ef8dff240e67a58ffce03f137d17afb276266edcce0b0667578b47",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/piratedh/AV_204.json",
+          "size": 91,
+          "sha256": "01faad200c7998b800c453b99bdf74b31a7dbef4d742904d835d9fab2841a651"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/AV_661.json",
+          "size": 91,
+          "sha256": "52a76f3920fc4360d978b7fecd7cac152fb344dca32b9a53cb561b89fdc2b534"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/BT_490.json",
+          "size": 91,
+          "sha256": "fce35f04d6eee7192344656341140a027e9d62c333973893c10767e0eaf9ffea"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/BT_753.json",
+          "size": 91,
+          "sha256": "e02ceee8fc16cc87c381a720104e3baf35151944ab84a25d743034b8f755fe32"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/CFM_637.json",
+          "size": 93,
+          "sha256": "97bb08613798fa78337a6354dcd1eb10ec697e6b8a9d26d14d3fce166835133b"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/CORE_YOP_001.json",
+          "size": 103,
+          "sha256": "0a867188852db1c420e05af8a77c204c467fc47c92accd192e6cbe9043e57f93"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/DRG_056.json",
+          "size": 93,
+          "sha256": "00ca3a80863314efb585822f99c49ce386f6ecd02cfacf25c541fb18ac192613"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/GDB_333.json",
+          "size": 93,
+          "sha256": "c5e73adec0185c052b59b178928761f82a57779acad9fa03af6b0711a4a4480e"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/GVG_075.json",
+          "size": 263,
+          "sha256": "af476a63fb4d225a1833211456d79c5485efda4c75d011e26b5e1d426adafc10"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/Mulligan.json",
+          "size": 125,
+          "sha256": "7348013fe8fc56aca573db0bbd28f4025c08c3aac75b1254c89cc51c71bc82df"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/NX2_050.json",
+          "size": 93,
+          "sha256": "8cd2c15324cf7bfa674b0f6c4b26a0bcb2aa402a41f3607f184b7f15bb626d33"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/REV_507.json",
+          "size": 93,
+          "sha256": "509d0c9336ec9570c2b770e45071381518bf49fbf78b526774b395bd12040984"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/REV_509.json",
+          "size": 93,
+          "sha256": "8c5e644cd7627449eab6149c8d10c466602e9ab1917a7db932763b974bc5558a"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/SCH_356.json",
+          "size": 93,
+          "sha256": "d56fe06342bc5e91e12320a52d72b690b3d394123eed2887b3f8830c254efc40"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/TOY_518.json",
+          "size": 298,
+          "sha256": "ff8d4dc9122be1cf9796f85659f6d7ba36f795c9ec229b70a170ed940067aa3e"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/VAC_927.json",
+          "size": 93,
+          "sha256": "ef9deb7ae29084f03281fbe35e863d5dccdd4304b3980d9f256f8a992855f4ae"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/VAC_929.json",
+          "size": 93,
+          "sha256": "556e1e6ea02ea06498d2b0e39e55e2d2390c625af9fb8e6b2a41250997e79021"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/VAC_933.json",
+          "size": 93,
+          "sha256": "a87c6a15dae45fc9d9ab3817e7e0ff85a402e1a4b75f9351b731ae616751d11a"
+        },
+        {
+          "relative_path": "CustomConfig/piratedh/VAC_938.json",
+          "size": 93,
+          "sha256": "dedf4e9b1008e5761746a7128e244ae24aa941d4437d72597b04f16b4c7b36f8"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3427,
+          "sha256": "b88e4df539d057bf4d1597a10435a1a60f240ceee0d104553881facc717dc788"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 399,
+          "sha256": "2924d340ae78a6f30dcaf9344473acfc141983c8699ea6183548f0bcf3ac602a"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 24424,
+          "sha256": "5dd5f1709cef622459b28cc431539e0631c150ac1d35fdffb57b429842f1b5a2"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 18059,
+          "sha256": "c0ead25f36b764cfe6c31d53f19585881854992f1f336d1989a1613e24b8dc86"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 2013,
+          "sha256": "2748a1446c17d022214be9eb617e7bf11a0a539eaad09677ed5193e6cd2b6fbf"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1206,
+          "sha256": "080d9ceeac45ad04a011c85769a9d09cf2a6ab19dffcf8502ceb6196e6c79bfe"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 5034,
+          "sha256": "2ab1a8d30c13ed674dee53d964c9cb4180625c155d31b37b911c1f69bbcfd6df"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1347,
+          "sha256": "e5b21acfb38ec434557c8863e1f2f1e09752db9ddd08ff81cf8e5e248248b584"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4538,
+          "sha256": "a6003fde878fe71f4f995e4b15f3c28d3f4a587de1bcb7839e6fe81facbc8391"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 422,
+          "sha256": "1bb2b1c429429d591b323e4a51205a938aa426f3c5dd87db6f4e0c25124391d4"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 32198,
+          "sha256": "03828742c0487e97ba300c2647c00bee7e7a65b315e8c3cfcf7f35255c9a0401"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 264381,
+          "sha256": "8a587a958887beb521ea76d25472e636ba127fe115d8175d17d3ddc6b6b3a20a"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2321,
+          "sha256": "d0ab88157da94c2d7ee10128fb6dcc72bf5ae22ce81bf9ec292ddd2c085e4280"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1714,
+          "sha256": "64daaa3d8feac1b66f4d6920f6a5bc55d263b2ad175f8d40820bb646f5b675e0"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "82cecf4e4d053286f2c00a87daa04f8fd008544c5051bba6750b8fe011b72c37"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 290,
+          "sha256": "bafad492fd940745b6b89da69061ed09d8183656bed358da5d685f7c14f67acc"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 69417,
+          "sha256": "3dbf68557ca00db4cd69e02e3be783a488d12111b82dcdccb8709d1699510f22"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3493,
+          "sha256": "5521922dba1ec3062e697b310d76af9e22f9e84d79d546169906bd32b5e1bd50"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 26825,
+          "sha256": "7938bcb2fb4d00ba1e1b49ca9748c962f5c60df2286a6bc9c7a3996a206a9009"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 136,
+          "sha256": "9757fd3e0060f581103f1845d03d4ae078e2757546837925a57b81574ff7ed18"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 887,
+          "sha256": "2f3273a7347147101bbadf8858bf9ffae814ecce88836e0908e71500678276ea"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 1673,
+          "sha256": "79ad42cc19ed9d847238d927f4b09b5d4875289d197dcfe8caf0270111c865ae"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 568,
+          "sha256": "1dbbca08c94422e43e6565e41510b97e61c3e8b441c11c88800dc49a26b0ccb4"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 4189,
+          "sha256": "0ec46e5db4a3f9cac18cc0ef17f321fc2dfa8088a5b687834eca6c00260a7a88"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 11767,
+          "sha256": "8ea8116dca07bdfefb54e70ab35dda00f780a58c7322a2883a1cb4f6f94f6ddf"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 41252,
+          "sha256": "c2066f71266c201b83e7a64f750b54f6f0b8a62c4be6ac939e90db613c1d1b83"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22442,
+          "sha256": "0f7be7b60f703d3876fec0ba7f927d9a7a255e86f315febc3865ff0bc786b59e"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 38378,
+          "sha256": "62cb01e1eb83c4a279a09679fae893e9543abe41825fb570cde4490cffe55ae2"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 26238,
+          "sha256": "d82412b83514fd68e37f2015b2650b9d1bf197f90f0498d621ffd5210b23c873"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 956,
+          "sha256": "622d0550c7d427b6c57e7a72d3c46cae5a9a714353ba065470d3ce55e621ed9e"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 6858,
+          "sha256": "ed8326e28781f00ecb8462161752c51dd02c5f0ba3ab03b5a5c917569c58ddcc"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3869,
+          "sha256": "6014622599faf9a4a9d6db99ab57a9f2172e9a27e0f241d9da13ac8213aa2a72"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 42279,
+          "sha256": "10ee9b6b98c4d02c73b9e9b7e59c2eff76c7630e31dec1b14876fce7d2f8ffb6"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "a2c7071f3e6d056bae0a41cb844fb9fa75d1632c3a8489f6667b073953c907a8"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 69417,
+          "sha256": "3dbf68557ca00db4cd69e02e3be783a488d12111b82dcdccb8709d1699510f22"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3903,
+          "sha256": "e48388920fc3306a8026c8ad9da27b461bb6533b75b41062b8d615368fff83cc"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 5543,
+          "sha256": "8b0a7c1fe5f37236c26079939ec4d798500021347823cfac5b0efa61ccade45a"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 28553,
+          "sha256": "431b0114d5b19d5c2984803f5d84faeb4161f3da8d587f11e3473a1cf9d92dc3"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "586c96f638523efc6979b4941d3a0cb9dff56a66d022cb0e8349e4ca44a82e26"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 42708,
+          "sha256": "25bb059551055e670837961f2266b79deedd59f4e8fc9dec34cc942e816fc90a"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 95726,
+          "sha256": "b19e08bbf5709921d8ae80dcde5517e8616e7bfaa81101a095b43a5b507ccce0"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 7032,
+          "sha256": "4e5cd0b25c40caa590d86d6d3a64daad4737791c071673f4da7998a6303cf38b"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3022,
+          "sha256": "8fc530cf6d84f7d152838c78189b64305ad6fdcb8b7892aca4b5dd1ed3a667a8"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 1820,
+          "sha256": "92f1912c39c66f62b5d60a9e0834fe6720aaa061d4db8a1e7467690645127b8b"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 6161,
+          "sha256": "0a099b3a2d95ce0e07669dabe0bbad6300d5c6481f3095b08c4352b4138826c7"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 93746,
+          "sha256": "033cc2ff50549a522e3dd64b61e17f3c3def9f54524fb8809b7f7573dcf5571c"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 4313,
+          "sha256": "12136fba05ba06c889fe2fca510de58dc5002fce66c921962da79749041e9ed8"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 17672,
+          "sha256": "c0465bafb5884e403851a8d0f980b314c15b8aac719d639c8503c4ae90b3655f"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
+        }
+      ],
+      "content_root_sha256": "f9cba374b6dcab84cf5c1e99e821051de1d8fabc83d0aa3bc3c55011800accb4"
+    },
+    "CuteWarrior": {
+      "deck_fingerprint": "aeae1767eac60548a9a4c6a1fd5fd11ba578ac60b03406e3123a5e9c90727d3e",
+      "artifacts": [
+        {
+          "relative_path": "CustomConfig/cutewarrior/CFM_637.json",
+          "size": 96,
+          "sha256": "ec64766abc5a44e19efc4b1294331c516ff9c72cb3cb62f9ffbf3a7eb374290b"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/DMF_528.json",
+          "size": 96,
+          "sha256": "c3bb9b8b0101f09d37904f77fb031c752cfced86e18a6d667ac83d16471f5db1"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/DRG_056.json",
+          "size": 96,
+          "sha256": "f564fec39ebab37a0c143f83c1f1ece5a2387a7982acfa862b72ac9356730eed"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/EDR_570.json",
+          "size": 96,
+          "sha256": "2a542194ea1bf4141fa8815dfc98dcf5ebe51e28598ba2d6977f81031aebb78e"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/ETC_372.json",
+          "size": 96,
+          "sha256": "821b20020d053fa2d2fa859d7f4eec74dacd2bdde0e767e757aa91d35f1d4a7d"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/GVG_093.json",
+          "size": 96,
+          "sha256": "51c90b4fe5f661f3d438af8e3142af04192d5787c45e1ae8e614e028714b6e02"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/GlobalValues.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/JAIL_384.json",
+          "size": 98,
+          "sha256": "2f53801b5c8f86edabcf28debac93bc46da8c8a485f70e52daaec724b337e523"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/JAIL_421.json",
+          "size": 98,
+          "sha256": "bf12ff474872e20d51806a1c7e1879edd670ef6d27549975472aed972540f059"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/JAM_013.json",
+          "size": 96,
+          "sha256": "15931f993d32aaead7f5a19e18d3a7455cdbd74e1d3780ee06e823a0e9fe21ba"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/Mulligan.json",
+          "size": 128,
+          "sha256": "c7cac1a21e91009482d8bde579b365316a538462c40b6fa2412460238fa7609f"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/NX2_050.json",
+          "size": 96,
+          "sha256": "5a6b0eef47650e1b8f2fc54d546c7f1a2fe568490b5fcbe6c38a7475ebded42e"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/REV_933.json",
+          "size": 96,
+          "sha256": "d3662a19450191467bc45192127c7d1fbd5e6cabc1f12c47accaef6a308d4f20"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/RLK_603.json",
+          "size": 96,
+          "sha256": "7530b70899c91b5f6e1d8841a2b0e82dd477d498a3c4a6ae139ea34109e47146"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/SCH_524.json",
+          "size": 96,
+          "sha256": "df3608e5c3dc7126ae7d3d10d55e8ad2fcaac02e8ec24b028457e1d07786b625"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/TOY_518.json",
+          "size": 304,
+          "sha256": "f75661cc0fc341d2f8b568caab81dcc51fab8b7caac847354d35b93adfd56aef"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/TTN_710.json",
+          "size": 96,
+          "sha256": "9aa3cdad85f3cb47d835cdc042e980ec4815e2ad6e349f26fe387763bfc4ce7c"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/VAC_958.json",
+          "size": 96,
+          "sha256": "8d2efe845db90386c712131d28fbc99289578ed79ad373d841b78a2067ec5088"
+        },
+        {
+          "relative_path": "CustomConfig/cutewarrior/YOD_022.json",
+          "size": 96,
+          "sha256": "d6a978a28dace37c04cefd74791ae998fb2df7f01731765acc83b05e74c8a510"
+        },
+        {
+          "relative_path": "package_derivation_receipt.json",
+          "size": 3374,
+          "sha256": "c784664162df8c46fd35f42140c4a3118efd8331a15cf908e088dda006829db6"
+        },
+        {
+          "relative_path": "reports/candidate_archetypes.json",
+          "size": 384,
+          "sha256": "397070818a11d25dc19a9f489343506be14cc63cf3f34730a9c71d684e5bce7c"
+        },
+        {
+          "relative_path": "reports/card_behavior_plan_report.json",
+          "size": 8932,
+          "sha256": "fbefa6f0d74eb33e73498af13d88a34ff5b4e2b6a7c161f0f5af49a0f01f3198"
+        },
+        {
+          "relative_path": "reports/card_behavior_suppression_report.json",
+          "size": 5631,
+          "sha256": "0045226a1cebd5e88c3ecea7ff797b95a8ed299ba68ee5c7de974e6b97a1ebc9"
+        },
+        {
+          "relative_path": "reports/card_id_map.json",
+          "size": 1891,
+          "sha256": "4bc1c6dedae2fbe1b726cb3e67439eb61ca2f4045914fa8688c63f877db3e2a6"
+        },
+        {
+          "relative_path": "reports/card_semantic_audit.md",
+          "size": 1182,
+          "sha256": "9ebd1da1a32eac23b0da338b2662d98dcaa3364e6c604ec7d0aa74a608a8c255"
+        },
+        {
+          "relative_path": "reports/claim_conflict_report.json",
+          "size": 45,
+          "sha256": "600cd9bb6fcb734e88694a581b0b55f726c648ed046b3bcefe7b97e3f0bf658c"
+        },
+        {
+          "relative_path": "reports/claim_coverage_report.json",
+          "size": 3971,
+          "sha256": "4628603972d30449b1e5c6aa264d4bebb4cb37605999a417deb4b8d073a5edad"
+        },
+        {
+          "relative_path": "reports/combo_plan_report.json",
+          "size": 39,
+          "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
+        },
+        {
+          "relative_path": "reports/combo_suppression_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/deck_fingerprint.json",
+          "size": 1293,
+          "sha256": "10fd1ead44fd873475c59b89f423933da2319d1a8f15cce65b2bc4235c665850"
+        },
+        {
+          "relative_path": "reports/deck_identity.json",
+          "size": 4292,
+          "sha256": "12e768c6626db854285ddd50701d6170c4724f313ba165e59ef736e1102bc888"
+        },
+        {
+          "relative_path": "reports/deckstring_decode_receipt.json",
+          "size": 418,
+          "sha256": "19752b7c5592e39d8857a29b67ad7b786caa562c6ca17181eb40ec627a88afef"
+        },
+        {
+          "relative_path": "reports/disposition_ledger.json",
+          "size": 21788,
+          "sha256": "84faf1ee76ffee7bbdacff6d36b578577bced270f8699f452e41acd4b7148b83"
+        },
+        {
+          "relative_path": "reports/gameplan_contract.json",
+          "size": 169271,
+          "sha256": "a4a09451bdec74b4699a9b635daf0890f2ad24e790fa9a41a7e8d22dcc5065fd"
+        },
+        {
+          "relative_path": "reports/global_values_authority_matrix.json",
+          "size": 2259,
+          "sha256": "028271e597ea5217f36e15f2efe3e450ba4de3a6142f14689b6b26e6e3464f4d"
+        },
+        {
+          "relative_path": "reports/global_values_blocked_changes.json",
+          "size": 1652,
+          "sha256": "7d7e62e7bba705746011d8e610d9ff952b8502aff29caf186b3de7e468d2f770"
+        },
+        {
+          "relative_path": "reports/global_values_key_profile_report.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline.json",
+          "size": 4422,
+          "sha256": "ea6418133f5feab4cdbe433b4d69c848a79f5c75c6ed94b0138d6c8cdd83f29e"
+        },
+        {
+          "relative_path": "reports/globalvalues_baseline_receipt.json",
+          "size": 5187,
+          "sha256": "fc73c7b92fc8222654190c2d91ac4c3dcaa0bb3e19a06c55299326ea043ff00c"
+        },
+        {
+          "relative_path": "reports/globalvalues_decision_ledger.json",
+          "size": 18170,
+          "sha256": "b117197f0885c08b31bd9da7dc65b4630ef9ec1946809d2a30e3d94143793783"
+        },
+        {
+          "relative_path": "reports/globalvalues_profile.json",
+          "size": 14509,
+          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
+        },
+        {
+          "relative_path": "reports/guide_builder_receipt.json",
+          "size": 293,
+          "sha256": "ef961c34313de5289274dbdf6e725ef00af935be33c3a93703260b3889e6be28"
+        },
+        {
+          "relative_path": "reports/guide_claim_bundle.json",
+          "size": 32537,
+          "sha256": "9346f1a55ec45eaeef51d441dd741725bdf1dc56aa99632384218b05daa0cad2"
+        },
+        {
+          "relative_path": "reports/guide_source_depth_report.json",
+          "size": 3341,
+          "sha256": "ca6b9d7923ffdfc6a23562e890127e1ec24488a5caa4a4b421d0f0e58c19f59f"
+        },
+        {
+          "relative_path": "reports/guide_sources.json",
+          "size": 2944,
+          "sha256": "dd724da8b85cb761dcf321321e01eea5773023c39e45a0a7c70623af0782d47a"
+        },
+        {
+          "relative_path": "reports/identity_gap_report.json",
+          "size": 139,
+          "sha256": "b238c107241b3da85a82f7c600d6db265ad5a73d9440baa2c54efdcdc78f43ab"
+        },
+        {
+          "relative_path": "reports/identity_graph_report.json",
+          "size": 869,
+          "sha256": "4606a018ad0bea354d0c7ab016af495cc66abf52d2f44a7ef11e605af8928c87"
+        },
+        {
+          "relative_path": "reports/input_manifest.json",
+          "size": 2397,
+          "sha256": "ddeaaea55691643097a537eb56104eb652696325be97fcfc0aded97bf0612c7f"
+        },
+        {
+          "relative_path": "reports/layered_evidence_contract.json",
+          "size": 1284,
+          "sha256": "54f4f3c1f8578396962eb02d7dff3619d8395c7a8c878ed247d928898b3fae68"
+        },
+        {
+          "relative_path": "reports/mechanic_drift_report.json",
+          "size": 6568,
+          "sha256": "a1df055d68c609332119d310a5dabb1e5d1fb494a4a6fccf6dfeba2d8efed730"
+        },
+        {
+          "relative_path": "reports/mulligan_plan_report.json",
+          "size": 10478,
+          "sha256": "1202f01c69fdbb2f74ec997a1b7ce40553195e24b64cc04541ca82ae259cefbc"
+        },
+        {
+          "relative_path": "reports/operator_summary.json",
+          "size": 37426,
+          "sha256": "fab9cf6e7fefb7c589b9c7747e9bcabad7d35848cc59bdc87eb1338d6ba4ddf2"
+        },
+        {
+          "relative_path": "reports/output_ownership_manifest.json",
+          "size": 22201,
+          "sha256": "e0a4905c79367855c6f189a23aff0347167c6fa6c8439b7156a7e84e57317c64"
+        },
+        {
+          "relative_path": "reports/per_card_config_readiness_report.json",
+          "size": 34583,
+          "sha256": "2eb8c68d5b90a9fc92cd54a30e1ff9300a376b0988e8d124ff3abf93c9e8e76b"
+        },
+        {
+          "relative_path": "reports/pre_run_closure.json",
+          "size": 17121,
+          "sha256": "01151d75ece7ae68d5d5027ca7919baa123d77539317580e2a1e3cf9dea0b941"
+        },
+        {
+          "relative_path": "reports/research/archetype_research.json",
+          "size": 753,
+          "sha256": "a9129d748a8cc806d654bd34b4e89c36ec55f63dc38e82127b77d92935555430"
+        },
+        {
+          "relative_path": "reports/research/card_role_map.json",
+          "size": 6439,
+          "sha256": "b1efea08c48f6c072618d19c32e1ed3b559d180058f8108df35a2e6c7e2b6137"
+        },
+        {
+          "relative_path": "reports/research/card_usage_expectations.json",
+          "size": 3489,
+          "sha256": "47ac8335d7fc7b1b23ff4c04c6f96390095f957d6005aa59a8b1779c2a65a940"
+        },
+        {
+          "relative_path": "reports/research/claims.json",
+          "size": 27387,
+          "sha256": "61fa1119a22eb756d8914704b5dbcb7d03b99fe52fb943060abebcfca8f20d10"
+        },
+        {
+          "relative_path": "reports/research/coverage_summary.json",
+          "size": 224,
+          "sha256": "34630aeab4c6e033e2ab5cf604527be78f9a6aa1a372e6753fca9734f5e1a454"
+        },
+        {
+          "relative_path": "reports/research/globalvalue_intent.json",
+          "size": 329,
+          "sha256": "aeb5f7db9bd22d991d085672e6f366f24df90698977e2d6babad88c7093ea2e8"
+        },
+        {
+          "relative_path": "reports/research/guide_claim_bundle.json",
+          "size": 32537,
+          "sha256": "9346f1a55ec45eaeef51d441dd741725bdf1dc56aa99632384218b05daa0cad2"
+        },
+        {
+          "relative_path": "reports/research/known_bad_patterns.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/research/mulligan_anchor_map.json",
+          "size": 3511,
+          "sha256": "101183d10347e1919f5acc712cd6a1d3278fdaed868ff274cae82e76ef4117fe"
+        },
+        {
+          "relative_path": "reports/runtime_surface_ledger.json",
+          "size": 5050,
+          "sha256": "0bcf43230d7d5b5b8fbe97cdadefd7fa54429f1e47dd4076019b42f95aafdda3"
+        },
+        {
+          "relative_path": "reports/semantic_enrichment_report.json",
+          "size": 27009,
+          "sha256": "b66e6597573c13561fee88d41a99d4c10d1683a2da2a203d9c436efe14003538"
+        },
+        {
+          "relative_path": "reports/source_acquisition_closure.json",
+          "size": 1107,
+          "sha256": "2f4db7799a76d0e21fa1e27401ca848b34e8620117f41469e95ff20e6cfbbb3c"
+        },
+        {
+          "relative_path": "reports/source_claim_gap_report.json",
+          "size": 36337,
+          "sha256": "a4a003df48fcdf47f3db004388ba1c63962dbf45f1b1574e279b941da554f2c3"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.json",
+          "size": 57167,
+          "sha256": "41df2dcd86c1071eae6a3e2037fa2f7697c42484b0585b5655e281973215627c"
+        },
+        {
+          "relative_path": "reports/source_contract_audit.md",
+          "size": 5514,
+          "sha256": "e524264f08bca747c499866f5d92f74ee514083556e112a173d816e333f96a2d"
+        },
+        {
+          "relative_path": "reports/source_evidence_closure.json",
+          "size": 3018,
+          "sha256": "bfaee979e494653a02d6660c47d1f47e4203b512484cc2fc7b68035f638bab8c"
+        },
+        {
+          "relative_path": "reports/source_evidence_index.json",
+          "size": 561,
+          "sha256": "2db7fe2d2f29ec867e086e8bc0865759964b157402ce92ceedfcb4837c62d7ff"
+        },
+        {
+          "relative_path": "reports/source_evidence_verification_report.json",
+          "size": 519,
+          "sha256": "1849b00bbb14f9617a88b53bc782a11267659d4b18ee2619b93ff9a0ef93c902"
+        },
+        {
+          "relative_path": "reports/source_to_runtime_explainability.json",
+          "size": 64834,
+          "sha256": "7d1c1a14def550c5ecb12b5c35051820fff73330f0b366afccff0a30986a5b2e"
+        },
+        {
+          "relative_path": "reports/strong_promotion_report.json",
+          "size": 3510,
+          "sha256": "b737ca9082375f97651ad71ae46b0e23c00f9597fc2b13f9d67678d427bd17e4"
+        },
+        {
+          "relative_path": "reports/surface_intent.json",
+          "size": 16450,
+          "sha256": "eeafa0c0b1d719ba85e63e7495150b804b89d68638fe8f37c48b5af7a18ccfd9"
+        },
+        {
+          "relative_path": "reports/unsupported_claims_report.json",
+          "size": 3,
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "relative_path": "reports/validation_report.json",
+          "size": 64,
+          "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
+        }
+      ],
+      "content_root_sha256": "f85e97bef54b0549a07bb37c3a8f9fc9bae65e2acbc7df70211e2e0bcddd84a1"
+    }
+  }
+}
