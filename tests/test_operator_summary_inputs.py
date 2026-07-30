@@ -7,7 +7,6 @@ import json
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-import re
 import subprocess
 import sys
 from typing import Any
@@ -24,15 +23,17 @@ from hsconfig.operator_summary_inputs import (
     load_operator_summary_inputs,
 )
 from hsconfig.package_model import DirectoryPackageView
+from tests.helpers import fixture_prepare as fixture_prepare_helper
 from tests.helpers.fixture_prepare import (
+    fixture_path_for,
     load_archetype_matrix,
     prepare_fixture_deck,
 )
 
 
 _SHADOWPRIEST_BASE_OID_SHA256 = (
-    "sha256:29146ae223d03f5bbd36b76aa4474c57"
-    "2c8efa538a7c3c7fa2836ae3f7f3739b"
+    "sha256:be6c80b5e91f7c1c6d584d969f48014f"
+    "edf18f0a3e594d930bce0a1973298ed1"
 )
 _OPERATOR_MODULES = (
     "hsconfig.operator_summary_inputs",
@@ -50,20 +51,6 @@ def _canonical_sha256(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
-
-
-def _portable_base_oid_projection(summary: Mapping[str, Any]) -> dict[str, Any]:
-    projection = json.loads(json.dumps(summary))
-    package_derivation = projection["package_derivation"]
-    assert package_derivation["receipt_path"] == "package_derivation_receipt.json"
-    assert package_derivation["schema_version"] == 2
-    assert package_derivation["verified"] is True
-    assert re.fullmatch(
-        r"sha256:[0-9a-f]{64}",
-        package_derivation["receipt_sha256"],
-    )
-    package_derivation["receipt_sha256"] = "sha256:<verified-physical-receipt>"
-    return projection
 
 
 @pytest.mark.parametrize("first_module", _OPERATOR_MODULES)
@@ -419,6 +406,19 @@ def test_physical_shadowpriest_replay_matches_complete_base_oid_oracle(
         for row in load_archetype_matrix()
         if row["deck_name"] == "ShadowPriest"
     )
+    source_fixture = fixture_path_for(shadow)
+    canonical_source_fixture = tmp_path / "shadowpriest-source.json"
+    canonical_source_fixture.write_bytes(
+        source_fixture.read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .encode("utf-8")
+    )
+    monkeypatch.setattr(
+        fixture_prepare_helper,
+        "fixture_path_for",
+        lambda _deck: canonical_source_fixture,
+    )
     with contextlib.redirect_stdout(io.StringIO()):
         prepared = prepare_fixture_deck(tmp_path, shadow)
     assert prepared["exit_code"] == 0
@@ -428,7 +428,4 @@ def test_physical_shadowpriest_replay_matches_complete_base_oid_oracle(
 
     actual = build_operator_summary_from_inputs(inputs)
 
-    assert (
-        _canonical_sha256(_portable_base_oid_projection(actual))
-        == _SHADOWPRIEST_BASE_OID_SHA256
-    )
+    assert _canonical_sha256(actual) == _SHADOWPRIEST_BASE_OID_SHA256
