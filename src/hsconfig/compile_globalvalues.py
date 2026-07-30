@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Sequence
 from copy import deepcopy
 import json
 import math
@@ -14,6 +15,8 @@ from hsconfig.globalvalues_key_authority import (
 from hsconfig.package_domain import (
     GlobalValueDecisionKind,
     GlobalValuesDecisionLedger,
+    deep_freeze_definition,
+    materialize_definition,
 )
 
 
@@ -30,6 +33,11 @@ NUMERIC_OPERATORS = {
     ast.Mult: operator.mul,
     ast.Sub: operator.sub,
 }
+TOP_LEVEL_KEYS = deep_freeze_definition(TOP_LEVEL_KEYS)
+KNOWN_GENERATED_OVERLAY_DEFAULTS = deep_freeze_definition(
+    KNOWN_GENERATED_OVERLAY_DEFAULTS
+)
+NUMERIC_OPERATORS = deep_freeze_definition(NUMERIC_OPERATORS)
 
 
 def compile_globalvalues(
@@ -448,12 +456,14 @@ def validate_globalvalues_overlay_value(
 
 
 def _values_block(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict) and isinstance(value.get("values"), list):
-        block = deepcopy(value)
+    if isinstance(value, Mapping) and isinstance(
+        value.get("values"), Sequence
+    ):
+        block = materialize_definition(value)
         if not block["values"]:
             block["values"].append({"condition": "*", "value": "0"})
         return block
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {"values": [{"condition": value.get("condition", "*"), "value": str(value.get("value", "0"))}]}
     return {"values": [{"condition": "*", "value": str(value)}]}
 

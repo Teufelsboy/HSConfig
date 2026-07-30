@@ -16,6 +16,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.runtime_entity_owner import resolve_runtime_entity_owner
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 from hsconfig.semantic_intent_score import score_card_behavior_claim
@@ -83,6 +84,16 @@ SEMANTIC_SAFETY_SUPPRESSION_REASONS = frozenset(
         "spell_cannot_use_battlecry_target",
         "trigger_owner_does_not_attack",
     }
+)
+TARGETING_STANCES = deep_freeze_definition(TARGETING_STANCES)
+TARGET_RUNTIME_BLOCKS = deep_freeze_definition(TARGET_RUNTIME_BLOCKS)
+TARGET_SCOPE_RUNTIME_CONDITIONS = deep_freeze_definition(
+    TARGET_SCOPE_RUNTIME_CONDITIONS
+)
+INTENT_BLOCKS = deep_freeze_definition(INTENT_BLOCKS)
+OPTION_CLAIM_KINDS = deep_freeze_definition(OPTION_CLAIM_KINDS)
+MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK = deep_freeze_definition(
+    MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK
 )
 
 

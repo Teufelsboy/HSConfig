@@ -7,6 +7,7 @@ import json
 from typing import Any, Mapping
 
 from hsconfig.combo_sequence_contract import build_combo_sequence_contract
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.role_tokens import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
     card_role_tokens,
@@ -111,6 +112,9 @@ EXACT_LEGACY_RUNTIME_CLAIM_TYPE_ALIASES = {
     "bad_pattern": "known_bad_pattern",
     "mulligan_throw": "mulligan_discard",
 }
+EXACT_LEGACY_RUNTIME_CLAIM_TYPE_ALIASES = deep_freeze_definition(
+    EXACT_LEGACY_RUNTIME_CLAIM_TYPE_ALIASES
+)
 
 GLOBALVALUES_RUNTIME_EVIDENCE_CLAIM_KINDS = frozenset({"globalvalue_numeric_tuning"})
 MULLIGAN_SURFACE_CLAIM_KINDS = frozenset({"mulligan_keep", "mulligan_discard"})

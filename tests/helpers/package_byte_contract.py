@@ -16,6 +16,9 @@ from hsconfig.build_input_catalog import (
     load_packaged_audited_build_resource_store,
 )
 from hsconfig.package_builder import prepare_package_payload
+from tests.helpers.audited_deck_support import (
+    VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS,
+)
 
 
 AUDITED_DECK_NAMES = (
@@ -463,10 +466,6 @@ def _offline_network_and_card_data(
 
 
 def _card_database_from_raw(raw_cards: list[Any]) -> dict[int, SimpleNamespace]:
-    from tests.test_audited_deck_set_acceptance import (
-        VISIBILITY_IDENTITY_DECODE_ONLY_CARD_IDS,
-    )
-
     cards: dict[int, SimpleNamespace] = {}
     for row in raw_cards:
         if not isinstance(row, list) or len(row) != 8:

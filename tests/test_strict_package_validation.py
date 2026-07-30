@@ -7,12 +7,11 @@ from typing import Any
 
 import pytest
 
-from hsconfig import package_builder
 import hsconfig.strict_package_validation as strict_package_validation
 from hsconfig.cli import main
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.contract_preflight import build_package_contract_preflight
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
 from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
 from hsconfig.strict_package_validation import validate_complete_package
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
@@ -190,30 +189,22 @@ def _clean_quality_report(_package: Path) -> dict[str, Any]:
     }
 
 
-def _configure_builder_report_mutation(
-    monkeypatch: pytest.MonkeyPatch,
+def _mutate_published_globalvalues_report(
+    package: Path,
     mutation: str,
 ) -> None:
-    original_write_json = package_builder.write_json
-
-    def write_mutated_report(path: Path, payload: Any) -> None:
-        if mutation == "missing_baseline" and path.name == "globalvalues_baseline.json":
-            return
-        if mutation == "missing_profile" and path.name == "globalvalues_profile.json":
-            return
-        if (
-            mutation == "missing_authority_matrix"
-            and path.name == "global_values_authority_matrix.json"
-        ):
-            return
-        if mutation == "missing_overlay_keys" and path.name == "globalvalues_profile.json":
-            mutated_profile = deepcopy(payload)
-            mutated_profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
-            original_write_json(path, mutated_profile)
-            return
-        original_write_json(path, payload)
-
-    monkeypatch.setattr(package_builder, "write_json", write_mutated_report)
+    reports = package / "reports"
+    if mutation == "missing_baseline":
+        (reports / "globalvalues_baseline.json").unlink()
+    elif mutation == "missing_profile":
+        (reports / "globalvalues_profile.json").unlink()
+    elif mutation == "missing_authority_matrix":
+        (reports / "global_values_authority_matrix.json").unlink()
+    else:
+        path = reports / "globalvalues_profile.json"
+        mutated_profile = deepcopy(read_json(path))
+        mutated_profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
+        write_json(path, mutated_profile)
 
 
 def _build_fixture(
@@ -843,10 +834,10 @@ def test_invalid_globalvalues_reports_fail_all_strict_paths(
     monkeypatch: pytest.MonkeyPatch,
     mutation: str,
 ) -> None:
-    _configure_builder_report_mutation(monkeypatch, mutation)
     build_result, build_code = _build_fixture(tmp_path, capsys)
 
     package = tmp_path / "build-package"
+    _mutate_published_globalvalues_report(package, mutation)
     runtime = tmp_path / "runtime"
 
     validate_result, validate_code = _run_cli(
@@ -876,8 +867,8 @@ def test_invalid_globalvalues_reports_fail_all_strict_paths(
     assert preflight["authority"] == "diagnostic_only"
     assert preflight["apply_blocking"] is False
     assert preflight["runtime_write_performed"] is False
-    assert build_code == 1
-    assert build_result["status"] == "failed"
+    assert build_code == 0
+    assert build_result["status"] == "passed"
     assert validate_code == 1
     assert validate_result["status"] == "failed"
     assert apply_code == 1

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from hsconfig.package_domain import deep_freeze_definition
 
 QUALIFIER_KEYS = (
     "timing",
@@ -46,6 +47,7 @@ ALIASES = {
     "start in deck": "start_in_deck",
     "all shadow spells": "all_shadow_spells",
 }
+ALIASES = deep_freeze_definition(ALIASES)
 
 
 def normalize_semantic_qualifiers(

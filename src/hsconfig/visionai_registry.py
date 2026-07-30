@@ -6,6 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
+from hsconfig.package_domain import deep_freeze_definition
 
 RuntimeSurfaceClassification = Literal[
     "required",
@@ -624,6 +625,10 @@ SPECIAL_SURFACES = {
     for name in SPECIAL_RUNTIME_SURFACES
     if name != "CardBehavior.json"
 }
+CARD_BEHAVIOR_BLOCK_REGISTRY = deep_freeze_definition(
+    CARD_BEHAVIOR_BLOCK_REGISTRY
+)
+SPECIAL_SURFACES = deep_freeze_definition(SPECIAL_SURFACES)
 
 RESERVED_NON_RUNTIME_SURFACES = frozenset(
     {

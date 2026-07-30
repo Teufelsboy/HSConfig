@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from hsconfig.deck_identity import stable_deck_fingerprint
-from hsconfig.evidence_contract import load_policy_profile
+from hsconfig.evidence_contract import PolicyProfile, load_policy_profile
 from hsconfig.globalvalues_decisions import (
     GLOBALVALUES_BASELINE_DECISION_KEYS,
     globalvalues_decision_ledger_document,
@@ -110,11 +110,16 @@ def build_source_acquisition_closure_report(
     *,
     deck_fingerprint: str,
     acquisition_closure: AcquisitionClosure | None,
+    expected_policy_profile: PolicyProfile | None = None,
 ) -> dict[str, Any]:
     """Project the exact typed acquisition handoff or an explicit open state."""
 
     _require_text(deck_fingerprint, field="deck_fingerprint")
-    policy_profile = load_policy_profile()
+    policy_profile = (
+        expected_policy_profile
+        if expected_policy_profile is not None
+        else load_policy_profile()
+    )
     if acquisition_closure is None:
         acquisition_closure = AcquisitionClosure(
             deck_fingerprint=deck_fingerprint,
@@ -230,7 +235,11 @@ class VerifiedSemanticExpectation:
     schema_supported: bool
     authority_sufficient: bool
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _card_dispositions: frozenset[str] = _CARD_DISPOSITIONS,
+        _claim_dispositions: frozenset[str] = _CLAIM_DISPOSITIONS,
+    ) -> None:
         _require_text(self.deck_fingerprint, field="deck_fingerprint")
         _require_text(self.composite_identity, field="composite_identity")
         _require_text(self.expected_owner, field="expected_owner")
@@ -241,9 +250,9 @@ class VerifiedSemanticExpectation:
         if self.row_kind not in {"card", "claim"}:
             raise ValueError("verified_emission_row_kind_invalid")
         allowed_dispositions = (
-            _CARD_DISPOSITIONS
+            _card_dispositions
             if self.row_kind == "card"
-            else _CLAIM_DISPOSITIONS
+            else _claim_dispositions
         )
         if self.disposition not in allowed_dispositions:
             raise ValueError("verified_emission_disposition_invalid")

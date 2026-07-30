@@ -5,6 +5,10 @@ from copy import deepcopy
 from typing import Any, Iterable
 
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
+from hsconfig.package_domain import (
+    deep_freeze_definition,
+    materialize_definition,
+)
 
 
 MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
@@ -507,6 +511,24 @@ UNKNOWN_MECHANIC_LOWERING_POLICY: dict[str, Any] = {
     "default_intent": None,
     "suppression_reason": "unregistered_mechanic_runtime_surface",
 }
+ROLE_ALIASES = deep_freeze_definition(ROLE_ALIASES)
+NON_MECHANIC_ROLES = deep_freeze_definition(NON_MECHANIC_ROLES)
+IDENTITY_GATED_DIRECT_MECHANICS = deep_freeze_definition(
+    IDENTITY_GATED_DIRECT_MECHANICS
+)
+LOWERING_POLICIES = deep_freeze_definition(LOWERING_POLICIES)
+IDENTITY_GATED_LOWERING_MECHANICS = deep_freeze_definition(
+    IDENTITY_GATED_LOWERING_MECHANICS
+)
+NO_DEFAULT_RUNTIME_BLOCK_MECHANICS = deep_freeze_definition(
+    NO_DEFAULT_RUNTIME_BLOCK_MECHANICS
+)
+STATIC_CLAIM_DISABLED_MECHANICS = deep_freeze_definition(
+    STATIC_CLAIM_DISABLED_MECHANICS
+)
+UNKNOWN_MECHANIC_LOWERING_POLICY = deep_freeze_definition(
+    UNKNOWN_MECHANIC_LOWERING_POLICY
+)
 
 
 def normalize_role_token(role: object) -> str:
@@ -528,7 +550,7 @@ def _canonical_mechanic(mechanic: object) -> str:
 
 def _copy_lowering_policy(policy: dict[str, Any]) -> dict[str, Any]:
     copied = dict(policy)
-    copied["allowed_blocks"] = list(policy.get("allowed_blocks", []))
+    copied["allowed_blocks"] = tuple(policy.get("allowed_blocks", ()))
     return copied
 
 
@@ -614,6 +636,7 @@ def _install_lowering_policies() -> None:
 
 
 _install_lowering_policies()
+MECHANIC_SUPPORT = deep_freeze_definition(MECHANIC_SUPPORT)
 
 
 def mechanic_lowering_policy(mechanic: str) -> dict[str, Any]:
@@ -665,6 +688,10 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
             continue
         seen.add(raw_role)
         if spec is None:
+            lowering = mechanic_lowering_policy(mechanic)
+            lowering["allowed_blocks"] = list(
+                lowering["allowed_blocks"]
+            )
             row = deepcopy(
                 {
                     "role": raw_role,
@@ -675,14 +702,18 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
                         "No registered VisionAI normal-path surface exists for role "
                         f"'{mechanic}'; keep it visible as warning-only until mapped."
                     ),
-                    "lowering": mechanic_lowering_policy(mechanic),
+                    "lowering": lowering,
                     "registered": False,
                 }
             )
             row["support_bucket"] = operator_visibility_bucket(row)
             rows.append(row)
             continue
-        row = {"role": raw_role, "mechanic": mechanic, **deepcopy(spec)}
+        row = {
+            "role": raw_role,
+            "mechanic": mechanic,
+            **materialize_definition(spec),
+        }
         row["support_bucket"] = operator_visibility_bucket(row)
         rows.append(row)
     return sorted(rows, key=lambda row: (row["mechanic"], row["role"]))

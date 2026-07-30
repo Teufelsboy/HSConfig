@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from hsconfig.package_domain import deep_freeze_definition
 
 SOURCE_QUALITY_LANES = {
     "guide_backed",
@@ -85,6 +86,25 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
 }
+SOURCE_QUALITY_LANES = deep_freeze_definition(SOURCE_QUALITY_LANES)
+COVERAGE_STATUS_TO_QUALITY_LANE = deep_freeze_definition(
+    COVERAGE_STATUS_TO_QUALITY_LANE
+)
+CONTRACT_GAP_MISSING_LINKS = deep_freeze_definition(
+    CONTRACT_GAP_MISSING_LINKS
+)
+RECOMMENDED_CLAIM_KIND_BY_MISSING_LINK = deep_freeze_definition(
+    RECOMMENDED_CLAIM_KIND_BY_MISSING_LINK
+)
+NEXT_ACTION_BY_MISSING_LINK = deep_freeze_definition(
+    NEXT_ACTION_BY_MISSING_LINK
+)
+BASE_PRIORITY_BY_MISSING_LINK = deep_freeze_definition(
+    BASE_PRIORITY_BY_MISSING_LINK
+)
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = deep_freeze_definition(
+    SOURCE_DEPTH_LANE_BY_MISSING_LINK
+)
 
 
 def suppressed_mulligan_claims_from_lifecycle(

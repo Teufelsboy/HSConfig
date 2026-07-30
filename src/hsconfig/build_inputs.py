@@ -9,6 +9,8 @@ from pathlib import PurePosixPath, PureWindowsPath
 import re
 from typing import Any
 
+from hsconfig.package_domain import _ImmutableAuthorityNode
+
 
 _SCHEMA_VERSION = 2
 _PAYLOAD_FIELDS = frozenset(
@@ -45,8 +47,8 @@ _STABLE_IDENTIFIER_PATTERN = re.compile(
 _WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"[A-Za-z]:")
 
 
-@dataclass(frozen=True, slots=True)
-class CanonicalBuildInputs:
+@dataclass(frozen=True, init=False)
+class CanonicalBuildInputs(_ImmutableAuthorityNode):
     schema_version: int
     generator_version: str
     generator_commit: str

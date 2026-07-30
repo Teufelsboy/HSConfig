@@ -2,13 +2,263 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import MISSING, dataclass, fields
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Literal
+
+
+class _ImmutableAuthorityMeta(type):
+    """Ensure every authority tuple subclass remains slotless."""
+
+    def __new__(
+        metaclass,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kwargs: Any,
+    ) -> type:
+        namespace.setdefault("__slots__", ())
+        return super().__new__(
+            metaclass,
+            name,
+            bases,
+            namespace,
+            **kwargs,
+        )
+
+
+class _ImmutableAuthorityNode(
+    tuple,
+    metaclass=_ImmutableAuthorityMeta,
+):
+    """Dataclass-compatible tuple storage with no writable object state."""
+
+    __slots__ = ()
+
+    def __new__(
+        cls,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _ImmutableAuthorityNode:
+        return cls._create_authority_node(*args, **kwargs)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        del self, args, kwargs
+
+    @classmethod
+    def _create_authority_node(
+        cls,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _ImmutableAuthorityNode:
+        declared = fields(cls)
+        if len(args) > len(declared):
+            raise TypeError(
+                f"{cls.__name__} expected at most {len(declared)} arguments"
+            )
+        values: list[Any] = []
+        remaining = dict(kwargs)
+        for index, field in enumerate(declared):
+            if index < len(args):
+                if field.name in remaining:
+                    raise TypeError(
+                        f"{cls.__name__} got multiple values for "
+                        f"{field.name}"
+                    )
+                value = args[index]
+            elif field.name in remaining:
+                value = remaining.pop(field.name)
+            elif field.default is not MISSING:
+                value = field.default
+            elif field.default_factory is not MISSING:
+                value = field.default_factory()
+            else:
+                raise TypeError(
+                    f"{cls.__name__} missing required argument: "
+                    f"{field.name}"
+                )
+            values.append(value)
+        if remaining:
+            unexpected = next(iter(remaining))
+            raise TypeError(
+                f"{cls.__name__} got an unexpected argument: {unexpected}"
+            )
+        normalized = cls._normalize_authority_values(
+            {
+                field.name: value
+                for field, value in zip(declared, values, strict=True)
+            }
+        )
+        instance = tuple.__new__(
+            cls,
+            tuple(normalized[field.name] for field in declared),
+        )
+        post_init = getattr(instance, "__post_init__", None)
+        if post_init is not None:
+            post_init()
+        return instance
+
+    @classmethod
+    def _normalize_authority_values(
+        cls,
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            field.name: _freeze_authority_field(
+                field.type,
+                values[field.name],
+            )
+            for field in fields(cls)
+        }
+
+    def __getattribute__(self, name: str) -> Any:
+        for index, field in enumerate(fields(type(self))):
+            if field.name == name:
+                return tuple.__getitem__(self, index)
+        return tuple.__getattribute__(self, name)
+
+    def __reduce__(self) -> tuple[type, tuple[Any, ...]]:
+        return type(self), tuple(self)
+
+
+def _freeze_authority_field(annotation: Any, value: Any) -> Any:
+    annotation_name = str(annotation)
+    if annotation is bytes or annotation_name == "bytes":
+        return bytes(value)
+    if annotation is tuple or annotation_name.startswith("tuple["):
+        return tuple(value)
+    return value
+
+
+class FrozenDefinitionMapping(tuple, Mapping[Any, Any]):
+    """Immutable mapping storage with detached-copy compatibility."""
+
+    __slots__ = ()
+
+    def __new__(
+        cls,
+        values: Mapping[Any, Any],
+    ) -> FrozenDefinitionMapping:
+        return tuple.__new__(
+            cls,
+            tuple(values.items()),
+        )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        del name, value
+        raise TypeError("frozen_definition")
+
+    def __getitem__(self, key: Any) -> Any:
+        for item_key, item_value in tuple.__iter__(self):
+            if item_key == key:
+                return item_value
+        raise KeyError(key)
+
+    def __iter__(self):
+        return (
+            item_key
+            for item_key, _item_value in tuple.__iter__(self)
+        )
+
+    def __len__(self) -> int:
+        return tuple.__len__(self)
+
+    def __contains__(self, key: object) -> bool:
+        return any(
+            item_key == key
+            for item_key, _item_value in tuple.__iter__(self)
+        )
+
+    def __repr__(self) -> str:
+        return repr(dict(self))
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Mapping) and dict(self) == dict(other)
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        del key, value
+        raise TypeError("frozen_definition")
+
+    def __delitem__(self, key: Any) -> None:
+        del key
+        raise TypeError("frozen_definition")
+
+    def __ior__(self, other: object):
+        del other
+        raise TypeError("frozen_definition")
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[Any, Any]:
+        from copy import deepcopy
+
+        return deepcopy(dict(self), memo)
+
+    def __reduce__(self):
+        return type(self), (dict(self),)
+
+
+class FrozenDefinitionList(tuple):
+    """Immutable sequence storage with list-compatible equality."""
+
+    __slots__ = ()
+
+    def __new__(cls, values: Iterable[Any]) -> FrozenDefinitionList:
+        return tuple.__new__(cls, tuple(values))
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        del name, value
+        raise TypeError("frozen_definition")
+
+    def __repr__(self) -> str:
+        return repr(list(self))
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Sequence) and tuple(self) == tuple(other)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> list[Any]:
+        from copy import deepcopy
+
+        return deepcopy(list(self), memo)
+
+def deep_freeze_definition(value: Any) -> Any:
+    """Recursively freeze a module-level canonical definition."""
+
+    if isinstance(value, Mapping):
+        return FrozenDefinitionMapping(
+            {
+                key: deep_freeze_definition(item)
+                for key, item in value.items()
+            }
+        )
+    if isinstance(value, list):
+        return FrozenDefinitionList(
+            deep_freeze_definition(item) for item in value
+        )
+    if isinstance(value, tuple):
+        return tuple(deep_freeze_definition(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(deep_freeze_definition(item) for item in value)
+    return value
+
+
+def materialize_definition(value: Any) -> Any:
+    """Return a detached mutable JSON-style copy of a frozen definition."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: materialize_definition(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, FrozenDefinitionList)):
+        return [materialize_definition(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return {materialize_definition(item) for item in value}
+    return value
 
 
 def _canonical_json(value: bytes) -> bytes:
@@ -61,8 +311,8 @@ class EvidenceLane(StrEnum):
     BOT_DELEGATION = "E"
 
 
-@dataclass(frozen=True, slots=True)
-class PolicyProfile:
+@dataclass(frozen=True, init=False)
+class PolicyProfile(_ImmutableAuthorityNode):
     policy_id: str
     version: int
     effective_date: str
@@ -95,7 +345,6 @@ class PolicyProfile:
         rules = json.loads(canonical_rules)
         if not isinstance(rules, list) or not rules:
             raise ValueError("policy_profile_rules_invalid")
-        object.__setattr__(self, "rules_canonical_json", canonical_rules)
 
 
 class CardDisposition(StrEnum):
@@ -157,8 +406,8 @@ def globalvalues_decision_ledger_content_sha256(
     return f"sha256:{sha256(canonical).hexdigest()}"
 
 
-@dataclass(frozen=True, slots=True)
-class EvidenceAuthority:
+@dataclass(frozen=True, init=False)
+class EvidenceAuthority(_ImmutableAuthorityNode):
     lane: EvidenceLane
     authority_id: str
     source_identity: str
@@ -170,8 +419,8 @@ class EvidenceAuthority:
     reason: str
 
 
-@dataclass(frozen=True, slots=True)
-class LayeredEvidenceContract:
+@dataclass(frozen=True, init=False)
+class LayeredEvidenceContract(_ImmutableAuthorityNode):
     deck_fingerprint: str
     authorities: tuple[EvidenceAuthority, ...]
     exact_guide_authority: bool
@@ -180,11 +429,11 @@ class LayeredEvidenceContract:
     content_sha256: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "authorities", tuple(self.authorities))
+        tuple(self.authorities)
 
 
-@dataclass(frozen=True, slots=True)
-class CardDispositionRow:
+@dataclass(frozen=True, init=False)
+class CardDispositionRow(_ImmutableAuthorityNode):
     deck_fingerprint: str
     composite_card_key: str
     zone: Literal["main_deck", "sideboard_module"]
@@ -198,20 +447,17 @@ class CardDispositionRow:
     reason_code: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "evidence_ids",
-            _freeze_stable_strings(self.evidence_ids, field="evidence_ids"),
+        _freeze_stable_strings(
+            self.evidence_ids,
+            field="evidence_ids",
         )
-        object.__setattr__(
-            self,
-            "claim_ids",
-            _freeze_stable_strings(self.claim_ids, field="claim_ids"),
+        _freeze_stable_strings(
+            self.claim_ids,
+            field="claim_ids",
         )
         runtime_paths = tuple(self.runtime_paths)
         for path in runtime_paths:
             canonical_relative_path(path)
-        object.__setattr__(self, "runtime_paths", runtime_paths)
         canonical_semantics = _canonical_json(
             self.official_semantics_canonical_json
         )
@@ -233,8 +479,8 @@ class CardDispositionRow:
             raise ValueError("card_disposition_runtime_path_forbidden")
 
 
-@dataclass(frozen=True, slots=True)
-class ClaimDispositionRow:
+@dataclass(frozen=True, init=False)
+class ClaimDispositionRow(_ImmutableAuthorityNode):
     deck_fingerprint: str
     claim_id: str
     claim_kind: str
@@ -247,7 +493,6 @@ class ClaimDispositionRow:
         runtime_paths = tuple(self.runtime_paths)
         for path in runtime_paths:
             canonical_relative_path(path)
-        object.__setattr__(self, "runtime_paths", runtime_paths)
 
 
 def disposition_ledger_content_sha256(
@@ -300,8 +545,8 @@ def disposition_ledger_content_sha256(
     return f"sha256:{sha256(canonical).hexdigest()}"
 
 
-@dataclass(frozen=True, slots=True)
-class DispositionLedger:
+@dataclass(frozen=True, init=False)
+class DispositionLedger(_ImmutableAuthorityNode):
     deck_fingerprint: str
     cards: tuple[CardDispositionRow, ...]
     claims: tuple[ClaimDispositionRow, ...]
@@ -310,8 +555,6 @@ class DispositionLedger:
     def __post_init__(self) -> None:
         cards = tuple(self.cards)
         claims = tuple(self.claims)
-        object.__setattr__(self, "cards", cards)
-        object.__setattr__(self, "claims", claims)
         if any(row.deck_fingerprint != self.deck_fingerprint for row in cards):
             raise ValueError("card_disposition_deck_fingerprint_mismatch")
         if any(row.deck_fingerprint != self.deck_fingerprint for row in claims):
@@ -324,26 +567,22 @@ class DispositionLedger:
             raise ValueError("disposition_ledger_content_sha256_invalid")
 
 
-@dataclass(frozen=True, slots=True)
-class DualClosureStatus:
+@dataclass(frozen=True, init=False)
+class DualClosureStatus(_ImmutableAuthorityNode):
     pre_run_contract_status: Literal["complete", "incomplete"]
     strategy_authority_status: Literal["partial", "strong"]
     exact_guide_authority: bool
     unresolved_reasons: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "unresolved_reasons",
-            _freeze_stable_strings(
-                self.unresolved_reasons,
-                field="dual_closure_unresolved_reasons",
-            ),
+        _freeze_stable_strings(
+            self.unresolved_reasons,
+            field="dual_closure_unresolved_reasons",
         )
 
 
-@dataclass(frozen=True, slots=True)
-class GlobalValueDecision:
+@dataclass(frozen=True, init=False)
+class GlobalValueDecision(_ImmutableAuthorityNode):
     deck_fingerprint: str
     key: str
     kind: GlobalValueDecisionKind
@@ -368,13 +607,9 @@ class GlobalValueDecision:
                 raise ValueError(f"globalvalue_{field}_invalid")
         if not isinstance(self.kind, GlobalValueDecisionKind):
             raise ValueError("globalvalue_kind_invalid")
-        object.__setattr__(
-            self,
-            "claim_ids",
-            _freeze_stable_strings(
-                self.claim_ids,
-                field="globalvalue_claim_ids",
-            ),
+        _freeze_stable_strings(
+            self.claim_ids,
+            field="globalvalue_claim_ids",
         )
         _canonical_json(self.baseline_canonical_json)
         _canonical_json(self.emitted_canonical_json)
@@ -390,8 +625,8 @@ class GlobalValueDecision:
             raise ValueError("globalvalue_overlay_authority_missing")
 
 
-@dataclass(frozen=True, slots=True)
-class GlobalValuesDecisionLedger:
+@dataclass(frozen=True, init=False)
+class GlobalValuesDecisionLedger(_ImmutableAuthorityNode):
     deck_fingerprint: str
     baseline_sha256: str
     decisions: tuple[GlobalValueDecision, ...]
@@ -399,7 +634,6 @@ class GlobalValuesDecisionLedger:
 
     def __post_init__(self) -> None:
         decisions = tuple(self.decisions)
-        object.__setattr__(self, "decisions", decisions)
         if (
             not isinstance(self.deck_fingerprint, str)
             or not self.deck_fingerprint
@@ -430,8 +664,8 @@ class GlobalValuesDecisionLedger:
             raise ValueError("globalvalues_ledger_content_sha256_invalid")
 
 
-@dataclass(frozen=True, slots=True)
-class MulliganRuleModel:
+@dataclass(frozen=True, init=False)
+class MulliganRuleModel(_ImmutableAuthorityNode):
     card_id: str
     selector_kind: str
     selector_canonical_json: bytes
@@ -443,13 +677,9 @@ class MulliganRuleModel:
     claim_id: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "source_claim_ids",
-            _freeze_stable_strings(
-                self.source_claim_ids,
-                field="mulligan_source_claim_ids",
-            ),
+        _freeze_stable_strings(
+            self.source_claim_ids,
+            field="mulligan_source_claim_ids",
         )
         if not self.card_id or not self.selector_kind or self.action not in {
             "hold",
@@ -478,8 +708,8 @@ class MulliganRuleModel:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class MulliganSuppressionModel:
+@dataclass(frozen=True, init=False)
+class MulliganSuppressionModel(_ImmutableAuthorityNode):
     card_id: str
     action: Literal["hold", "discard", "none"]
     reason_code: str
@@ -489,13 +719,9 @@ class MulliganSuppressionModel:
     source_url: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "source_claim_ids",
-            _freeze_stable_strings(
-                self.source_claim_ids,
-                field="suppression_source_claim_ids",
-            ),
+        _freeze_stable_strings(
+            self.source_claim_ids,
+            field="suppression_source_claim_ids",
         )
         if not self.card_id or self.action not in {"hold", "discard", "none"}:
             raise ValueError("mulligan_suppression_invalid")
@@ -511,8 +737,8 @@ class MulliganSuppressionModel:
                 )
 
 
-@dataclass(frozen=True, slots=True)
-class BotDelegationModel:
+@dataclass(frozen=True, init=False)
+class BotDelegationModel(_ImmutableAuthorityNode):
     card_id: str
     evidence_lane: Literal["E"]
     policy_id: Literal["BOT_NATIVE_PRE_RUN"]
@@ -528,8 +754,8 @@ class BotDelegationModel:
             raise ValueError("bot_delegation_invalid")
 
 
-@dataclass(frozen=True, slots=True)
-class MulliganPlanModel:
+@dataclass(frozen=True, init=False)
+class MulliganPlanModel(_ImmutableAuthorityNode):
     deck_name: str
     rules: tuple[MulliganRuleModel, ...]
     suppressed: tuple[MulliganSuppressionModel, ...]
@@ -537,9 +763,6 @@ class MulliganPlanModel:
     merged_duplicate_rule_count: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "rules", tuple(self.rules))
-        object.__setattr__(self, "suppressed", tuple(self.suppressed))
-        object.__setattr__(self, "bot_delegated", tuple(self.bot_delegated))
         identities = tuple(rule.identity for rule in self.rules)
         if len(set(identities)) != len(identities):
             raise ValueError("mulligan_duplicate_rule_identity")
@@ -700,29 +923,404 @@ class MulliganPlanModel:
         }
 
 
+class ComboTiming(StrEnum):
+    SAME_TURN = "same_turn"
+    CROSS_TURN = "cross_turn"
+
+    @property
+    def operator(self) -> str:
+        return {
+            ComboTiming.SAME_TURN: ">>",
+            ComboTiming.CROSS_TURN: ">->",
+        }[self]
+
+    @classmethod
+    def from_operator(cls, operator: str) -> ComboTiming:
+        timings = {
+            timing.operator: timing
+            for timing in cls
+        }
+        try:
+            return timings[operator]
+        except KeyError as error:
+            raise ValueError("combo_operator_invalid") from error
+
+
+def _combo_strings(
+    values: Any,
+    *,
+    field: str,
+) -> tuple[str, ...]:
+    if not isinstance(values, (list, tuple)):
+        raise ValueError(f"{field}_container_invalid")
+    frozen = tuple(values)
+    if any(
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        for value in frozen
+    ):
+        raise ValueError(f"{field}_invalid")
+    return frozen
+
+
+@dataclass(frozen=True, init=False)
+class ComboDecisionModel(_ImmutableAuthorityNode):
+    rule_id: str
+    cards: tuple[str, ...]
+    timing: ComboTiming
+    values: tuple[str, ...]
+    condition: str
+    source_claim_ids: tuple[str, ...]
+    confidence: str
+    source_refs: tuple[str, ...]
+    claim_id: str | None = None
+
+    @classmethod
+    def _normalize_authority_values(
+        cls,
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized = dict(values)
+        normalized["cards"] = _combo_strings(
+            values["cards"],
+            field="combo_cards",
+        )
+        normalized["values"] = _combo_strings(
+            values["values"],
+            field="combo_values",
+        )
+        normalized["source_claim_ids"] = _combo_strings(
+            values["source_claim_ids"],
+            field="combo_source_claim_ids",
+        )
+        normalized["source_refs"] = _combo_strings(
+            values["source_refs"],
+            field="combo_source_refs",
+        )
+        return normalized
+
+    def __post_init__(self) -> None:
+        for field_name in ("rule_id", "condition", "confidence"):
+            value = getattr(self, field_name)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+            ):
+                raise ValueError(f"combo_{field_name}_invalid")
+        if not isinstance(self.timing, ComboTiming):
+            raise ValueError("combo_timing_invalid")
+        cards = _combo_strings(self.cards, field="combo_cards")
+        values = _combo_strings(self.values, field="combo_values")
+        if len(cards) < 2:
+            raise ValueError("combo_sequence_too_short")
+        if len(cards) != len(values):
+            raise ValueError("combo_value_segment_mismatch")
+        for value in values:
+            try:
+                decimal_value = Decimal(value)
+            except InvalidOperation as error:
+                raise ValueError("combo_value_invalid") from error
+            if not decimal_value.is_finite():
+                raise ValueError("combo_value_invalid")
+        _combo_strings(
+            self.source_claim_ids,
+            field="combo_source_claim_ids",
+        )
+        _combo_strings(
+            self.source_refs,
+            field="combo_source_refs",
+        )
+        if self.claim_id is not None and (
+            not isinstance(self.claim_id, str)
+            or not self.claim_id
+            or self.claim_id != self.claim_id.strip()
+        ):
+            raise ValueError("combo_claim_id_invalid")
+        if not self.source_claim_ids and self.claim_id is None:
+            raise ValueError("combo_decision_authority_missing")
+
+    @property
+    def operator(self) -> str:
+        return self.timing.operator
+
+    @classmethod
+    def from_plan_row(
+        cls,
+        row: Mapping[str, Any],
+    ) -> ComboDecisionModel:
+        operator = str(row.get("operator", ">>"))
+        timing_value = row.get("timing_kind")
+        timing = (
+            ComboTiming(str(timing_value))
+            if timing_value is not None
+            else ComboTiming.from_operator(operator)
+        )
+        if operator != timing.operator:
+            raise ValueError("combo_operator_timing_mismatch")
+        return cls(
+            rule_id=str(row.get("rule_id", "combo_sequence")),
+            cards=_combo_mapping_strings(row, "cards"),
+            timing=timing,
+            values=_combo_mapping_strings(row, "values"),
+            condition=str(row.get("condition", "*")),
+            source_claim_ids=_combo_mapping_strings(
+                row,
+                "source_claim_ids",
+            ),
+            confidence=str(row.get("confidence", "source_backed")),
+            source_refs=_combo_mapping_strings(row, "source_refs"),
+            claim_id=(
+                str(row["claim_id"])
+                if row.get("claim_id") is not None
+                else None
+            ),
+        )
+
+    def to_report_row(self) -> dict[str, Any]:
+        first_value = self.values[0] if self.values else "10"
+        try:
+            report_value = int(first_value)
+        except (TypeError, ValueError):
+            report_value = 10
+        return {
+            "rule_id": self.rule_id,
+            "cards": list(self.cards),
+            "timing_kind": self.timing.value,
+            "operator": self.operator,
+            "values": list(self.values),
+            "condition": self.condition,
+            "source_claim_ids": list(self.source_claim_ids),
+            "confidence": self.confidence,
+            **({"claim_id": self.claim_id} if self.claim_id else {}),
+            "source_refs": list(self.source_refs),
+            "combo": self.operator.join(self.cards),
+            "value": report_value,
+        }
+
+
+def _combo_mapping_strings(
+    row: Mapping[str, Any],
+    field: str,
+) -> tuple[str, ...]:
+    values = row.get(field, ())
+    frozen = _combo_strings(values, field=f"combo_{field}")
+    return tuple(str(value) for value in frozen)
+
+
+@dataclass(frozen=True, init=False)
+class ComboSuppressionModel(_ImmutableAuthorityNode):
+    cards: tuple[str, ...]
+    reason_code: str
+    claim_id: str | None = None
+    missing_cards: tuple[str, ...] = ()
+
+    @classmethod
+    def _normalize_authority_values(
+        cls,
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized = dict(values)
+        normalized["cards"] = _combo_strings(
+            values["cards"],
+            field="combo_suppression_cards",
+        )
+        normalized["missing_cards"] = _combo_strings(
+            values["missing_cards"],
+            field="combo_suppression_missing_cards",
+        )
+        return normalized
+
+    def __post_init__(self) -> None:
+        _combo_strings(
+            self.cards,
+            field="combo_suppression_cards",
+        )
+        _combo_strings(
+            self.missing_cards,
+            field="combo_suppression_missing_cards",
+        )
+        if (
+            not isinstance(self.reason_code, str)
+            or not self.reason_code
+            or self.reason_code != self.reason_code.strip()
+        ):
+            raise ValueError("combo_suppression_reason_invalid")
+        if (
+            not isinstance(self.claim_id, str)
+            or not self.claim_id
+            or self.claim_id != self.claim_id.strip()
+        ):
+            raise ValueError("combo_suppression_claim_id_invalid")
+
+    @property
+    def identity(
+        self,
+    ) -> tuple[str, tuple[str, ...], str, tuple[str, ...]]:
+        return (
+            self.claim_id or "",
+            self.cards,
+            self.reason_code,
+            self.missing_cards,
+        )
+
+    @classmethod
+    def from_report_row(
+        cls,
+        row: Mapping[str, Any],
+    ) -> ComboSuppressionModel:
+        return cls(
+            cards=_combo_mapping_strings(row, "cards"),
+            reason_code=str(row.get("reason", "")),
+            claim_id=(
+                str(row["claim_id"])
+                if row.get("claim_id") is not None
+                else None
+            ),
+            missing_cards=_combo_mapping_strings(row, "missing_cards"),
+        )
+
+    def to_report_row(self) -> dict[str, Any]:
+        return {
+            **({"claim_id": self.claim_id} if self.claim_id else {}),
+            "cards": list(self.cards),
+            "reason": self.reason_code,
+            **(
+                {"missing_cards": list(self.missing_cards)}
+                if self.missing_cards
+                else {}
+            ),
+        }
+
+
+@dataclass(frozen=True, init=False)
+class ComboPlanModel(_ImmutableAuthorityNode):
+    decisions: tuple[ComboDecisionModel, ...]
+    suppressions: tuple[ComboSuppressionModel, ...]
+
+    @classmethod
+    def _normalize_authority_values(
+        cls,
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized = dict(values)
+        normalized["decisions"] = _combo_model_container(
+            values["decisions"],
+            field="combo_decisions",
+        )
+        normalized["suppressions"] = _combo_model_container(
+            values["suppressions"],
+            field="combo_suppressions",
+        )
+        return normalized
+
+    def __post_init__(self) -> None:
+        decisions = _combo_model_container(
+            self.decisions,
+            field="combo_decisions",
+        )
+        suppressions = _combo_model_container(
+            self.suppressions,
+            field="combo_suppressions",
+        )
+        if any(
+            not isinstance(decision, ComboDecisionModel)
+            for decision in decisions
+        ):
+            raise TypeError("combo_decision_invalid")
+        if any(
+            not isinstance(suppression, ComboSuppressionModel)
+            for suppression in suppressions
+        ):
+            raise TypeError("combo_suppression_invalid")
+        decision_ids = tuple(decision.rule_id for decision in decisions)
+        if len(set(decision_ids)) != len(decision_ids):
+            raise ValueError("combo_decision_id_duplicate")
+        suppression_ids = tuple(
+            suppression.identity for suppression in suppressions
+        )
+        if len(set(suppression_ids)) != len(suppression_ids):
+            raise ValueError("combo_suppression_duplicate")
+        if tuple(sorted(suppression_ids)) != suppression_ids:
+            raise ValueError("combo_suppression_order_unstable")
+
+    @classmethod
+    def from_report(cls, report: Mapping[str, Any]) -> ComboPlanModel:
+        combos = _combo_report_rows(report, "combos")
+        suppressions = _combo_report_rows(report, "suppressed")
+        return cls(
+            decisions=tuple(
+                ComboDecisionModel.from_plan_row(row)
+                for row in combos
+            ),
+            suppressions=tuple(
+                ComboSuppressionModel.from_report_row(row)
+                for row in suppressions
+            ),
+        )
+
+    def to_report(self) -> dict[str, Any]:
+        return {
+            "combos": [
+                decision.to_report_row()
+                for decision in self.decisions
+            ],
+            "suppressed": [
+                suppression.to_report_row()
+                for suppression in self.suppressions
+            ],
+        }
+
+
+def _combo_model_container(
+    values: Any,
+    *,
+    field: str,
+) -> tuple[Any, ...]:
+    if not isinstance(values, (list, tuple)):
+        raise ValueError(f"{field}_container_invalid")
+    return tuple(values)
+
+
+def _combo_report_rows(
+    report: Mapping[str, Any],
+    field: str,
+) -> tuple[Mapping[str, Any], ...]:
+    values = report.get(field, ())
+    if not isinstance(values, (list, tuple)):
+        raise ValueError("Invalid combo sequence collection")
+    rows = tuple(values)
+    if any(not isinstance(row, Mapping) for row in rows):
+        raise ValueError("Invalid combo sequence collection")
+    return rows
+
+
+ComboDecision = ComboDecisionModel
+ComboSuppression = ComboSuppressionModel
+ComboPlan = ComboPlanModel
+
+
 _RUNTIME_OWNERS = {
     "GlobalValues": "globalvalues",
     "Mulligan": "mulligan",
     "CardID": "cardid",
     "Combo": "combo",
 }
+_RUNTIME_OWNERS = deep_freeze_definition(_RUNTIME_OWNERS)
 
 
-@dataclass(frozen=True, slots=True)
-class RuntimeSurfaceDecision:
+@dataclass(frozen=True, init=False)
+class RuntimeSurfaceDecision(_ImmutableAuthorityNode):
     family: Literal["GlobalValues", "Mulligan", "CardID", "Combo"]
     relative_path: str
     owner: str
     decision_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "decision_ids",
-            _freeze_stable_strings(
-                self.decision_ids,
-                field="runtime_surface_decision_ids",
-            ),
+        _freeze_stable_strings(
+            self.decision_ids,
+            field="runtime_surface_decision_ids",
         )
         if self.family not in _RUNTIME_OWNERS:
             raise ValueError("runtime_surface_family_unknown")
@@ -731,12 +1329,11 @@ class RuntimeSurfaceDecision:
         canonical_relative_path(self.relative_path)
 
 
-@dataclass(frozen=True, slots=True)
-class RuntimeSurfacePlan:
+@dataclass(frozen=True, init=False)
+class RuntimeSurfacePlan(_ImmutableAuthorityNode):
     surfaces: tuple[RuntimeSurfaceDecision, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "surfaces", tuple(self.surfaces))
         paths = tuple(surface.relative_path for surface in self.surfaces)
         if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
             raise ValueError("runtime_surface_paths_not_unique_sorted")

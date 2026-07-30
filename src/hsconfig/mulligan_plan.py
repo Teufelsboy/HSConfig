@@ -41,6 +41,7 @@ def build_mulligan_plan(
     card_roles: Mapping[str, Any],
     deck_cards: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
     policy_profile: PolicyProfile,
+    expected_policy_profile: PolicyProfile | None = None,
     internal_policy_claims: Sequence[Mapping[str, Any]] = (),
     source_claim_lifecycle_rows: Sequence[Mapping[str, Any]] | None = None,
     deck_identity: Mapping[str, Any] | None = None,
@@ -54,7 +55,12 @@ def build_mulligan_plan(
     create a rule or delegation.
     """
 
-    if policy_profile != load_policy_profile():
+    expected_policy = (
+        expected_policy_profile
+        if expected_policy_profile is not None
+        else load_policy_profile()
+    )
+    if policy_profile != expected_policy:
         raise ValueError("policy_profile_not_packaged")
     del deck_cards
 
@@ -405,6 +411,7 @@ def _classified_authority(
             deck_identity=deck_identity or {},
             verified_source_receipts=verified_source_receipts,
             policy_profile=_policy_profile_mapping(policy_profile),
+            expected_policy_profile=policy_profile,
         )
     except ValueError:
         return None

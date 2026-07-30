@@ -12,6 +12,7 @@ from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.io import decode_json_bytes, read_json
 from hsconfig.package_model import PackageView
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     COMBO_RUNTIME_FILE,
@@ -24,6 +25,7 @@ from hsconfig.visionai_registry import (
 
 COMBO_SEPARATORS = (">->", ">>")
 _METADATA_KEYS = {"GameCardId", "ConfigComment"}
+_METADATA_KEYS = deep_freeze_definition(_METADATA_KEYS)
 
 
 class SurfaceLedgerMismatchError(ValueError):

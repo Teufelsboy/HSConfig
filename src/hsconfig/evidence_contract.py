@@ -131,6 +131,14 @@ def _policy_profile_from_mapping(
     )
 
 
+def policy_profile_from_mapping(
+    payload: Mapping[str, Any],
+) -> PolicyProfile:
+    """Validate one already-captured Policy mapping without resource I/O."""
+
+    return _policy_profile_from_mapping(payload)
+
+
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -146,10 +154,16 @@ def classify_evidence_authority(
     deck_identity: Mapping[str, Any],
     verified_source_receipts: Sequence[Mapping[str, Any]],
     policy_profile: Mapping[str, Any],
+    expected_policy_profile: PolicyProfile | None = None,
 ) -> EvidenceAuthority:
     try:
         profile = _policy_profile_from_mapping(policy_profile)
-        if profile != load_policy_profile():
+        expected_profile = (
+            expected_policy_profile
+            if expected_policy_profile is not None
+            else load_policy_profile()
+        )
+        if profile != expected_profile:
             raise ValueError("policy_profile_not_packaged")
     except (TypeError, ValueError) as error:
         raise ValueError("evidence_lane_unclassified") from error

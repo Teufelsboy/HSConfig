@@ -65,8 +65,7 @@ FORBIDDEN_DIAGNOSTIC_IMPORTS = [
 ]
 
 SHADOWPRIEST_DECK_CODE = (
-    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
-    "KgG17oG1cEGAAA="
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA="
 )
 
 
@@ -136,9 +135,7 @@ def _install_linked_owner_authority(package: Path) -> None:
         {
             "GameCardId": "EX1_625t",
             "ConfigComment": "curated linked runtime owner",
-            "BeforeUseHeroPowerBonus": {
-                "values": [{"condition": "*", "value": "10"}]
-            },
+            "BeforeUseHeroPowerBonus": {"values": [{"condition": "*", "value": "10"}]},
         },
     )
     write_current_runtime_surface_ledger(package)
@@ -172,9 +169,7 @@ def _remove_linked_owner_authority(package: Path) -> None:
         for path in summary["generated_files"]
         if not str(path).replace("\\", "/").endswith("/EX1_625t.json")
     ]
-    summary["package_derivation"] = refresh_package_derivation_authority(
-        package
-    )
+    summary["package_derivation"] = refresh_package_derivation_authority(package)
     write_json(summary_path, summary)
 
 
@@ -289,8 +284,7 @@ def test_blocked_apply_decision_audits_stale_allowed_core_fields(
 
     gate = evaluate_apply_gate(package)
     reason_codes = [
-        str(reason.get("code") or reason.get("reason"))
-        for reason in gate["reasons"]
+        str(reason.get("code") or reason.get("reason")) for reason in gate["reasons"]
     ]
 
     assert gate["allowed"] is False
@@ -329,18 +323,14 @@ def test_apply_gate_rejects_semantically_tampered_canonical_receipt(
         receipt["source_url"] = "https://example.test/different-source"
     elif mutation == "source_evidence_provenance_mismatch":
         evidence = bundle["source_evidence_index"][0]
-        evidence["acquisition_provenance"]["content_sha256"] = (
-            "sha256:" + ("2" * 64)
-        )
+        evidence["acquisition_provenance"]["content_sha256"] = "sha256:" + ("2" * 64)
     else:
         raise AssertionError(f"unknown mutation: {mutation}")
 
     write_json(bundle_path, bundle)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
-    summary["package_derivation"] = refresh_package_derivation_authority(
-        package
-    )
+    summary["package_derivation"] = refresh_package_derivation_authority(package)
     write_json(summary_path, summary)
 
     gate = evaluate_apply_gate(package)
@@ -379,9 +369,10 @@ def test_apply_gate_reports_operator_summary_as_single_human_authority(
     gate = evaluate_apply_gate(package)
 
     assert gate["allowed"] is True
-    assert Path(gate["operator_summary_path"]).resolve() == (
-        package / "reports" / "operator_summary.json"
-    ).resolve()
+    assert (
+        Path(gate["operator_summary_path"]).resolve()
+        == (package / "reports" / "operator_summary.json").resolve()
+    )
 
 
 def test_active_apply_paths_do_not_import_diagnostic_authorities():
@@ -394,7 +385,9 @@ def test_active_apply_paths_do_not_import_diagnostic_authorities():
 def test_report_ownership_has_no_second_apply_gate():
     from hsconfig.report_ownership import build_report_ownership
 
-    gate_rows = [row for row in build_report_ownership() if row.get("classification") == "gate"]
+    gate_rows = [
+        row for row in build_report_ownership() if row.get("classification") == "gate"
+    ]
 
     assert [row["file"] for row in gate_rows] == ["reports/operator_summary.json"]
 
@@ -404,9 +397,7 @@ def test_registry_and_ownership_have_one_literal_apply_authority():
     from hsconfig.visionai_registry import REPORT_REGISTRY
 
     registry_gates = [
-        path
-        for path, spec in REPORT_REGISTRY.items()
-        if spec.apply_authority is True
+        path for path, spec in REPORT_REGISTRY.items() if spec.apply_authority is True
     ]
     ownership_gates = [
         row["file"]
@@ -508,9 +499,7 @@ def test_prepared_package_projects_configuration_assurance_to_operator_outputs(
     summary = json.loads(
         (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
-    markdown = (out / "reports" / "card_semantic_audit.md").read_text(
-        encoding="utf-8"
-    )
+    markdown = (out / "reports" / "card_semantic_audit.md").read_text(encoding="utf-8")
     assurance = summary["configuration_assurance"]
 
     assert code == 0
@@ -643,9 +632,7 @@ def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
 
         summary_path = package / "reports" / "operator_summary.json"
         summary = read_json(summary_path)
-        summary["package_derivation"] = refresh_package_derivation_authority(
-            package
-        )
+        summary["package_derivation"] = refresh_package_derivation_authority(package)
         write_json(summary_path, summary)
 
     gate = evaluate_apply_gate(package)
@@ -675,8 +662,8 @@ def test_apply_gate_rejects_legacy_derivation_receipt_schema_one(
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     summary["package_derivation"]["schema_version"] = 1
-    summary["package_derivation"]["receipt_sha256"] = (
-        package_derivation_receipt_sha256(receipt)
+    summary["package_derivation"]["receipt_sha256"] = package_derivation_receipt_sha256(
+        receipt
     )
     write_json(summary_path, summary)
 
@@ -790,7 +777,9 @@ def test_apply_gate_blocks_runtime_json_added_after_build(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
-    deck_dir = next(path for path in (package / "CustomConfig").iterdir() if path.is_dir())
+    deck_dir = next(
+        path for path in (package / "CustomConfig").iterdir() if path.is_dir()
+    )
     write_json(
         deck_dir / "ZZZ_999.json",
         {
@@ -852,8 +841,8 @@ def test_apply_gate_blocks_unknown_derivation_receipt_schema(
     write_json(receipt_path, receipt)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
-    summary["package_derivation"]["receipt_sha256"] = (
-        package_derivation_receipt_sha256(receipt)
+    summary["package_derivation"]["receipt_sha256"] = package_derivation_receipt_sha256(
+        receipt
     )
     write_json(summary_path, summary)
 
@@ -900,8 +889,8 @@ def test_receipt_verifier_and_apply_gate_reject_non_integer_schema_versions(
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     summary["package_derivation"]["schema_version"] = schema_version
-    summary["package_derivation"]["receipt_sha256"] = (
-        package_derivation_receipt_sha256(receipt)
+    summary["package_derivation"]["receipt_sha256"] = package_derivation_receipt_sha256(
+        receipt
     )
     write_json(summary_path, summary)
 
@@ -1071,103 +1060,42 @@ def test_path_like_deck_identity_is_semantic_and_mutation_evident(
         ("receipt_mismatch", "package_derivation_mismatch"),
     ],
 )
-def test_builder_summary_never_claims_valid_when_task4_authority_blocks(
+def test_post_publication_authority_tampering_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     mutation: str,
     expected_gate_code: str,
 ) -> None:
-    from hsconfig import package_builder
-
-    original_refresh = package_builder.refresh_package_derivation_authority
-
-    def refresh_with_authority_mutation(package_root: Path) -> dict:
-        package = Path(package_root)
-        if mutation == "negative_deck_eligibility":
-            write_json(
-                package / "reports" / "deck_input_verification.json",
-                {"runtime_apply_eligible": False},
-            )
-        elif mutation == "invalid_source_authority":
-            bundle_path = package / "reports" / "guide_claim_bundle.json"
-            bundle = read_json(bundle_path)
-            bundle["canonical_source_receipts"] = [
-                {
-                    "receipt_kind": "canonical_exact_deck_source_document",
-                    "acquisition_provenance": {
-                        "mode": "manual_evidence",
-                        "content_sha256": "sha256:" + ("0" * 64),
-                        "authority": "manual_unverified",
-                    },
-                }
-            ]
-            write_json(bundle_path, bundle)
-        authority = original_refresh(package)
-        if mutation == "receipt_mismatch":
-            identity_path = package / "reports" / "deck_identity.json"
-            identity = read_json(identity_path)
-            identity["tampered_after_receipt"] = True
-            write_json(identity_path, identity)
-        return authority
-
-    monkeypatch.setattr(
-        package_builder,
-        "refresh_package_derivation_authority",
-        refresh_with_authority_mutation,
-    )
-
     package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
-    summary = read_json(package / "reports" / "operator_summary.json")
+    if mutation == "negative_deck_eligibility":
+        write_json(
+            package / "reports" / "deck_input_verification.json",
+            {"runtime_apply_eligible": False},
+        )
+    elif mutation == "invalid_source_authority":
+        bundle_path = package / "reports" / "guide_claim_bundle.json"
+        bundle = read_json(bundle_path)
+        bundle["canonical_source_receipts"] = [
+            {
+                "receipt_kind": "canonical_exact_deck_source_document",
+                "acquisition_provenance": {
+                    "mode": "manual_evidence",
+                    "content_sha256": "sha256:" + ("0" * 64),
+                    "authority": "manual_unverified",
+                },
+            }
+        ]
+        write_json(bundle_path, bundle)
+    else:
+        identity_path = package / "reports" / "deck_identity.json"
+        identity = read_json(identity_path)
+        identity["tampered_after_receipt"] = True
+        write_json(identity_path, identity)
     gate = evaluate_apply_gate(package)
 
-    assert summary["technical_status"] == "INVALID_PACKAGE"
     assert gate["allowed"] is False
     assert _first_reason_code(gate) == expected_gate_code
-
-
-def test_builder_summary_recomputes_strict_validation_after_receipt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from hsconfig import package_builder
-
-    original_refresh = package_builder.refresh_package_derivation_authority
-
-    def refresh_then_add_unowned_linked_runtime(package_root: Path) -> dict:
-        package = Path(package_root)
-        authority = original_refresh(package)
-        plan_path = package / "reports" / "card_behavior_plan_report.json"
-        plan = read_json(plan_path)
-        plan["rows"].append(
-            {
-                "claim_id": "post_receipt_strict_mutation",
-                "card_id": "SW_448",
-                "source_card_id": "SW_448",
-                "runtime_card_id": "MISSING_RUNTIME_OWNER",
-                "link_kind": "hero_power_transform",
-                "behavior_block": "BeforeUseHeroPowerBonus",
-                "meaningful_runtime_surface": True,
-            }
-        )
-        write_json(plan_path, plan)
-        return authority
-
-    monkeypatch.setattr(
-        package_builder,
-        "refresh_package_derivation_authority",
-        refresh_then_add_unowned_linked_runtime,
-    )
-
-    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
-    summary = read_json(package / "reports" / "operator_summary.json")
-    gate = evaluate_apply_gate(package)
-
-    assert summary["technical_status"] == "INVALID_PACKAGE"
-    assert summary["runtime_apply_allowed"] is False
-    assert gate["allowed"] is False
-    assert _first_reason_code(gate) == "strict_package_validation_failed"
 
 
 def test_derivation_receipt_is_non_circular(

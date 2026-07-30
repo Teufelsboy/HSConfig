@@ -4,6 +4,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.package_domain import (
+    ComboDecisionModel,
+    ComboPlanModel,
+    ComboSuppressionModel,
+)
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import (
     evaluate_combo_surface_gate,
@@ -18,8 +23,23 @@ def build_combo_plan(
     deck_identity: Mapping[str, Any] | None = None,
     verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    combos: list[dict[str, Any]] = []
-    suppressed: list[dict[str, Any]] = []
+    return build_typed_combo_plan(
+        deck_cards=deck_cards,
+        claims=claims,
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
+    ).to_report()
+
+
+def build_typed_combo_plan(
+    *,
+    deck_cards: set[str],
+    claims: list[dict[str, Any]],
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
+) -> ComboPlanModel:
+    decisions: list[ComboDecisionModel] = []
+    suppressions: list[ComboSuppressionModel] = []
 
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
@@ -34,19 +54,23 @@ def build_combo_plan(
         if not gate.allowed:
             if _is_combo_surface_candidate(claim, claim_kind):
                 contract = gate_evaluation.contract
-                row = _suppression(
-                    claim,
-                    [
-                        str(card)
-                        for card in contract.get("cards", _claim_cards(claim))
-                    ],
-                    gate.reason,
+                suppressions.append(
+                    _typed_suppression(
+                        claim,
+                        [
+                            str(card)
+                            for card in contract.get(
+                                "cards",
+                                _claim_cards(claim),
+                            )
+                        ],
+                        gate.reason,
+                        missing_cards=[
+                            str(card)
+                            for card in contract.get("missing_cards", ())
+                        ],
+                    )
                 )
-                if "missing_cards" in contract:
-                    row["missing_cards"] = [
-                        str(card) for card in contract["missing_cards"]
-                    ]
-                suppressed.append(row)
             continue
 
         contract = gate_evaluation.contract
@@ -54,8 +78,8 @@ def build_combo_plan(
         _with_claim_id(row, claim)
         condition, condition_error = _condition(claim)
         if condition_error is not None:
-            suppressed.append(
-                _suppression(
+            suppressions.append(
+                _typed_suppression(
                     claim,
                     [str(card) for card in contract.get("cards", [])],
                     condition_error,
@@ -65,31 +89,32 @@ def build_combo_plan(
         row["condition"] = condition
         row["source_claim_ids"] = _source_claim_ids(claim)
         row["confidence"] = str(
-            claim.get("claim_confidence", claim.get("confidence", "source_backed"))
+            claim.get(
+                "claim_confidence",
+                claim.get("confidence", "source_backed"),
+            )
         )
         row["source_refs"] = [str(item) for item in claim.get("source_refs", [])]
-        row["combo"] = str(row["operator"]).join(row["cards"])
-        row["value"] = _combo_row_value(row["values"])
-        combos.append(row)
+        decisions.append(ComboDecisionModel.from_plan_row(row))
 
-    return {"combos": combos, "suppressed": suppressed}
-
-
-def _combo_row_value(values: list[str]) -> int:
-    value = values[0] if values else 10
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 10
+    return ComboPlanModel(
+        decisions=tuple(decisions),
+        suppressions=tuple(sorted(suppressions, key=lambda row: row.identity)),
+    )
 
 
-def _suppression(claim: dict[str, Any], cards: list[str], reason: str) -> dict[str, Any]:
-    return _with_claim_id(
-        {
-            "cards": cards,
-            "reason": reason,
-        },
-        claim,
+def _typed_suppression(
+    claim: dict[str, Any],
+    cards: list[str],
+    reason: str,
+    *,
+    missing_cards: list[str] | None = None,
+) -> ComboSuppressionModel:
+    return ComboSuppressionModel(
+        cards=tuple(cards),
+        reason_code=reason,
+        claim_id=lifecycle_claim_id(claim) or None,
+        missing_cards=tuple(missing_cards or ()),
     )
 
 

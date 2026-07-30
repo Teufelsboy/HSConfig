@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_globalvalues, normalized_claim_kind
@@ -50,6 +51,8 @@ POSTURE_ALIASES = {
     "aggressive": "aggro",
     "tempo": "aggro",
 }
+POSTURE_OVERLAYS = deep_freeze_definition(POSTURE_OVERLAYS)
+POSTURE_ALIASES = deep_freeze_definition(POSTURE_ALIASES)
 
 
 def build_globalvalues_authority_matrix(

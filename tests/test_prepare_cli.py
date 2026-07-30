@@ -15,13 +15,17 @@ from tests.helpers.verified_deck_input import (
 
 
 SHADOWPRIEST_CODE = (
-    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
-    "KgG17oG1cEGAAA="
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA="
 )
 
 
 def _today_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def test_research_contract_command_writes_contract_only(tmp_path: Path, capsys):
@@ -41,9 +45,13 @@ def test_research_contract_command_writes_contract_only(tmp_path: Path, capsys):
     )
 
     payload = json.loads(capsys.readouterr().out)
-    archetype = json.loads((out / "archetype_research.json").read_text(encoding="utf-8"))
+    archetype = json.loads(
+        (out / "archetype_research.json").read_text(encoding="utf-8")
+    )
     card_roles = json.loads((out / "card_role_map.json").read_text(encoding="utf-8"))
-    globalvalue_intent = json.loads((out / "globalvalue_intent.json").read_text(encoding="utf-8"))
+    globalvalue_intent = json.loads(
+        (out / "globalvalue_intent.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -55,7 +63,9 @@ def test_research_contract_command_writes_contract_only(tmp_path: Path, capsys):
     assert not (out / "CustomConfig").exists()
 
 
-def test_research_contract_refuses_existing_nonempty_output_directory(tmp_path: Path, capsys):
+def test_research_contract_refuses_existing_nonempty_output_directory(
+    tmp_path: Path, capsys
+):
     out = tmp_path / "package_root"
     out.mkdir()
     sentinel = out / "do_not_delete.txt"
@@ -78,7 +88,10 @@ def test_research_contract_refuses_existing_nonempty_output_directory(tmp_path: 
 
     assert code == 1
     assert payload["status"] == "failed"
-    assert "Refusing to overwrite non-empty research output directory" in payload["errors"][0]
+    assert (
+        "Refusing to overwrite non-empty research output directory"
+        in payload["errors"][0]
+    )
     assert sentinel.read_text(encoding="utf-8") == "keep"
 
 
@@ -107,7 +120,10 @@ def test_research_contract_refuses_existing_artifact_named_output_directory(
 
     assert code == 1
     assert payload["status"] == "failed"
-    assert "Refusing to overwrite non-empty research output directory" in payload["errors"][0]
+    assert (
+        "Refusing to overwrite non-empty research output directory"
+        in payload["errors"][0]
+    )
     assert claims.read_text(encoding="utf-8") == '{"claims": "keep"}'
 
 
@@ -133,9 +149,15 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
     research_dir = reports / "research"
-    validation = json.loads((reports / "validation_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
-    card_roles = json.loads((research_dir / "card_role_map.json").read_text(encoding="utf-8"))
+    validation = json.loads(
+        (reports / "validation_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    card_roles = json.loads(
+        (research_dir / "card_role_map.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -165,7 +187,9 @@ def test_prepare_fetch_failure_keeps_semantic_warning_counts_consistent(
     def raise_fetch_failure(timeout: float = 10.0):
         raise RuntimeError("offline fixture")
 
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", raise_fetch_failure)
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", raise_fetch_failure
+    )
 
     code = main(
         [
@@ -194,12 +218,19 @@ def test_prepare_fetch_failure_keeps_semantic_warning_counts_consistent(
 
     assert code == 0
     assert semantic_report["semantic_enrichment_status"] == "partial"
-    assert any("hearthstonejson_fetch_failed: offline fixture" in row["warning"] for row in warnings)
+    assert any(
+        "hearthstonejson_fetch_failed: offline fixture" in row["warning"]
+        for row in warnings
+    )
     assert semantic_report["summary"]["warning_count"] == len(warnings)
-    assert operator_summary["semantic_enrichment_summary"]["warning_count"] == len(warnings)
+    assert operator_summary["semantic_enrichment_summary"]["warning_count"] == len(
+        warnings
+    )
 
 
-def test_build_and_research_contract_agree_on_shadowpriest_research(tmp_path: Path, capsys):
+def test_build_and_research_contract_agree_on_shadowpriest_research(
+    tmp_path: Path, capsys
+):
     research_out = tmp_path / "research_only"
     package = tmp_path / "package"
     runtime = tmp_path / "runtime"
@@ -240,7 +271,9 @@ def test_build_and_research_contract_agree_on_shadowpriest_research(tmp_path: Pa
     )
     capsys.readouterr()
 
-    research_only = json.loads((research_out / "archetype_research.json").read_text(encoding="utf-8"))
+    research_only = json.loads(
+        (research_out / "archetype_research.json").read_text(encoding="utf-8")
+    )
     build_research = json.loads(
         (package / "reports" / "research" / "archetype_research.json").read_text(
             encoding="utf-8"
@@ -272,24 +305,35 @@ def test_prepare_gameplan_uses_research_bundle_intent(tmp_path: Path, capsys):
     capsys.readouterr()
 
     research_roles = json.loads(
-        (package / "reports" / "research" / "card_role_map.json").read_text(encoding="utf-8")
+        (package / "reports" / "research" / "card_role_map.json").read_text(
+            encoding="utf-8"
+        )
     )
     research_globalvalues = json.loads(
         (package / "reports" / "research" / "globalvalue_intent.json").read_text(
             encoding="utf-8"
         )
     )
-    gameplan = json.loads((package / "reports" / "gameplan_contract.json").read_text(encoding="utf-8"))
+    gameplan = json.loads(
+        (package / "reports" / "gameplan_contract.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
-    assert gameplan["cards"]["SW_448"]["confidence"] == research_roles["SW_448"]["confidence"]
-    assert set(research_roles["SW_448"]["roles"]) <= set(gameplan["cards"]["SW_448"]["roles"])
+    assert (
+        gameplan["cards"]["SW_448"]["confidence"]
+        == research_roles["SW_448"]["confidence"]
+    )
+    assert set(research_roles["SW_448"]["roles"]) <= set(
+        gameplan["cards"]["SW_448"]["roles"]
+    )
     assert set(research_globalvalues["overlays"]).issubset(
         set(gameplan["aggression_profile"]["global_value_overlays"])
     )
 
 
-def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path: Path, capsys):
+def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(
+    tmp_path: Path, capsys
+):
     package = tmp_path / "package"
 
     code = main(
@@ -311,21 +355,28 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
-    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
-    source_index = json.loads((reports / "source_evidence_index.json").read_text(encoding="utf-8"))
-    unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    coverage = json.loads(
+        (reports / "claim_coverage_report.json").read_text(encoding="utf-8")
+    )
+    guide_bundle = json.loads(
+        (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    source_index = json.loads(
+        (reports / "source_evidence_index.json").read_text(encoding="utf-8")
+    )
+    unsupported = json.loads(
+        (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
     voidtouched = json.loads(
-        (
-            package
-            / "CustomConfig"
-            / "shadowpriest"
-            / "SW_446.json"
-        ).read_text(encoding="utf-8")
+        (package / "CustomConfig" / "shadowpriest" / "SW_446.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert code == 0
@@ -338,8 +389,13 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert source_index[0]["claim_count"] >= 12
     assert unsupported == []
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
-    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] == 0
+    assert (
+        operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
+    )
+    assert (
+        operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"]
+        == 0
+    )
     assert card_behavior["runtime_row_conflicts"] == []
     assert card_behavior["compiler_runtime_row_conflicts"] == []
     assert card_behavior["merged_duplicate_runtime_row_count"] >= 1
@@ -384,7 +440,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
                                 "condition": {"coin": True},
                                 "reason": "Keep Voidtouched Attendant as an early pressure amplifier.",
                                 "source_confidence": "high",
-                            }
+                            },
                         ],
                     }
                 ]
@@ -413,11 +469,19 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    guide_sources = json.loads((reports / "guide_sources.json").read_text(encoding="utf-8"))
-    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    guide_sources = json.loads(
+        (reports / "guide_sources.json").read_text(encoding="utf-8")
+    )
+    receipt = json.loads(
+        (reports / "guide_builder_receipt.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     source_report = json.loads(
-        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+        (reports / "source_evidence_verification_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert code == 0
@@ -426,8 +490,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert receipt["source_depth_status"] == "source_backed"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
     assert operator_summary["runtime_apply_mode"] == "blocked"
     assert operator_summary["runtime_apply_allowed"] is False
@@ -444,7 +507,9 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
 def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     weak_cards = [
         {**VERIFIED_FIXTURE_CARDS[0], "name": "Card A"},
@@ -519,16 +584,24 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
-    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    guide_bundle = json.loads(
+        (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    coverage = json.loads(
+        (reports / "claim_coverage_report.json").read_text(encoding="utf-8")
+    )
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
-    mulligan_plan = json.loads((reports / "mulligan_plan_report.json").read_text(encoding="utf-8"))
+    mulligan_plan = json.loads(
+        (reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
     readiness = json.loads(
         (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
     )
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -536,7 +609,9 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
         claim for claim in guide_bundle["claims"] if claim["source_family"] == "guide"
     ]
     source_claim_ids = {claim["claim_id"] for claim in source_claims}
-    assert {claim["claim_readiness"] for claim in source_claims} == {"explicit_low_confidence"}
+    assert {claim["claim_readiness"] for claim in source_claims} == {
+        "explicit_low_confidence"
+    }
     assert {claim["trust_ceiling"] for claim in source_claims} == {"report_only"}
     assert coverage["summary"]["guide_backed"] == 0
     assert coverage["summary"]["uncovered_low_confidence"] == 3
@@ -554,15 +629,16 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert readiness["summary"]["generic_low_confidence"] == 0
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
 
 
 def test_prepare_operator_summary_uses_live_source_claim_gap_report(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
@@ -643,28 +719,41 @@ def test_prepare_operator_summary_uses_live_source_claim_gap_report(
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    source_gap = json.loads((reports / "source_claim_gap_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    source_gap = json.loads(
+        (reports / "source_claim_gap_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
     assert operator_summary["source_claim_quality_summary"]["non_blocking"] is True
-    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"] == (
-        source_gap["summary"]["source_quality_lane_counts"]
+    assert (
+        operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"]
+        == (source_gap["summary"]["source_quality_lane_counts"])
     )
-    assert operator_summary["source_claim_quality_summary"]["cards_with_generic_low_confidence"] == (
-        source_gap["summary"]["cards_with_generic_low_confidence"]
+    assert (
+        operator_summary["source_claim_quality_summary"][
+            "cards_with_generic_low_confidence"
+        ]
+        == (source_gap["summary"]["cards_with_generic_low_confidence"])
     )
-    assert operator_summary["source_claim_quality_summary"]["cards_with_contract_gap"] == (
-        source_gap["summary"]["cards_with_contract_gap"]
+    assert (
+        operator_summary["source_claim_quality_summary"]["cards_with_contract_gap"]
+        == (source_gap["summary"]["cards_with_contract_gap"])
     )
-    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"]
+    assert operator_summary["source_claim_quality_summary"][
+        "source_quality_lane_counts"
+    ]
 
 
 def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     weak_cards = [
         {
@@ -732,15 +821,21 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    guide_bundle = json.loads(
+        (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
-    mulligan_plan = json.loads((reports / "mulligan_plan_report.json").read_text(encoding="utf-8"))
+    mulligan_plan = json.loads(
+        (reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
     readiness = json.loads(
         (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
     )
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -749,7 +844,9 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     ]
     source_claim_ids = {claim["claim_id"] for claim in source_claims}
     assert {claim["source_confidence"] for claim in source_claims} == {"low"}
-    assert {claim["claim_readiness"] for claim in source_claims} == {"explicit_low_confidence"}
+    assert {claim["claim_readiness"] for claim in source_claims} == {
+        "explicit_low_confidence"
+    }
     assert {claim["trust_ceiling"] for claim in source_claims} == {"report_only"}
     assert card_behavior["rows"] == []
     assert not any(
@@ -762,7 +859,9 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
-def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):
+def test_prepare_source_documents_missing_source_confidence_stays_unsupported(
+    tmp_path: Path, capsys
+):
     roster = [
         {
             "card_id": "EX1_001",
@@ -828,11 +927,21 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    guide_sources = json.loads((reports / "guide_sources.json").read_text(encoding="utf-8"))
-    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
-    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
-    unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    guide_sources = json.loads(
+        (reports / "guide_sources.json").read_text(encoding="utf-8")
+    )
+    receipt = json.loads(
+        (reports / "guide_builder_receipt.json").read_text(encoding="utf-8")
+    )
+    guide_bundle = json.loads(
+        (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    unsupported = json.loads(
+        (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -843,18 +952,17 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
     assert receipt["source_depth_status"] == "needs_more_research"
     assert receipt["claim_count"] == 0
     assert not [
-        claim for claim in guide_bundle["claims"] if claim.get("source_family") == "guide"
+        claim
+        for claim in guide_bundle["claims"]
+        if claim.get("source_family") == "guide"
     ]
     assert [row["missing_claim_keys"] for row in unsupported] == [
         ["source_confidence"],
         ["source_confidence"],
     ]
-    assert operator_summary["semantic_status"] == (
-        "VALID_BUT_NOT_GUIDE_STRONG"
-    )
+    assert operator_summary["semantic_status"] == ("VALID_BUT_NOT_GUIDE_STRONG")
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
 
 
@@ -871,9 +979,7 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
         ),
         encoding="utf-8",
     )
-    target_fingerprint = stable_deck_fingerprint(
-        [("EX1_001", 2), ("EX1_002", 2)]
-    )
+    target_fingerprint = stable_deck_fingerprint([("EX1_001", 2), ("EX1_002", 2)])
     source_documents = tmp_path / "source_documents.json"
     source_documents.write_text(
         json.dumps(
@@ -943,7 +1049,9 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
     payload = json.loads(capsys.readouterr().out)
     deck_dir = package / "CustomConfig" / "timed_combo"
     reports = package / "reports"
-    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads(
+        (reports / "combo_plan_report.json").read_text(encoding="utf-8")
+    )
     source_audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
@@ -965,9 +1073,13 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
 ):
     package = tmp_path / "package"
 
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
-    def _shared_fallback(deck_name: str, deck_identity: dict[str, object]) -> dict[str, object]:
+    def _shared_fallback(
+        deck_name: str, deck_identity: dict[str, object]
+    ) -> dict[str, object]:
         return {
             "schema_version": 1,
             "deck_name": deck_name,
@@ -984,7 +1096,9 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
             "research_fallback_source": "shared_module",
         }
 
-    monkeypatch.setattr("hsconfig.package_builder._research_required_guide_sources", _shared_fallback)
+    monkeypatch.setattr(
+        "hsconfig.package_builder._research_required_guide_sources", _shared_fallback
+    )
 
     code = main(
         [
@@ -1006,7 +1120,9 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     operator_summary = json.loads(
         (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
-    guide_sources = json.loads((package / "reports" / "guide_sources.json").read_text(encoding="utf-8"))
+    guide_sources = json.loads(
+        (package / "reports" / "guide_sources.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
@@ -1053,15 +1169,15 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
                         "deck_match_scope": "exact_deck_matched",
                         "promotion_eligible": True,
                         "deck_match": {
-                                "exact_deck_evidence": {
-                                    "candidate_count": 1,
-                                    "decoded_candidate_count": 1,
-                                    "matched": True,
-                                    "matched_deck_fingerprint": deck_fingerprint,
-                                    "candidate_deck_code_hashes": [
-                                        "sha256:weapon-guide-source"
-                                    ],
-                                }
+                            "exact_deck_evidence": {
+                                "candidate_count": 1,
+                                "decoded_candidate_count": 1,
+                                "matched": True,
+                                "matched_deck_fingerprint": deck_fingerprint,
+                                "candidate_deck_code_hashes": [
+                                    "sha256:weapon-guide-source"
+                                ],
+                            }
                         },
                         "claims": [
                             {
@@ -1101,9 +1217,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     capsys.readouterr()
     reports = package / "reports"
     authority = json.loads(
-        (reports / "global_values_authority_matrix.json").read_text(
-            encoding="utf-8"
-        )
+        (reports / "global_values_authority_matrix.json").read_text(encoding="utf-8")
     )
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
@@ -1210,9 +1324,7 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
     capsys.readouterr()
     reports = package / "reports"
     authority = json.loads(
-        (reports / "global_values_authority_matrix.json").read_text(
-            encoding="utf-8"
-        )
+        (reports / "global_values_authority_matrix.json").read_text(encoding="utf-8")
     )
     unsupported = json.loads(
         (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
@@ -1224,9 +1336,9 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
     globalvalues = json.loads(
-        (
-            package / "CustomConfig" / "shadowpriest" / "GlobalValues.json"
-        ).read_text(encoding="utf-8")
+        (package / "CustomConfig" / "shadowpriest" / "GlobalValues.json").read_text(
+            encoding="utf-8"
+        )
     )
     blocked = [
         row
@@ -1249,7 +1361,10 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
         and row["claim_kind"] == "globalvalue_numeric_tuning"
     ]
     assert suppressed_lifecycle_rows
-    assert all(row["first_missing_link"] == "runtime_evidence" for row in suppressed_lifecycle_rows)
+    assert all(
+        row["first_missing_link"] == "runtime_evidence"
+        for row in suppressed_lifecycle_rows
+    )
     globalvalue_gap_rows = [
         row
         for row in source_claim_gap["suppressed_claim_rows"]
@@ -1376,14 +1491,14 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
             {
                 "cards": [
                     {
-                        "card_id": "CARD_A",
+                        "card_id": "EX1_001",
                         "dbf_id": 1,
                         "count": 2,
                         "name": "Card A",
                         "text": "Fixture card.",
                     },
                     {
-                        "card_id": "CARD_B",
+                        "card_id": "EX1_002",
                         "dbf_id": 2,
                         "count": 2,
                         "name": "Card B",
@@ -1407,7 +1522,7 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["CARD_A"],
+                                "cards": ["EX1_001"],
                                 "stance": "keep",
                                 "evidence_text_short": "Keep Card A.",
                                 "source_confidence": "high",
@@ -1422,7 +1537,7 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
                         "claims": [
                             {
                                 "claim_kind": "mulligan_discard",
-                                "cards": ["CARD_A"],
+                                "cards": ["EX1_001"],
                                 "stance": "discard",
                                 "evidence_text_short": "Discard Card A.",
                                 "source_confidence": "high",
@@ -1457,28 +1572,51 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
 
     capsys.readouterr()
     reports = package / "reports"
-    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
-    conflicts = json.loads((reports / "claim_conflict_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    coverage = json.loads(
+        (reports / "claim_coverage_report.json").read_text(encoding="utf-8")
+    )
+    conflicts = json.loads(
+        (reports / "claim_conflict_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
 
-    assert code == 1
-    assert coverage["cards"]["CARD_A"]["coverage_status"] == "guide_backed"
-    assert coverage["cards"]["CARD_B"]["coverage_status"] == "uncovered_low_confidence"
+    assert code == 0
+    assert coverage["cards"]["EX1_001"]["coverage_status"] == "guide_backed"
+    assert coverage["cards"]["EX1_002"]["coverage_status"] == (
+        "static_semantics_backfilled"
+    )
     assert conflicts["conflict_count"] == 1
-    assert conflicts["conflicts"][0]["card_id"] == "CARD_A"
-    assert {"reason": "claim_conflicts_present", "conflict_count": 1} in operator_summary["warnings"]
-    assert {"reason": "cards_still_low_confidence", "card_count": 1} in operator_summary["warnings"]
+    assert conflicts["conflicts"][0]["card_id"] == "EX1_001"
+    assert {
+        "reason": "claim_conflicts_present",
+        "conflict_count": 1,
+    } in operator_summary["warnings"]
+    assert not any(
+        row.get("reason") == "cards_still_low_confidence"
+        for row in operator_summary["warnings"]
+    )
 
 
-def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: Path, capsys, monkeypatch):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+def test_prepare_suppresses_option_claim_without_identity_resolution(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "DISCOVER_CARD", "dbf_id": 1, "count": 2, "name": "Discover Card"},
+                    {
+                        "card_id": "EX1_003",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Discover Card",
+                    },
                 ]
             }
         ),
@@ -1497,8 +1635,8 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
                         "claims": [
                             {
                                 "claim_kind": "discover_choice",
-                                "cards": ["DISCOVER_CARD"],
-                                "option_card_id": "OPTION_ALPHA",
+                                "cards": ["EX1_003"],
+                                "option_card_id": "EX1_004",
                                 "stance": "pick_option_alpha",
                                 "evidence_text_short": "Prefer Option Alpha from this discover pool.",
                                 "source_confidence": "high",
@@ -1533,21 +1671,27 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
     suppressions = json.loads(
         (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
     )
 
-    assert code == 1
-    assert payload["status"] == "failed"
+    assert code == 0
+    assert payload["status"] == "passed"
     suppressed_claim_id = card_behavior["suppressed"][0]["claim_id"]
-    assert all(row.get("claim_id") != suppressed_claim_id for row in card_behavior["rows"])
-    assert all(row.get("claim_kind") != "discover_choice" for row in card_behavior["rows"])
+    assert all(
+        row.get("claim_id") != suppressed_claim_id for row in card_behavior["rows"]
+    )
+    assert all(
+        row.get("claim_kind") != "discover_choice" for row in card_behavior["rows"]
+    )
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": card_behavior["suppressed"][0]["claim_id"],
-            "card_id": "DISCOVER_CARD",
-            "option_card_id": "OPTION_ALPHA",
+            "card_id": "EX1_003",
+            "option_card_id": "EX1_004",
             "status": "unresolved",
         }
     ]
@@ -1557,7 +1701,7 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
     } == {
         "claim_id": card_behavior["suppressed"][0]["claim_id"],
         "claim_kind": "discover_choice",
-        "cards": ["DISCOVER_CARD"],
+        "cards": ["EX1_003"],
         "reason": "unresolved_option_identity",
     }
     assert suppressions[0]["acquisition_provenance"]["authority"] == (
@@ -1573,20 +1717,22 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
     )
 
 
-def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys, monkeypatch):
+def test_prepare_routes_option_claim_with_identity_links(
+    tmp_path: Path, capsys, monkeypatch
+):
     monkeypatch.setattr(
         "hsconfig.package_builder.fetch_latest_cards",
         lambda timeout=10.0: [
             {
-                "id": "DISCOVER_CARD",
+                "id": "EX1_003",
                 "dbf_id": 1,
                 "name": "Discover Card",
                 "type": "MINION",
                 "text": "Discover a spell.",
-                "entourage": ["OPTION_ALPHA"],
+                "entourage": ["EX1_004"],
             },
             {
-                "id": "OPTION_ALPHA",
+                "id": "EX1_004",
                 "dbf_id": 2,
                 "name": "Option Alpha",
                 "type": "SPELL",
@@ -1600,7 +1746,12 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "DISCOVER_CARD", "dbf_id": 1, "count": 2, "name": "Discover Card"},
+                    {
+                        "card_id": "EX1_003",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Discover Card",
+                    },
                 ]
             }
         ),
@@ -1619,8 +1770,8 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
                         "claims": [
                             {
                                 "claim_kind": "discover_choice",
-                                "cards": ["DISCOVER_CARD"],
-                                "option_card_id": "OPTION_ALPHA",
+                                "cards": ["EX1_003"],
+                                "option_card_id": "EX1_004",
                                 "stance": "pick_option_alpha",
                                 "evidence_text_short": "Prefer Option Alpha from this discover pool.",
                                 "source_confidence": "high",
@@ -1655,36 +1806,43 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
-    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    guide_bundle = json.loads(
+        (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
     discover_claim = next(
-        claim for claim in guide_bundle["claims"] if claim["claim_kind"] == "discover_choice"
+        claim
+        for claim in guide_bundle["claims"]
+        if claim["claim_kind"] == "discover_choice"
     )
     discover_row = next(
-        row for row in card_behavior["rows"] if row["claim_id"] == discover_claim["claim_id"]
+        row
+        for row in card_behavior["rows"]
+        if row["claim_id"] == discover_claim["claim_id"]
     )
     discover_config = json.loads(
-        (package / "CustomConfig" / "discover_deck" / "DISCOVER_CARD.json").read_text(
+        (package / "CustomConfig" / "discover_deck" / "EX1_003.json").read_text(
             encoding="utf-8"
         )
     )
 
-    assert code == 1
-    assert payload["status"] == "failed"
-    assert [row["claim_id"] for row in card_behavior["rows"]] == [discover_claim["claim_id"]]
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert [row["claim_id"] for row in card_behavior["rows"]] == [
+        discover_claim["claim_id"]
+    ]
     assert discover_row["semantic_score"]["reason"] == "draw_cycle"
     assert discover_row["value"] == "8"
     assert [
-        {
-            key: row[key]
-            for key in ("claim_id", "claim_kind", "cards", "reason")
-        }
+        {key: row[key] for key in ("claim_id", "claim_kind", "cards", "reason")}
         for row in card_behavior["suppressed"]
     ] == [
         {
             "claim_id": card_behavior["suppressed"][0]["claim_id"],
             "claim_kind": "mechanic_usage",
-            "cards": ["DISCOVER_CARD"],
+            "cards": ["EX1_003"],
             "reason": "covered_by_resolved_choice_surface",
         }
     ]
@@ -1693,15 +1851,15 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": discover_claim["claim_id"],
-            "card_id": "DISCOVER_CARD",
-            "option_card_id": "OPTION_ALPHA",
+            "card_id": "EX1_003",
+            "option_card_id": "EX1_004",
             "status": "resolved",
         }
     ]
     assert discover_config["OnDiscoverCardBonus"]["values"] == [
         {
-            "comment": "Discover Deck: DISCOVER_CARD_pick_option_alpha",
-            "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+            "comment": "Discover Deck: EX1_003_pick_option_alpha",
+            "condition": "my_discover(count(),cardid=EX1_004) > 0",
             "value": "8",
         }
     ]
@@ -1714,30 +1872,30 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
         "hsconfig.package_builder.fetch_latest_cards",
         lambda timeout=10.0: [
             {
-                "id": "CARD_RESOLVED",
+                "id": "EX1_005",
                 "dbf_id": 1,
                 "name": "Resolved Discover Card",
                 "type": "MINION",
                 "text": "Discover a spell.",
-                "entourage": ["OPTION_ALPHA"],
+                "entourage": ["EX1_004"],
             },
             {
-                "id": "CARD_UNRESOLVED",
+                "id": "EX1_006",
                 "dbf_id": 2,
                 "name": "Unresolved Discover Card",
                 "type": "MINION",
                 "text": "Discover a spell.",
-                "entourage": ["OPTION_BETA"],
+                "entourage": ["EX1_007"],
             },
             {
-                "id": "OPTION_ALPHA",
+                "id": "EX1_004",
                 "dbf_id": 3,
                 "name": "Option Alpha",
                 "type": "SPELL",
                 "text": "Deal damage.",
             },
             {
-                "id": "OPTION_BETA",
+                "id": "EX1_007",
                 "dbf_id": 4,
                 "name": "Option Beta",
                 "type": "SPELL",
@@ -1752,13 +1910,13 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
             {
                 "cards": [
                     {
-                        "card_id": "CARD_RESOLVED",
+                        "card_id": "EX1_005",
                         "dbf_id": 1,
                         "count": 2,
                         "name": "Resolved Discover Card",
                     },
                     {
-                        "card_id": "CARD_UNRESOLVED",
+                        "card_id": "EX1_006",
                         "dbf_id": 2,
                         "count": 2,
                         "name": "Unresolved Discover Card",
@@ -1781,8 +1939,8 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
                         "claims": [
                             {
                                 "claim_kind": "discover_choice",
-                                "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
-                                "option_card_id": "OPTION_ALPHA",
+                                "cards": ["EX1_005", "EX1_006"],
+                                "option_card_id": "EX1_004",
                                 "stance": "pick_option_alpha",
                                 "evidence_text_short": (
                                     "Prefer Option Alpha from this discover pool."
@@ -1819,17 +1977,19 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
     suppressions = json.loads(
         (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
     )
     resolved_config = json.loads(
-        (package / "CustomConfig" / "discover_split_deck" / "CARD_RESOLVED.json").read_text(
+        (package / "CustomConfig" / "discover_split_deck" / "EX1_005.json").read_text(
             encoding="utf-8"
         )
     )
     unresolved_config = json.loads(
-        (package / "CustomConfig" / "discover_split_deck" / "CARD_UNRESOLVED.json").read_text(
+        (package / "CustomConfig" / "discover_split_deck" / "EX1_006.json").read_text(
             encoding="utf-8"
         )
     )
@@ -1837,31 +1997,31 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     discover_rows = {
         row["card_id"]: row
         for row in card_behavior["rows"]
-        if row["card_id"] in {"CARD_RESOLVED", "CARD_UNRESOLVED"}
+        if row["card_id"] in {"EX1_005", "EX1_006"}
     }
 
-    assert code == 1
-    assert payload["status"] == "failed"
+    assert code == 0
+    assert payload["status"] == "passed"
     assert [
         (row["claim_id"], row["card_id"], row["condition"])
         for row in card_behavior["rows"]
-        if row["card_id"] in {"CARD_RESOLVED", "CARD_UNRESOLVED"}
-        ] == [
+        if row["card_id"] in {"EX1_005", "EX1_006"}
+    ] == [
         (
             resolved_choice_claim_id,
-            "CARD_RESOLVED",
-            "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+            "EX1_005",
+            "my_discover(count(),cardid=EX1_004) > 0",
         ),
     ]
-    assert discover_rows["CARD_RESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
-    assert discover_rows["CARD_RESOLVED"]["value"] == "8"
+    assert discover_rows["EX1_005"]["semantic_score"]["reason"] == "draw_cycle"
+    assert discover_rows["EX1_005"]["value"] == "8"
     assert {
         key: suppressions[0][key]
         for key in ("claim_id", "claim_kind", "cards", "reason")
     } == {
         "claim_id": resolved_choice_claim_id,
         "claim_kind": "discover_choice",
-        "cards": ["CARD_UNRESOLVED"],
+        "cards": ["EX1_006"],
         "reason": "unresolved_option_identity",
     }
     assert suppressions[0]["acquisition_provenance"]["authority"] == (
@@ -1871,15 +2031,15 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     assert suppressions[0]["source_claim_ids"]
     assert suppressions[0]["source_refs"]
     assert suppressions[1]["claim_kind"] == "mechanic_usage"
-    assert suppressions[1]["cards"] == ["CARD_RESOLVED"]
+    assert suppressions[1]["cards"] == ["EX1_005"]
     assert suppressions[1]["reason"] == "covered_by_resolved_choice_surface"
     assert suppressions[2]["claim_kind"] == "mechanic_usage"
-    assert suppressions[2]["cards"] == ["CARD_UNRESOLVED"]
+    assert suppressions[2]["cards"] == ["EX1_006"]
     assert suppressions[2]["reason"] == "discover_condition_not_encoded"
     assert resolved_config["OnDiscoverCardBonus"]["values"] == [
         {
-            "comment": "Discover Split Deck: CARD_RESOLVED_pick_option_alpha",
-            "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+            "comment": "Discover Split Deck: EX1_005_pick_option_alpha",
+            "condition": "my_discover(count(),cardid=EX1_004) > 0",
             "value": "8",
         }
     ]
@@ -1893,22 +2053,22 @@ def test_prepare_routes_choose_one_claim_with_identity_links(
         "hsconfig.package_builder.fetch_latest_cards",
         lambda timeout=10.0: [
             {
-                "id": "CHOOSE_CARD",
+                "id": "EX1_008",
                 "dbf_id": 1,
                 "name": "Choose Card",
                 "type": "SPELL",
                 "text": "Choose One - Option Alpha; or Option Beta.",
-                "entourage": ["OPTION_ALPHA", "OPTION_BETA"],
+                "entourage": ["EX1_004", "EX1_007"],
             },
             {
-                "id": "OPTION_ALPHA",
+                "id": "EX1_004",
                 "dbf_id": 2,
                 "name": "Option Alpha",
                 "type": "SPELL",
                 "text": "Primary option.",
             },
             {
-                "id": "OPTION_BETA",
+                "id": "EX1_007",
                 "dbf_id": 3,
                 "name": "Option Beta",
                 "type": "SPELL",
@@ -1922,7 +2082,12 @@ def test_prepare_routes_choose_one_claim_with_identity_links(
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "CHOOSE_CARD", "dbf_id": 1, "count": 2, "name": "Choose Card"},
+                    {
+                        "card_id": "EX1_008",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Choose Card",
+                    },
                 ]
             }
         ),
@@ -1941,8 +2106,8 @@ def test_prepare_routes_choose_one_claim_with_identity_links(
                         "claims": [
                             {
                                 "claim_kind": "choose_one_choice",
-                                "cards": ["CHOOSE_CARD"],
-                                "choice_card_id": "OPTION_ALPHA",
+                                "cards": ["EX1_008"],
+                                "choice_card_id": "EX1_004",
                                 "stance": "choose_option_alpha",
                                 "evidence_text_short": (
                                     "Prefer Option Alpha when resolving Choose One."
@@ -1979,30 +2144,34 @@ def test_prepare_routes_choose_one_claim_with_identity_links(
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
-    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
     choose_claim = next(
-        row for row in card_behavior["rows"] if row["claim_id"] and row["card_id"] == "CHOOSE_CARD"
+        row
+        for row in card_behavior["rows"]
+        if row["claim_id"] and row["card_id"] == "EX1_008"
     )
     choose_config = json.loads(
-        (package / "CustomConfig" / "choice_deck" / "CHOOSE_CARD.json").read_text(
+        (package / "CustomConfig" / "choice_deck" / "EX1_008.json").read_text(
             encoding="utf-8"
         )
     )
 
-    assert code == 1
-    assert payload["status"] == "failed"
+    assert code == 0
+    assert payload["status"] == "passed"
     assert choose_claim["behavior_block"] == "OnChooseOneCardBonus"
     assert card_behavior["suppressed"] == []
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": choose_claim["claim_id"],
-            "card_id": "CHOOSE_CARD",
-            "option_card_id": "OPTION_ALPHA",
+            "card_id": "EX1_008",
+            "option_card_id": "EX1_004",
             "status": "resolved",
         }
     ]
     assert {
-        "comment": "Choice Deck: CHOOSE_CARD_choose_option_alpha",
+        "comment": "Choice Deck: EX1_008_choose_option_alpha",
         "condition": "*",
         "value": "6",
     } in choose_config["OnChooseOneCardBonus"]["values"]
@@ -2034,13 +2203,19 @@ def test_prepare_json_mirrors_operator_summary_guide_strength_fields(
     )
 
     assert code == 0
-    assert payload["guide_strength_summary"] == operator_summary["guide_strength_summary"]
+    assert (
+        payload["guide_strength_summary"] == operator_summary["guide_strength_summary"]
+    )
     assert payload["semantic_blockers"] == operator_summary["semantic_blockers"]
     assert operator_summary["guide_strength_summary"]["source_backed_strong_requires"]
 
 
-def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys, monkeypatch):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+def test_prepare_writes_source_gap_and_promotion_reports(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     package = tmp_path / "package"
 
     code = main(
@@ -2076,10 +2251,12 @@ def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys,
     assert promotion["verdict"] == "PROMOTION_BLOCKED"
 
 
-def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
+def test_prepare_refuses_nonempty_destination_without_deleting_stale_files(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     package = tmp_path / "package"
     reports = package / "reports"
     reports.mkdir(parents=True)
@@ -2104,21 +2281,22 @@ def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    operator_summary = json.loads(
-        (reports / "operator_summary.json").read_text(encoding="utf-8")
-    )
-    generated = {path.replace("\\", "/") for path in operator_summary["generated_files"]}
 
-    assert code == 0
-    assert payload["status"] == "passed"
-    assert not stale_report.exists()
-    assert "reports/stale_report.json" not in generated
+    assert code == 1
+    assert payload == {
+        "errors": ["destination_must_be_empty"],
+        "status": "failed",
+    }
+    assert stale_report.read_text(encoding="utf-8") == '{"stale": true}'
+    assert tuple(reports.iterdir()) == (stale_report,)
 
 
 def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     package = tmp_path / "package"
 
     code = main(
@@ -2144,9 +2322,7 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
     explainability = json.loads(
-        (reports / "source_to_runtime_explainability.json").read_text(
-            encoding="utf-8"
-        )
+        (reports / "source_to_runtime_explainability.json").read_text(encoding="utf-8")
     )
     source_evidence_closure = json.loads(
         (reports / "source_evidence_closure.json").read_text(encoding="utf-8")
@@ -2154,7 +2330,9 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     operator_summary = json.loads(
         (reports / "operator_summary.json").read_text(encoding="utf-8")
     )
-    generated = {path.replace("\\", "/") for path in operator_summary["generated_files"]}
+    generated = {
+        path.replace("\\", "/") for path in operator_summary["generated_files"]
+    }
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -2188,9 +2366,7 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert explainability["summary"]["claims_total"] == len(
         explainability["claim_rows"]
     )
-    assert explainability["summary"]["cards_total"] == len(
-        explainability["card_rows"]
-    )
+    assert explainability["summary"]["cards_total"] == len(explainability["card_rows"])
     assert "claim_lifecycle_rows" not in operator_summary
     assert "claim_rows" not in operator_summary
     assert "card_rows" not in operator_summary
@@ -2204,7 +2380,10 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
         is True
     )
     assert "claim_lifecycle_decision_counts" in audit["summary"]
-    assert "claim_lifecycle_decision_counts" in operator_summary["source_contract_audit_summary"]
+    assert (
+        "claim_lifecycle_decision_counts"
+        in operator_summary["source_contract_audit_summary"]
+    )
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["runtime_apply_allowed"] is False
     assert operator_summary["runtime_apply_mode"] == "blocked"
@@ -2212,10 +2391,10 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
         "diagnostic_source_not_apply_eligible"
     ]
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
-    assert (
-        operator_summary["source_contract_audit_summary"]["next_report_to_open"]
-        in {None, "reports/source_contract_audit.json"}
-    )
+    assert operator_summary["source_contract_audit_summary"]["next_report_to_open"] in {
+        None,
+        "reports/source_contract_audit.json",
+    }
     assert (
         operator_summary["source_contract_audit_summary"]["runtime_lowered_claims"]
         == audit["summary"]["runtime_lowered_claims"]

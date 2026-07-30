@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.visionai_registry import CLAIM_SURFACE_REGISTRY
 
 
@@ -108,6 +109,13 @@ _POLICY_DETAILS: dict[str, tuple[tuple[str, ...], bool, str]] = {
         "requires_runtime_evidence",
     ),
 }
+SEMANTIC_QUALIFIER_USAGE_BY_CLAIM_KIND = deep_freeze_definition(
+    SEMANTIC_QUALIFIER_USAGE_BY_CLAIM_KIND
+)
+_OPERATOR_MEANING_BY_CLAIM_KIND = deep_freeze_definition(
+    _OPERATOR_MEANING_BY_CLAIM_KIND
+)
+_POLICY_DETAILS = deep_freeze_definition(_POLICY_DETAILS)
 
 
 def source_contract_policy_by_claim_kind() -> dict[str, dict[str, object]]:

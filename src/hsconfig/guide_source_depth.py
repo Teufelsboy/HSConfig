@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.source_document_model import claim_can_lower_to_runtime, qualify_source_claim
 
 
@@ -12,6 +13,9 @@ SUPPORTED_READINESS_LANES = {
     "globalvalues_only",
     "report_only_supported",
 }
+SUPPORTED_READINESS_LANES = deep_freeze_definition(
+    SUPPORTED_READINESS_LANES
+)
 
 
 def build_guide_source_depth_report(

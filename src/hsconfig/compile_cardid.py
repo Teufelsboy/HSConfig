@@ -6,6 +6,7 @@ from hsconfig.mechanic_support import (
     ROLE_ALIASES,
     normalize_role_token,
 )
+from hsconfig.package_domain import deep_freeze_definition
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 
@@ -27,6 +28,10 @@ BODY_AUTHORITY_ROLES = {
     "playable_body",
     "tempo_body",
 }
+EFFECT_ONLY_START_OF_GAME_ROLES = deep_freeze_definition(
+    EFFECT_ONLY_START_OF_GAME_ROLES
+)
+BODY_AUTHORITY_ROLES = deep_freeze_definition(BODY_AUTHORITY_ROLES)
 
 
 class CompiledCardIdFiles(dict[str, dict[str, Any]]):

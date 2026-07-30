@@ -7,7 +7,11 @@ from hsconfig.combo_sequence_contract import SUPPORTED_TIMING_TO_OPERATOR
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.disposition_ledger import disposition_projection
 from hsconfig.mulligan_selector import normalize_mulligan_selector
-from hsconfig.package_domain import DispositionLedger, DualClosureStatus
+from hsconfig.package_domain import (
+    DispositionLedger,
+    DualClosureStatus,
+    deep_freeze_definition,
+)
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.source_claim_gap_report import NEXT_ACTION_BY_MISSING_LINK
 
@@ -49,6 +53,11 @@ MULLIGAN_AUTHORITY_ACTION_BY_REASON = {
         "add_deck_matched_public_guide_source"
     ),
 }
+LANE_RANK = deep_freeze_definition(LANE_RANK)
+CLAIM_KIND_RANK = deep_freeze_definition(CLAIM_KIND_RANK)
+MULLIGAN_AUTHORITY_ACTION_BY_REASON = deep_freeze_definition(
+    MULLIGAN_AUTHORITY_ACTION_BY_REASON
+)
 
 REPORT_PATH = "reports/source_to_runtime_explainability.json"
 

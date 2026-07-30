@@ -15,6 +15,7 @@ from hsconfig.package_domain import (
     DualClosureStatus,
     EvidenceLane,
     GlobalValuesDecisionLedger,
+    deep_freeze_definition,
     disposition_ledger_content_sha256,
 )
 from hsconfig.globalvalues_decisions import (
@@ -31,6 +32,7 @@ _KNOWN_DISPOSITIONS = {
         CardDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY,
     )
 }
+_KNOWN_DISPOSITIONS = deep_freeze_definition(_KNOWN_DISPOSITIONS)
 
 
 def _canonical_bytes(value: Any) -> bytes:

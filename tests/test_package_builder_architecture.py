@@ -506,6 +506,21 @@ def test_package_builder_facade_performs_no_direct_filesystem_mutation() -> None
     assert _direct_mutation_calls(tree) == []
 
 
+def test_legacy_write_seams_remain_importable_but_are_never_called() -> None:
+    """Catches C8 retaining either path-coupled package mutation seam."""
+    _source, tree = _module_tree(PACKAGE_BUILDER_PATH)
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+
+    assert hasattr(package_builder, "write_json")
+    assert hasattr(package_builder, "refresh_package_derivation_authority")
+    assert "write_json" not in called_names
+    assert "refresh_package_derivation_authority" not in called_names
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     (
@@ -644,24 +659,52 @@ def test_mutation_detector_propagates_bounded_static_path_and_module_provenance(
     assert _direct_mutation_calls(ast.parse(source)) == expected
 
 
-def test_extracted_modules_own_the_legacy_and_research_workflows() -> None:
-    """Catches a cosmetic facade split that leaves either workflow in the facade."""
-    legacy = importlib.import_module(LEGACY_WORKFLOW_MODULE)
+def test_canonical_package_pipeline_replaces_legacy_workflow() -> None:
+    """Catches a C8 cutover that leaves the legacy package owner reachable."""
     research = importlib.import_module(RESEARCH_WORKFLOW_MODULE)
 
-    assert legacy.build_package_payload.__module__ == LEGACY_WORKFLOW_MODULE
     assert research.research_contract_payload.__module__ == RESEARCH_WORKFLOW_MODULE
+    assert not Path("src/hsconfig/package_legacy_workflow.py").exists()
     assert not hasattr(package_builder, "_reset_generated_package_dirs")
 
 
-def test_extracted_workflows_never_import_the_compatibility_facade_back() -> None:
+def test_production_has_no_legacy_workflow_import_or_reference() -> None:
+    """Catches static imports, attributes, and dynamic legacy lookups after C8."""
+    violations: list[str] = []
+    target = "package_legacy_workflow"
+    for relative_path in sorted(Path("src/hsconfig").rglob("*.py")):
+        source, tree = _module_tree(relative_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                if any(target in alias.name for alias in node.names):
+                    violations.append(f"{relative_path}:{node.lineno}:import")
+            elif isinstance(node, ast.ImportFrom):
+                if target in (node.module or "") or any(
+                    alias.name == target for alias in node.names
+                ):
+                    violations.append(f"{relative_path}:{node.lineno}:from")
+            elif isinstance(node, ast.Attribute) and node.attr == target:
+                violations.append(f"{relative_path}:{node.lineno}:attribute")
+            elif (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and target in node.value
+            ):
+                violations.append(f"{relative_path}:{node.lineno}:string")
+        if target in source and not any(
+            item.startswith(f"{relative_path}:") for item in violations
+        ):
+            violations.append(f"{relative_path}:text")
+
+    assert violations == []
+
+
+def test_research_workflow_never_imports_the_compatibility_facade_back() -> None:
     """Catches circular or ambient dependency lookup through package_builder."""
-    for relative_path in (
-        Path("src/hsconfig/package_legacy_workflow.py"),
-        Path("src/hsconfig/package_research_workflow.py"),
-    ):
-        _source, tree = _module_tree(relative_path)
-        assert _facade_back_imports(tree) == []
+    _source, tree = _module_tree(
+        Path("src/hsconfig/package_research_workflow.py")
+    )
+    assert _facade_back_imports(tree) == []
 
 
 @pytest.mark.parametrize(
@@ -771,60 +814,103 @@ def test_facade_preserves_the_measured_public_and_private_compatibility_union() 
     assert missing == []
 
 
-def test_legacy_workflow_receives_current_facade_monkeypatches_at_call_time(
+def test_canonical_pipeline_receives_current_facade_dependencies_at_call_time(
     monkeypatch,
 ) -> None:
-    """Catches stale import-time copies of the five load-bearing legacy seams."""
-    legacy = importlib.import_module(LEGACY_WORKFLOW_MODULE)
+    """Catches stale imports or a return to the physical legacy writer."""
     sentinels = {
         name: object()
         for name in (
             "fetch_latest_cards",
             "_research_required_guide_sources",
             "build_lowered_runtime_stage",
-            "write_json",
-            "refresh_package_derivation_authority",
         )
     }
     for name, sentinel in sentinels.items():
         monkeypatch.setattr(package_builder, name, sentinel)
 
-    captured: dict[str, Any] = {}
+    captured: dict[str, Any] = {"steps": []}
 
-    def capture_workflow(
+    def capture_resolution(
         args: argparse.Namespace,
         *,
-        dependencies: Any,
+        fetch_latest_cards_fn: Any,
+        research_required_guide_sources_fn: Any,
         **kwargs: Any,
-    ) -> tuple[dict[str, Any], int]:
+    ) -> object:
         captured["args"] = args
-        captured["dependencies"] = dependencies
+        captured["fetch_latest_cards"] = fetch_latest_cards_fn
+        captured["research_required_guide_sources"] = (
+            research_required_guide_sources_fn
+        )
         captured["kwargs"] = kwargs
+        captured["steps"].append("resolve")
+        return "request"
+
+    def compile_package(request: object, **kwargs: Any) -> object:
+        assert request == "request"
+        captured["compile_kwargs"] = kwargs
+        captured["steps"].append("compile")
+        return "compiled"
+
+    def assemble_package(compiled: object) -> object:
+        assert compiled == "compiled"
+        captured["steps"].append("assemble")
+        return "model"
+
+    def render_package(model: object, **kwargs: Any) -> object:
+        assert model == "model"
+        captured["render_kwargs"] = kwargs
+        captured["steps"].append("render")
+        return "rendered"
+
+    def publish_package(rendered: object, destination: Path, **kwargs: Any) -> object:
+        assert rendered == "rendered"
+        captured["destination"] = destination
+        captured["publish_kwargs"] = kwargs
+        captured["steps"].append("publish")
+        return object()
+
+    def payload_from_pipeline(**kwargs: Any) -> tuple[dict[str, Any], int]:
+        captured["payload_kwargs"] = kwargs
+        captured["steps"].append("payload")
         return {"status": "captured"}, 0
 
-    monkeypatch.setattr(legacy, "build_package_payload", capture_workflow)
-    args = argparse.Namespace()
+    monkeypatch.setattr(package_builder, "resolve_package_request", capture_resolution)
+    monkeypatch.setattr(package_builder, "compile_package", compile_package)
+    monkeypatch.setattr(package_builder, "assemble_package", assemble_package)
+    monkeypatch.setattr(package_builder, "render_package_authority", render_package)
+    monkeypatch.setattr(package_builder, "publish_rendered_package", publish_package)
+    monkeypatch.setattr(
+        package_builder,
+        "_package_result_payload",
+        payload_from_pipeline,
+    )
+    args = argparse.Namespace(out="destination")
 
-    assert package_builder.build_package_payload(
-        args,
-        current_date=date(2026, 7, 29),
-    ) == ({"status": "captured"}, 0)
+    assert package_builder.build_package_payload(args) == (
+        {"status": "captured"},
+        0,
+    )
+    assert captured["steps"] == [
+        "resolve",
+        "compile",
+        "assemble",
+        "render",
+        "publish",
+        "payload",
+    ]
     assert captured["args"] is args
-    dependencies = captured["dependencies"]
-    assert dependencies.fetch_latest_cards is sentinels["fetch_latest_cards"]
+    assert captured["fetch_latest_cards"] is sentinels["fetch_latest_cards"]
     assert (
-        dependencies.research_required_guide_sources
+        captured["research_required_guide_sources"]
         is sentinels["_research_required_guide_sources"]
     )
     assert (
-        dependencies.build_lowered_runtime_stage
+        captured["compile_kwargs"]["build_lowered_runtime_stage_fn"]
         is sentinels["build_lowered_runtime_stage"]
     )
-    assert dependencies.write_json is sentinels["write_json"]
-    assert (
-        dependencies.refresh_package_derivation_authority
-        is sentinels["refresh_package_derivation_authority"]
-    )
+    assert captured["destination"] == Path("destination")
 
 
 def test_research_workflow_receives_current_facade_monkeypatches_at_call_time(

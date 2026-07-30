@@ -10,7 +10,11 @@ from hsconfig.evidence_contract import (
     classify_evidence_authority,
     load_policy_profile,
 )
-from hsconfig.package_domain import DispositionLedger, DualClosureStatus
+from hsconfig.package_domain import (
+    DispositionLedger,
+    DualClosureStatus,
+    PolicyProfile,
+)
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
@@ -37,6 +41,7 @@ def build_source_contract_audit(
     initial_lifecycle_rows: Sequence[Mapping[str, Any]] | None = None,
     plan_input_diagnostics: Mapping[str, Any] | None = None,
     policy_profile: Mapping[str, Any] | None = None,
+    expected_policy_profile: PolicyProfile | None = None,
     include_evidence_authority: bool = False,
 ) -> dict[str, Any]:
     """Explain why source claims did or did not lower into runtime surfaces."""
@@ -142,6 +147,7 @@ def build_source_contract_audit(
                     deck_identity=deck_identity,
                     verified_source_receipts=verified_source_receipts,
                     policy_profile=active_policy_profile,
+                    expected_policy_profile=expected_policy_profile,
                 )
             )
             evidence_projection = {
@@ -336,6 +342,7 @@ def _claim_evidence_authority(
     deck_identity: Mapping[str, Any],
     verified_source_receipts: Sequence[Mapping[str, Any]],
     policy_profile: Mapping[str, Any],
+    expected_policy_profile: PolicyProfile | None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     try:
         authority = classify_evidence_authority(
@@ -343,6 +350,7 @@ def _claim_evidence_authority(
             deck_identity=deck_identity,
             verified_source_receipts=verified_source_receipts,
             policy_profile=policy_profile,
+            expected_policy_profile=expected_policy_profile,
         )
     except ValueError as error:
         if str(error) != "evidence_lane_unclassified":

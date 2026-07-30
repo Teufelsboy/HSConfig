@@ -22,19 +22,22 @@ from tests.helpers.verified_deck_input import (
 
 
 SHADOWPRIEST_CODE = (
-    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
-    "KgG17oG1cEGAAA="
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA="
 )
 
 
 def test_cli_parser_subcommands_match_main_dispatch_commands():
     parser = build_parser()
     subparser_action = next(
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+        action
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
     )
     registered_commands = set(subparser_action.choices)
     dispatch_source = Path("src/hsconfig/cli.py").read_text(encoding="utf-8")
-    dispatched_commands = set(re.findall(r'args\.command == "([^"]+)"', dispatch_source))
+    dispatched_commands = set(
+        re.findall(r'args\.command == "([^"]+)"', dispatch_source)
+    )
 
     assert registered_commands == dispatched_commands
 
@@ -708,13 +711,19 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     reports = out / "reports"
-    deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
+    deck_identity = json.loads(
+        (reports / "deck_identity.json").read_text(encoding="utf-8")
+    )
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
-    operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    operator = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     derivation = json.loads(
         (out / "package_derivation_receipt.json").read_text(encoding="utf-8")
     )
-    receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
+    receipt = json.loads(
+        (reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8")
+    )
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
@@ -738,7 +747,9 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     assert (out / "CustomConfig" / "shadowpriest" / "DS1_233.json").exists()
 
 
-def test_build_rejects_invalid_deck_code_without_placeholder_flag(tmp_path: Path, capsys):
+def test_build_rejects_invalid_deck_code_without_placeholder_flag(
+    tmp_path: Path, capsys
+):
     out = tmp_path / "package"
 
     code = main(
@@ -893,7 +904,9 @@ def test_legacy_claims_do_not_match_face_inside_surface_word():
         assert claim["stance"] == "deck_card"
         routed = route_card_behavior_surfaces([claim])
         assert all(row.get("intent") != "prefer_enemy_hero" for row in routed["rows"])
-        assert all(row.get("meaningful_runtime_surface") is False for row in routed["rows"])
+        assert all(
+            row.get("meaningful_runtime_surface") is False for row in routed["rows"]
+        )
 
 
 def test_legacy_claims_still_match_minion_targeting_scope():
@@ -932,9 +945,16 @@ def test_legacy_claims_still_match_real_face_targeting_phrases():
         ]
     )
 
-    claims = [document_claim for document in documents for document_claim in document["claims"]]
+    claims = [
+        document_claim
+        for document in documents
+        for document_claim in document["claims"]
+    ]
 
-    assert [claim["claim_kind"] for claim in claims] == ["targeting_rule", "targeting_rule"]
+    assert [claim["claim_kind"] for claim in claims] == [
+        "targeting_rule",
+        "targeting_rule",
+    ]
     assert [claim["stance"] for claim in claims] == [
         "prefer_enemy_hero",
         "prefer_enemy_hero",
@@ -956,15 +976,18 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
                         "name": "Pressure One",
                         "text": "Battlecry: deal damage.",
                     },
-                    {"card_id": "EX1_002", "dbf_id": 2, "count": 1, "name": "Burst Two"},
+                    {
+                        "card_id": "EX1_002",
+                        "dbf_id": 2,
+                        "count": 1,
+                        "name": "Burst Two",
+                    },
                 ]
             }
         ),
         encoding="utf-8",
     )
-    deck_fingerprint = stable_deck_fingerprint(
-        [("EX1_001", 2), ("EX1_002", 1)]
-    )
+    deck_fingerprint = stable_deck_fingerprint([("EX1_001", 2), ("EX1_002", 1)])
     claims_json = tmp_path / "claims.json"
     claims_json.write_text(
         json.dumps(
@@ -1025,7 +1048,9 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     archetype_research = json.loads(
         (research_dir / "archetype_research.json").read_text(encoding="utf-8")
     )
-    card_role_map = json.loads((research_dir / "card_role_map.json").read_text(encoding="utf-8"))
+    card_role_map = json.loads(
+        (research_dir / "card_role_map.json").read_text(encoding="utf-8")
+    )
     mulligan_anchor_map = json.loads(
         (research_dir / "mulligan_anchor_map.json").read_text(encoding="utf-8")
     )
@@ -1038,7 +1063,9 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     operator_summary = json.loads(
         (reports / "operator_summary.json").read_text(encoding="utf-8")
     )
-    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads(
+        (reports / "combo_plan_report.json").read_text(encoding="utf-8")
+    )
     combo_suppressions = json.loads(
         (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
     )
@@ -1053,9 +1080,7 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     assert mulligan_anchor_map["EX1_001"]["intent"] == "neutral"
     assert globalvalue_intent["pressure_bias"] == "high"
     assert mulligan["Mulligan"]["values"] == []
-    assert "EX1_001" in operator_summary[
-        "mulligan_bot_delegation_summary"
-    ]["card_ids"]
+    assert "EX1_001" in operator_summary["mulligan_bot_delegation_summary"]["card_ids"]
     assert not (deck_dir / "Combo.json").exists()
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]
@@ -1079,7 +1104,12 @@ def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                    {
+                        "card_id": "EX1_001",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Pressure One",
+                    },
                 ]
             }
         ),
@@ -1133,7 +1163,9 @@ def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
     payload = json.loads(capsys.readouterr().out)
     reports = out / "reports"
     source_report = json.loads(
-        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+        (reports / "source_evidence_verification_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert code == 0
@@ -1143,7 +1175,9 @@ def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
     assert source_report["warnings"] == []
 
 
-def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: Path, capsys):
+def test_build_threads_source_evidence_warnings_into_operator_summary(
+    tmp_path: Path, capsys
+):
     roster = [
         {
             "card_id": "EX1_001",
@@ -1207,10 +1241,16 @@ def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: 
 
     payload = json.loads(capsys.readouterr().out)
     reports = out / "reports"
-    depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    depth = json.loads(
+        (reports / "guide_source_depth_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     source_report = json.loads(
-        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+        (reports / "source_evidence_verification_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert code == 0
@@ -1355,7 +1395,9 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
         encoding="utf-8",
     )
     (plan_reports / "global_values_authority_matrix.json").write_text(
-        json.dumps({"allowed_step1_overlays": [], "blocked_until_runtime_evidence": []}),
+        json.dumps(
+            {"allowed_step1_overlays": [], "blocked_until_runtime_evidence": []}
+        ),
         encoding="utf-8",
     )
     out = tmp_path / "package"
@@ -1383,9 +1425,15 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
 
     payload = json.loads(capsys.readouterr().out)
     reports = out / "reports"
-    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
-    depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
-    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    receipt = json.loads(
+        (reports / "guide_builder_receipt.json").read_text(encoding="utf-8")
+    )
+    depth = json.loads(
+        (reports / "guide_source_depth_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     plan_diagnostics = json.loads(
         (reports / "plan_input_diagnostics.json").read_text(encoding="utf-8")
     )
@@ -1395,9 +1443,7 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     assert receipt["source_depth_status"] == "source_backed"
     assert depth["summary"]["report_only_claims"] == 0
     assert depth["source_depth_status"] == "usable_with_runtime_gaps"
-    assert operator_summary["semantic_status"] == (
-        "VALID_BUT_NOT_GUIDE_STRONG"
-    )
+    assert operator_summary["semantic_status"] == ("VALID_BUT_NOT_GUIDE_STRONG")
     assert plan_diagnostics["ignored_claims"] == [
         {
             "claim_id": "claim_report_only_runtime",
@@ -1407,8 +1453,7 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
         }
     ]
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "blocked"
@@ -1569,9 +1614,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     }
     ignored_plan_claims = {
         row["claim_id"]: row
-        for row in source_contract_audit["plan_input_diagnostics"][
-            "ignored_claims"
-        ]
+        for row in source_contract_audit["plan_input_diagnostics"]["ignored_claims"]
     }
 
     assert code == 0
@@ -1586,8 +1629,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is False
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
     assert (
         lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"]
@@ -1678,16 +1720,12 @@ def test_build_plan_reports_dir_suppresses_noncanonical_globalvalues_overlay(
         )
     )
     profile = json.loads(
-        (out / "reports" / "globalvalues_profile.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
-        "baseline"
-    }
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {"baseline"}
     assert any(
         row.get("claim_id") == "unverified-posture"
         and row.get("authority") == "source_contract_suppressed"
@@ -1780,16 +1818,12 @@ def test_build_claims_json_cannot_self_assert_exact_globalvalues_authority(
         )
     )
     profile = json.loads(
-        (out / "reports" / "globalvalues_profile.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
-        "baseline"
-    }
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {"baseline"}
     assert any(
         row.get("authority") == "source_contract_suppressed"
         and row.get("reason") == "globalvalues_requires_exact_deck_match"
@@ -1869,16 +1903,12 @@ def test_build_untyped_aggressive_claims_json_cannot_infer_its_own_exact_authori
         )
     )
     profile = json.loads(
-        (out / "reports" / "globalvalues_profile.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
-        "baseline"
-    }
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {"baseline"}
     assert any(
         row.get("claim_id")
         and row.get("authority") == "source_contract_suppressed"
@@ -1962,9 +1992,7 @@ def test_build_legacy_posture_cannot_inherit_exact_authority_from_sibling(
 
     payload = json.loads(capsys.readouterr().out)
     claim_bundle = json.loads(
-        (out / "reports" / "guide_claim_bundle.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "guide_claim_bundle.json").read_text(encoding="utf-8")
     )
     authority = json.loads(
         (out / "reports" / "global_values_authority_matrix.json").read_text(
@@ -1972,18 +2000,13 @@ def test_build_legacy_posture_cannot_inherit_exact_authority_from_sibling(
         )
     )
     profile = json.loads(
-        (out / "reports" / "globalvalues_profile.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
-    claims_by_kind = {
-        claim["claim_kind"]: claim for claim in claim_bundle["claims"]
-    }
+    claims_by_kind = {claim["claim_kind"]: claim for claim in claim_bundle["claims"]}
     posture_claim = claims_by_kind["gameplan_posture"]
     targeting_claim = claims_by_kind["targeting_rule"]
     receipt_claim_ids = {
-        receipt["claim_id"]
-        for receipt in claim_bundle["globalvalues_source_receipts"]
+        receipt["claim_id"] for receipt in claim_bundle["globalvalues_source_receipts"]
     }
 
     assert code == 0
@@ -2012,8 +2035,7 @@ def test_build_contradictory_source_identity_vetoes_globalvalues_public_guide(
     _write_exact_posture_source_document(
         source_documents,
         fingerprint=(
-            "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
-            "49bd21ae47d8a84"
+            "d67c567a5517bca54096abf526bf608155b45cf6822548dde49bd21ae47d8a84"
         ),
         source_family="card_text",
         source_type="public_guide",
@@ -2049,9 +2071,7 @@ def test_build_contradictory_source_identity_vetoes_globalvalues_public_guide(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
-        "baseline"
-    }
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {"baseline"}
     assert any(
         row.get("authority") == "source_contract_suppressed"
         and row.get("reason") == "globalvalues_requires_public_guide_source"
@@ -2066,8 +2086,7 @@ def test_build_plan_reports_cannot_rebuild_authority_from_captured_source_docume
     _write_cards_json(cards_json, ["EX1_001"])
     source_documents = tmp_path / "source_documents.json"
     target_fingerprint = (
-        "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
-        "49bd21ae47d8a84"
+        "d67c567a5517bca54096abf526bf608155b45cf6822548dde49bd21ae47d8a84"
     )
     _write_exact_posture_source_document(
         source_documents,
@@ -2158,21 +2177,14 @@ def test_build_plan_reports_cannot_rebuild_authority_from_captured_source_docume
         (out / "reports" / "guide_claim_bundle.json").read_text(encoding="utf-8")
     )
     source_contract_audit = json.loads(
-        (out / "reports" / "source_contract_audit.json").read_text(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
+    globalvalues = json.loads(
+        (out / "CustomConfig" / "Plan_GlobalValues" / "GlobalValues.json").read_text(
             encoding="utf-8"
         )
     )
-    globalvalues = json.loads(
-        (
-            out
-            / "CustomConfig"
-            / "Plan_GlobalValues"
-            / "GlobalValues.json"
-        ).read_text(encoding="utf-8")
-    )
-    allowed_by_key = {
-        row["key"]: row for row in authority["allowed_step1_overlays"]
-    }
+    allowed_by_key = {row["key"]: row for row in authority["allowed_step1_overlays"]}
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -2188,9 +2200,7 @@ def test_build_plan_reports_cannot_rebuild_authority_from_captured_source_docume
     assert {
         row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]
     } == canonical_claim_ids
-    ignored_claims = source_contract_audit["plan_input_diagnostics"][
-        "ignored_claims"
-    ]
+    ignored_claims = source_contract_audit["plan_input_diagnostics"]["ignored_claims"]
     imported_plan_claims = source_contract_audit["plan_input_diagnostics"][
         "imported_claims"
     ]
@@ -2205,9 +2215,7 @@ def test_build_plan_reports_cannot_rebuild_authority_from_captured_source_docume
     assert [claim["claim_id"] for claim in imported_plan_claims] == [
         "forged-plan-posture"
     ]
-    assert imported_plan_receipts == forged_plan_bundle[
-        "globalvalues_source_receipts"
-    ]
+    assert imported_plan_receipts == forged_plan_bundle["globalvalues_source_receipts"]
     suppressed_attempt = next(
         row
         for row in authority["blocked_until_runtime_evidence"]
@@ -2230,8 +2238,7 @@ def test_build_plan_reports_dir_rejects_captured_exact_globalvalues_overlay(
     _write_exact_posture_source_document(
         source_documents,
         fingerprint=(
-            "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
-            "49bd21ae47d8a84"
+            "d67c567a5517bca54096abf526bf608155b45cf6822548dde49bd21ae47d8a84"
         ),
         claim_id="verified-posture",
     )
@@ -2315,9 +2322,7 @@ def test_build_plan_reports_dir_rejects_captured_exact_globalvalues_overlay(
         )
     )
     profile = json.loads(
-        (out / "reports" / "globalvalues_profile.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
@@ -2362,21 +2367,9 @@ def test_build_empty_plan_reports_dir_does_not_serialize_fallbacks_as_imports(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    diagnostics = json.loads(
-        (out / "reports" / "plan_input_diagnostics.json").read_text(
-            encoding="utf-8"
-        )
-    )
-
     assert code == 0
     assert payload["status"] == "passed"
-    assert diagnostics["imported_claim_count"] == 0
-    assert diagnostics["imported_claims"] == []
-    assert diagnostics["imported_source_receipt_count"] == 0
-    assert diagnostics["imported_source_receipts"] == []
-    assert diagnostics["imported_row_count"] == 0
-    assert diagnostics["imported_rows"] == []
-    assert diagnostics["ignored_claims"] == []
+    assert not (out / "reports" / "plan_input_diagnostics.json").exists()
 
 
 def test_build_partial_plan_reports_counts_only_rows_from_present_files(
@@ -2420,9 +2413,7 @@ def test_build_partial_plan_reports_counts_only_rows_from_present_files(
 
     payload = json.loads(capsys.readouterr().out)
     diagnostics = json.loads(
-        (out / "reports" / "plan_input_diagnostics.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "plan_input_diagnostics.json").read_text(encoding="utf-8")
     )
     authority = json.loads(
         (out / "reports" / "global_values_authority_matrix.json").read_text(
@@ -2572,8 +2563,7 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is False
     assert (
-        operator_summary["next_action"]
-        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        operator_summary["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
     assert claim_conflict_report["conflict_count"] == 1
     assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
@@ -2581,7 +2571,9 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
         "conflict_target_opposed",
     }
     assert lifecycle_by_id["conflict_target"]["quarantine_status"] == "quarantined"
-    assert lifecycle_by_id["conflict_target_opposed"]["quarantine_status"] == "quarantined"
+    assert (
+        lifecycle_by_id["conflict_target_opposed"]["quarantine_status"] == "quarantined"
+    )
     assert lifecycle_by_id["conflict_target"]["builder_or_router_decision"] != "emitted"
     assert (
         lifecycle_by_id["conflict_target"]["final_runtime_effect"]
@@ -2598,8 +2590,18 @@ def test_build_claims_json_timed_combo_cannot_mint_combo_authority(
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
-                    {"card_id": "EX1_002", "dbf_id": 2, "count": 1, "name": "Burst Two"},
+                    {
+                        "card_id": "EX1_001",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Pressure One",
+                    },
+                    {
+                        "card_id": "EX1_002",
+                        "dbf_id": 2,
+                        "count": 1,
+                        "name": "Burst Two",
+                    },
                 ]
             }
         ),
@@ -2647,7 +2649,9 @@ def test_build_claims_json_timed_combo_cannot_mint_combo_authority(
     payload = json.loads(capsys.readouterr().out)
     deck_dir = out / "CustomConfig" / "guide_cards"
     reports = out / "reports"
-    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads(
+        (reports / "combo_plan_report.json").read_text(encoding="utf-8")
+    )
     combo_suppressions = json.loads(
         (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
     )
@@ -2679,8 +2683,18 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
         json.dumps(
             {
                 "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
-                    {"card_id": "EX1_002", "dbf_id": 2, "count": 1, "name": "Burst Two"},
+                    {
+                        "card_id": "EX1_001",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Pressure One",
+                    },
+                    {
+                        "card_id": "EX1_002",
+                        "dbf_id": 2,
+                        "count": 1,
+                        "name": "Burst Two",
+                    },
                 ]
             }
         ),
@@ -2796,7 +2810,9 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
 
     payload = json.loads(capsys.readouterr().out)
     mulligan = json.loads(
-        (out / "CustomConfig" / "plan_override" / "Mulligan.json").read_text(encoding="utf-8")
+        (out / "CustomConfig" / "plan_override" / "Mulligan.json").read_text(
+            encoding="utf-8"
+        )
     )
     guide_claim_bundle = json.loads(
         (out / "reports" / "guide_claim_bundle.json").read_text(encoding="utf-8")
@@ -2805,17 +2821,13 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
         (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
     )
     plan_input_diagnostics = json.loads(
-        (out / "reports" / "plan_input_diagnostics.json").read_text(
-            encoding="utf-8"
-        )
+        (out / "reports" / "plan_input_diagnostics.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
     assert payload["status"] == "passed"
     assert mulligan["Mulligan"]["values"] == []
-    canonical_claim_ids = {
-        claim["claim_id"] for claim in guide_claim_bundle["claims"]
-    }
+    canonical_claim_ids = {claim["claim_id"] for claim in guide_claim_bundle["claims"]}
     assert "override_runtime_claim" not in canonical_claim_ids
     assert {
         row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]
@@ -2837,9 +2849,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004"]
     cards_json = tmp_path / "cards.json"
     _write_cards_json(cards_json, card_ids)
-    target_fingerprint = stable_deck_fingerprint(
-        (card_id, 1) for card_id in card_ids
-    )
+    target_fingerprint = stable_deck_fingerprint((card_id, 1) for card_id in card_ids)
     source_documents = tmp_path / "source_documents.json"
     _write_canonical_runtime_plan_source_document(
         source_documents,
@@ -2916,9 +2926,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     )
     imported_payloads = {
         "mulligan_plan_report.json": json.loads(
-            (plan_reports / "mulligan_plan_report.json").read_text(
-                encoding="utf-8"
-            )
+            (plan_reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
         ),
         "card_behavior_plan_report.json": json.loads(
             (plan_reports / "card_behavior_plan_report.json").read_text(
@@ -2926,9 +2934,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
             )
         ),
         "combo_plan_report.json": json.loads(
-            (plan_reports / "combo_plan_report.json").read_text(
-                encoding="utf-8"
-            )
+            (plan_reports / "combo_plan_report.json").read_text(encoding="utf-8")
         ),
     }
     imported_payloads["mulligan_plan_report.json"]["quality"] = {
@@ -2980,9 +2986,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     mulligan_config = json.loads(
         (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
     )
-    card_config = json.loads(
-        (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
-    )
+    card_config = json.loads((deck_dir / "EX1_002.json").read_text(encoding="utf-8"))
     suppressed_card_config = json.loads(
         (deck_dir / "EX1_003.json").read_text(encoding="utf-8")
     )
@@ -2990,17 +2994,13 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
         (reports_dir / "mulligan_plan_report.json").read_text(encoding="utf-8")
     )
     card_report = json.loads(
-        (reports_dir / "card_behavior_plan_report.json").read_text(
-            encoding="utf-8"
-        )
+        (reports_dir / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
     combo_report = json.loads(
         (reports_dir / "combo_plan_report.json").read_text(encoding="utf-8")
     )
     diagnostics = json.loads(
-        (reports_dir / "plan_input_diagnostics.json").read_text(
-            encoding="utf-8"
-        )
+        (reports_dir / "plan_input_diagnostics.json").read_text(encoding="utf-8")
     )
 
     canonical_mulligan_rules = [
@@ -3009,9 +3009,7 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
         if row.get("claim_id") == "canonical-mulligan"
     ]
     canonical_card_rows = [
-        row
-        for row in card_report["rows"]
-        if row.get("claim_id") == "canonical-card"
+        row for row in card_report["rows"] if row.get("claim_id") == "canonical-card"
     ]
     canonical_combo_rows = [
         row
@@ -3116,8 +3114,7 @@ def test_build_legacy_claims_json_cannot_mint_source_backed_mulligan_authority(
     assert payload["status"] == "passed"
     assert claim_bundle["globalvalues_source_receipts"] == []
     assert not any(
-        row.get("claim_id") == canonical_claim_id
-        for row in mulligan_report["rules"]
+        row.get("claim_id") == canonical_claim_id for row in mulligan_report["rules"]
     )
     assert any(
         row.get("claim_id") == canonical_claim_id
@@ -3130,7 +3127,10 @@ def test_command_common_emit_result_prints_json(capsys):
     code = emit_result({"status": "OK", "deck": "ShadowPriest"}, as_json=True, code=0)
 
     assert code == 0
-    assert json.loads(capsys.readouterr().out) == {"deck": "ShadowPriest", "status": "OK"}
+    assert json.loads(capsys.readouterr().out) == {
+        "deck": "ShadowPriest",
+        "status": "OK",
+    }
 
 
 def test_command_common_run_payload_command_wraps_exceptions(capsys):

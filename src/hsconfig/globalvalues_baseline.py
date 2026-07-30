@@ -5,9 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.io import file_sha256, read_json
+from hsconfig.package_domain import (
+    deep_freeze_definition,
+    materialize_definition,
+)
 
 
-FALLBACK_GLOBALVALUES_BASELINE: dict[str, Any] = {
+_FALLBACK_GLOBALVALUES_BASELINE: dict[str, Any] = {
     "GameCardId": "GlobalValues",
     "ConfigComment": "This is a special card for setup global values",
     "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
@@ -47,6 +51,9 @@ FALLBACK_GLOBALVALUES_BASELINE: dict[str, Any] = {
     "OppGlobalMinionIntrinsicValue": {"values": [{"condition": "*", "value": "3.32+6"}]},
     "OppGlobalLocationIntrinsicValue": {"values": [{"condition": "*", "value": "3.32+4"}]},
 }
+_FALLBACK_GLOBALVALUES_BASELINE = deep_freeze_definition(
+    _FALLBACK_GLOBALVALUES_BASELINE
+)
 
 
 def load_globalvalues_baseline(runtime_root: str | Path | None = None) -> dict[str, Any]:
@@ -64,7 +71,7 @@ def load_globalvalues_baseline(runtime_root: str | Path | None = None) -> dict[s
             "snapshot_status": "live_runtime",
             "snapshot_date": None,
         }
-    fallback = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
+    fallback = deepcopy(_FALLBACK_GLOBALVALUES_BASELINE)
     return {
         "baseline": fallback,
         "source": "bundled_fallback",
@@ -85,3 +92,9 @@ def _find_runtime_baseline(runtime_root: str | Path | None) -> Path | None:
         root / "CustomConfig" / "Default" / "GlobalValues.json",
     )
     return next((path for path in candidates if path.is_file()), None)
+
+
+def __getattr__(name: str) -> Any:
+    if name == "FALLBACK_GLOBALVALUES_BASELINE":
+        return materialize_definition(_FALLBACK_GLOBALVALUES_BASELINE)
+    raise AttributeError(name)

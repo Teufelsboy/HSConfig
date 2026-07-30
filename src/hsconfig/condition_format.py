@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
+from hsconfig.package_domain import deep_freeze_definition
+
 
 REPORT_ONLY_CONDITION_KEYS = {"phase", "posture"}
 STRUCTURED_RUNTIME_CONDITION_KEYS = {
@@ -46,6 +48,13 @@ ALLOWED_ATOM_PATTERNS = [
     re.compile(rf"^my_minion\(count\(\),cardid={CARD_ID_PATTERN}\)\s*>\s*0$"),
     re.compile(rf"^my_discover\(count\(\),cardid={CARD_ID_PATTERN}\)\s*>\s*0$"),
 ]
+REPORT_ONLY_CONDITION_KEYS = deep_freeze_definition(
+    REPORT_ONLY_CONDITION_KEYS
+)
+STRUCTURED_RUNTIME_CONDITION_KEYS = deep_freeze_definition(
+    STRUCTURED_RUNTIME_CONDITION_KEYS
+)
+ALLOWED_ATOM_PATTERNS = deep_freeze_definition(ALLOWED_ATOM_PATTERNS)
 
 
 @dataclass(frozen=True)

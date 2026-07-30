@@ -14,7 +14,7 @@ from hsconfig.compile_globalvalues import (
     validate_globalvalues_overlay_value,
     validated_globalvalues_authority_rows,
 )
-from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
+from hsconfig.globalvalues_baseline import _FALLBACK_GLOBALVALUES_BASELINE
 from hsconfig.package_domain import (
     GlobalValueDecision,
     GlobalValueDecisionKind,
@@ -23,7 +23,7 @@ from hsconfig.package_domain import (
 )
 
 
-GLOBALVALUES_BASELINE_DECISION_KEYS = tuple(FALLBACK_GLOBALVALUES_BASELINE)
+GLOBALVALUES_BASELINE_DECISION_KEYS = tuple(_FALLBACK_GLOBALVALUES_BASELINE)
 _DECK_FINGERPRINT_RE = re.compile(r"[0-9a-f]{64}\Z")
 _BASELINE_AUTHORITY_ID = "globalvalues:baseline"
 _OVERLAY_AUTHORITY_ID = "step1_source_backed_posture"
@@ -50,7 +50,7 @@ def normalize_globalvalues_decision_baseline(
     if not isinstance(baseline, Mapping):
         raise ValueError("globalvalues_baseline_must_be_object")
     frozen_input = deepcopy(dict(baseline))
-    normalized = deepcopy(FALLBACK_GLOBALVALUES_BASELINE)
+    normalized = deepcopy(_FALLBACK_GLOBALVALUES_BASELINE)
     for key in GLOBALVALUES_BASELINE_DECISION_KEYS:
         if key in frozen_input:
             normalized[key] = deepcopy(frozen_input[key])

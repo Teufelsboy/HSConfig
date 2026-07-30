@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, cast
 
+from hsconfig.package_domain import deep_freeze_definition
 
 StageObserver = Callable[[str, str], None]
 _MAPPING_PROXY_TYPE = type(MappingProxyType({}))
@@ -45,6 +46,11 @@ _STAGE_MAPPING_SEQUENCE_FIELDS = {
     VerifiedDeckStage: ("cards",),
     LoweredRuntimeStage: ("warnings",),
 }
+_STAGE_FIELDS = deep_freeze_definition(_STAGE_FIELDS)
+_STAGE_MAPPING_FIELDS = deep_freeze_definition(_STAGE_MAPPING_FIELDS)
+_STAGE_MAPPING_SEQUENCE_FIELDS = deep_freeze_definition(
+    _STAGE_MAPPING_SEQUENCE_FIELDS
+)
 
 
 def build_verified_deck_stage(

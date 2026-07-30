@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.package_domain import deep_freeze_definition
 
 CURATED_LINKED_ENTITIES: dict[str, list[dict[str, Any]]] = {
     "SW_448": [
@@ -30,6 +31,7 @@ CURATED_LINKED_ENTITIES: dict[str, list[dict[str, Any]]] = {
         }
     ],
 }
+CURATED_LINKED_ENTITIES = deep_freeze_definition(CURATED_LINKED_ENTITIES)
 
 
 def curated_links_for(card_id: str) -> list[dict[str, Any]]:

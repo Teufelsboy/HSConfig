@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hsconfig.card_intent_taxonomy import CONDITION_REQUIRED_SEMANTIC_INTENTS
+from hsconfig.package_domain import deep_freeze_definition
 
 
 REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE = {
@@ -70,6 +71,18 @@ STATIC_ACTION_SURFACES = {
         ("OnBoardBonus", "mechanic_usage", "*"),
     },
 }
+REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE = deep_freeze_definition(
+    REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE
+)
+STATIC_SOURCE_LANES = deep_freeze_definition(STATIC_SOURCE_LANES)
+GUIDE_SOURCE_LANES = deep_freeze_definition(GUIDE_SOURCE_LANES)
+COMPATIBLE_TARGET_SCOPES = deep_freeze_definition(
+    COMPATIBLE_TARGET_SCOPES
+)
+OPTION_SURFACE_CONTRACTS = deep_freeze_definition(
+    OPTION_SURFACE_CONTRACTS
+)
+STATIC_ACTION_SURFACES = deep_freeze_definition(STATIC_ACTION_SURFACES)
 
 
 @dataclass(frozen=True)

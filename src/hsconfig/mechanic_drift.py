@@ -4,6 +4,7 @@ import re
 from typing import Any, Iterable
 
 from hsconfig.mechanic_support import normalize_role_token, support_for_roles
+from hsconfig.package_domain import deep_freeze_definition
 
 
 KNOWN_CARD_TYPES = {
@@ -67,6 +68,8 @@ TEXT_MECHANIC_PATTERNS: dict[str, tuple[str, ...]] = {
         "arcane spell",
     ),
 }
+KNOWN_CARD_TYPES = deep_freeze_definition(KNOWN_CARD_TYPES)
+TEXT_MECHANIC_PATTERNS = deep_freeze_definition(TEXT_MECHANIC_PATTERNS)
 
 
 def build_mechanic_drift_report(cards: Iterable[dict[str, Any]]) -> dict[str, Any]:

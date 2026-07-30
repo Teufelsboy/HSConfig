@@ -11,7 +11,7 @@ from typing import Any, Protocol
 
 from hsconfig.build_inputs import CanonicalBuildInputs, canonicalize_build_inputs
 from hsconfig.deck_identity import stable_deck_fingerprint
-from hsconfig.package_domain import PolicyProfile
+from hsconfig.package_domain import PolicyProfile, _ImmutableAuthorityNode
 from hsconfig.pre_run_metrics import source_acquisition_input_binding
 from hsconfig.source_acquisition_closure import (
     AcquisitionClosure,
@@ -249,8 +249,8 @@ class BuildResourceStore(Protocol):
     def read_by_sha256(self, content_sha256: str) -> bytes: ...
 
 
-@dataclass(frozen=True, slots=True)
-class ResolvedBuildContext:
+@dataclass(frozen=True, init=False)
+class ResolvedBuildContext(_ImmutableAuthorityNode):
     inputs: CanonicalBuildInputs
     deck_cards_canonical_json: bytes
     card_snapshot_canonical_json: bytes
@@ -258,6 +258,198 @@ class ResolvedBuildContext:
     evidence_contract_canonical_json: bytes
     source_bundle_canonical_json: tuple[bytes, ...]
     globalvalues_baseline_canonical_json: bytes
+
+    @classmethod
+    def _normalize_authority_values(
+        cls,
+        values: dict[str, Any],
+    ) -> dict[str, Any]:
+        inputs = values["inputs"]
+        if not isinstance(inputs, CanonicalBuildInputs):
+            raise ValueError("resolved_build_inputs_schema_invalid")
+        try:
+            canonical_inputs = canonicalize_build_inputs(
+                _canonical_document(
+                    bytes(inputs.canonical_payload),
+                    error="resolved_build_inputs",
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("resolved_build_inputs_hash_stale") from error
+        if canonical_inputs != inputs:
+            raise ValueError("resolved_build_inputs_hash_stale")
+        _validate_inputs(canonical_inputs)
+        _validate_approved_inputs(canonical_inputs)
+        normalized = dict(values)
+        normalized["inputs"] = (
+            inputs
+            if _canonical_inputs_deeply_immutable(inputs)
+            else canonical_inputs
+        )
+        resource_fields = (
+            (
+                "deck_cards",
+                "deck_cards_canonical_json",
+                canonical_inputs.deck_cards_resource_sha256,
+            ),
+            (
+                "card_snapshot",
+                "card_snapshot_canonical_json",
+                canonical_inputs.card_snapshot_resource_sha256,
+            ),
+            (
+                "policy_profile",
+                "policy_profile_canonical_json",
+                canonical_inputs.policy_profile_resource_sha256,
+            ),
+            (
+                "evidence_contract",
+                "evidence_contract_canonical_json",
+                canonical_inputs.evidence_contract_resource_sha256,
+            ),
+            (
+                "globalvalues_baseline",
+                "globalvalues_baseline_canonical_json",
+                canonical_inputs.globalvalues_baseline_resource_sha256,
+            ),
+        )
+        for label, field_name, expected_sha256 in resource_fields:
+            normalized[field_name] = _resolved_context_resource_bytes(
+                values[field_name],
+                expected_sha256=expected_sha256,
+                label=label,
+            )
+        source_values = values["source_bundle_canonical_json"]
+        if isinstance(
+            source_values,
+            (str, bytes, bytearray, memoryview),
+        ):
+            raise ValueError(
+                "resolved_build_source_bundle_container_invalid"
+            )
+        source_values = tuple(source_values)
+        if len(source_values) != len(
+            canonical_inputs.source_bundle_resource_sha256s
+        ):
+            raise ValueError("resolved_build_source_bundle_roots_mismatch")
+        normalized["source_bundle_canonical_json"] = tuple(
+            _resolved_context_resource_bytes(
+                value,
+                expected_sha256=expected_sha256,
+                label="source_bundle",
+            )
+            for value, expected_sha256 in zip(
+                source_values,
+                canonical_inputs.source_bundle_resource_sha256s,
+                strict=True,
+            )
+        )
+        return normalized
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.inputs, CanonicalBuildInputs):
+            raise ValueError("resolved_build_inputs_schema_invalid")
+        try:
+            canonical_inputs = canonicalize_build_inputs(
+                _canonical_document(
+                    bytes(self.inputs.canonical_payload),
+                    error="resolved_build_inputs",
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("resolved_build_inputs_hash_stale") from error
+        if canonical_inputs != self.inputs:
+            raise ValueError("resolved_build_inputs_hash_stale")
+        _validate_inputs(canonical_inputs)
+        _validate_approved_inputs(canonical_inputs)
+        validated_inputs = (
+            self.inputs
+            if _canonical_inputs_deeply_immutable(self.inputs)
+            else canonical_inputs
+        )
+        if validated_inputs != self.inputs:
+            raise ValueError("resolved_build_inputs_hash_stale")
+        resource_fields = (
+            (
+                "deck_cards",
+                "deck_cards_canonical_json",
+                canonical_inputs.deck_cards_resource_sha256,
+            ),
+            (
+                "card_snapshot",
+                "card_snapshot_canonical_json",
+                canonical_inputs.card_snapshot_resource_sha256,
+            ),
+            (
+                "policy_profile",
+                "policy_profile_canonical_json",
+                canonical_inputs.policy_profile_resource_sha256,
+            ),
+            (
+                "evidence_contract",
+                "evidence_contract_canonical_json",
+                canonical_inputs.evidence_contract_resource_sha256,
+            ),
+            (
+                "globalvalues_baseline",
+                "globalvalues_baseline_canonical_json",
+                canonical_inputs.globalvalues_baseline_resource_sha256,
+            ),
+        )
+        for label, field_name, expected_sha256 in resource_fields:
+            normalized = _resolved_context_resource_bytes(
+                getattr(self, field_name),
+                expected_sha256=expected_sha256,
+                label=label,
+            )
+            if normalized != getattr(self, field_name):
+                raise ValueError(
+                    f"resolved_build_{label}_resource_not_normalized"
+                )
+        source_values = self.source_bundle_canonical_json
+        if isinstance(
+            source_values,
+            (str, bytes, bytearray, memoryview),
+        ):
+            raise ValueError("resolved_build_source_bundle_container_invalid")
+        source_values = tuple(source_values)
+        if len(source_values) != len(
+            canonical_inputs.source_bundle_resource_sha256s
+        ):
+            raise ValueError("resolved_build_source_bundle_roots_mismatch")
+        normalized_sources = tuple(
+            _resolved_context_resource_bytes(
+                value,
+                expected_sha256=expected_sha256,
+                label="source_bundle",
+            )
+            for value, expected_sha256 in zip(
+                source_values,
+                canonical_inputs.source_bundle_resource_sha256s,
+                strict=True,
+            )
+        )
+        if normalized_sources != source_values:
+            raise ValueError("resolved_build_source_bundle_not_normalized")
+
+
+def _canonical_inputs_deeply_immutable(
+    inputs: CanonicalBuildInputs,
+) -> bool:
+    tuple_fields = (
+        inputs.source_bundle_sha256s,
+        inputs.evidence_policy_ids,
+        inputs.source_bundle_resource_sha256s,
+    )
+    return (
+        type(inputs.canonical_payload) is bytes
+        and all(type(values) is tuple for values in tuple_fields)
+        and all(
+            isinstance(value, str)
+            for values in tuple_fields
+            for value in values
+        )
+    )
 
 
 def resolve_build_context(
@@ -379,6 +571,23 @@ def _resource(
     if _raw_sha256(value) != content_sha256:
         raise ValueError(f"{error}_resource_sha256_mismatch")
     return value, _canonical_document(value, error=error)
+
+
+def _resolved_context_resource_bytes(
+    value: bytes | bytearray | memoryview,
+    *,
+    expected_sha256: str,
+    label: str,
+) -> bytes:
+    if not isinstance(value, (bytes, bytearray, memoryview)):
+        raise ValueError(f"resolved_build_{label}_resource_mutable")
+    frozen = bytes(value)
+    _canonical_document(frozen, error=f"resolved_build_{label}")
+    if _raw_sha256(frozen) != expected_sha256:
+        raise ValueError(
+            f"resolved_build_{label}_resource_sha256_mismatch"
+        )
+    return frozen
 
 
 def _validate_deck_resource(

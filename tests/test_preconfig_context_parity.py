@@ -2,7 +2,7 @@ import argparse
 import inspect
 
 from hsconfig import package_builder
-from hsconfig import package_legacy_workflow, package_research_workflow
+from hsconfig import package_research_workflow, package_request
 from hsconfig.commands import source_workflow
 from hsconfig import preconfig_context
 from hsconfig.preconfig_context import build_preconfig_context
@@ -63,15 +63,15 @@ def test_shared_preconfig_context_contains_prepare_and_research_keys(tmp_path):
 def test_research_and_prepare_no_longer_own_duplicate_context_builders():
     source = inspect.getsource(source_workflow)
     facade = inspect.getsource(package_builder)
-    legacy = inspect.getsource(package_legacy_workflow)
+    resolver = inspect.getsource(package_request)
     research = inspect.getsource(package_research_workflow)
 
     assert "def _build_research_context(" not in source
     assert "def build_preconfig_context(" not in facade
-    assert "def build_preconfig_context(" not in legacy
+    assert "def build_preconfig_context(" not in resolver
     assert "def build_preconfig_context(" not in research
     assert "from hsconfig.preconfig_context import build_preconfig_context" in source
-    assert "from hsconfig.preconfig_context import build_preconfig_context" in legacy
+    assert "from hsconfig.preconfig_context import build_preconfig_context" in resolver
     assert "from hsconfig.preconfig_context import build_preconfig_context" in research
 
 

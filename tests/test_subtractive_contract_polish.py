@@ -11,7 +11,7 @@ from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from tests.helpers.current_apply_eligible_package import (
     write_current_apply_eligible_package,
 )
-import hsconfig.package_legacy_workflow as package_legacy_workflow
+import hsconfig.package_render_authority as package_render_authority
 from hsconfig.surface_intent import build_surface_intent
 
 
@@ -200,10 +200,12 @@ def test_output_ownership_manifest_marks_legacy_surfaces_as_forbidden_drift():
     )
 
 
-def test_package_builder_calls_build_operator_summary_once_in_prepare_flow():
-    source = inspect.getsource(package_legacy_workflow.build_package_payload)
+def test_package_renderer_calls_build_operator_summary_once_in_prepare_flow():
+    source = inspect.getsource(
+        package_render_authority.render_package_authority
+    )
 
-    assert source.count("build_operator_summary(") == 1
+    assert source.count("build_operator_summary_from_inputs(") == 1
 
 
 def test_prepared_package_keeps_operator_manifest_and_emitted_files_in_sync(

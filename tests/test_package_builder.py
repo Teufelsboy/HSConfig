@@ -10,6 +10,8 @@ import hsconfig.package_builder as package_builder
 from hsconfig.cli import main
 from hsconfig.cli_parser import build_parser
 from hsconfig.package_builder import build_package_payload
+from hsconfig.package_publication import PublicationFaultPoint
+from hsconfig.package_render_authority import RenderFaultPoint
 from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
@@ -238,30 +240,30 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
     assert PRE_RUN_REPORT_PATHS <= observed_tree.keys()
     assert _semantic_tree_digest(observed_tree) == EXPECTED_PACKAGE_TREE_DIGEST
     assert observed_stages == [
-        (
-            "verified_deck",
-            "sha256:71c304fb7ebc0305c4177d96330d9769dff5f3a362f7063a0ab950a7e10a5582",
-        ),
-        (
-            "normalized_source",
-            "sha256:dd77ffe098982b5b9d86e12a14cb22f769b3fbc431bbbc0cc01e782be2a6e5e4",
-        ),
-        (
-            "claim_surfaces",
-            "sha256:a796e382f3f3312770b1da4268fad322de504b5d4adda9f8a574827536a699ff",
-        ),
-        (
-            "lowered_runtime",
-            "sha256:738ff121e26e4f5169f5887224842b15228edf98337a613a7d935fbad95d6c7a",
-        ),
-        (
-            "validated_authority",
-            "sha256:1c72bcf31b8e9cd9833b65fd6a11a93411accde707b9d231e7a5fc5592c5504f",
-        ),
-        (
-            "artifact_writing",
-            "sha256:5585e812f2db56b857c0b4f21264b59660c16107a53c96da21b80fa1bb971370",
-        ),
+            (
+                "verified_deck",
+                "sha256:f96871ecadd6d871ad99182649e9deb0824d37ef7f2c8278377e5558184695d6",
+            ),
+            (
+                "normalized_source",
+                "sha256:f30a6fd97a42810a0c80f7881378dceabee32b0c8d13a7ecef80fc00efa14fe6",
+            ),
+            (
+                "claim_surfaces",
+                "sha256:bee37c54145068ef9c2ecce01fb0ec034ea3cb6be02f87af8a0d8028f4b8ba87",
+            ),
+            (
+                "lowered_runtime",
+                "sha256:6264c42a915cc8cba58d1fb53d020af39abcfb3cd152f750da65d0f1a2db110c",
+            ),
+            (
+                "validated_authority",
+                "sha256:9fee5005f89efa515f2f1db89d999751245c456105238f707b74f6564343f340",
+            ),
+            (
+                "artifact_writing",
+                "sha256:804d29b73de14db644332d7c5307f2a614c99a1e6102b4327f3cb9e7ebe7efa0",
+            ),
     ]
 
 
@@ -339,11 +341,74 @@ def test_lowered_runtime_warnings_feed_public_outputs_and_break_parity_oracle(
     assert _semantic_tree_digest(tree) != EXPECTED_PACKAGE_TREE_DIGEST
 
 
+def test_package_builder_forwards_exact_fault_traces_without_legacy_writes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    render_trace: list[RenderFaultPoint] = []
+    publication_trace: list[PublicationFaultPoint] = []
+
+    def reject_legacy_write(*_args, **_kwargs) -> None:
+        raise AssertionError("legacy write authority must remain unused")
+
+    monkeypatch.setattr(package_builder, "write_json", reject_legacy_write)
+    monkeypatch.setattr(
+        package_builder,
+        "refresh_package_derivation_authority",
+        reject_legacy_write,
+    )
+    package, payload, status = _build_stage_fixture(
+        tmp_path,
+        monkeypatch,
+        render_fault_hook=lambda point, _artifacts: render_trace.append(point),
+        publication_fault_hook=(
+            lambda point, _active: publication_trace.append(point)
+        ),
+    )
+
+    assert status == 0
+    assert payload["status"] == "passed"
+    assert package.is_dir()
+    assert render_trace == list(RenderFaultPoint)
+    assert publication_trace == list(PublicationFaultPoint)
+
+
+@pytest.mark.parametrize(
+    ("hook_name", "fault_point"),
+    [
+        ("render", RenderFaultPoint.VALIDATION),
+        ("publication", PublicationFaultPoint.BEFORE_COMMIT),
+    ],
+)
+def test_package_builder_propagates_faults_without_partial_publication(
+    tmp_path: Path,
+    monkeypatch,
+    hook_name: str,
+    fault_point: RenderFaultPoint | PublicationFaultPoint,
+) -> None:
+    def fail_at(point, _state) -> None:
+        if point is fault_point:
+            raise RuntimeError(f"injected {hook_name} fault")
+
+    kwargs = {f"{hook_name}_fault_hook": fail_at}
+    with pytest.raises(RuntimeError, match=f"injected {hook_name} fault"):
+        _build_stage_fixture(
+            tmp_path,
+            monkeypatch,
+            **kwargs,
+        )
+
+    assert not (tmp_path / "package").exists()
+    assert not list(tmp_path.glob(".package.staging-*"))
+
+
 def _build_stage_fixture(
     tmp_path: Path,
     monkeypatch,
     *,
     stage_observer=None,
+    render_fault_hook=None,
+    publication_fault_hook=None,
 ) -> tuple[Path, dict[str, object], int]:
     roster = [
         {
@@ -388,6 +453,8 @@ def _build_stage_fixture(
         args,
         current_date=date(2026, 7, 28),
         stage_observer=stage_observer,
+        render_fault_hook=render_fault_hook,
+        publication_fault_hook=publication_fault_hook,
     )
     return package, payload, status
 

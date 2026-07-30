@@ -1125,22 +1125,13 @@ def test_loaded_inputs_are_byte_stable_across_evaluator_rebinding_matrix(
             (),
         )
     else:
-        mutable_origins = (
-            (
-                mechanic_support.MECHANIC_SUPPORT,
-                dict(mechanic_support.MECHANIC_SUPPORT),
-            ),
-            (
-                mechanic_support.NON_MECHANIC_ROLES,
-                set(mechanic_support.NON_MECHANIC_ROLES),
-            ),
-            (
-                mechanic_support.ROLE_ALIASES,
-                dict(mechanic_support.ROLE_ALIASES),
-            ),
-        )
-        for value, _snapshot in mutable_origins:
-            value.clear()
+        for value in (
+            mechanic_support.MECHANIC_SUPPORT,
+            mechanic_support.NON_MECHANIC_ROLES,
+            mechanic_support.ROLE_ALIASES,
+        ):
+            with pytest.raises((AttributeError, TypeError)):
+                value.clear()
         monkeypatch.setattr(
             visionai_registry,
             "RUNTIME_SURFACE_REGISTRY",

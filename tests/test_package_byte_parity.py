@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.audited_deck_support import captured_source_documents
 from tests.helpers.package_byte_contract import (
     AUDITED_DECK_NAMES,
     artifact_rows_for_tree,
@@ -121,12 +122,13 @@ def test_cutewarrior_input_matches_the_established_acceptance_diagnostic_source(
 ) -> None:
     """Catches an invented CuteWarrior source-authority expansion."""
     from tests.helpers.package_byte_contract import _materialize_source_documents
-    from tests.test_audited_deck_set_acceptance import _captured_source_documents
 
     logical_path = _materialize_source_documents("CuteWarrior", root=tmp_path)
     materialized = load_fixture(tmp_path / logical_path)
 
-    assert materialized == _captured_source_documents({"deck_name": "CuteWarrior"})
+    assert materialized == captured_source_documents(
+        {"deck_name": "CuteWarrior"}
+    )
 
 
 def test_network_fence_blocks_socket_and_imported_network_aliases() -> None:
@@ -154,7 +156,7 @@ def test_network_fence_blocks_socket_and_imported_network_aliases() -> None:
 def test_current_builder_reproduces_the_frozen_complete_byte_contract(
     tmp_path: Path,
 ) -> None:
-    """Catches a legacy package byte change before the later pipeline refactor."""
+    """Catches any canonical pipeline byte drift against the frozen contract."""
     fixture = load_fixture(FIXTURE_PATH)
     assert_fixture_matches_canonical_fingerprints(fixture)
     generated = prepare_audited_packages(tmp_path / "generated")
@@ -184,7 +186,7 @@ def test_generator_rejects_a_valid_looking_but_noncanonical_generated_fingerprin
 
 
 def test_generator_requires_two_clean_roots_to_agree_before_freezing() -> None:
-    """Catches a nondeterministic legacy tree before any fixture write is allowed."""
+    """Catches nondeterministic canonical trees before a fixture write is allowed."""
     from scripts.freeze_package_byte_contract import build_contract
 
     fixture = build_contract(verify_twice=True)

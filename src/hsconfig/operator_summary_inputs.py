@@ -230,6 +230,24 @@ def load_operator_summary_inputs(
     return _with_package_summary_parity(inputs, summary)
 
 
+def replay_package_authority_inputs(
+    package: PackageView,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """Replay receipt and apply authority before the summary is projected."""
+
+    documents: dict[str, Any] = {}
+    for name in package.file_names():
+        if not name.endswith(".json"):
+            continue
+        try:
+            documents[name] = json.loads(
+                package.read_bytes(name).decode("utf-8-sig")
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            documents[name] = _INVALID_JSON
+    return _replay_package_authority(documents, package)
+
+
 def thaw_operator_value(value: Any) -> Any:
     """Return a detached plain JSON-like working copy."""
 
@@ -873,4 +891,5 @@ __all__ = (
     "OperatorSummaryInputs",
     "freeze_operator_summary_inputs",
     "load_operator_summary_inputs",
+    "replay_package_authority_inputs",
 )

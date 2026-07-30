@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import re
 from typing import Any
 
+from hsconfig.package_domain import deep_freeze_definition
 
 LIVE_HTTP = "live_http"
 CAPTURED_RECORD = "captured_record"
@@ -28,6 +29,7 @@ _AUTHORITY_BY_MODE = {
     FIXTURE_MAP: FIXTURE_ONLY,
     LEGACY_CLAIMS_JSON: LEGACY_UNVERIFIED,
 }
+_AUTHORITY_BY_MODE = deep_freeze_definition(_AUTHORITY_BY_MODE)
 _CANONICAL_PROVENANCE_KEYS = frozenset(
     {"mode", "content_sha256", "authority"}
 )

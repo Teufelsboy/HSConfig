@@ -10,7 +10,11 @@ from hsconfig.mechanic_support import (
     summarize_mechanic_support,
     summarize_mechanic_visibility,
 )
-from hsconfig.package_domain import DispositionLedger, DualClosureStatus
+from hsconfig.package_domain import (
+    DispositionLedger,
+    DualClosureStatus,
+    deep_freeze_definition,
+)
 from hsconfig.io import slugify_deck_name
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.visionai_registry import (
@@ -110,6 +114,27 @@ MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = {
 }
 GLOBALVALUES_SUFFICIENT_ROLES = {"hero_power_transform"}
 READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = {"role", "support_bucket"}
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = deep_freeze_definition(
+    SOURCE_DEPTH_LANE_BY_MISSING_LINK
+)
+REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS = deep_freeze_definition(
+    REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS
+)
+SEMANTIC_SUPPRESSION_MISSING_LINKS = deep_freeze_definition(
+    SEMANTIC_SUPPRESSION_MISSING_LINKS
+)
+GUIDE_BACKED_COVERAGE_STATUSES = deep_freeze_definition(
+    GUIDE_BACKED_COVERAGE_STATUSES
+)
+MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = deep_freeze_definition(
+    MULLIGAN_AUTHORITY_SUPPRESSION_REASONS
+)
+GLOBALVALUES_SUFFICIENT_ROLES = deep_freeze_definition(
+    GLOBALVALUES_SUFFICIENT_ROLES
+)
+READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = deep_freeze_definition(
+    READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS
+)
 
 
 def build_config_readiness_report(
