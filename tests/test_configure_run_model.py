@@ -1,4 +1,3 @@
-from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -11,23 +10,26 @@ from hsconfig.configure_run_model import (
     render_configure_run_model,
     write_rendered_configure_run,
 )
-from hsconfig.package_domain import (
-    DispositionLedger,
-    GlobalValueDecision,
-    GlobalValueDecisionKind,
-    GlobalValuesDecisionLedger,
-    LayeredEvidenceContract,
-    MulliganPlanModel,
-    disposition_ledger_content_sha256,
-    globalvalues_baseline_sha256,
-    globalvalues_decision_ledger_content_sha256,
+from hsconfig.package_assembler import (
+    PackageModel,
+    assemble_package,
 )
-from hsconfig.package_model import PackageModel, build_runtime_surface_plan
+from hsconfig.package_compiler import compile_package
+from tests.helpers.audited_package_request import audited_request
 
 
-def test_configure_run_is_immutable_complete_and_deterministic() -> None:
+@pytest.fixture
+def package_model(tmp_path: Path) -> PackageModel:
+    return assemble_package(
+        compile_package(audited_request(tmp_path, "ShadowPriest"))
+    )
+
+
+def test_configure_run_is_immutable_complete_and_deterministic(
+    package_model: PackageModel,
+) -> None:
     run = create_configure_run_model(
-        package=_model(),
+        package=package_model,
         stage_artifacts={
             "01_manifest/input.json": b"{}",
             "02_source_documents/source.json": b"{}",
@@ -41,9 +43,11 @@ def test_configure_run_is_immutable_complete_and_deterministic() -> None:
     assert tuple(item.relative_path for item in rendered.artifacts) == tuple(
         sorted(item.relative_path for item in rendered.artifacts)
     )
-    assert "04_package/CustomConfig/fixture_deck/GlobalValues.json" in {
-        item.relative_path for item in rendered.artifacts
-    }
+    assert any(
+        item.relative_path.startswith("04_package/CustomConfig/")
+        and item.relative_path.endswith("/GlobalValues.json")
+        for item in rendered.artifacts
+    )
     assert "configure_summary.json" in {
         item.relative_path for item in rendered.artifacts
     }
@@ -92,6 +96,7 @@ def test_configure_run_accepts_the_full_legal_source_autopilot_matrix(
     source_stage: str,
     autopilot_stage: str | None,
     expected_unavailable: dict[str, str],
+    package_model: PackageModel,
 ) -> None:
     stage_artifacts = {
         "01_manifest/input.json": b"{}",
@@ -103,7 +108,7 @@ def test_configure_run_accepts_the_full_legal_source_autopilot_matrix(
 
     rendered = render_configure_run_model(
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts=stage_artifacts,
         )
     )
@@ -130,7 +135,9 @@ def test_configure_run_accepts_the_full_legal_source_autopilot_matrix(
     ],
 )
 def test_configure_run_rejects_illegal_source_autopilot_combinations(
-    source_stage: str, autopilot_stages: tuple[str, ...]
+    source_stage: str,
+    autopilot_stages: tuple[str, ...],
+    package_model: PackageModel,
 ) -> None:
     stage_artifacts = {
         "01_manifest/input.json": b"{}",
@@ -144,7 +151,7 @@ def test_configure_run_rejects_illegal_source_autopilot_combinations(
 
     with pytest.raises(ValueError, match="configure_run_autopilot_stage_invalid"):
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts=stage_artifacts,
         )
 
@@ -161,10 +168,11 @@ def test_configure_run_rejects_illegal_source_autopilot_combinations(
 )
 def test_configure_run_requires_exactly_one_source_alternative(
     source_paths: tuple[str, ...],
+    package_model: PackageModel,
 ) -> None:
     with pytest.raises(ValueError, match="configure_run_source_stage_invalid"):
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts={
                 "01_manifest/input.json": b"{}",
                 "03_research/research.json": b"{}",
@@ -176,17 +184,19 @@ def test_configure_run_requires_exactly_one_source_alternative(
 @pytest.mark.parametrize(
     "reserved_path",
     [
-        "configure_summary.json",
         "configure_summary.json/child.json",
         "04_package",
         "04_package/reports/caller.json",
         "04_package/CustomConfig/caller.json",
     ],
 )
-def test_configure_run_rejects_reserved_paths(reserved_path: str) -> None:
+def test_configure_run_rejects_reserved_paths(
+    reserved_path: str,
+    package_model: PackageModel,
+) -> None:
     with pytest.raises(ValueError, match="configure_run_reserved_path"):
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts={
                 "01_manifest/input.json": b"{}",
                 "02_source_documents/source.json": b"{}",
@@ -198,6 +208,7 @@ def test_configure_run_rejects_reserved_paths(reserved_path: str) -> None:
 
 def test_configure_run_rejects_file_ancestor_collisions_before_destination_creation(
     tmp_path: Path,
+    package_model: PackageModel,
 ) -> None:
     destination = tmp_path / "configure"
 
@@ -206,7 +217,7 @@ def test_configure_run_rejects_file_ancestor_collisions_before_destination_creat
         match="configure_run_artifact_path_collision",
     ):
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts={
                 "01_manifest/input.json": b"{}",
                 "02_source_documents/source.json": b"{}",
@@ -219,9 +230,11 @@ def test_configure_run_rejects_file_ancestor_collisions_before_destination_creat
     assert not destination.exists()
 
 
-def test_configure_tuple_fields_copy_caller_lists() -> None:
+def test_configure_tuple_fields_copy_caller_lists(
+    package_model: PackageModel,
+) -> None:
     canonical = create_configure_run_model(
-        package=_model(),
+        package=package_model,
         stage_artifacts={
             "01_manifest/input.json": b"{}",
             "02_source_documents/source.json": b"{}",
@@ -246,16 +259,17 @@ def test_configure_tuple_fields_copy_caller_lists() -> None:
     caller_stage_artifacts.clear()
     caller_rendered_artifacts.clear()
 
-    assert len(run.stage_artifacts) == 3
+    assert len(run.stage_artifacts) == 4
     assert rendered.artifacts == canonical_rendered.artifacts
 
 
-def test_configure_writer_rejects_a_forged_revision_before_writing(
+def test_configure_model_rejects_a_forged_revision_before_writing(
     tmp_path: Path,
+    package_model: PackageModel,
 ) -> None:
     rendered = render_configure_run_model(
         create_configure_run_model(
-            package=_model(),
+            package=package_model,
             stage_artifacts={
                 "01_manifest/input.json": b"{}",
                 "02_source_documents/source.json": b"{}",
@@ -265,46 +279,39 @@ def test_configure_writer_rejects_a_forged_revision_before_writing(
     )
     destination = tmp_path / "configure"
 
-    with pytest.raises(ValueError, match="rendered_configure_run_invalid"):
-        write_rendered_configure_run(
-            replace(rendered, content_root_sha256="0" * 64),
-            destination,
+    with pytest.raises(
+        ValueError,
+        match="rendered_configure_run_content_root_mismatch",
+    ):
+        RenderedConfigureRun(
+            rendered.model,
+            rendered.artifacts,
+            "0" * 64,
         )
 
     assert not destination.exists()
 
 
-def _model() -> PackageModel:
-    mulligan = MulliganPlanModel("Fixture Deck", (), (), (), 0)
-    globalvalue_decisions = (
-        GlobalValueDecision(
-            "fingerprint", "HeroValue", GlobalValueDecisionKind.COPY_BASELINE,
-            b'{"values":[]}', b'{"values":[]}', "baseline", (), "fixture",
-        ),
+def test_configure_writer_writes_the_pure_render(
+    tmp_path: Path,
+    package_model: PackageModel,
+) -> None:
+    rendered = render_configure_run_model(
+        create_configure_run_model(
+            package=package_model,
+            stage_artifacts={
+                "01_manifest/input.json": b"{}",
+                "02_source_documents/stage_status.json": b"{}",
+                "03_research/research.json": b"{}",
+            },
+        )
     )
-    globalvalues = GlobalValuesDecisionLedger(
-        "fingerprint",
-        globalvalues_baseline_sha256(globalvalue_decisions),
-        globalvalue_decisions,
-        globalvalues_decision_ledger_content_sha256(
-            globalvalue_decisions
-        ),
-    )
-    dispositions = DispositionLedger(
-        "fingerprint",
-        (),
-        (),
-        disposition_ledger_content_sha256(
-            deck_fingerprint="fingerprint",
-            cards=(),
-            claims=(),
-        ),
-    )
-    evidence = LayeredEvidenceContract("fingerprint", (), False, 0, 0, "evidence")
-    return PackageModel(
-        "Fixture Deck", "fingerprint", mulligan, globalvalues, dispositions, evidence,
-        build_runtime_surface_plan(
-            mulligan_plan=mulligan, globalvalues_ledger=globalvalues,
-            disposition_ledger=dispositions, combo_decision_ids=(),
-        ),
-    )
+    destination = tmp_path / "configure"
+
+    write_rendered_configure_run(rendered, destination)
+
+    assert {
+        path.relative_to(destination).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file()
+    } == {artifact.relative_path for artifact in rendered.artifacts}

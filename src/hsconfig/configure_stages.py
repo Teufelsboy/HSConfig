@@ -5,12 +5,17 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Callable, cast
 
-from hsconfig.package_domain import deep_freeze_definition
+from hsconfig.package_domain import (
+    _ImmutableAuthorityNode,
+    deep_freeze_definition,
+)
 
 StageObserver = Callable[[str, str], None]
+ConfigureFaultHook = Callable[["ConfigureFaultPoint"], None]
 _MAPPING_PROXY_TYPE = type(MappingProxyType({}))
 _MAX_STAGE_DEPTH = 128
 _MISSING = object()
@@ -20,15 +25,27 @@ class _FrozenList(tuple):
     """Immutable list representation that retains the source collection type."""
 
 
-@dataclass(frozen=True)
-class VerifiedDeckStage:
+class ConfigureFaultPoint(StrEnum):
+    SOURCE_MANIFEST = "source-manifest"
+    SOURCE_ACQUIRE = "source-acquire"
+    SOURCE_AUTOPILOT = "source-autopilot"
+    DRAFT_SOURCE_DOCUMENTS = "draft-source-documents"
+    RESEARCH_DECK = "research-deck"
+    PREPARE = "prepare"
+    VALIDATE = "validate"
+    APPLY = "apply"
+    CONFIGURE_SUMMARY = "configure-summary"
+
+
+@dataclass(frozen=True, init=False)
+class VerifiedDeckStage(_ImmutableAuthorityNode):
     identity: Mapping[str, Any]
     cards: Sequence[Mapping[str, Any]]
     input_verification: Mapping[str, Any]
 
 
-@dataclass(frozen=True)
-class LoweredRuntimeStage:
+@dataclass(frozen=True, init=False)
+class LoweredRuntimeStage(_ImmutableAuthorityNode):
     runtime_files: Mapping[str, Mapping[str, Any]]
     warnings: Sequence[Mapping[str, Any]]
     source_contract: Mapping[str, Any]
@@ -90,6 +107,14 @@ def observe_stage(
     except (Exception, SystemExit):
         # Stage observation is diagnostic only and must never control production.
         return
+
+
+def invoke_configure_fault(
+    hook: ConfigureFaultHook | None,
+    point: ConfigureFaultPoint,
+) -> None:
+    if hook is not None:
+        hook(point)
 
 
 def materialize_stage_value(value: Any) -> Any:

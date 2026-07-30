@@ -994,11 +994,11 @@ def test_build_config_proof_summary_surfaces_attention_without_blocking() -> Non
     assert summary["next_report_to_open"] == "reports/contract_doctor.json"
 
 
-def test_acceptance_summary_helper_stays_configure_local_projection() -> None:
+def test_acceptance_summary_helper_is_reexported_by_thin_configure_facade() -> None:
+    import hsconfig.commands.configure as configure_command
+    import hsconfig.configure_workflow as configure_workflow
+
     repo_root = Path(__file__).resolve().parents[1]
-    configure_source = (
-        repo_root / "src" / "hsconfig" / "commands" / "configure.py"
-    ).read_text(encoding="utf-8")
     apply_source = (
         repo_root / "src" / "hsconfig" / "commands" / "apply.py"
     ).read_text(encoding="utf-8")
@@ -1009,17 +1009,20 @@ def test_acceptance_summary_helper_stays_configure_local_projection() -> None:
         repo_root / "src" / "hsconfig" / "acceptance_matrix.py"
     ).read_text(encoding="utf-8")
 
-    assert "def _build_acceptance_summary(" in configure_source
+    assert (
+        configure_command._build_acceptance_summary
+        is configure_workflow._build_acceptance_summary
+    )
     assert "_build_acceptance_summary" not in apply_source
     assert "_build_acceptance_summary" not in apply_gate_source
     assert "_build_acceptance_summary" not in acceptance_matrix_source
 
 
-def test_config_proof_summary_helper_stays_configure_local_projection() -> None:
+def test_config_proof_summary_helper_is_reexported_by_thin_configure_facade() -> None:
+    import hsconfig.commands.configure as configure_command
+    import hsconfig.configure_workflow as configure_workflow
+
     repo_root = Path(__file__).resolve().parents[1]
-    configure_source = (
-        repo_root / "src" / "hsconfig" / "commands" / "configure.py"
-    ).read_text(encoding="utf-8")
     production_apply_surfaces = [
         repo_root / "src" / "hsconfig" / "commands" / "apply.py",
         repo_root / "src" / "hsconfig" / "apply_gate.py",
@@ -1029,7 +1032,10 @@ def test_config_proof_summary_helper_stays_configure_local_projection() -> None:
         repo_root / "src" / "hsconfig" / "acceptance_matrix.py",
     ]
 
-    assert "def _build_config_proof_summary(" in configure_source
+    assert (
+        configure_command._build_config_proof_summary
+        is configure_workflow._build_config_proof_summary
+    )
     for path in production_apply_surfaces:
         source = path.read_text(encoding="utf-8")
         assert "_build_config_proof_summary" not in source

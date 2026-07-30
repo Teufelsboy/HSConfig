@@ -832,12 +832,19 @@ git push origin main
 ### Task 9: Make Configure a Thin Workflow
 
 **Files:**
+- Modify: `docs/superpowers/plans/2026-07-28-hsconfig-pre-run-near-100-02-package-architecture-plan.md`
 - Create: `src/hsconfig/configure_models.py`
 - Create: `src/hsconfig/configure_summary.py`
+- Create: `src/hsconfig/configure_stage_snapshot.py`
 - Create: `src/hsconfig/configure_workflow.py`
+- Modify: `src/hsconfig/package_builder.py`
+- Modify: `src/hsconfig/configure_run_model.py`
 - Modify: `src/hsconfig/commands/configure.py`
 - Modify: `src/hsconfig/configure_stages.py`
 - Create: `tests/test_configure_workflow.py`
+- Create: `tests/test_configure_stage_snapshot.py`
+- Modify: `tests/test_package_builder.py`
+- Modify: `tests/test_configure_run_model.py`
 - Modify: `tests/test_configure_cli.py`
 - Modify: `tests/test_configure_stages.py`
 - Modify: `tests/test_configure_handoff_contract.py`
@@ -882,7 +889,14 @@ def execute_configure(
 
 - [ ] **Step 1: Write workflow boundary tests**
 
-Test a successful in-memory build, each stage failure, deterministic stage ordering, no publication on failure, and stable summary generation. Add a parameterized CLI-to-request mapping test covering every current configure option and assert the original `argparse.Namespace` is byte-for-byte unchanged after execution.
+Test a successful in-memory build with non-null, identity-linked
+`PackageModel` and `ConfigureRunModel`; each stage failure with both models
+absent; deterministic stage ordering; no configure-run/current-pointer
+publication; and stable summary generation. Add a parameterized CLI-to-request
+mapping test covering every current configure option and assert the original
+`argparse.Namespace` is byte-for-byte unchanged after execution. The package
+builder's typed model observer fires exactly once after assembly and never
+before a model exists.
 
 - [ ] **Step 2: Run RED**
 
@@ -892,7 +906,14 @@ python -m pytest tests/test_configure_workflow.py -q -p no:cacheprovider
 
 - [ ] **Step 3: Extract request/result parsing and workflow**
 
-The CLI parses arguments into `ConfigureRequest`, calls `execute_configure`, and formats `ConfigureResult`. Filesystem publication remains delegated to the Plan 03 publisher adapter.
+The CLI parses arguments into `ConfigureRequest`, calls `execute_configure`, and
+formats `ConfigureResult`. Migrate `ConfigureRunModel` to the canonical
+`package_assembler.PackageModel`; do not adapt or reconstruct the older
+`package_model.PackageModel`. Capture the exact assembled model once, construct
+the pure configure-run model from the already-owned stage bytes, and return both
+models on success. Filesystem publication remains delegated to the Plan 03
+publisher adapter; Task 9 creates no `current.json`, revision, or full-run
+transaction.
 
 - [ ] **Step 4: Enforce module budgets**
 
@@ -901,23 +922,90 @@ Add to the architecture test:
 ```text
 commands/configure.py <= 200 physical lines
 configure_workflow.execute_configure <= 160 logical source lines
-operator_summary.py <= 350 physical lines
 operator_summary.build_operator_summary <= 120 logical source lines
 config_quality_contract.py <= 300 physical lines
 config_quality_contract.build_config_quality_report <= 40 logical source lines
 ```
 
+Execution correction: Task 9 is executed as atomic Tasks 9A and 9B. This
+configure-workflow section is Task 9A. The physical
+`operator_summary.py <= 350` gate belongs to the mandatory Task 9B immediately
+below. Task 9 is not complete until both parts pass; neither part may hide the
+budget behind `xfail`.
+
 - [ ] **Step 5: Run GREEN and CLI regressions**
 
 ```powershell
-python -m pytest tests/test_configure_workflow.py tests/test_configure_cli.py tests/test_configure_stages.py tests/test_configure_handoff_contract.py tests/test_configure_auto_source.py tests/test_configure_online_source.py tests/test_autonomous_guide_workflow_e2e.py -q -p no:cacheprovider
+python -m pytest tests/test_configure_workflow.py tests/test_configure_stage_snapshot.py tests/test_configure_run_model.py tests/test_package_builder.py tests/test_configure_cli.py tests/test_configure_stages.py tests/test_configure_handoff_contract.py tests/test_configure_auto_source.py tests/test_configure_online_source.py tests/test_autonomous_guide_workflow_e2e.py -q -p no:cacheprovider
 ```
 
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add src/hsconfig/configure_models.py src/hsconfig/configure_summary.py src/hsconfig/configure_workflow.py src/hsconfig/commands/configure.py src/hsconfig/configure_stages.py tests/test_configure_workflow.py tests/test_configure_cli.py tests/test_configure_stages.py tests/test_configure_handoff_contract.py
+git add docs/superpowers/plans/2026-07-28-hsconfig-pre-run-near-100-02-package-architecture-plan.md src/hsconfig/configure_models.py src/hsconfig/configure_summary.py src/hsconfig/configure_stage_snapshot.py src/hsconfig/configure_workflow.py src/hsconfig/package_builder.py src/hsconfig/configure_run_model.py src/hsconfig/commands/configure.py src/hsconfig/configure_stages.py tests/test_configure_workflow.py tests/test_configure_stage_snapshot.py tests/test_package_builder.py tests/test_configure_run_model.py tests/test_configure_cli.py tests/test_configure_stages.py tests/test_configure_handoff_contract.py
 git commit -m "refactor: make configure orchestration explicit"
+git push origin main
+```
+
+---
+
+### Task 9B: Complete the Operator Summary Compatibility Facade
+
+**Files:**
+- Create: `src/hsconfig/operator_integrity.py`
+- Create: `src/hsconfig/operator_summary_evaluator.py`
+- Modify: `src/hsconfig/operator_summary.py`
+- Modify: `src/hsconfig/operator_diagnostics.py`
+- Modify if required for import decoupling: `src/hsconfig/operator_summary_inputs.py`
+- Create: `tests/test_operator_summary_architecture.py`
+- Modify: `tests/test_operator_summary.py`
+- Modify: `tests/test_operator_summary_inputs.py`
+- Modify: `tests/test_operator_status.py`
+- Modify: `tests/test_operator_diagnostics.py`
+
+- [ ] **Step 1: Write the hard facade-budget RED test**
+
+Enforce without `xfail`, `skip`, or exception:
+
+```text
+operator_summary.py <= 350 physical lines
+operator_summary.build_operator_summary <= 120 logical source lines
+```
+
+- [ ] **Step 2: Extract integrity and evaluator owners mechanically**
+
+Move the frozen function-graph and guarded-callable infrastructure to
+`operator_integrity.py`. Move constants, the deterministic summary evaluator,
+and its projection helpers to `operator_summary_evaluator.py`. Preserve
+definition order and behavior; do not combine this extraction with report-alias
+or semantic changes.
+
+- [ ] **Step 3: Reduce the facade and preserve compatibility**
+
+Keep `operator_summary.py` as the public/bootstrap facade for
+`build_operator_summary`, `build_operator_summary_from_inputs`,
+`refresh_generated_file_accounting`, the status-kernel installation, and only
+the private compatibility exports with proven current consumers. Import
+integrity helpers directly from their owner in `operator_diagnostics.py`.
+
+- [ ] **Step 4: Prove exact parity**
+
+```powershell
+python -m pytest tests/test_operator_summary_architecture.py tests/test_operator_summary.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py tests/test_apply_authority_boundary.py tests/test_no_second_gate_contract.py tests/test_package_byte_parity.py -q -p no:cacheprovider
+python -m pytest tests/test_python_optimized_mode.py -q -p no:cacheprovider
+python -m ruff check --no-cache src tests scripts
+git diff --check
+```
+
+Expected: both budgets pass, fixed operator-report digests and all twelve
+audited package bytes remain unchanged, isolated import-order checks pass, and
+`reports/operator_summary.json` remains the sole normal apply authority.
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add src/hsconfig/operator_integrity.py src/hsconfig/operator_summary_evaluator.py src/hsconfig/operator_summary.py src/hsconfig/operator_diagnostics.py src/hsconfig/operator_summary_inputs.py tests/test_operator_summary_architecture.py tests/test_operator_summary.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py
+git commit -m "refactor: slim operator summary facade"
 git push origin main
 ```
 
@@ -929,6 +1017,7 @@ git push origin main
 - Modify: `src/hsconfig/report_ownership.py`
 - Modify: `src/hsconfig/output_ownership_manifest.py`
 - Modify: `src/hsconfig/operator_summary.py`
+- Modify: `src/hsconfig/operator_summary_evaluator.py`
 - Modify: `src/hsconfig/config_quality_contract.py`
 - Delete after zero-consumer proof: `src/hsconfig/compile_optional_surfaces.py`
 - Delete after zero-consumer proof: `src/hsconfig/matrix_closure.py`
@@ -959,6 +1048,7 @@ Scan production source, tests, documentation, report registry, and a freshly gen
 commands -> workflow -> compiler/assembler -> model
 quality/status -> PackageView
 renderer/publisher -> PackageModel
+operator_summary.py <= 350 physical lines
 no compiler or quality module imports commands
 no registry literal duplication
 no production assert
@@ -972,6 +1062,9 @@ python -m pytest tests/test_architecture_contract.py tests/test_subtractive_cont
 ```
 
 - [ ] **Step 4: Remove aliases, migrate remaining consumers, then delete dead modules**
+
+Keep the Task 9B facade budget hard while removing aliases from their canonical
+owners. Do not move evaluator logic back into the facade.
 
 Before each deletion run:
 

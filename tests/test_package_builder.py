@@ -10,6 +10,7 @@ import hsconfig.package_builder as package_builder
 from hsconfig.cli import main
 from hsconfig.cli_parser import build_parser
 from hsconfig.package_builder import build_package_payload
+from hsconfig.package_assembler import PackageModel
 from hsconfig.package_publication import PublicationFaultPoint
 from hsconfig.package_render_authority import RenderFaultPoint
 from tests.helpers.verified_deck_input import deck_code_for_cards
@@ -373,6 +374,27 @@ def test_package_builder_forwards_exact_fault_traces_without_legacy_writes(
     assert publication_trace == list(PublicationFaultPoint)
 
 
+def test_package_builder_observes_model_once_before_render(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    observed: list[PackageModel] = []
+
+    def render_hook(_point, _artifacts) -> None:
+        assert len(observed) == 1
+
+    _package, _payload, status = _build_stage_fixture(
+        tmp_path,
+        monkeypatch,
+        model_observer=observed.append,
+        render_fault_hook=render_hook,
+    )
+
+    assert status == 0
+    assert len(observed) == 1
+    assert isinstance(observed[0], PackageModel)
+
+
 @pytest.mark.parametrize(
     ("hook_name", "fault_point"),
     [
@@ -407,6 +429,7 @@ def _build_stage_fixture(
     monkeypatch,
     *,
     stage_observer=None,
+    model_observer=None,
     render_fault_hook=None,
     publication_fault_hook=None,
 ) -> tuple[Path, dict[str, object], int]:
@@ -453,6 +476,7 @@ def _build_stage_fixture(
         args,
         current_date=date(2026, 7, 28),
         stage_observer=stage_observer,
+        model_observer=model_observer,
         render_fault_hook=render_fault_hook,
         publication_fault_hook=publication_fault_hook,
     )

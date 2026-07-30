@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from hsconfig.configure_stages import (
     StageObserver,
@@ -55,6 +55,7 @@ def prepare_package_payload(
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     acquisition_closure: AcquisitionClosure | None = None,
     stage_observer: StageObserver | None = None,
+    model_observer: Callable[[PackageModel], None] | None = None,
     mulligan_source_gaps: list[dict[str, str]] | None = None,
     render_fault_hook: RenderFaultHook | None = None,
     publication_fault_hook: PublicationFaultHook | None = None,
@@ -67,6 +68,7 @@ def prepare_package_payload(
         source_authority_handoff=source_authority_handoff,
         acquisition_closure=acquisition_closure,
         stage_observer=stage_observer,
+        model_observer=model_observer,
         mulligan_source_gaps=mulligan_source_gaps,
         render_fault_hook=render_fault_hook,
         publication_fault_hook=publication_fault_hook,
@@ -92,6 +94,7 @@ def build_package_payload(
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     acquisition_closure: AcquisitionClosure | None = None,
     stage_observer: StageObserver | None = None,
+    model_observer: Callable[[PackageModel], None] | None = None,
     mulligan_source_gaps: list[dict[str, str]] | None = None,
     include_disposition_diagnostics: bool = False,
     render_fault_hook: RenderFaultHook | None = None,
@@ -102,25 +105,21 @@ def build_package_payload(
         args,
         current_date=_package_current_date(args, current_date),
         fetch_latest_cards_fn=fetch_latest_cards,
-        research_required_guide_sources_fn=(
-            _research_required_guide_sources
-        ),
+        research_required_guide_sources_fn=_research_required_guide_sources,
         source_authority_handoff=source_authority_handoff,
         acquisition_closure=acquisition_closure,
         mulligan_source_gaps=mulligan_source_gaps,
         include_disposition_diagnostics=include_disposition_diagnostics,
     )
     compiled = compile_package(
-        request,
-        build_lowered_runtime_stage_fn=build_lowered_runtime_stage,
+        request, build_lowered_runtime_stage_fn=build_lowered_runtime_stage
     )
     model = assemble_package(compiled)
+    if model_observer is not None:
+        model_observer(model)
     rendered = render_package_authority(
         model,
-        fault_hook=_render_observer_hook(
-            stage_observer,
-            render_fault_hook,
-        ),
+        fault_hook=_render_observer_hook(stage_observer, render_fault_hook),
     )
     published = publish_rendered_package(
         rendered,
