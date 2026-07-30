@@ -5,10 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from hsconfig.operator_summary import (
-    _freeze_operator_function_graph,
-    _guard_operator_callable,
-)
+from hsconfig.operator_integrity import _operator_integrity_bootstrap
 from hsconfig.operator_summary_inputs import (
     OperatorDiagnosticInputs,
     OperatorSummaryInputs,
@@ -17,6 +14,14 @@ from hsconfig.operator_summary_inputs import (
 
 _SUMMARY_DIAGNOSTICS = OperatorSummaryInputs.__dict__["diagnostics"]
 _DIAGNOSTIC_REASON_ROWS = OperatorDiagnosticInputs.__dict__["reason_rows"]
+
+
+def _freeze_diagnostic_roots(roots: tuple[Any, ...]) -> tuple[Any, ...]:
+    return _operator_integrity_bootstrap("freeze", roots)
+
+
+def _guard_diagnostic_root(**kwargs: Any) -> Any:
+    return _operator_integrity_bootstrap("guard", **kwargs)
 
 
 def _build_operator_diagnostics_unsealed(
@@ -74,10 +79,10 @@ def _plain_value(value: Any) -> Any:
     return value
 
 
-(_operator_diagnostics_primary,) = _freeze_operator_function_graph(
+(_operator_diagnostics_primary,) = _freeze_diagnostic_roots(
     (_build_operator_diagnostics_unsealed,)
 )
-(_operator_diagnostics_backup,) = _freeze_operator_function_graph(
+(_operator_diagnostics_backup,) = _freeze_diagnostic_roots(
     (_build_operator_diagnostics_unsealed,)
 )
 
@@ -91,13 +96,13 @@ def _invoke_diagnostic_projection(
     return kernel(inputs)
 
 
-(_diagnostic_invoker_primary,) = _freeze_operator_function_graph(
+(_diagnostic_invoker_primary,) = _freeze_diagnostic_roots(
     (_invoke_diagnostic_projection,)
 )
-(_diagnostic_invoker_backup,) = _freeze_operator_function_graph(
+(_diagnostic_invoker_backup,) = _freeze_diagnostic_roots(
     (_invoke_diagnostic_projection,)
 )
-build_operator_diagnostics = _guard_operator_callable(
+build_operator_diagnostics = _guard_diagnostic_root(
     primary=_diagnostic_invoker_primary,
     backup=_diagnostic_invoker_backup,
     primary_bound=(_operator_diagnostics_primary,),

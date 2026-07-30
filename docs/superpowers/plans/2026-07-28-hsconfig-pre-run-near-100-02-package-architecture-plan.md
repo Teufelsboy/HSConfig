@@ -922,7 +922,7 @@ Add to the architecture test:
 ```text
 commands/configure.py <= 200 physical lines
 configure_workflow.execute_configure <= 160 logical source lines
-operator_summary.build_operator_summary <= 120 logical source lines
+operator_summary.build_operator_summary <= 120 AST source-span lines
 config_quality_contract.py <= 300 physical lines
 config_quality_contract.build_config_quality_report <= 40 logical source lines
 ```
@@ -962,33 +962,46 @@ git push origin main
 - Modify: `tests/test_operator_summary_inputs.py`
 - Modify: `tests/test_operator_status.py`
 - Modify: `tests/test_operator_diagnostics.py`
+- Modify: `tests/test_no_second_gate_contract.py`
 
-- [ ] **Step 1: Write the hard facade-budget RED test**
+- [x] **Step 1: Write the hard facade-budget RED test**
 
 Enforce without `xfail`, `skip`, or exception:
 
 ```text
 operator_summary.py <= 350 physical lines
-operator_summary.build_operator_summary <= 120 logical source lines
+operator_summary.build_operator_summary <= 120 AST source-span lines
 ```
 
-- [ ] **Step 2: Extract integrity and evaluator owners mechanically**
+- [x] **Step 2: Extract integrity and evaluator owners mechanically**
 
 Move the frozen function-graph and guarded-callable infrastructure to
 `operator_integrity.py`. Move constants, the deterministic summary evaluator,
 and its projection helpers to `operator_summary_evaluator.py`. Preserve
 definition order and behavior; do not combine this extraction with report-alias
 or semantic changes.
+Both owners establish independent guarded primary/backup bootstrap
+capabilities during their own atomic import. Each protected module returns its
+capability from owner-captured state outside the mutable module namespace, so
+direct dictionary or base-`ModuleType` rebinding and deletion cannot alter the
+returned capability. The facade and diagnostics must consume only the sealed
+capabilities, never later-mutable raw owner aliases.
 
-- [ ] **Step 3: Reduce the facade and preserve compatibility**
+- [x] **Step 3: Reduce the facade and preserve compatibility**
 
 Keep `operator_summary.py` as the public/bootstrap facade for
 `build_operator_summary`, `build_operator_summary_from_inputs`,
 `refresh_generated_file_accounting`, the status-kernel installation, and only
 the private compatibility exports with proven current consumers. Import
 integrity helpers directly from their owner in `operator_diagnostics.py`.
+Extend the existing every-first-module behavioral matrix in
+`tests/test_operator_summary_inputs.py` with both new owner modules, a
+subprocess timeout, and stable status/summary behavior after every isolated
+first import.
+Architecture import scanners normalize absolute and package-relative imports
+before enforcing owner direction and private-consumer rules.
 
-- [ ] **Step 4: Prove exact parity**
+- [x] **Step 4: Prove exact parity**
 
 ```powershell
 python -m pytest tests/test_operator_summary_architecture.py tests/test_operator_summary.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py tests/test_apply_authority_boundary.py tests/test_no_second_gate_contract.py tests/test_package_byte_parity.py -q -p no:cacheprovider
@@ -1001,10 +1014,10 @@ Expected: both budgets pass, fixed operator-report digests and all twelve
 audited package bytes remain unchanged, isolated import-order checks pass, and
 `reports/operator_summary.json` remains the sole normal apply authority.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
-git add src/hsconfig/operator_integrity.py src/hsconfig/operator_summary_evaluator.py src/hsconfig/operator_summary.py src/hsconfig/operator_diagnostics.py src/hsconfig/operator_summary_inputs.py tests/test_operator_summary_architecture.py tests/test_operator_summary.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py
+git add src/hsconfig/operator_integrity.py src/hsconfig/operator_summary_evaluator.py src/hsconfig/operator_summary.py src/hsconfig/operator_diagnostics.py src/hsconfig/operator_summary_inputs.py tests/test_operator_summary_architecture.py tests/test_operator_summary.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py tests/test_no_second_gate_contract.py
 git commit -m "refactor: slim operator summary facade"
 git push origin main
 ```

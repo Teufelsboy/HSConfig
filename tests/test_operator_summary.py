@@ -9,7 +9,8 @@ import textwrap
 
 import pytest
 
-from hsconfig.operator_summary import _closure_matches_surface, build_operator_summary
+from hsconfig.operator_summary import build_operator_summary
+from hsconfig.operator_summary_evaluator import _closure_matches_surface
 from hsconfig.package_domain import MulliganPlanModel
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
@@ -21,7 +22,7 @@ def test_operator_summary_has_single_string_list_helper() -> None:
         Path(__file__).resolve().parents[1]
         / "src"
         / "hsconfig"
-        / "operator_summary.py"
+        / "operator_summary_evaluator.py"
     ).read_text(encoding="utf-8")
 
     module = ast.parse(source)
@@ -369,6 +370,7 @@ def test_frozen_summary_ignores_transitive_origin_mutation() -> None:
         import hsconfig.operator_guidance as operator_guidance
         import hsconfig.operator_status as operator_status
         import hsconfig.operator_summary as operator_summary
+        import hsconfig.operator_summary_evaluator as operator_summary_evaluator
         import hsconfig.report_ownership as report_ownership
         import hsconfig.source_status_resolver as source_status
         import hsconfig.strong_closure_profiles as strong_closure
@@ -435,15 +437,17 @@ def test_frozen_summary_ignores_transitive_origin_mutation() -> None:
                 AssertionError("live status alias used")
             )
         )
-        operator_summary._build_operator_summary_unfrozen = (
+        operator_summary_evaluator._build_operator_summary_unfrozen = (
             lambda **kwargs: {"poisoned": True}
         )
-        operator_summary._technical_status = lambda *a, **k: "POISONED"
-        operator_summary.SOURCE_BACKED_STRONG_REQUIREMENTS.append(
+        operator_summary_evaluator._technical_status = (
+            lambda *a, **k: "POISONED"
+        )
+        operator_summary_evaluator.SOURCE_BACKED_STRONG_REQUIREMENTS.append(
             "poisoned"
         )
-        operator_summary.READINESS_SUMMARY_KEY_BY_BLOCKER_REASON.clear()
-        operator_summary.STRONG_SOURCE_QUALITY_LANES.clear()
+        operator_summary_evaluator.READINESS_SUMMARY_KEY_BY_BLOCKER_REASON.clear()
+        operator_summary_evaluator.STRONG_SOURCE_QUALITY_LANES.clear()
         operator_guidance.SOURCE_INFORMED_EXPERT_STATUSES.clear()
         no_block.SOURCE_DEPTH_WARNING_REASONS.clear()
         config_usefulness.GAP_REPORTS.clear()
@@ -490,6 +494,163 @@ def test_frozen_summary_ignores_transitive_origin_mutation() -> None:
         capture_output=True,
         text=True,
         check=False,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
+
+
+def test_evaluator_first_origin_poison_cannot_reach_facade_bootstrap() -> None:
+    script = textwrap.dedent(
+        """
+        from types import SimpleNamespace
+
+        import hsconfig.operator_summary_evaluator as evaluator
+
+        evaluator._build_operator_summary_unfrozen = (
+            lambda **kwargs: {"poisoned": True}
+        )
+        reject_dependency = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("mutable evaluator dependency reused")
+        )
+        evaluator.hashlib = SimpleNamespace(sha256=reject_dependency)
+        evaluator.re = SimpleNamespace(
+            compile=reject_dependency,
+            fullmatch=reject_dependency,
+        )
+        try:
+            evaluator._operator_summary_evaluator_bootstrap = lambda: None
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("evaluator bootstrap binding is writable")
+
+        from hsconfig.operator_summary import build_operator_summary
+
+        summary = build_operator_summary(
+            technical_validation={"status": "passed", "errors": []},
+        )
+        assert summary["technical_status"] == "VALID_PACKAGE"
+        assert "poisoned" not in summary
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
+
+
+def test_integrity_first_origin_poison_cannot_reach_facade_bootstrap() -> None:
+    script = textwrap.dedent(
+        """
+        from types import SimpleNamespace
+
+        import hsconfig.operator_integrity as integrity
+
+        def reject_origin(*args, **kwargs):
+            raise AssertionError("mutable integrity origin reused")
+
+        integrity._freeze_operator_function_graph = reject_origin
+        integrity._guard_operator_callable = reject_origin
+        integrity.hashlib = SimpleNamespace(sha256=reject_origin)
+        integrity.re = SimpleNamespace(
+            compile=reject_origin,
+            fullmatch=reject_origin,
+        )
+        try:
+            integrity._operator_integrity_bootstrap = reject_origin
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("integrity bootstrap binding is writable")
+
+        from hsconfig.operator_summary import build_operator_summary
+
+        summary = build_operator_summary(
+            technical_validation={"status": "passed", "errors": []},
+        )
+        assert summary["technical_status"] == "VALID_PACKAGE"
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "capability_name"),
+    (
+        pytest.param(
+            "hsconfig.operator_summary_evaluator",
+            "_operator_summary_evaluator_bootstrap",
+            id="evaluator-before-facade",
+        ),
+        pytest.param(
+            "hsconfig.operator_integrity",
+            "_operator_integrity_bootstrap",
+            id="integrity-before-facade",
+        ),
+    ),
+)
+def test_owner_capability_ignores_direct_module_namespace_bypasses(
+    module_name: str,
+    capability_name: str,
+) -> None:
+    script = textwrap.dedent(
+        f"""
+        import importlib
+        from types import ModuleType
+
+        owner = importlib.import_module({module_name!r})
+        capability_name = {capability_name!r}
+        original = getattr(owner, capability_name)
+
+        def poison(*args, **kwargs):
+            raise AssertionError("module namespace poison reused")
+
+        owner.__dict__[capability_name] = poison
+        assert getattr(owner, capability_name) is original
+        del owner.__dict__[capability_name]
+        assert getattr(owner, capability_name) is original
+
+        ModuleType.__setattr__(owner, capability_name, poison)
+        assert getattr(owner, capability_name) is original
+        ModuleType.__delattr__(owner, capability_name)
+        assert getattr(owner, capability_name) is original
+
+        from hsconfig.operator_summary import build_operator_summary
+
+        summary = build_operator_summary(
+            technical_validation={{"status": "passed", "errors": []}},
+        )
+        assert summary["technical_status"] == "VALID_PACKAGE"
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
     )
 
     assert completed.returncode == 0, (

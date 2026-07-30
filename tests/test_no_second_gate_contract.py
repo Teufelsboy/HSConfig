@@ -38,7 +38,7 @@ def test_contract_spine_rows_are_not_consumed_by_apply_or_runtime_write_paths():
         "src/hsconfig/apply_gate.py",
         "src/hsconfig/runtime_apply.py",
         "src/hsconfig/commands/apply.py",
-        "src/hsconfig/operator_summary.py",
+        "src/hsconfig/operator_summary_evaluator.py",
     ]
 
     for relative_path in guarded_paths:
@@ -48,13 +48,13 @@ def test_contract_spine_rows_are_not_consumed_by_apply_or_runtime_write_paths():
 def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    import hsconfig.operator_summary as operator_summary_module
+    import hsconfig.operator_summary_evaluator as operator_summary_evaluator
 
     def reject_live_apply_decision(_facts):
         raise AssertionError("live apply decision alias reused")
 
     monkeypatch.setattr(
-        operator_summary_module,
+        operator_summary_evaluator,
         "build_apply_decision",
         reject_live_apply_decision,
     )
@@ -101,7 +101,7 @@ def test_pre_run_closure_diagnostics_do_not_change_apply_facts_or_decision(
         assert "pre_run_metrics" not in _read(relative_path)
         assert "pre_run_closure" not in _read(relative_path)
 
-    operator_source = _read("src/hsconfig/operator_summary.py")
+    operator_source = _read("src/hsconfig/operator_summary_evaluator.py")
     apply_facts_body = operator_source[
         operator_source.index("def _operator_apply_facts(") :
     ]
@@ -116,7 +116,7 @@ def test_source_contract_audit_is_summary_only_not_apply_gate_input():
     assert "source_contract_audit" not in _read("src/hsconfig/runtime_apply.py")
     assert "source_contract_audit" not in _read("src/hsconfig/commands/apply.py")
 
-    operator_summary = _read("src/hsconfig/operator_summary.py")
+    operator_summary = _read("src/hsconfig/operator_summary_evaluator.py")
     assert "source_contract_audit_report" in operator_summary
     assert "_source_contract_audit_summary" in operator_summary
     assert "source_contract_audit_summary" in operator_summary
@@ -128,7 +128,7 @@ def test_source_to_runtime_explainability_is_summary_only_not_apply_gate_input()
     assert "source_to_runtime_explainability" not in _read("src/hsconfig/runtime_apply.py")
     assert "source_to_runtime_explainability" not in _read("src/hsconfig/commands/apply.py")
 
-    operator_summary = _read("src/hsconfig/operator_summary.py")
+    operator_summary = _read("src/hsconfig/operator_summary_evaluator.py")
     assert "source_to_runtime_explainability_report" in operator_summary
     assert "_source_to_runtime_explainability_summary" in operator_summary
     assert "source_to_runtime_explainability_summary" in operator_summary
@@ -140,7 +140,7 @@ def test_surface_intent_projection_is_summary_only_not_apply_gate_input():
         "src/hsconfig/apply_gate.py",
         "src/hsconfig/runtime_apply.py",
         "src/hsconfig/commands/apply.py",
-        "src/hsconfig/operator_summary.py",
+        "src/hsconfig/operator_summary_evaluator.py",
     ]
 
     for relative_path in guarded_paths:
@@ -155,7 +155,7 @@ def test_contract_preflight_may_surface_intent_but_not_apply_authority():
         "src/hsconfig/apply_gate.py",
         "src/hsconfig/runtime_apply.py",
         "src/hsconfig/commands/apply.py",
-        "src/hsconfig/operator_summary.py",
+        "src/hsconfig/operator_summary_evaluator.py",
     ]
 
     assert "surface_intent_status" in preflight

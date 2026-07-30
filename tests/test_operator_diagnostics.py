@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import fields, replace
 import json
+from pathlib import Path
+import subprocess
+import sys
+import textwrap
 from types import FunctionType, SimpleNamespace
 
 import pytest
@@ -47,6 +51,97 @@ def _canonical_diagnostic_bytes(inputs) -> bytes:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("utf-8")
+
+
+def test_integrity_first_poison_cannot_reach_diagnostics_bootstrap() -> None:
+    script = textwrap.dedent(
+        """
+        from types import SimpleNamespace
+
+        import hsconfig.operator_integrity as integrity
+
+        def reject_origin(*args, **kwargs):
+            raise AssertionError("mutable integrity origin reused")
+
+        integrity._freeze_operator_function_graph = reject_origin
+        integrity._guard_operator_callable = reject_origin
+        integrity.hashlib = SimpleNamespace(sha256=reject_origin)
+        integrity.re = SimpleNamespace(
+            compile=reject_origin,
+            fullmatch=reject_origin,
+        )
+
+        from hsconfig.operator_diagnostics import build_operator_diagnostics
+        from hsconfig.operator_summary_inputs import (
+            freeze_operator_summary_inputs,
+        )
+
+        inputs = freeze_operator_summary_inputs(
+            technical_validation={"status": "passed", "errors": []},
+        )
+        assert build_operator_diagnostics(inputs) == ()
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
+
+
+def test_integrity_namespace_bypasses_cannot_reach_diagnostics() -> None:
+    script = textwrap.dedent(
+        """
+        from types import ModuleType
+
+        import hsconfig.operator_integrity as integrity
+
+        capability_name = "_operator_integrity_bootstrap"
+        original = getattr(integrity, capability_name)
+
+        def poison(*args, **kwargs):
+            raise AssertionError("module namespace poison reused")
+
+        integrity.__dict__[capability_name] = poison
+        assert getattr(integrity, capability_name) is original
+        del integrity.__dict__[capability_name]
+        assert getattr(integrity, capability_name) is original
+
+        ModuleType.__setattr__(integrity, capability_name, poison)
+        assert getattr(integrity, capability_name) is original
+        ModuleType.__delattr__(integrity, capability_name)
+        assert getattr(integrity, capability_name) is original
+
+        from hsconfig.operator_diagnostics import build_operator_diagnostics
+        from hsconfig.operator_summary_inputs import (
+            freeze_operator_summary_inputs,
+        )
+
+        inputs = freeze_operator_summary_inputs(
+            technical_validation={"status": "passed", "errors": []},
+        )
+        assert build_operator_diagnostics(inputs) == ()
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, (
+        completed.stdout + completed.stderr
+    )
 
 
 def test_diagnostics_are_stably_sorted_and_diagnostic_only() -> None:

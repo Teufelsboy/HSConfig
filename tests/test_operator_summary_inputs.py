@@ -36,10 +36,16 @@ _SHADOWPRIEST_BASE_OID_SHA256 = (
     "edf18f0a3e594d930bce0a1973298ed1"
 )
 _OPERATOR_MODULES = (
+    "hsconfig.operator_integrity",
+    "hsconfig.operator_summary_evaluator",
     "hsconfig.operator_summary_inputs",
     "hsconfig.operator_status",
     "hsconfig.operator_diagnostics",
     "hsconfig.operator_summary",
+)
+_EMPTY_VALID_SUMMARY_SHA256 = (
+    "sha256:5c30bec3d7f0e3dc2a1afaf76987f50c"
+    "c581617e2612f2077b11eeec2b4b2219"
 )
 
 
@@ -62,14 +68,22 @@ def test_operator_modules_support_every_isolated_import_order(
         for module in _OPERATOR_MODULES
     )
     script = (
+        "import hashlib, json; "
         f"import {first_module}; {imports}; "
         "from hsconfig.operator_summary_inputs import "
         "freeze_operator_summary_inputs; "
         "from hsconfig.operator_status import build_operator_status; "
+        "from hsconfig.operator_summary import "
+        "build_operator_summary_from_inputs; "
         "inputs=freeze_operator_summary_inputs("
         "technical_validation={'status':'passed','errors':[]}); "
         "assert build_operator_status(inputs).technical_status "
-        "== 'VALID_PACKAGE'"
+        "== 'VALID_PACKAGE'; "
+        "summary=build_operator_summary_from_inputs(inputs); "
+        "payload=json.dumps(summary,ensure_ascii=False,"
+        "separators=(',',':'),sort_keys=True).encode('utf-8'); "
+        "assert 'sha256:'+hashlib.sha256(payload).hexdigest() "
+        f"== {_EMPTY_VALID_SUMMARY_SHA256!r}"
     )
 
     completed = subprocess.run(
@@ -78,6 +92,7 @@ def test_operator_modules_support_every_isolated_import_order(
         capture_output=True,
         text=True,
         check=False,
+        timeout=30,
     )
 
     assert completed.returncode == 0, (
