@@ -13,7 +13,7 @@ Rules:
 - Write the loaded baseline under `reports/globalvalues_baseline.json`.
 - Write the baseline source under `reports/globalvalues_baseline_receipt.json`.
 - Write the profile under `reports/globalvalues_profile.json`.
-- Write the key authority profile under `reports/global_values_key_profile_report.json`.
+- Write the key authority profile under `reports/globalvalues_profile.json`.
 - Record `authority_category` and `board_value_component` for every key.
 - Use `copy_baseline` for keys that HSConfig must preserve unchanged.
 - Use `step1_posture_overlay_allowed` only for source-backed Step1 posture keys.

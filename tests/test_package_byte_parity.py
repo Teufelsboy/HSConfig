@@ -23,6 +23,17 @@ from tests.helpers.package_byte_contract import (
 
 
 FIXTURE_PATH = Path("tests/fixtures/package-byte-contract-v1.json")
+PRE_REMOVAL_CANONICAL_OWNER_BASELINE_PATH = Path(
+    "tests/fixtures/pre-removal-canonical-owner-sha256-v1.json"
+)
+
+CANONICAL_ALIAS_OWNER_PATHS = (
+    "reports/globalvalues_profile.json",
+    "reports/global_values_authority_matrix.json",
+    "reports/card_behavior_plan_report.json",
+    "reports/combo_plan_report.json",
+    "reports/guide_claim_bundle.json",
+)
 
 
 def test_content_root_uses_the_literal_path_size_digest_stream() -> None:
@@ -53,7 +64,7 @@ def test_fixture_is_complete_metadata_only_twelve_deck_contract() -> None:
     assert_fixture_is_metadata_only(fixture)
     assert tuple(fixture["decks"]) == AUDITED_DECK_NAMES
     assert "CuteWarrior" in fixture["decks"]
-    assert sum(len(deck["artifacts"]) for deck in fixture["decks"].values()) == 938
+    assert sum(len(deck["artifacts"]) for deck in fixture["decks"].values()) == 878
 
 
 def test_fixture_validator_rejects_embedded_deck_code_metadata() -> None:
@@ -171,6 +182,32 @@ def test_current_builder_reproduces_the_frozen_complete_byte_contract(
         ) == fixture["decks"][deck_name]["content_root_sha256"]
 
 
+def test_fresh_builder_matches_immutable_pre_removal_owner_sha256_baseline(
+    tmp_path: Path,
+) -> None:
+    baseline = load_fixture(PRE_REMOVAL_CANONICAL_OWNER_BASELINE_PATH)
+    generated = prepare_audited_packages(tmp_path / "generated")
+
+    assert baseline["schema_version"] == 1
+    assert baseline["purpose"] == (
+        "immutable pre-removal canonical-owner SHA256 baseline"
+    )
+    assert tuple(baseline["decks"]) == AUDITED_DECK_NAMES
+    assert sum(len(rows) for rows in baseline["decks"].values()) == 60
+    for deck_name, package_root in generated.items():
+        actual = {
+            row["relative_path"]: row
+            for row in artifact_rows_for_tree(package_root)
+        }
+        expected = baseline["decks"][deck_name]
+
+        assert set(expected) == set(CANONICAL_ALIAS_OWNER_PATHS), deck_name
+        assert {
+            path: actual[path]["sha256"]
+            for path in CANONICAL_ALIAS_OWNER_PATHS
+        } == expected, deck_name
+
+
 def test_generator_rejects_a_valid_looking_but_noncanonical_generated_fingerprint(
     tmp_path: Path,
 ) -> None:
@@ -192,7 +229,7 @@ def test_generator_requires_two_clean_roots_to_agree_before_freezing() -> None:
     fixture = build_contract(verify_twice=True)
 
     assert tuple(fixture["decks"]) == AUDITED_DECK_NAMES
-    assert sum(len(deck["artifacts"]) for deck in fixture["decks"].values()) == 938
+    assert sum(len(deck["artifacts"]) for deck in fixture["decks"].values()) == 878
 
 
 def test_generator_refuses_fixture_overwrite_without_explicit_write(

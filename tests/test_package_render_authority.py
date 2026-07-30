@@ -288,5 +288,5 @@ def test_all_audited_decks_match_the_frozen_complete_byte_contract(
             row["relative_path"] in RESERVED_PATHS for row in actual
         )
 
-    assert total_artifacts == 938
+    assert total_artifacts == 878
     assert reserved_artifacts == 96

@@ -102,7 +102,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3566,
-          "sha256": "4608cd6d3fab96c9329273b2c62b6862fc2289014340c43f9acd56b22eb27b93"
+          "sha256": "b4d47f8509d1aff771f8e5e5ca47c6e9f101931b0eff6ce983a83a807afccf12"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -113,11 +113,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 29207,
           "sha256": "f483503da2fbfaef0aa92863c37c9635eefd7808d03e3e14a06afd44fbd574d6"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 10572,
-          "sha256": "2becff4131d0a95a875e7b9d90599e2909e357ea57b49f4ac69ae4506a427efa"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -143,11 +138,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -178,16 +168,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 1717,
           "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1144,
-          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -261,13 +241,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 38558,
-          "sha256": "458c72c043f36912d5641ee99c161291264f711e195d26f4d27de2e8f7d9ed7d"
+          "size": 38298,
+          "sha256": "e68cd66fef92a76bcdafdb90e5b53d3ff622f0c528dad8bcc4dc3b8d8695bea4"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22586,
-          "sha256": "8d6f1b74aff2d8064c9baf863fa05b827be07c22339114d129967bd31215565f"
+          "size": 21218,
+          "sha256": "d5640512d617b66c0f70d8a41c6d68ea5572f877db6918532a56a2c7cd78ad81"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -360,11 +340,6 @@
           "sha256": "6ae8761e819d16bb1dd8b43a3b057d4d1105de965611a546112c69d20d1cd529"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 10240,
-          "sha256": "14189cf35744a3ddc22d32fa3e1f95a16b1908f57bd16c939499433b4395b791"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 7801,
           "sha256": "1ef575fe2bd3d5e49256043608d781167c0ac21d6a1f70523344426a2a43f475"
@@ -395,7 +370,7 @@
           "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
         }
       ],
-      "content_root_sha256": "19675847a1e04ce66420d14a52e0eb858f68d0fb1e5f167c1339967ca6d61930"
+      "content_root_sha256": "57cc07ec8c9b2c2998af167f458d5b8294064f636d8e11a06749c3d8820cae23"
     },
     "CtAPaladin": {
       "deck_fingerprint": "5886da60364f5ac7431bb4ca39d8ecce333c58cc838b3c01b3adf8fbee71aa99",
@@ -503,7 +478,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3472,
-          "sha256": "a57aa2e086d8828acfc7a703d021078850e735e1cfad3279dafd25d3418316ec"
+          "sha256": "d65c84104d2ba381f0be12befb11fca8ace0ca3b0f1c77e1b7f8ee22d526ec41"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -514,11 +489,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 15083,
           "sha256": "b887dcf53908a5e511265a1edfe38bde981ab919ff7adc8746b7f03e018d984e"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 13727,
-          "sha256": "3abbf15f6789172d81d1f38dc53d50c5b1e5168b40ef4fd4337f18c6c97ea73c"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -544,11 +514,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -579,16 +544,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 1717,
           "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1144,
-          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -662,13 +617,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 40278,
-          "sha256": "e7c3b92d31587d9120cdd03d9e15be01ef6a21a071876b8fb4dae648bf8a47de"
+          "size": 40018,
+          "sha256": "6c363be3eebc6f037137b9f7829cbc0fdc59fab03b3d131c350710b24da5df0f"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22487,
-          "sha256": "413cd1d00c69de74ada5425a343b56de6115c4af0297a1c9722aee45d69c76ac"
+          "size": 21119,
+          "sha256": "1304c7d641f90ddad4982479698afe2254a05c773bf6a8f5828f26142eac46ab"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -761,11 +716,6 @@
           "sha256": "fb4e83a328be16223d06d126182ad367eb1eb939eff10b984ccde2fc18d812d2"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1849,
-          "sha256": "31552ab3a157ef3668d105b81c8e5a859e832e6398b42d6b3886e2e5ab672f58"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 5126,
           "sha256": "d1227184282f446b3058bbab1d55ed63e7b4a4fa173c75eee991ce77b79a1e3b"
@@ -796,7 +746,7 @@
           "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
         }
       ],
-      "content_root_sha256": "2ab0d81a2941dfa18e63a460d8d176794b891d1b4dd056588ff42fb48e4507a1"
+      "content_root_sha256": "a2c780d64fa547811d4d73ab399dd81c2fedeae0b3b61afd857010b67277c6f1"
     },
     "PirateRogue": {
       "deck_fingerprint": "3ff3cfdaf9e0a788ae3c2a4bfbb88924e1d84a761d75397ab4298ca148213197",
@@ -894,7 +844,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3271,
-          "sha256": "f967657b270fe5a9d60a84b1d79d36a61346f6f7c79ea4b6a3afa760d4a9a803"
+          "sha256": "bbb60ef8a2bccc3f5b34c4ef63f9054ea130a9ffb8fb1c689a1917c1e5e923a4"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -905,11 +855,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 16506,
           "sha256": "7996a55dbf0ac019bc9b71df28d9fc5313bc75cb01ace2a0f04b83874067c6f3"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 12547,
-          "sha256": "70250b5e606e412065f98356d6735529cd336419036021bdfa6adda41b670d8c"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -935,11 +880,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -970,16 +910,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2305,
           "sha256": "88836bd168568625a1b9dc6589bc9012af2a1d2f9d63d7b96972f7d76664684a"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1698,
-          "sha256": "db9277133550b41df5dbfff3c2f6b834b333df7460e448e5ac48c2ddababeade"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -1053,13 +983,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 39120,
-          "sha256": "42fcb65b4b26bf3d967b6f7bef0dd9695fe4a00f0c406fa6527393883aadd9e8"
+          "size": 38860,
+          "sha256": "f54274badc891aa8b1e9132cb9e833233a8f7aa2fb7fe37e007b4f98fb05f738"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 21910,
-          "sha256": "f1b1c957c0c049d6c83f88e3e727ac2a55aa15dcd431a6d641ac2fb7c281989e"
+          "size": 20542,
+          "sha256": "24c09db93b1be964b79bd98110a7bef17247be68a1b31a654172b215dc303844"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -1152,11 +1082,6 @@
           "sha256": "54c49657964c992bd3711a8658a1b09ff973724966f415c613fc79f39265c267"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1185,
-          "sha256": "856c0f4f58fa33c6019e1320ff694916cde6d20ca506e39ef880a1b5d0f1aea3"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 5094,
           "sha256": "8167c9b9fd0e734aa9e52945dcf8c8be6ca91f5a14956b44708d6e855a49ea8b"
@@ -1187,7 +1112,7 @@
           "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
         }
       ],
-      "content_root_sha256": "f9a8473426e1778e62b9964978714f97a670ad4777fd1c2d8fdc9265e30215bc"
+      "content_root_sha256": "9dc1c1bac6befac8091743da2805ff1273c52092eb8e0a451da89116061d27b7"
     },
     "BigShaman": {
       "deck_fingerprint": "29d99c31fdb5421594ca40b5a0a1c7dc63cbd5830eb3c7fd6ab7fa77c58928a1",
@@ -1295,7 +1220,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3442,
-          "sha256": "1ba1971e9ec22584cc8475b19ccb25fe5300b1bdd707f098a753472b376d9f9a"
+          "sha256": "7c4566c4571b75131b4e9dc2c52c3beba38788b8fa4050ba5cca3ab50d04f49d"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -1306,11 +1231,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 27277,
           "sha256": "5f24b1b489010592703c0abb816e15d95c5dcca5211e1cbbba18c3c0a932bfe8"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 14079,
-          "sha256": "58d30fd07d6b22d7632435a3a9d5bd2b104f622b3ee40c2bf7d41ec2201cc75a"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -1336,11 +1256,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -1371,16 +1286,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2432,
           "sha256": "e0934e01dbcb5f78ee6057806b3c597a92d36d340e511df775be0b80bdca85f2"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1821,
-          "sha256": "3dec7165f72890c7dc58f8d40d5aa839e1bd10834374a93754d959fe2494d175"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -1454,13 +1359,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 41306,
-          "sha256": "b5994a6efc59f44482cd7c407e7350b0e9c7e62a6a93ab2648eb599429ae1b00"
+          "size": 41046,
+          "sha256": "af98793c5dbe2ad7d83ca9d0e661d771d543283aba276feb2940abf0aee6b725"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22457,
-          "sha256": "ec724946807499ad5625ee56c1829f04547b6cf0e9379343463252b30ad6bd5c"
+          "size": 21089,
+          "sha256": "a80530d749208321d79f234104aa7c329c73b92d64e204ce6f9248b6475376c5"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -1553,11 +1458,6 @@
           "sha256": "16fc2a41f454cd3972a0f57e5d3bea2cb46c1b98d0caaf2a87d940c38cb89c6c"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1135,
-          "sha256": "612b2ca8c3c9fcdc47917f8b9977a084abf16caf255ae448ee2b7b03bdcc2892"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 5199,
           "sha256": "3bb5314170aa023a19d7c20036afbc22458640dfcc9bd126706b1e2479f69187"
@@ -1588,7 +1488,7 @@
           "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
         }
       ],
-      "content_root_sha256": "da4422b355fca8192c6cff4d4f5e0d59d40d99d4783bd3b49dc069d1509c7ab0"
+      "content_root_sha256": "c67d8ff25d5665315710f70119444c5328a03d938e09f054a72f58c92ac19b3d"
     },
     "Discolock": {
       "deck_fingerprint": "f3f59f19bfe0b977ac66fe83e27bcada6d385fbe552b3937c2a158084c3ca59a",
@@ -1691,7 +1591,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3337,
-          "sha256": "25e4ea50895b9737834e89d5c4b4c2379ccce1e85cce7ae98e4bd52fcce13448"
+          "sha256": "dd0462880c2079786aa67fcd294d5063299108017620d81421774855c1f99cf4"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -1702,11 +1602,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 21308,
           "sha256": "40999f9f670011e8bb9e365446ce120b79d04787200d9896f1eab9305c05865a"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 19210,
-          "sha256": "81e9f03686aa0dc7d22490ad3fefc25cd73bf70e39dc27099b9bdc360c6131b4"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -1732,11 +1627,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -1767,16 +1657,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2490,
           "sha256": "ce3a4b47960bfca23054f23ce770858c3559bf691cc25250de4017d40cdafcd9"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1879,
-          "sha256": "9447311b730af13b5556fbee0e77c60975c0e4fc0aeaafdbddf00dfcd19695f3"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -1850,13 +1730,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 40830,
-          "sha256": "1fa20572ba166ac2fcbc7cb5d357df1332f3de5d6786b65b14fc019453613c69"
+          "size": 40570,
+          "sha256": "36cba5d6226f763e38d97c09866bb049925a5b90168fae00648c775d3aa63dbb"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22164,
-          "sha256": "382828f1e24e51295f088a936fd2590ff3a1bce285118b20ccf45018946085cb"
+          "size": 20796,
+          "sha256": "a0eb510c42ce9eb325ca68a0b04c5655016753a7937ca812508cdb36cce09638"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -1949,11 +1829,6 @@
           "sha256": "72f1a1979fbfc8fd9c273ee1dec64b0116d3a20d753ecca3931d166f3b1f8e13"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1155,
-          "sha256": "2e7ae237c46b2d8191ae0a6fb8f8095076934b830210b484f87fddf6c0ba21de"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 6953,
           "sha256": "daab97bfacb2b04e1d4e6d2fe136ad68c060c2bde0d814f49bce7240a8091199"
@@ -1984,7 +1859,7 @@
           "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
         }
       ],
-      "content_root_sha256": "3ea94710e9d3a111c8ae7626c803cd17407b9527ed02777d25466cd67af54d0e"
+      "content_root_sha256": "b0e9afac8da5017cc3aadc9d6fad5c5d63f88a52ce97bfac53fa7bfec4b423ce"
     },
     "TreantDruid": {
       "deck_fingerprint": "1a529fb1c5a1a774eeb84706d07eaeed8717479edb916aff12db46a3b9b75530",
@@ -2082,7 +1957,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3257,
-          "sha256": "18c71bd575a83c79a1d577957c5d7ee22e145019b8b075cd49ff02fcdfff4a91"
+          "sha256": "806c130e60c56791eedede959e7d1c76c036dae87c705837fb27742eaf5cdc70"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -2093,11 +1968,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 16899,
           "sha256": "6d10afbfac9efd520bbd184b93dd59967a7016f02443e8dc66d1b2ece9f90c15"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 15056,
-          "sha256": "b698adb9634d88d056a5857d24d02ffe92d95d0e4dcdc343057a98418037ccfb"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -2123,11 +1993,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -2158,16 +2023,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2297,
           "sha256": "ba9882c0f62d9e41b3bae1d20ebc4f1171b7c23452e60bfda4aa947767235ead"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1690,
-          "sha256": "1bf107331d4205ebb303be6f2b71c432a15d7820f3ff48bb947388fe59ba7135"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -2241,13 +2096,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 39355,
-          "sha256": "c992404036a9214b44f320f4cf1f674903341e276e7a90aa623bee052dde146c"
+          "size": 39095,
+          "sha256": "9611a202014034a6c56b59577e31f9db3c660b62d510f47a5ce02e09d318b238"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 21896,
-          "sha256": "be20f04d4991ed3437752ed8a40c579830664c6414dd7fee5e9e9e555e72d0c9"
+          "size": 20528,
+          "sha256": "24228f17e688a7b3a8acab0483ff6fdb6f0632e05a643450665ff5ebe76b6929"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -2340,11 +2195,6 @@
           "sha256": "7d916d55b63de4ada7dac5e7f53098e1de332ac9988c79279d6a2e65ea1dfaa6"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1167,
-          "sha256": "8f23ad6c3e71da74b6947a77ddb9b792ac9925e0ecbf069f03d45720d2768b1b"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 6353,
           "sha256": "52ed89a50dfae62a131fa6f2da5ecb67eec5d56ac6106dec427837bbdf18e9e2"
@@ -2375,7 +2225,7 @@
           "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
         }
       ],
-      "content_root_sha256": "c3fdaca750454378c6adde0fb665ae0505304da0bbafa01463c4f9f48d675b8a"
+      "content_root_sha256": "2ac34ab64e1365bee702ea4455755606e1a54afe70fea6bbdfbfe928b7be65c0"
     },
     "ImbueMage": {
       "deck_fingerprint": "24d0fdb97228f6bafca4441dc0d0c032f7280a4e24198a924e0e1040391096a7",
@@ -2478,7 +2328,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3334,
-          "sha256": "8792c55e6a64318fc69e97ee05e774f0c7f91d94c4cb567d72db36e87134e1f6"
+          "sha256": "1a8b0a22bea6d51824ee1dc76671bf97c399dfd20a932dcf0b9becb239a0f500"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -2489,11 +2339,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 19103,
           "sha256": "42ad0594ca76884c76fbea57d664e4859050299899cefab58b02c4239a53bd1b"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 13518,
-          "sha256": "2b29bd72298877e05d4f2246e3783497945c0f071e300ca3d92a436dbc4752b8"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -2519,11 +2364,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -2554,16 +2394,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 1717,
           "sha256": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1144,
-          "sha256": "c63c6765e2c084afe2dbfa2670ff5b2c16ec37c9ede289195c61437ff8e3ce26"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -2637,13 +2467,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 38999,
-          "sha256": "20a85c4ed25104c5077c76c6ff4add57e5b989534e063404bd39fdc3d8cfccf3"
+          "size": 38739,
+          "sha256": "3d08036d57daaf5c6607a9c20706c35f0923cc5cd4320d02176fea6260c2cf8c"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22161,
-          "sha256": "422b2a6bcf08b5b8bee6dfcc00b01f8dd39299ec48cee5a0acbbfdb588580b1a"
+          "size": 20793,
+          "sha256": "8dba43747460489f7cf94718b32f4729dc02d9b8e285929b7e99c81dfb667a0c"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -2736,11 +2566,6 @@
           "sha256": "5a3e665867ac787d5998c705e2c82c65f1f56ba7e0ca41d3408ccf5b693edc83"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1115,
-          "sha256": "604bfb5924e543bbb806268f67c93b2747c76a32d3e7a80681cca4a6b0a4fac2"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 4483,
           "sha256": "d45dc782ba7cf4a1aa2cf401c7dfa26d89511348f89f746a7ed4b17c80864570"
@@ -2771,7 +2596,7 @@
           "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
         }
       ],
-      "content_root_sha256": "ff7997d1fd3b89daa713ba70674ac6bbfa91d633903ab1710aa161b3782bead0"
+      "content_root_sha256": "fe30b3f10e1dbee0885dd701cc5bde85c8ea7f8ba2df41d8ac24c1f96bdd7b9c"
     },
     "MechPala": {
       "deck_fingerprint": "caf6755f4cc426c4ac2922637eff300fef2d3c65f1cfb7b15c4c05070e6aaeda",
@@ -2869,7 +2694,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3207,
-          "sha256": "fac96553492f50a4c57e2b81ce40c3b3385f9d42383e56571b15728e21dc656d"
+          "sha256": "1c7fa19f43af7a0d1d88c47f4d06ae9b1e4ad0f910a58ca70a9c8dca1b57bcdd"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -2880,11 +2705,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 9198,
           "sha256": "2bb709bfb73cdee2d238338139731e7f906c5e04057fe47dccf99bbde2adb66f"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 8234,
-          "sha256": "834434d6b652239b4c7d9111ad13559d89baab9860f660825ce1893dd7c72e29"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -2910,11 +2730,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -2945,16 +2760,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2294,
           "sha256": "c38807f2a37b80bcc9d3227dd5bea2f99b78a6c5cf66b9c65cbf5bc5efeb0f0a"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1687,
-          "sha256": "6d0fe1193bdc6a8d13853abdb7968bf6ddff59074ab3c7160cc269c5f1f73774"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -3028,13 +2833,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 37439,
-          "sha256": "ccd7718ebfb5712da4e866ace5bab179e955d83ef54b7e979dd73d6a34c1292d"
+          "size": 37179,
+          "sha256": "53f9e86e983272cf802f513cd49ed5fddf730080773b5c64e7dac366e1223f72"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 21846,
-          "sha256": "cdadca2c6389646701482ca590a9d340f2bf29f9ef6cb63c8b9ac695d9f9dbbf"
+          "size": 20478,
+          "sha256": "b4d22713442307f9e539f6218151d505c7a7de46cde45fb6552dbe195ce05c82"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -3127,11 +2932,6 @@
           "sha256": "f698c4976fa15ad31bcfc5ac52522674adb4f44eba4778b8a8ad3ac855b9aee4"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 3504,
-          "sha256": "c2f8a19661f0280e0a4d10c6319ac0206bc17802603c3f3ae308e88c010c9499"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 2971,
           "sha256": "1cc54c6fadb580fbfb4f71f84b02a31d0fca0aa83dedd2af419e8ae3afdcccfc"
@@ -3162,7 +2962,7 @@
           "sha256": "b562c51707072295ec572f7209d6ae80bf2ed868cf557479d789d7cbc3752fd2"
         }
       ],
-      "content_root_sha256": "ed0c4f527c56e7d00b130a28ec84c8fcf502ef87a94dbe41718abb77b88cd133"
+      "content_root_sha256": "eb28b1cb98cd76b8ac53b78b7b7392392ad00530e170cfa353bf09fdb9d4f867"
     },
     "Kingslayer": {
       "deck_fingerprint": "d0ef7b45d6e6b3a2b9da937eb8c735d998d8bafe4b2cfdea74d947491ad9a20e",
@@ -3270,7 +3070,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3478,
-          "sha256": "a7ad7ae0668faba2bdf588ae168a54860efddc95aaaae7f391c44970b74d74f0"
+          "sha256": "95845ef399a543384c24789a8f9706f238af02aee848d1a6c32347335590dc28"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -3281,11 +3081,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 20384,
           "sha256": "7ea12caf18bf9a3ce666cda38cf41e10efe80126288ed62f037d72c8d15e9c2b"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 14059,
-          "sha256": "823144b84cf7808115c7038c6329dd7f3469bc7631c9174b7dd66c30b80b4644"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -3311,11 +3106,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -3346,16 +3136,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2411,
           "sha256": "a0fb8d6374fb7676a856f36ae980833823fba659a1e04f8f7e3e86c1b8911250"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1800,
-          "sha256": "237ff312ca8a0151f321dd186f01910f068e7c10846895644ef30270636ac14c"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -3429,13 +3209,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 38244,
-          "sha256": "f3125dd29fc14786ec075789b6276d50ff1ae29ca91eb25e6fbc45b2e091a3f7"
+          "size": 37984,
+          "sha256": "8303a9c49175b6b58967082872b78df69c018619a1c4e8f66deb955146b2836d"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22493,
-          "sha256": "2b867a5c1d8741db7b0f7f49a0b135ea0cc981f48d32b33dd6e81a0de1d533bf"
+          "size": 21125,
+          "sha256": "a261d6c1767c7e5bc1ac6b9444978db0345feefaa472c5752b7790c17be1040b"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -3528,11 +3308,6 @@
           "sha256": "79fe11f3638c7e260b57f248041e566f62b7243d9ed6d906f02082526e32f67f"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1158,
-          "sha256": "9721a1e9651057d66f42dd81da7c896d6fcab9cc925a3cbe7a6e2e632656b9e5"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 3693,
           "sha256": "6f9c56342ce9616f205de14d348b9936d55effa5e4b74cc54189cf44863e8567"
@@ -3563,7 +3338,7 @@
           "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
         }
       ],
-      "content_root_sha256": "1a77748ae93d34aea16f8c9e77ec795c3aa064028dc0139e911f48e763d7912a"
+      "content_root_sha256": "72ccc4816e80b504c7b34b5134412a30342fb7cfbabac46569932017042518b6"
     },
     "Boarlock": {
       "deck_fingerprint": "8d5297d672850a225ff78040b91cc3b1e74eca8e0a454feeb04a04bc6bb63db6",
@@ -3671,7 +3446,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3432,
-          "sha256": "3e2732087cde5bdd43d9a3a24bfc226e4ccaa7abaf0987323717d74bfb0f1a72"
+          "sha256": "7fe6ae96d7ffca8eafae6fd09b53cfbb38ef90a6bb383d22a8da9204ec283053"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -3682,11 +3457,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 11650,
           "sha256": "36a8cfb5acb382c4ef3b2623551a0015de1ebbfaf8245525a199849ebc265a27"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 9048,
-          "sha256": "c4115e8e9c77a51c1a68e91c6e8141d75e7050f734542afec502733a767636e6"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -3712,11 +3482,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -3747,16 +3512,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2313,
           "sha256": "c49a1f682d528877c7561fc54204f1378683360f6207520829e0f0b7c5513d87"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1706,
-          "sha256": "b8a3db819a623c8491e1ba3438b958e589e28e7794c194d54e7b5af6e9ca5f97"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -3830,13 +3585,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 37862,
-          "sha256": "6e57b353af8806f2dab51014d0f044a7af1d5b127fdb2011699a82b47f6d28ef"
+          "size": 37602,
+          "sha256": "8765350b1b3949ca8ecb75e60fcad63849499d5498829ce9a22dbfa553cf99d2"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22447,
-          "sha256": "2b0586c6ae63d7cee4810c9b356ae0ac8f2782543ad31d3f6700970e98f1acc4"
+          "size": 21079,
+          "sha256": "c87367f6d16f3d02e6ec6aada9bc14ab0c4302b6615f4539ac441e8e918281ec"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -3929,11 +3684,6 @@
           "sha256": "179b3549ac72fb7624077787c789e74199173586b48569e31b2f13fc19d1b884"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 3092,
-          "sha256": "435b9fe129e33fc9857698c9dde177d8f4d06b7e272301f58ffef2489c3e2472"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 2445,
           "sha256": "764239fdf5931926f5e01b60112b434ec9703002a1586d7d39ae962c20ae41f0"
@@ -3964,7 +3714,7 @@
           "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
         }
       ],
-      "content_root_sha256": "0b49d377b7aad2f2c6e9252b1658213de373fa4f69c95856eb5aca394630c920"
+      "content_root_sha256": "6312ece4065106c0aec12d4f234046653935d34d746dc2e912a0f212e8e47f94"
     },
     "PirateDH": {
       "deck_fingerprint": "6ec70fb3e2ef8dff240e67a58ffce03f137d17afb276266edcce0b0667578b47",
@@ -4072,7 +3822,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3427,
-          "sha256": "b88e4df539d057bf4d1597a10435a1a60f240ceee0d104553881facc717dc788"
+          "sha256": "67be49ba5e2ccc667e39637bf72945b12b1929459ec9c8023f8f31ac9c5ed53d"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -4083,11 +3833,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 24424,
           "sha256": "5dd5f1709cef622459b28cc431539e0631c150ac1d35fdffb57b429842f1b5a2"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 18059,
-          "sha256": "c0ead25f36b764cfe6c31d53f19585881854992f1f336d1989a1613e24b8dc86"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -4113,11 +3858,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -4148,16 +3888,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2321,
           "sha256": "d0ab88157da94c2d7ee10128fb6dcc72bf5ae22ce81bf9ec292ddd2c085e4280"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1714,
-          "sha256": "64daaa3d8feac1b66f4d6920f6a5bc55d263b2ad175f8d40820bb646f5b675e0"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -4231,13 +3961,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 41252,
-          "sha256": "c2066f71266c201b83e7a64f750b54f6f0b8a62c4be6ac939e90db613c1d1b83"
+          "size": 40992,
+          "sha256": "480d01d2a288e35a58c10989352bdaf6297b6f1fa1605755bedc69ac19c2a3f8"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22442,
-          "sha256": "0f7be7b60f703d3876fec0ba7f927d9a7a255e86f315febc3865ff0bc786b59e"
+          "size": 21074,
+          "sha256": "eb277b6537e3dc395c0d1fa3e13fbeff8164719e3a201d9426faba342ea5ff76"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -4330,11 +4060,6 @@
           "sha256": "8fc530cf6d84f7d152838c78189b64305ad6fdcb8b7892aca4b5dd1ed3a667a8"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 1820,
-          "sha256": "92f1912c39c66f62b5d60a9e0834fe6720aaa061d4db8a1e7467690645127b8b"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 6161,
           "sha256": "0a099b3a2d95ce0e07669dabe0bbad6300d5c6481f3095b08c4352b4138826c7"
@@ -4365,7 +4090,7 @@
           "sha256": "5a3308b47a4ccf622f45fc2677efa5fa99efa21b5df155d263275679266eaf72"
         }
       ],
-      "content_root_sha256": "f9cba374b6dcab84cf5c1e99e821051de1d8fabc83d0aa3bc3c55011800accb4"
+      "content_root_sha256": "c04ae6edf26bd16d00acc3f2c2a958dafe599ee9361cbbf39cc431487febf8e9"
     },
     "CuteWarrior": {
       "deck_fingerprint": "aeae1767eac60548a9a4c6a1fd5fd11ba578ac60b03406e3123a5e9c90727d3e",
@@ -4468,7 +4193,7 @@
         {
           "relative_path": "package_derivation_receipt.json",
           "size": 3374,
-          "sha256": "c784664162df8c46fd35f42140c4a3118efd8331a15cf908e088dda006829db6"
+          "sha256": "427d5fcabbe60f400267c20cb94089987d0f7c474d3e9cfc0845746ba5736b4d"
         },
         {
           "relative_path": "reports/candidate_archetypes.json",
@@ -4479,11 +4204,6 @@
           "relative_path": "reports/card_behavior_plan_report.json",
           "size": 8932,
           "sha256": "fbefa6f0d74eb33e73498af13d88a34ff5b4e2b6a7c161f0f5af49a0f01f3198"
-        },
-        {
-          "relative_path": "reports/card_behavior_suppression_report.json",
-          "size": 5631,
-          "sha256": "0045226a1cebd5e88c3ecea7ff797b95a8ed299ba68ee5c7de974e6b97a1ebc9"
         },
         {
           "relative_path": "reports/card_id_map.json",
@@ -4509,11 +4229,6 @@
           "relative_path": "reports/combo_plan_report.json",
           "size": 39,
           "sha256": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995"
-        },
-        {
-          "relative_path": "reports/combo_suppression_report.json",
-          "size": 3,
-          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
         },
         {
           "relative_path": "reports/deck_fingerprint.json",
@@ -4544,16 +4259,6 @@
           "relative_path": "reports/global_values_authority_matrix.json",
           "size": 2259,
           "sha256": "028271e597ea5217f36e15f2efe3e450ba4de3a6142f14689b6b26e6e3464f4d"
-        },
-        {
-          "relative_path": "reports/global_values_blocked_changes.json",
-          "size": 1652,
-          "sha256": "7d7e62e7bba705746011d8e610d9ff952b8502aff29caf186b3de7e468d2f770"
-        },
-        {
-          "relative_path": "reports/global_values_key_profile_report.json",
-          "size": 14509,
-          "sha256": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084"
         },
         {
           "relative_path": "reports/globalvalues_baseline.json",
@@ -4627,13 +4332,13 @@
         },
         {
           "relative_path": "reports/operator_summary.json",
-          "size": 37426,
-          "sha256": "fab9cf6e7fefb7c589b9c7747e9bcabad7d35848cc59bdc87eb1338d6ba4ddf2"
+          "size": 37166,
+          "sha256": "08fd1d4754f288b7cf37aea428233c1d985080ad60e579f51eafdbda3c6b9f1d"
         },
         {
           "relative_path": "reports/output_ownership_manifest.json",
-          "size": 22201,
-          "sha256": "e0a4905c79367855c6f189a23aff0347167c6fa6c8439b7156a7e84e57317c64"
+          "size": 20833,
+          "sha256": "aa0f69543c596bc88c390a587a5604d229edee6497ba6d8c2313e6e8f7066726"
         },
         {
           "relative_path": "reports/per_card_config_readiness_report.json",
@@ -4726,11 +4431,6 @@
           "sha256": "bfaee979e494653a02d6660c47d1f47e4203b512484cc2fc7b68035f638bab8c"
         },
         {
-          "relative_path": "reports/source_evidence_index.json",
-          "size": 561,
-          "sha256": "2db7fe2d2f29ec867e086e8bc0865759964b157402ce92ceedfcb4837c62d7ff"
-        },
-        {
           "relative_path": "reports/source_evidence_verification_report.json",
           "size": 519,
           "sha256": "1849b00bbb14f9617a88b53bc782a11267659d4b18ee2619b93ff9a0ef93c902"
@@ -4761,7 +4461,7 @@
           "sha256": "4cb617662e4beb0d640331db250274e759bca91f6be8936b8c61c16cdaea7072"
         }
       ],
-      "content_root_sha256": "f85e97bef54b0549a07bb37c3a8f9fc9bae65e2acbc7df70211e2e0bcddd84a1"
+      "content_root_sha256": "22967e1134da6a0791c886c9f8d05ab1217b24e616aca37d65472501e021b537"
     }
   }
 }

@@ -229,7 +229,7 @@ python scripts/check_contract_guardrails.py
 
 Expected: all commands exit 0 and the sentinel reports `status=clean`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/hsconfig/package_builder.py src/hsconfig/source_document_builder.py src/hsconfig/source_document_model.py src/hsconfig/runtime_surface_ledger.py tests/test_python_optimized_mode.py scripts/check_contract_guardrails.py tests/test_check_contract_guardrails.py
@@ -1032,12 +1032,22 @@ git push origin main
 - Modify: `src/hsconfig/operator_summary.py`
 - Modify: `src/hsconfig/operator_summary_evaluator.py`
 - Modify: `src/hsconfig/config_quality_contract.py`
+- Modify: `src/hsconfig/config_usefulness.py`
+- Modify: `src/hsconfig/package_compiler.py`
+- Modify: `src/hsconfig/visionai_registry.py`
+- Modify: `src/hsconfig/contract_spine_sentinel.py`
 - Delete after zero-consumer proof: `src/hsconfig/compile_optional_surfaces.py`
 - Delete after zero-consumer proof: `src/hsconfig/matrix_closure.py`
 - Delete after zero-consumer proof: `src/hsconfig/matrix_visibility.py`
 - Delete after zero-consumer proof: `src/hsconfig/source_depth_closure_index.py`
 - Create: `tests/test_architecture_contract.py`
 - Modify: `tests/test_subtractive_contract_polish.py`
+- Modify: strictly required alias/dead-module consumer tests and active
+  `docs/operator/**` / `.agents/skills/hsconfig/**` documentation
+- Refresh after reviewed two-root generation:
+  `tests/fixtures/package-byte-contract-v1.json`
+- Create from the immutable pre-removal contract:
+  `tests/fixtures/pre-removal-canonical-owner-sha256-v1.json`
 
 **Canonical report replacements:**
 
@@ -1047,34 +1057,44 @@ git push origin main
 | `reports/global_values_blocked_changes.json` | `reports/global_values_authority_matrix.json` |
 | `reports/card_behavior_suppression_report.json` | suppression rows in the canonical card plan report |
 | `reports/combo_suppression_report.json` | suppression rows in the canonical Combo plan report |
-| `reports/source_evidence_index.json` | canonical guide/source bundle report |
+| `reports/source_evidence_index.json` | `reports/guide_claim_bundle.json` |
 
-- [ ] **Step 1: Write the failing zero-alias and zero-consumer tests**
+- [x] **Step 1: Write the failing zero-alias and zero-consumer tests**
 
-Scan production source, tests, documentation, report registry, and a freshly generated package. Permit old alias strings only in an explicit migration assertion that proves absence from output.
+Scan production source, tests, active operator/skill documentation, report
+registry, and a freshly generated package. Historical research and superseded
+plans remain immutable records. Permit old alias strings only in an explicit
+migration assertion that proves absence from output.
 
-- [ ] **Step 2: Write architecture import rules**
+- [x] **Step 2: Write architecture import rules**
 
 `tests/test_architecture_contract.py` must enforce:
 
 ```text
-commands -> workflow -> compiler/assembler -> model
-quality/status -> PackageView
-renderer/publisher -> PackageModel
-operator_summary.py <= 350 physical lines
-no compiler or quality module imports commands
-no registry literal duplication
-no production assert
-no direct package writes outside renderer/publisher
+commands.configure delegates to configure_workflow
+commands.prepare delegates to package_builder
+package_builder delegates to compiler and assembler
+compiler/assembler/quality/status families do not import commands
+render_package_authority accepts package_assembler.PackageModel
+render_package_authority returns RenderedAuthorityPackage
+publisher accepts RenderedAuthorityPackage, never raw PackageModel
+quality loaders accept PackageView and pure checks accept frozen inputs
 ```
 
-- [ ] **Step 3: Run RED**
+Reuse `test_contract_registry_adoption.py`,
+`test_check_contract_guardrails.py`, and
+`test_operator_summary_architecture.py` for registry-literal,
+production-assert, and facade-budget enforcement. Direct package-write
+consolidation belongs to Plan 03 transactional publication; Task 10 must not
+pretend that broader refactor is already complete.
+
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_architecture_contract.py tests/test_subtractive_contract_polish.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 4: Remove aliases, migrate remaining consumers, then delete dead modules**
+- [x] **Step 4: Remove aliases, migrate remaining consumers, then delete dead modules**
 
 Keep the Task 9B facade budget hard while removing aliases from their canonical
 owners. Do not move evaluator logic back into the facade.
@@ -1087,15 +1107,18 @@ rg -n "compile_optional_surfaces|matrix_closure|matrix_visibility|source_depth_c
 
 Delete only when production references are zero and tests have been moved to canonical owners.
 
-- [ ] **Step 5: Run the architecture phase gate**
+- [x] **Step 5: Run the architecture phase gate**
 
 ```powershell
-python -m pytest tests/test_architecture_contract.py tests/test_subtractive_contract_polish.py tests/test_package_byte_parity.py tests/test_operator_summary.py tests/test_config_quality_contract.py -q -p no:cacheprovider
+python -m pytest tests/test_architecture_contract.py tests/test_subtractive_contract_polish.py tests/test_package_byte_parity.py tests/test_operator_summary.py tests/test_config_quality_contract.py tests/test_config_quality_inputs.py tests/test_config_quality_checks.py -q -p no:cacheprovider
+python -m pytest tests/test_contract_registry_adoption.py tests/test_check_contract_guardrails.py tests/test_operator_summary_architecture.py tests/test_operator_summary_inputs.py tests/test_operator_status.py tests/test_operator_diagnostics.py -q -p no:cacheprovider
 python -m ruff check --no-cache src tests scripts
 git diff --check
 ```
 
-Expected: no alias output, no forbidden dependency edge, byte parity green, lint clean.
+Expected: no alias output, no forbidden dependency edge, 878 deterministic
+audited artifacts, fresh canonical-owner SHA256 values matching the independent
+60-value pre-removal baseline, lint clean.
 
 - [ ] **Step 6: Commit**
 
@@ -1109,12 +1132,12 @@ git push origin main
 
 ## Package Architecture Acceptance Gate
 
-- [ ] Generate all twelve audited package models twice and compare `(relative_path, sha256)` tuples.
-- [ ] Confirm the registry defines one normal apply authority and all runtime/report classifications.
-- [ ] Confirm `python -O` preserves every correctness gate.
-- [ ] Confirm validators operate against an in-memory `PackageView`.
-- [ ] Confirm the CLI, compiler, quality checks, renderer, and publisher dependency direction passes the AST architecture test.
-- [ ] Confirm no removed alias or dead module appears in production code or a generated package.
+- [x] Generate all twelve audited package models twice and compare `(relative_path, sha256)` tuples.
+- [x] Confirm the registry defines one normal apply authority and all runtime/report classifications.
+- [x] Confirm `python -O` preserves every correctness gate.
+- [x] Confirm validators operate against an in-memory `PackageView`.
+- [x] Confirm the CLI, compiler, quality checks, renderer, and publisher dependency direction passes the AST architecture test.
+- [x] Confirm no removed alias or dead module appears in production code or a generated package.
 - [ ] Run:
 
 ```powershell

@@ -22,7 +22,7 @@ GAP_REPORTS = {
     "target_surface_gap": "reports/per_card_config_readiness_report.json",
     "mechanic_gap": "reports/per_card_config_readiness_report.json",
     "guide_claim_gap": "reports/source_claim_gap_report.json",
-    "globalvalues_thin": "reports/global_values_key_profile_report.json",
+    "globalvalues_thin": "reports/globalvalues_profile.json",
     "cardid_thin": "reports/card_behavior_plan_report.json",
 }
 

@@ -14,9 +14,6 @@ from hsconfig.visionai_registry import (
 )
 
 
-# Compatibility projections for existing diagnostics and sentinel imports.
-KNOWN_DIAGNOSTIC_REPORT_FILES = DIAGNOSTIC_REPORT_PATHS
-KNOWN_RESEARCH_REPORT_FILES = RESEARCH_REPORT_PATHS
 _HISTORICAL_SYNTHETIC_CARDID_DIAGNOSTIC_PATHS = frozenset(
     {"CustomConfig/discover_deck/DISCOVER_CARD.json"}
 )
@@ -197,7 +194,7 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
 
 
 def _known_diagnostic_report(path: str) -> bool:
-    return path in KNOWN_DIAGNOSTIC_REPORT_FILES or path in KNOWN_RESEARCH_REPORT_FILES
+    return path in DIAGNOSTIC_REPORT_PATHS or path in RESEARCH_REPORT_PATHS
 
 
 def _legacy_non_normal_surface(path: str) -> str | None:

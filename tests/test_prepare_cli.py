@@ -361,9 +361,7 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(
     guide_bundle = json.loads(
         (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
     )
-    source_index = json.loads(
-        (reports / "source_evidence_index.json").read_text(encoding="utf-8")
-    )
+    source_index = guide_bundle["source_evidence_index"]
     unsupported = json.loads(
         (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
     )
@@ -1222,21 +1220,16 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
-    key_profile_report = json.loads(
-        (reports / "global_values_key_profile_report.json").read_text(encoding="utf-8")
-    )
+    key_profile_report = globalvalues_profile
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
-    card_behavior_suppressions = json.loads(
-        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
-    )
+    card_behavior_suppressions = card_behavior["suppressed"]
     allowed = {row["key"] for row in authority["allowed_step1_overlays"]}
 
     assert code == 0
     assert authority["posture"] == "baseline"
     assert allowed == {"baseline"}
-    assert key_profile_report == globalvalues_profile
     assert key_profile_report["schema_version"] == 2
     assert key_profile_report["status"] in {
         "baseline_confirmed",
@@ -1254,7 +1247,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()
-    assert (reports / "global_values_key_profile_report.json").exists()
+    assert (reports / "globalvalues_profile.json").exists()
     assert card_behavior_suppressions == card_behavior.get("suppressed", [])
 
 
@@ -1674,9 +1667,7 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
-    suppressions = json.loads(
-        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
-    )
+    suppressions = card_behavior["suppressed"]
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -1980,9 +1971,7 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
-    suppressions = json.loads(
-        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
-    )
+    suppressions = card_behavior["suppressed"]
     resolved_config = json.loads(
         (package / "CustomConfig" / "discover_split_deck" / "EX1_005.json").read_text(
             encoding="utf-8"

@@ -17,6 +17,43 @@ from hsconfig.surface_intent import build_surface_intent
 
 LEGACY_SURFACES = {"Presume.json", "Concede.json", "CardBehavior.json"}
 
+REMOVED_REPORT_ALIASES = frozenset(
+    {
+        "reports/global_values_key_profile_report.json",
+        "reports/global_values_blocked_changes.json",
+        "reports/card_behavior_suppression_report.json",
+        "reports/combo_suppression_report.json",
+        "reports/source_evidence_index.json",
+    }
+)
+
+CANONICAL_REPORT_OWNERS = frozenset(
+    {
+        "reports/globalvalues_profile.json",
+        "reports/global_values_authority_matrix.json",
+        "reports/card_behavior_plan_report.json",
+        "reports/combo_plan_report.json",
+        "reports/guide_claim_bundle.json",
+    }
+)
+
+DEAD_ARCHITECTURE_MODULES = (
+    "compile_optional_surfaces",
+    "matrix_closure",
+    "matrix_visibility",
+    "source_depth_closure_index",
+)
+
+ACTIVE_CODE_ROOTS = (
+    Path("src"),
+    Path("tests"),
+    Path("scripts"),
+)
+ACTIVE_DOC_ROOTS = (
+    Path("docs/operator"),
+    Path(".agents/skills/hsconfig"),
+)
+NEGATIVE_CONTRACT_PATH = Path(__file__).resolve()
 
 ACTIVE_DOC_PATHS = [
     Path("docs/operator/README.md"),
@@ -26,6 +63,26 @@ ACTIVE_DOC_PATHS = [
     Path(".agents/skills/hsconfig/references/workflow.md"),
     Path(".agents/skills/hsconfig/references/visionai-surfaces.md"),
 ]
+
+def _active_python_consumers() -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            path
+            for root in ACTIVE_CODE_ROOTS
+            for path in root.rglob("*.py")
+            if path.resolve() != NEGATIVE_CONTRACT_PATH
+        )
+    )
+
+
+def _active_markdown_documents() -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            path
+            for root in ACTIVE_DOC_ROOTS
+            for path in root.rglob("*.md")
+        )
+    )
 
 
 def test_active_docs_describe_legacy_surfaces_as_non_normal_only():
@@ -132,6 +189,71 @@ def test_output_ownership_manifest_classifies_every_generated_file():
     assert runtime_rows["CustomConfig/deck/Mulligan.json"]["runtime_surface"] == "Mulligan.json"
     assert runtime_rows["CustomConfig/deck/SW_448.json"]["runtime_surface"] == "CARDID.json"
     assert runtime_rows["CustomConfig/deck/Combo.json"]["runtime_surface"] == "Combo.json"
+
+
+def test_compiler_emits_only_canonical_report_owners(tmp_path: Path):
+    from hsconfig.package_compiler import compile_package
+    from tests.helpers.audited_package_request import audited_request
+
+    compiled = compile_package(audited_request(tmp_path, "ShadowPriest"))
+    report_paths = {
+        projection.relative_path for projection in compiled.json_projections
+    }
+
+    assert report_paths.isdisjoint(REMOVED_REPORT_ALIASES)
+    assert CANONICAL_REPORT_OWNERS <= report_paths
+
+
+def test_removed_report_aliases_are_not_registered_or_in_active_docs():
+    from hsconfig.visionai_registry import REPORT_REGISTRY
+
+    assert set(REPORT_REGISTRY).isdisjoint(REMOVED_REPORT_ALIASES)
+    stale_consumers = {
+        str(path): sorted(
+            alias
+            for alias in REMOVED_REPORT_ALIASES
+            if alias in path.read_text(encoding="utf-8")
+        )
+        for path in _active_python_consumers()
+    }
+    assert stale_consumers == {
+        path: [] for path in stale_consumers
+    }
+    active_docs = _active_markdown_documents()
+    stale_docs = {
+        str(path): sorted(
+            alias
+            for alias in REMOVED_REPORT_ALIASES
+            if alias.rsplit("/", 1)[-1] in path.read_text(encoding="utf-8")
+        )
+        for path in active_docs
+    }
+    assert stale_docs == {
+        str(path): [] for path in active_docs
+    }
+
+
+def test_dead_architecture_modules_have_no_files_or_active_consumers():
+    module_paths = {
+        name: Path(f"src/hsconfig/{name}.py")
+        for name in DEAD_ARCHITECTURE_MODULES
+    }
+
+    assert {
+        name: path.exists() for name, path in module_paths.items()
+    } == {name: False for name in DEAD_ARCHITECTURE_MODULES}
+    stale_consumers = {
+        str(path): sorted(
+            module
+            for module in DEAD_ARCHITECTURE_MODULES
+            if module in path.read_text(encoding="utf-8")
+        )
+        for path in _active_python_consumers()
+    }
+
+    assert stale_consumers == {
+        path: [] for path in stale_consumers
+    }
 
 
 def test_output_ownership_manifest_marks_unknown_report_unclassified():
@@ -250,6 +372,8 @@ def test_prepared_package_keeps_operator_manifest_and_emitted_files_in_sync(
     manifest_files = {row["file"] for row in manifest["files"]}
 
     assert code == 0
+    assert emitted_files.isdisjoint(REMOVED_REPORT_ALIASES)
+    assert CANONICAL_REPORT_OWNERS <= emitted_files
     assert predicted_files == emitted_files
     assert manifest_files == emitted_files
     assert {

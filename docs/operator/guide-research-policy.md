@@ -587,7 +587,7 @@ Combo timing support:
 GlobalValues key authority:
 
 - `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
-- `global_values_key_profile_report.json` records every key with `authority_category` and `board_value_component`.
+- `globalvalues_profile.json` records every key with `authority_category` and `board_value_component`.
 - Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
 - `globalvalue_numeric_tuning` is a valid source claim kind for explicit numeric GlobalValues recommendations. It is report-visible but Step1 runtime-blocked with `requires_runtime_evidence` until HSTuner or another runtime-evidence workflow owns the change.
 - `copy_baseline` keys are copied and profiled, not tuned.
@@ -712,7 +712,7 @@ Use `source_to_runtime_explainability.json` as the primary card-readable repair 
   `imported_claims`, `imported_rows`, and `imported_source_receipts` keep their
   input visible with `runtime_gate_impact=none`; it is never source or apply
   authority.
-- `source_evidence_index.json`: source-level summary.
+- `guide_claim_bundle.json`: canonical guide/source bundle, including the source-level evidence index.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
 - `unsupported_claims_report.json`: rejected source claims with reasons.
 - `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.

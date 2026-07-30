@@ -1042,7 +1042,7 @@ def _surface_ledger_next_report(surface: object, status: str) -> str:
         return report_spec("reports/mulligan_plan_report.json").relative_path
     if surface == "globalvalues":
         return report_spec(
-            "reports/global_values_key_profile_report.json"
+            "reports/globalvalues_profile.json"
         ).relative_path
     if surface == "cardid_behavior":
         return report_spec("reports/card_behavior_plan_report.json").relative_path

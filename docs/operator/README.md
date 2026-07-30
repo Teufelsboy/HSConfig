@@ -119,7 +119,7 @@ cannot authorize a write.
 
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
-Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
+Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in the `suppressed` rows of `card_behavior_plan_report.json`.
 
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 

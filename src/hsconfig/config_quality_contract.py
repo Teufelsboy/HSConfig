@@ -1,4 +1,4 @@
-"""Compatibility facade for package-quality diagnostics."""
+"""PackageView-backed entry point for package-quality diagnostics."""
 
 from __future__ import annotations
 

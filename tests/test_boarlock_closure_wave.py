@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from hsconfig.source_claim_compiler import compile_source_search_records
-from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
 
@@ -54,71 +53,6 @@ def test_boarlock_unordered_combo_section_does_not_compile_a_sequence():
         for claim in payload["records"][0]["claims"]
         if claim["claim_kind"] == "combo_sequence"
     ] == []
-
-
-def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
-    matrix = {
-        "decks": [
-            {
-                "deck_name": "Boarlock",
-                "fixture_stage": "source_informed_valid_fixture",
-                "strongness_visibility": {
-                    "first_strongness_gap": "needs_mulligan_claim_for_fracking",
-                    "source_informed_apply_readiness": "blocked",
-                    "source_informed_blocking_reasons": [
-                        "unsupported_conditions_present",
-                    ],
-                    "closure_state": "source_informed_blocked",
-                    "closure_priority": 1,
-                    "operator_action": "preserve_source_informed_with_explicit_stop_condition",
-                    "stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable",
-                },
-            },
-            {
-                "deck_name": "Kingslayer",
-                "fixture_stage": "source_informed_valid_fixture",
-                "strongness_visibility": {
-                    "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
-                    "source_informed_apply_readiness": "blocked",
-                    "source_informed_blocking_reasons": [
-                        "unsupported_conditions_present",
-                    ],
-                    "closure_state": "source_informed_blocked",
-                    "closure_priority": 2,
-                    "operator_action": "preserve_source_informed_with_explicit_stop_condition",
-                    "stop_condition": "exact_kingslayer_quick_pick_mulligan_source_unavailable",
-                },
-            },
-        ]
-    }
-
-    report = build_source_depth_closure_index(matrix, {})
-
-    assert report["summary"]["next_closure_target"] == "Boarlock"
-    assert report["summary"]["closure_sequence"] == ["Boarlock", "Kingslayer"]
-    assert report["summary"]["preserved_source_informed_targets"] == [
-        "Boarlock",
-        "Kingslayer",
-    ]
-    assert report["summary"]["next_actionable_closure_target"] is None
-
-    boarlock = report["decks"]["Boarlock"]
-    assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
-    assert boarlock["closure_blocker_stack"] == [
-        "unsupported_conditions_present",
-    ]
-    assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
-    assert boarlock["stop_condition_reason"] == (
-        "source-informed row has hard blockers and cannot be promoted or applied as strong"
-    )
-    assert boarlock["recommended_next_target"] == "Boarlock"
-
-    kingslayer = report["decks"]["Kingslayer"]
-    assert kingslayer["closure_decision"] == "preserve_source_informed_until_blockers_close"
-    assert kingslayer["stop_condition"] == (
-        "exact_kingslayer_quick_pick_mulligan_source_unavailable"
-    )
-    assert kingslayer["recommended_next_target"] is None
 
 
 def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch):

@@ -453,7 +453,7 @@ def test_semantic_archetype_fixture_is_load_safe_diagnostic_and_not_default_only
     source_audit = json.loads((reports / "source_contract_audit.json").read_text(encoding="utf-8"))
     global_values = json.loads((deck_dir / "GlobalValues.json").read_text(encoding="utf-8"))
     global_values_profile = json.loads(
-        (reports / "global_values_key_profile_report.json").read_text(encoding="utf-8")
+        (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
 
     assert operator["technical_status"] == "VALID_PACKAGE"

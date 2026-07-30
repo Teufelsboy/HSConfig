@@ -32,8 +32,8 @@ from tests.helpers.fixture_prepare import (
 
 
 _SHADOWPRIEST_BASE_OID_SHA256 = (
-    "sha256:be6c80b5e91f7c1c6d584d969f48014f"
-    "edf18f0a3e594d930bce0a1973298ed1"
+    "sha256:028ce659ae0ad214fc77d5efbd310d00"
+    "d566d191f55920789aeeb913a453a53f"
 )
 _OPERATOR_MODULES = (
     "hsconfig.operator_integrity",
@@ -44,8 +44,8 @@ _OPERATOR_MODULES = (
     "hsconfig.operator_summary",
 )
 _EMPTY_VALID_SUMMARY_SHA256 = (
-    "sha256:5c30bec3d7f0e3dc2a1afaf76987f50c"
-    "c581617e2612f2077b11eeec2b4b2219"
+    "sha256:b33278befd0aac8678539e4c6c5f5ef"
+    "c2bb242df4354f9845c40b908f9405cf1"
 )
 
 

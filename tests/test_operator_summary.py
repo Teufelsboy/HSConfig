@@ -102,10 +102,10 @@ def _strong_candidate_with_lane_counts(lane_counts):
 
 
 _BASE_OID_REPORT_SHA256 = {
-    "valid": "sha256:6ec599fbb62316116e2a18b70f42a984180e9c93094ec90b013ab9f7156eafd1",
-    "warning": "sha256:b43b45cef01eb5a86b53de058be9859dc9c18948e4d1ff45d282b7e88cc7fdfa",
+    "valid": "sha256:39153e25404868337b381206b43753d252e201bbeb656e3774dad8b9436e76d5",
+    "warning": "sha256:4fa038190e954d8a370ca6424b0d8bee7e52c0ff4ea4265b1a88b6857d8b27de",
     "technical_invalid": "sha256:c1e2c367cdaa67b1a9d3a1c6bbf200561438e155ff90d962c866757df50a37e6",
-    "source_acquisition_blocked": "sha256:411ffe8466e2089c0770cad2753257cfc39d1eb02cfdecb8dcdde0251e0fbd0b",
+    "source_acquisition_blocked": "sha256:ea2d4eca428d7027b3660f26b999edeb2c9438cae8f9719e736357be9d474f64",
 }
 
 

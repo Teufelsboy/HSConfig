@@ -679,7 +679,9 @@ def _prepare_deck_with_source_documents(
     coverage = read_fixture_json(reports / "claim_coverage_report.json")
     source_gap = read_fixture_json(reports / "source_claim_gap_report.json")
     strong_promotion = read_fixture_json(reports / "strong_promotion_report.json")
-    source_evidence_index = read_fixture_json(reports / "source_evidence_index.json")
+    source_evidence_index = read_fixture_json(
+        reports / "guide_claim_bundle.json"
+    )["source_evidence_index"]
     config_root = out / "CustomConfig"
     generated_files = sorted(path.name for path in config_root.rglob("*.json"))
     return {

@@ -243,7 +243,7 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
     deck_dir = out / "CustomConfig" / "linked_combo"
     reports = out / "reports"
     card_behavior = read_json(reports / "card_behavior_plan_report.json")
-    suppression = read_json(reports / "card_behavior_suppression_report.json")
+    suppression = card_behavior["suppressed"]
     source_audit = read_json(reports / "source_contract_audit.json")
     discover = read_json(deck_dir / "EX1_001.json")
 

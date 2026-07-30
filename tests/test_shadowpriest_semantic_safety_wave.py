@@ -553,7 +553,7 @@ def test_shadowpriest_package_identity_and_globalvalues_are_exact(package):
     validation = _report(package, "validation_report.json")
     baseline = _report(package, "globalvalues_baseline.json")
     baseline_receipt = _report(package, "globalvalues_baseline_receipt.json")
-    profile = _report(package, "global_values_key_profile_report.json")
+    profile = _report(package, "globalvalues_profile.json")
     globalvalues = _card(package, "GlobalValues")
     deck_dir = package / "CustomConfig" / "shadowpriest"
 
@@ -672,7 +672,7 @@ def test_raw_roster_proof_rejects_count_type_drift(package, mutated_count):
 
 def test_globalvalues_literal_proof_rejects_same_size_key_replacement(package):
     baseline = _report(package, "globalvalues_baseline.json")
-    profile = _report(package, "global_values_key_profile_report.json")
+    profile = _report(package, "globalvalues_profile.json")
     globalvalues = _card(package, "GlobalValues")
     replaced_baseline_keys = set(baseline)
     replaced_baseline_keys.remove("GlobalCharge")

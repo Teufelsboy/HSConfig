@@ -52,7 +52,7 @@ runtime behavior. Generic generated `per-card <CARDID>.json` fallback files stay
 do not prove deep card-specific lowering.
 
 If a claim cannot be lowered safely, keep it in
-`card_behavior_suppression_report.json` instead of inventing unsupported runtime
+the `suppressed` rows of `card_behavior_plan_report.json` instead of inventing unsupported runtime
 syntax.
 
 Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
@@ -177,6 +177,6 @@ Load safety does not prove in-client optimality. `in_client_behavior` remains
 
 `choose_one_choice` may lower to `OnChooseOneCardBonus` only when the selected option card identity is resolved from source evidence and linked entity metadata. HSConfig keeps the condition as `*` unless the source document supplies a documented runtime condition.
 
-Unresolved option identity must stay visible in `card_behavior_suppression_report.json` with `reason=unresolved_option_identity`; do not emit guessed choice rows.
+Unresolved option identity must stay visible in the `suppressed` rows of `card_behavior_plan_report.json` with `reason=unresolved_option_identity`; do not emit guessed choice rows.
 
 `choose_one_choice` lowers to `choose_one` and is identity-gated direct. It may emit `OnChooseOneCardBonus` only when option identity is source-backed. Generic spell targets, minion positioning, repeated location activation, secret timing, and random generated-entity pools stay warning-only unless a documented card-specific VisionAI surface is added.

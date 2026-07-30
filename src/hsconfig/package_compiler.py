@@ -125,7 +125,6 @@ _RESOLUTION_PROJECTION_PATHS = frozenset(
         "reports/identity_graph_report.json",
         "reports/input_manifest.json",
         "reports/semantic_enrichment_report.json",
-        "reports/source_evidence_index.json",
         "reports/source_evidence_verification_report.json",
         "reports/unsupported_claims_report.json",
     }
@@ -146,15 +145,11 @@ _RESEARCH_PROJECTION_PATHS = frozenset(
 _COMPILER_PROJECTION_PATHS = frozenset(
     {
         "reports/card_behavior_plan_report.json",
-        "reports/card_behavior_suppression_report.json",
         "reports/claim_conflict_report.json",
         "reports/combo_plan_report.json",
-        "reports/combo_suppression_report.json",
         "reports/disposition_ledger.json",
         "reports/gameplan_contract.json",
         "reports/global_values_authority_matrix.json",
-        "reports/global_values_blocked_changes.json",
-        "reports/global_values_key_profile_report.json",
         "reports/globalvalues_baseline.json",
         "reports/globalvalues_baseline_receipt.json",
         "reports/globalvalues_decision_ledger.json",
@@ -616,14 +611,7 @@ def _c3_projections(
         "reports/card_behavior_plan_report.json": state[
             "card_behavior_plan"
         ],
-        "reports/card_behavior_suppression_report.json": state[
-            "card_behavior_plan"
-        ].get("suppressed", []),
         "reports/combo_plan_report.json": state["combo_plan"],
-        "reports/combo_suppression_report.json": state["combo_plan"].get(
-            "suppressed",
-            [],
-        ),
         "reports/global_values_authority_matrix.json": state[
             "global_values_authority_matrix"
         ],
@@ -1336,7 +1324,6 @@ def _all_json_projections(**values: Any) -> tuple[NamedJsonProjection, ...]:
         "reports/identity_gap_report.json": (ProjectionOwner.RESOLUTION, state["identity_gap_report"]),
         "reports/source_evidence_verification_report.json": (ProjectionOwner.RESOLUTION, state["source_evidence_report"]),
         "reports/guide_claim_bundle.json": (ProjectionOwner.RESOLUTION, state["guide_claim_bundle"]),
-        "reports/source_evidence_index.json": (ProjectionOwner.RESOLUTION, state["guide_claim_bundle"]["source_evidence_index"]),
         "reports/claim_coverage_report.json": (ProjectionOwner.RESOLUTION, {**state["guide_claim_bundle"].get("coverage", {}), **state["guide_claim_bundle"].get("claim_coverage_report", {})}),
         "reports/claim_conflict_report.json": (ProjectionOwner.PACKAGE_COMPILER, state["source_claim_conflict_report"]),
         "reports/unsupported_claims_report.json": (ProjectionOwner.RESOLUTION, state["guide_claim_bundle"]["unsupported_claims"]),
@@ -1344,20 +1331,16 @@ def _all_json_projections(**values: Any) -> tuple[NamedJsonProjection, ...]:
         "reports/surface_intent.json": (ProjectionOwner.PACKAGE_COMPILER, values["surface_intent"]),
         "reports/mulligan_plan_report.json": (ProjectionOwner.PACKAGE_COMPILER, state["mulligan_plan"]),
         "reports/card_behavior_plan_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["card_plan"]),
-        "reports/card_behavior_suppression_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["card_plan"].get("suppressed", [])),
         "reports/combo_plan_report.json": (ProjectionOwner.PACKAGE_COMPILER, state["combo_plan"]),
-        "reports/combo_suppression_report.json": (ProjectionOwner.PACKAGE_COMPILER, state["combo_plan"].get("suppressed", [])),
         "reports/global_values_authority_matrix.json": (ProjectionOwner.PACKAGE_COMPILER, state["global_values_authority_matrix"]),
         "reports/per_card_config_readiness_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["readiness"]),
         "reports/guide_source_depth_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["source_depth"]),
         "reports/source_contract_audit.json": (ProjectionOwner.PACKAGE_COMPILER, values["source_audit"]),
         "reports/source_claim_gap_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["gap"]),
         "reports/source_to_runtime_explainability.json": (ProjectionOwner.PACKAGE_COMPILER, values["explainability"]),
-        "reports/global_values_blocked_changes.json": (ProjectionOwner.PACKAGE_COMPILER, state["global_values_authority_matrix"]["blocked_until_runtime_evidence"]),
         "reports/globalvalues_baseline.json": (ProjectionOwner.PACKAGE_COMPILER, values["baseline"]),
         "reports/globalvalues_baseline_receipt.json": (ProjectionOwner.PACKAGE_COMPILER, state["globalvalues_baseline_receipt"]),
         "reports/globalvalues_profile.json": (ProjectionOwner.PACKAGE_COMPILER, values["globalvalues"]["profile"]),
-        "reports/global_values_key_profile_report.json": (ProjectionOwner.PACKAGE_COMPILER, values["globalvalues"]["profile"]),
         "reports/source_acquisition_closure.json": (ProjectionOwner.PACKAGE_COMPILER, values["acquisition_report"]),
         "reports/globalvalues_decision_ledger.json": (ProjectionOwner.PACKAGE_COMPILER, globalvalues_decision_report_document(values["globalvalues_ledger"])),
         "reports/disposition_ledger.json": (ProjectionOwner.PACKAGE_COMPILER, disposition_ledger_document(values["disposition"])),

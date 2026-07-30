@@ -455,7 +455,7 @@ def test_guide_policy_documents_source_depth_contract():
         "BeforePlayCardBonus",
         "OnDiscoverCardBonus",
         "timing_kind",
-        "global_values_key_profile_report.json",
+        "globalvalues_profile.json",
         "authority_category",
     }
 

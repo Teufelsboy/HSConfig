@@ -7,8 +7,6 @@ from typing import Any
 from hsconfig.config_usefulness import EXPECTED_RUNTIME_SURFACES
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import (
-    KNOWN_DIAGNOSTIC_REPORT_FILES,
-    KNOWN_RESEARCH_REPORT_FILES,
     build_output_ownership_manifest,
 )
 from hsconfig.report_ownership import build_report_ownership
@@ -18,8 +16,10 @@ from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 from hsconfig.visionai_registry import (
     CARDID_SURFACE_FAMILY,
+    DIAGNOSTIC_REPORT_PATHS,
     NORMAL_APPLY_AUTHORITY,
     NORMAL_RUNTIME_SURFACES,
+    RESEARCH_REPORT_PATHS,
 )
 
 
@@ -55,7 +55,7 @@ CRITICAL_CLAIM_KINDS = (
     "archetype",
 )
 
-EXPECTED_RESEARCH_REPORT_FILES = tuple(sorted(KNOWN_RESEARCH_REPORT_FILES))
+EXPECTED_RESEARCH_REPORT_FILES = tuple(sorted(RESEARCH_REPORT_PATHS))
 EXPECTED_RUNTIME_SURFACE_FILES = tuple(
     f"CustomConfig/deck/{file_name}"
     for file_name in sorted(NORMAL_RUNTIME_SURFACES)
@@ -67,7 +67,7 @@ EXPECTED_EMITTED_PACKAGE_FILES = tuple(
         {
             *EXPECTED_RUNTIME_SURFACE_FILES,
             *EXPECTED_RESEARCH_REPORT_FILES,
-            *KNOWN_DIAGNOSTIC_REPORT_FILES,
+            *DIAGNOSTIC_REPORT_PATHS,
             *(row["file"] for row in build_report_ownership()),
         }
     )

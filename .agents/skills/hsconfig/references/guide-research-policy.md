@@ -363,7 +363,7 @@ Combo timing support:
 GlobalValues key authority:
 
 - `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
-- `global_values_key_profile_report.json` records every key with `authority_category` and `board_value_component`.
+- `globalvalues_profile.json` records every key with `authority_category` and `board_value_component`.
 - Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
 - `globalvalue_numeric_tuning` is a valid source claim kind for explicit numeric GlobalValues recommendations. It is report-visible but Step1 runtime-blocked with `requires_runtime_evidence` until HSTuner or another runtime-evidence workflow owns the change.
 - `copy_baseline` keys are copied and profiled, not tuned.

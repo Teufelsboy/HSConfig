@@ -1066,9 +1066,7 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     combo_plan = json.loads(
         (reports / "combo_plan_report.json").read_text(encoding="utf-8")
     )
-    combo_suppressions = json.loads(
-        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
-    )
+    combo_suppressions = combo_plan["suppressed"]
     source_contract_audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
@@ -2652,9 +2650,7 @@ def test_build_claims_json_timed_combo_cannot_mint_combo_authority(
     combo_plan = json.loads(
         (reports / "combo_plan_report.json").read_text(encoding="utf-8")
     )
-    combo_suppressions = json.loads(
-        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
-    )
+    combo_suppressions = combo_plan["suppressed"]
     source_contract_audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )

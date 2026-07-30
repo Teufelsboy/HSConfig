@@ -81,10 +81,10 @@ def test_all_audited_artifact_plans_equal_the_frozen_fixture(
             )
         )
         assert actual == expected, deck_name
-        assert 77 <= len(actual) <= 79
+        assert 72 <= len(actual) <= 74
         assert not any(path.endswith("/Combo.json") for path in actual)
         total += len(actual)
-    assert total == 938
+    assert total == 878
 
 
 def test_compiled_and_model_authority_graph_rejects_low_level_rebinding(
