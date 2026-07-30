@@ -16,11 +16,11 @@ from hsconfig.package_render_authority import RenderFaultPoint
 from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
-# Extracted from the f83248f package builder; see the Task 12 report for the
-# in-memory git-show oracle method and path normalization.
-EXPECTED_PACKAGE_FILE_COUNT = 61
+# The f83248f in-memory git-show oracle originally contained 61 files; Task 10
+# removed five duplicate report aliases while preserving their canonical owners.
+EXPECTED_PACKAGE_FILE_COUNT = 56
 EXPECTED_PACKAGE_TREE_DIGEST = (
-    "sha256:ac3abdc38938096053e10e9db2bb83feb8ad77a84886f4d8bbe1656342906bc1"
+    "sha256:6607754e7d6a90ac429ff1bfcd5ffbcea4a2a06d7fb9f3427c2a6ed846a0637b"
 )
 PRE_RUN_REPORT_PATHS = frozenset(
     {
@@ -247,23 +247,23 @@ def test_package_stage_digests_preserve_public_payload_and_artifact_tree(
             ),
             (
                 "normalized_source",
-                "sha256:f30a6fd97a42810a0c80f7881378dceabee32b0c8d13a7ecef80fc00efa14fe6",
+                "sha256:34839d89a3e1544dfcf390c5bfd463d602f8a163695cf066be20358d213583c7",
             ),
             (
                 "claim_surfaces",
-                "sha256:bee37c54145068ef9c2ecce01fb0ec034ea3cb6be02f87af8a0d8028f4b8ba87",
+                "sha256:35f80c9e7496d610b92fa11aba59bd1ba376bc2b9136799f66a7806b07afaff0",
             ),
             (
                 "lowered_runtime",
-                "sha256:6264c42a915cc8cba58d1fb53d020af39abcfb3cd152f750da65d0f1a2db110c",
+                "sha256:3112e22398fe9633a6bcc3e3236f702dc67b55f510cfb6593eeaae33b1d38a67",
             ),
             (
                 "validated_authority",
-                "sha256:9fee5005f89efa515f2f1db89d999751245c456105238f707b74f6564343f340",
+                "sha256:0d168da2d984153f981f40d2e9c7e332bb38d92b8a5b6c0b53534c181c2f0bba",
             ),
             (
                 "artifact_writing",
-                "sha256:804d29b73de14db644332d7c5307f2a614c99a1e6102b4327f3cb9e7ebe7efa0",
+                "sha256:e4fbabc6bb50e0731f583fe0495b1dde992f90fec37885c959258452d8b6f143",
             ),
     ]
 
