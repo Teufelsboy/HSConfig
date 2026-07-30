@@ -409,9 +409,23 @@ def test_contract_preflight_checks_source_candidate_plan_visibility(
     }
 
 
-def test_contract_preflight_checks_source_readiness_preview_visibility(
+def test_contract_preflight_reads_preview_from_configure_workflow_producer(
     tmp_path: Path,
 ) -> None:
+    configure_command_text = (
+        Path("src") / "hsconfig" / "commands" / "configure.py"
+    ).read_text(encoding="utf-8")
+    configure_workflow_text = (
+        Path("src") / "hsconfig" / "configure_workflow.py"
+    ).read_text(encoding="utf-8")
+    producer_terms = (
+        "build_source_readiness_preview",
+        '"source_readiness_preview": source_readiness_preview',
+    )
+
+    assert all(term not in configure_command_text for term in producer_terms)
+    assert all(term in configure_workflow_text for term in producer_terms)
+
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
@@ -435,7 +449,7 @@ def test_contract_preflight_checks_source_readiness_preview_visibility(
         "autopilot_report_field": "source_readiness_preview",
         "producer_paths": [
             "src/hsconfig/source_autopilot.py",
-            "src/hsconfig/commands/configure.py",
+            "src/hsconfig/configure_workflow.py",
         ],
         "runtime_apply_authority": "reports/operator_summary.json",
         "source_status_apply_blocking": False,
@@ -481,6 +495,10 @@ def test_contract_preflight_reports_attention_when_source_readiness_preview_drif
     shutil.copy2(
         Path("src") / "hsconfig" / "commands" / "configure.py",
         command_root / "configure.py",
+    )
+    shutil.copy2(
+        Path("src") / "hsconfig" / "configure_workflow.py",
+        source_root / "configure_workflow.py",
     )
 
     workflow_path = target_docs / "operator" / "source-builder-workflow.md"
@@ -534,7 +552,7 @@ def test_source_readiness_preview_visibility_requires_default_only_status_fields
 
     assert _source_readiness_preview_visible(
         preview_without_status,
-        (Path("src") / "hsconfig" / "commands" / "configure.py").read_text(
+        (Path("src") / "hsconfig" / "configure_workflow.py").read_text(
             encoding="utf-8"
         ),
         (Path("src") / "hsconfig" / "source_autopilot.py").read_text(

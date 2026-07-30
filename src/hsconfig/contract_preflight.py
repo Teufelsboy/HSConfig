@@ -531,7 +531,7 @@ def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
 
 def _source_readiness_preview_visible(
     source_readiness_preview_text: str,
-    configure_text: str,
+    configure_workflow_text: str,
     source_autopilot_text: str,
     operator_text: str,
     workflow_text: str,
@@ -574,9 +574,9 @@ def _source_readiness_preview_visible(
         and all(term in workflow_text for term in docs_terms)
         and all(term in source_readiness_preview_text for term in implementation_terms)
         and all(term in source_autopilot_text for term in autopilot_terms)
-        and all(term in configure_text for term in configure_terms)
+        and all(term in configure_workflow_text for term in configure_terms)
         and not any(
-            term in source_autopilot_text or term in configure_text
+            term in source_autopilot_text or term in configure_workflow_text
             for term in forbidden_producer_terms
         )
     )
@@ -595,7 +595,7 @@ def _source_readiness_preview_contract_payload(visible: bool) -> dict[str, objec
         "autopilot_report_field": "source_readiness_preview",
         "producer_paths": [
             "src/hsconfig/source_autopilot.py",
-            "src/hsconfig/commands/configure.py",
+            "src/hsconfig/configure_workflow.py",
         ],
         "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
         "source_status_apply_blocking": False,
@@ -1132,7 +1132,12 @@ def build_contract_preflight(
         root / "src" / "hsconfig" / "source_readiness_preview.py"
     )
     source_autopilot_text = _read(root / "src" / "hsconfig" / "source_autopilot.py")
-    configure_text = _read(root / "src" / "hsconfig" / "commands" / "configure.py")
+    configure_command_text = _read(
+        root / "src" / "hsconfig" / "commands" / "configure.py"
+    )
+    configure_workflow_text = _read(
+        root / "src" / "hsconfig" / "configure_workflow.py"
+    )
     combined = "\n".join(
         [
             skill_text,
@@ -1143,7 +1148,8 @@ def build_contract_preflight(
             source_candidate_plan_text,
             source_readiness_preview_text,
             source_autopilot_text,
-            configure_text,
+            configure_command_text,
+            configure_workflow_text,
         ]
     )
     references_line = _references_line(skill_text)
@@ -1157,7 +1163,7 @@ def build_contract_preflight(
     )
     source_readiness_preview_visible = _source_readiness_preview_visible(
         source_readiness_preview_text,
-        configure_text,
+        configure_workflow_text,
         source_autopilot_text,
         source_builder_workflow_text,
         workflow_text,
