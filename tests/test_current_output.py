@@ -1,22 +1,57 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
+import stat
 import threading
 import time
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from hsconfig.configure_run_model import (
     RenderedConfigureRun,
 )
+import hsconfig.current_output as current_output_module
 from hsconfig.current_output import resolve_current_package
 from hsconfig.output_publisher import publish_configure_run
 from tests.test_output_publisher import (
     rendered_runs_fixture as _rendered_runs_fixture,  # noqa: F401
 )
+
+
+_SYMLINK_UNAVAILABLE_ERRNOS = {
+    errno.EPERM,
+    errno.ENOSYS,
+    errno.ENOTSUP,
+    errno.EOPNOTSUPP,
+}
+_WINDOWS_PRIVILEGE_NOT_HELD = 1314
+
+
+def _make_symlink(
+    target: Path,
+    link: Path,
+    *,
+    target_is_directory: bool,
+) -> None:
+    try:
+        os.symlink(
+            target,
+            link,
+            target_is_directory=target_is_directory,
+        )
+    except OSError as error:
+        if (
+            getattr(error, "winerror", None)
+            == _WINDOWS_PRIVILEGE_NOT_HELD
+            or error.errno in _SYMLINK_UNAVAILABLE_ERRNOS
+        ):
+            pytest.skip(f"symlinks unavailable: {error}")
+        raise
 
 
 def _publish(
@@ -28,12 +63,156 @@ def _publish(
     return output_root, published.package_root
 
 
+def test_symlink_helper_reraises_unexpected_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unexpected = OSError(errno.EIO, "unexpected symlink failure")
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unexpected
+
+    monkeypatch.setattr(os, "symlink", fail_symlink)
+
+    with pytest.raises(OSError) as raised:
+        _make_symlink(
+            tmp_path / "target",
+            tmp_path / "link",
+            target_is_directory=True,
+        )
+
+    assert raised.value is unexpected
+
+
 def test_resolver_returns_only_verified_current_package(
     tmp_path: Path,
     rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
 ) -> None:
     output_root, package_root = _publish(tmp_path, rendered_runs[0])
     assert resolve_current_package(output_root) == package_root
+
+
+def test_windows_resolver_accepts_same_identity_short_path_alias(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows 8.3 path alias regression")
+    import ctypes
+    from ctypes import wintypes
+
+    from hsconfig.package_io import path_identity
+
+    long_parent = tmp_path / "Long Current Output Ancestor For Alias"
+    long_parent.mkdir()
+    get_short_path = ctypes.WinDLL(
+        "kernel32",
+        use_last_error=True,
+    ).GetShortPathNameW
+    get_short_path.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+    )
+    get_short_path.restype = wintypes.DWORD
+    required = get_short_path(str(long_parent), None, 0)
+    if required == 0:
+        pytest.skip("Windows short paths unavailable")
+    buffer = ctypes.create_unicode_buffer(required)
+    written = get_short_path(str(long_parent), buffer, len(buffer))
+    if written == 0 or written >= len(buffer):
+        pytest.skip("Windows short path could not be obtained")
+    alias_parent = Path(buffer.value)
+    if alias_parent.resolve(strict=True) == alias_parent.absolute():
+        pytest.skip("Windows volume did not provide an alternate spelling")
+
+    output_root = alias_parent / "ShadowPriest"
+    published = publish_configure_run(rendered_runs[0], output_root)
+
+    resolved = resolve_current_package(output_root)
+
+    assert path_identity(resolved) == path_identity(
+        published.package_root
+    )
+
+
+def test_same_identity_resolution_rejects_expected_status_from_other_path(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.package_io import require_same_identity_resolution
+
+    expected = tmp_path / "expected"
+    candidate = tmp_path / "candidate"
+    expected.mkdir()
+    candidate.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match="filesystem_path_resolution_changed",
+    ):
+        require_same_identity_resolution(
+            candidate,
+            expected_status=expected.lstat(),
+        )
+
+
+def test_same_identity_resolution_rejects_windows_reparse_attribute(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig.package_io import require_same_identity_resolution
+
+    candidate = tmp_path / "reparse-candidate"
+    reparse_status = SimpleNamespace(
+        st_mode=stat.S_IFDIR,
+        st_dev=1,
+        st_ino=2,
+        st_file_attributes=getattr(
+            stat,
+            "FILE_ATTRIBUTE_REPARSE_POINT",
+            0x0400,
+        ),
+    )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            Path,
+            "lstat",
+            lambda self: reparse_status,
+        )
+        patch.setattr(
+            Path,
+            "resolve",
+            lambda self, strict=False: pytest.fail(
+                "reparse point must be rejected before resolution"
+            ),
+        )
+        with pytest.raises(
+            ValueError,
+            match="filesystem_path_resolution_changed",
+        ):
+            require_same_identity_resolution(candidate)
+
+
+def test_same_identity_resolution_rejects_symlink(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.package_io import require_same_identity_resolution
+
+    target = tmp_path / "target"
+    alias = tmp_path / "alias"
+    target.mkdir()
+    _make_symlink(
+        target,
+        alias,
+        target_is_directory=True,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="filesystem_path_resolution_changed",
+    ):
+        require_same_identity_resolution(alias)
 
 
 @pytest.mark.parametrize(
@@ -150,10 +329,14 @@ def test_resolver_rejects_reparse_revision_root(
     real_root = output_root / "revisions" / "moved-revision"
     revision_root.rename(real_root)
     try:
-        os.symlink(real_root, revision_root, target_is_directory=True)
-    except OSError:
+        _make_symlink(
+            real_root,
+            revision_root,
+            target_is_directory=True,
+        )
+    except pytest.skip.Exception:
         real_root.rename(revision_root)
-        pytest.skip("directory symlinks unavailable")
+        raise
     with pytest.raises(ValueError, match="current_output_invalid"):
         resolve_current_package(output_root)
 
@@ -177,10 +360,11 @@ def test_reconcile_dangling_current_symlink_mutates_nothing(
     output_root, package_root = _publish(tmp_path, rendered_runs[0])
     pointer = output_root / "current.json"
     pointer.unlink()
-    try:
-        os.symlink(tmp_path / "missing-pointer", pointer)
-    except OSError:
-        pytest.skip("file symlinks unavailable")
+    _make_symlink(
+        tmp_path / "missing-pointer",
+        pointer,
+        target_is_directory=False,
+    )
     journals = tuple(
         (output_root / ".publisher" / "transactions").iterdir()
     )
@@ -296,3 +480,167 @@ def test_resolver_holds_publish_lock_for_point_in_time_verification(
     assert not resolver.is_alive()
     assert not publisher.is_alive()
     assert resolved == [old_package]
+
+
+def test_package_input_lease_blocks_publisher_for_entire_consumer_lifetime(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    lease_package_input = getattr(
+        current_output_module,
+        "lease_package_input",
+        None,
+    )
+    assert callable(lease_package_input)
+    output_root, old_package = _publish(tmp_path, rendered_runs[0])
+    publisher_done = threading.Event()
+    published_packages: list[Path] = []
+
+    with lease_package_input(output_root) as lease:
+        publisher = threading.Thread(
+            target=lambda: (
+                published_packages.append(
+                    publish_configure_run(
+                        rendered_runs[1],
+                        output_root,
+                    ).package_root
+                ),
+                publisher_done.set(),
+            )
+        )
+        publisher.start()
+        time.sleep(0.1)
+
+        assert lease.package_root == old_package
+        assert lease.publication is not None
+        assert (
+            lease.content_root_sha256
+            == lease.publication.content_root_sha256
+        )
+        assert not publisher_done.is_set()
+        assert old_package.is_dir()
+
+    publisher.join(20)
+    assert not publisher.is_alive()
+    assert publisher_done.is_set()
+    assert len(published_packages) == 1
+
+
+def test_package_input_lease_preserves_direct_package_compatibility(
+    tmp_path: Path,
+) -> None:
+    lease_package_input = getattr(
+        current_output_module,
+        "lease_package_input",
+        None,
+    )
+    assert callable(lease_package_input)
+    package_root = tmp_path / "04_package"
+    package_root.mkdir()
+
+    with lease_package_input(package_root) as lease:
+        assert lease.package_root == package_root
+        assert lease.publication is None
+        assert lease.content_root_sha256 is None
+        assert lease.output_root is None
+
+
+def test_package_input_lease_rejects_existing_non_plain_candidate(
+    tmp_path: Path,
+) -> None:
+    candidate = tmp_path / "not-a-package-directory"
+    candidate.write_bytes(b"not a directory")
+    leased_as_direct = False
+
+    with pytest.raises(ValueError, match="current_output_invalid"):
+        with current_output_module.lease_package_input(candidate) as lease:
+            leased_as_direct = lease.publication is None
+            raise AssertionError(
+                "existing non-plain candidate was leased as direct"
+            )
+
+    assert leased_as_direct is False
+
+
+def test_package_input_lease_preserves_consumer_exception_when_exit_guard_fails(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+
+    class FailingExitGuard:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def validate(self) -> None:
+            self.calls += 1
+            if self.calls == 3:
+                raise ValueError("lease_guard_changed")
+
+    monkeypatch.setattr(
+        current_output_module,
+        "capture_plain_ancestor_guard",
+        lambda _path: FailingExitGuard(),
+    )
+
+    with pytest.raises(RuntimeError, match="consumer_failure") as captured:
+        with current_output_module.lease_package_input(output_root):
+            raise RuntimeError("consumer_failure")
+
+    assert "lease_guard_changed" in "\n".join(captured.value.__notes__)
+
+
+def test_package_input_lease_rejects_corrupt_output_without_direct_fallback(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    lease_package_input = getattr(
+        current_output_module,
+        "lease_package_input",
+        None,
+    )
+    assert callable(lease_package_input)
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    direct_fallback = output_root / "04_package"
+    direct_fallback.mkdir()
+    (output_root / "current.json").write_bytes(b"{}\n")
+
+    with pytest.raises(ValueError, match="current_output_invalid"):
+        with lease_package_input(output_root):
+            pytest.fail("corrupt output root must never be leased")
+
+
+@pytest.mark.parametrize(
+    "marker_kind",
+    (
+        ".publish.lock",
+        ".PUBLISH.LOCK",
+        ".publisher",
+        ".PUBLISHER",
+        "revisions",
+        "REVISIONS",
+        "CURRENT.JSON",
+    ),
+)
+def test_package_input_lease_treats_any_publication_marker_as_output_root(
+    tmp_path: Path,
+    marker_kind: str,
+) -> None:
+    lease_package_input = getattr(
+        current_output_module,
+        "lease_package_input",
+        None,
+    )
+    assert callable(lease_package_input)
+    candidate = tmp_path / marker_kind.replace(".", "marker")
+    (candidate / "04_package").mkdir(parents=True)
+    marker = candidate / marker_kind
+    if marker_kind.casefold() in {".publisher", "revisions"}:
+        marker.mkdir()
+    else:
+        marker.write_bytes(b"{}\n")
+
+    with pytest.raises(ValueError, match="current_output_invalid"):
+        with lease_package_input(candidate):
+            pytest.fail("publication marker must force output-root handling")

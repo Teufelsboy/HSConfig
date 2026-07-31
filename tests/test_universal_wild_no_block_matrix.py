@@ -5,6 +5,7 @@ import pytest
 
 from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.current_output import resolve_current_package
 from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 from tests.helpers.fixture_prepare import load_archetype_matrix
 from tests.helpers.verified_deck_input import (
@@ -639,29 +640,30 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
             ]
         ) == 0
 
+        package = resolve_current_package(out)
         operator = json.loads(
-            (out / "04_package" / "reports" / "operator_summary.json").read_text(
+            (package / "reports" / "operator_summary.json").read_text(
                 encoding="utf-8"
             )
         )
         source_contract_audit = json.loads(
-            (out / "04_package" / "reports" / "source_contract_audit.json").read_text(
+            (package / "reports" / "source_contract_audit.json").read_text(
                 encoding="utf-8"
             )
         )
         source_to_runtime = json.loads(
             (
-                out / "04_package" / "reports" / "source_to_runtime_explainability.json"
+                package / "reports" / "source_to_runtime_explainability.json"
             ).read_text(encoding="utf-8")
         )
         behavior_plan = json.loads(
             (
-                out / "04_package" / "reports" / "card_behavior_plan_report.json"
+                package / "reports" / "card_behavior_plan_report.json"
             ).read_text(encoding="utf-8")
         )
-        quality = build_config_quality_report(out / "04_package")
+        quality = build_config_quality_report(package)
         deck_dirs = [
-            path for path in (out / "04_package" / "CustomConfig").iterdir() if path.is_dir()
+            path for path in (package / "CustomConfig").iterdir() if path.is_dir()
         ]
         assert len(deck_dirs) == 1
         deck_dir = deck_dirs[0]

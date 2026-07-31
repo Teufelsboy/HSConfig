@@ -14,6 +14,7 @@ from hsconfig.commands.configure import (
     configure_payload,
 )
 from hsconfig.cli_parser import build_parser
+from hsconfig.current_output import resolve_current_package
 from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
@@ -35,6 +36,10 @@ CONFIGURE_FIXTURE_DECK_CODE = deck_code_for_cards(CONFIGURE_FIXTURE_CARDS)
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _current_run_root(output_root: Path) -> Path:
+    return resolve_current_package(output_root).parent
 
 
 def _write_cards_json(path: Path) -> None:
@@ -162,7 +167,10 @@ def test_configure_fetches_card_data_and_writes_intake_counts(tmp_path: Path, mo
         ]
     ) == 0
 
-    report = _read_json(out / "03_research" / "card_data_intake_report.json")
+    run_root = _current_run_root(out)
+    report = _read_json(
+        run_root / "03_research" / "card_data_intake_report.json"
+    )
     assert source_fetches == {"collectible": [10.0], "full": [10.0]}
     assert report["non_blocking"] is True
     assert report["summary"]["deck_cards"] == 1
@@ -193,11 +201,14 @@ def test_configure_json_outputs_single_parseable_payload(tmp_path: Path, monkeyp
     ) == 0
 
     payload = json.loads(capsys.readouterr().out)
+    run_root = _current_run_root(out)
 
     assert payload["status"] == "OK"
-    assert payload["manifest_path"] == str(out / "01_manifest" / "source_research_manifest.json")
-    assert payload["research_path"] == str(out / "03_research")
-    assert payload["package_path"] == str(out / "04_package")
+    assert payload["manifest_path"] == str(
+        run_root / "01_manifest" / "source_research_manifest.json"
+    )
+    assert payload["research_path"] == str(run_root / "03_research")
+    assert payload["package_path"] == str(run_root / "04_package")
     assert payload["apply_performed"] is False
 
 
@@ -265,9 +276,19 @@ def test_configure_uses_local_card_feed_files_without_fetching(
     ) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    report = _read_json(out / "03_research" / "card_data_intake_report.json")
-    research_identity = _read_json(out / "03_research" / "identity_graph_report.json")
-    package_identity = _read_json(out / "04_package" / "reports" / "identity_graph_report.json")
+    run_root = _current_run_root(out)
+    report = _read_json(
+        run_root / "03_research" / "card_data_intake_report.json"
+    )
+    research_identity = _read_json(
+        run_root / "03_research" / "identity_graph_report.json"
+    )
+    package_identity = _read_json(
+        run_root
+        / "04_package"
+        / "reports"
+        / "identity_graph_report.json"
+    )
 
     assert payload["status"] == "OK"
     assert report["summary"]["matched_deck_cards"] == 1
@@ -279,6 +300,7 @@ def test_configure_uses_local_card_feed_files_without_fetching(
 def test_configure_builds_valid_load_safe_package_without_source_evidence(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ):
     _stub_empty_card_fetches(monkeypatch)
 
@@ -300,14 +322,14 @@ def test_configure_builds_valid_load_safe_package_without_source_evidence(
         ]
     ) == 0
 
-    package = out / "04_package"
+    run_root = _current_run_root(out)
+    package = run_root / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
-    summary = _read_json(out / "configure_summary.json")
+    summary = json.loads(capsys.readouterr().out)
 
     assert summary["status"] == "OK"
-    assert summary["package_path"] == str(package)
     for dirname in ("01_manifest", "02_source_documents", "03_research", "04_package"):
-        assert (out / dirname).is_dir()
+        assert (run_root / dirname).is_dir()
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
@@ -351,7 +373,13 @@ def test_configure_exposes_package_stage_digests_without_changing_summary(
     )
 
     assert status == 0
-    assert payload == _read_json(tmp_path / "configure" / "configure_summary.json")
+    persisted = _read_json(
+        _current_run_root(tmp_path / "configure")
+        / "configure_summary.json"
+    )
+    assert payload["status"] == "OK"
+    assert persisted["schema_version"] == 1
+    assert persisted["deck_name"] == "ShadowPriest"
     assert [name for name, _digest in observed_stages] == [
         "verified_deck",
         "normalized_source",
@@ -392,8 +420,13 @@ def test_configure_source_evidence_is_not_reingested_after_drafting(
         ]
     )
 
-    guide_sources = _read_json(out / "03_research" / "guide_sources.json")
-    guide_builder_receipt = _read_json(out / "03_research" / "guide_builder_receipt.json")
+    run_root = _current_run_root(out)
+    guide_sources = _read_json(
+        run_root / "03_research" / "guide_sources.json"
+    )
+    guide_builder_receipt = _read_json(
+        run_root / "03_research" / "guide_builder_receipt.json"
+    )
 
     assert code == 0
     assert guide_sources["summary"]["source_count"] == 1
@@ -424,20 +457,18 @@ def test_configure_malformed_deck_code_writes_failure_summary_without_package(
     )
 
     payload = json.loads(capsys.readouterr().out)
-    summary = _read_json(out / "configure_summary.json")
-
     assert code == 1
     assert payload["status"] == "failed"
     assert payload["stage"] == "source-manifest"
     assert payload["errors"]
-    assert summary == payload
-    assert not (out / "04_package" / "CustomConfig").exists()
+    assert not out.exists()
     assert not (runtime_root / "CustomConfig").exists()
 
 
 def test_configure_apply_uses_existing_apply_command_gate(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ):
     _stub_empty_card_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -478,7 +509,8 @@ def test_configure_apply_uses_existing_apply_command_gate(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = json.loads(capsys.readouterr().out)
+    package = resolve_current_package(out)
 
     assert code == 0
     assert summary["apply_performed"] is True
@@ -486,7 +518,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
     assert summary["runtime_package_match_status"] == "matched"
     assert summary["runtime_package_match"]["status"] == "matched"
     assert captured == {
-        "package": str(out / "04_package"),
+        "package": str(package),
         "runtime_root": str(runtime_root),
         "allow_source_informed": False,
         "fake": False,
@@ -502,6 +534,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
 def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
     tmp_path: Path,
     monkeypatch,
+    capsys,
     receipt: dict[str, object],
 ):
     _stub_empty_card_fetches(monkeypatch)
@@ -532,7 +565,7 @@ def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = json.loads(capsys.readouterr().out)
 
     assert code == 1
     assert summary["status"] == "failed"
@@ -564,7 +597,7 @@ def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, c
     ) == 0
     capsys.readouterr()
 
-    package = out / "04_package"
+    package = resolve_current_package(out)
     operator = _read_json(package / "reports" / "operator_summary.json")
     mechanic_visibility = operator["mechanic_visibility_summary"]
 
@@ -1369,6 +1402,7 @@ def test_compact_config_quality_summary_projects_closure_currentness(
 def test_configure_writes_diagnostic_config_quality_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _stub_empty_card_fetches(monkeypatch)
 
@@ -1409,9 +1443,10 @@ def test_configure_writes_diagnostic_config_quality_summary(
         ]
     ) == 0
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = json.loads(capsys.readouterr().out)
+    package = resolve_current_package(out)
     operator_summary = _read_json(
-        out / "04_package" / "reports" / "operator_summary.json"
+        package / "reports" / "operator_summary.json"
     )
 
     assert summary["config_quality_summary"] == {
@@ -1518,6 +1553,7 @@ def test_configure_writes_diagnostic_config_quality_summary(
 def test_configure_quality_summary_failure_stays_diagnostic_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _stub_empty_card_fetches(monkeypatch)
     apply_calls = []
@@ -1555,7 +1591,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         ]
     ) == 0
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = json.loads(capsys.readouterr().out)
 
     assert summary["config_quality_summary"] == {
         "status": "attention",
@@ -1587,4 +1623,4 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
     )
     assert summary["config_proof_summary"]["forbidden_normal_surfaces_absent"] is None
     assert len(apply_calls) == 1
-    assert apply_calls[0].package == str(out / "04_package")
+    assert apply_calls[0].package == str(resolve_current_package(out))

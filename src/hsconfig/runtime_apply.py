@@ -33,6 +33,7 @@ def plan_apply_package(
     runtime_root: str | Path,
     config_dir: str | None = None,
     apply_gate: dict[str, Any] | None = None,
+    write_package_receipt: bool = True,
 ) -> dict[str, Any]:
     package = Path(package_root)
     _validate_runtime_apply_package(package)
@@ -53,7 +54,8 @@ def plan_apply_package(
         config_dir=deck_dir_name,
         apply_gate=resolved_apply_gate,
     )
-    write_fake_apply_receipt(package, receipt)
+    if write_package_receipt:
+        write_fake_apply_receipt(package, receipt)
     return receipt
 
 
@@ -67,6 +69,7 @@ def apply_package(
     apply_gate: dict[str, Any] | None = None,
     allow_source_informed: bool = False,
     write_history: bool = True,
+    write_package_receipt: bool = True,
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
@@ -98,6 +101,7 @@ def apply_package(
             runtime_root=runtime,
             config_dir=deck_dir_name,
             apply_gate=resolved_apply_gate,
+            write_package_receipt=write_package_receipt,
         )
         fake_verification = verify_fake_apply_receipt(
             package_root=package,
@@ -182,7 +186,11 @@ def apply_package(
                 },
             )
             receipt["write_history_path"] = str(history_path)
-        write_json(package / "reports" / "runtime_apply_receipt.json", receipt)
+        if write_package_receipt:
+            write_json(
+                package / "reports" / "runtime_apply_receipt.json",
+                receipt,
+            )
         return receipt
     except Exception as exc:
         if not mutation_started:
@@ -238,16 +246,17 @@ def apply_package(
                 "runtime_snapshot_before": before_snapshot,
                 "runtime_snapshot_after_rollback": after_rollback_snapshot,
             }
-        try:
-            write_json(
-                package / "reports" / "runtime_apply_receipt.json",
-                failure_payload,
-            )
-        except Exception as receipt_exc:
-            exc.add_note(
-                "runtime apply failure receipt write failed: "
-                f"{receipt_exc}"
-            )
+        if write_package_receipt:
+            try:
+                write_json(
+                    package / "reports" / "runtime_apply_receipt.json",
+                    failure_payload,
+                )
+            except Exception as receipt_exc:
+                exc.add_note(
+                    "runtime apply failure receipt write failed: "
+                    f"{receipt_exc}"
+                )
         try:
             write_runtime_write_history(runtime, failure_payload)
         except Exception as history_exc:

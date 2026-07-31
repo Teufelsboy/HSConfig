@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from hsconfig.atomic_io import ExclusiveFileLock
 from hsconfig.package_io import (
@@ -16,6 +17,7 @@ from hsconfig.package_io import (
     plain_file_status,
     read_file_no_follow,
     require_plain_directory,
+    require_same_identity_resolution,
     snapshot_bounded_filesystem_package,
 )
 from hsconfig.run_manifest import MAX_MANIFEST_BYTES, TreeManifest
@@ -69,6 +71,79 @@ class VerifiedRevision:
     snapshot: BoundedFilesystemPackageView
 
 
+@dataclass(frozen=True, slots=True)
+class PackageInputLease:
+    package_root: Path
+    publication: OutputPublication | None
+    content_root_sha256: str | None
+    output_root: Path | None
+    snapshot: BoundedFilesystemPackageView | None
+
+
+@contextmanager
+def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
+    """Lease a published output root or preserve direct-package compatibility.
+
+    Any publication-layout marker forces strict current-output resolution.
+    The publish lock remains held for the complete lifetime of a published
+    lease so a consumer can validate and read the selected revision safely.
+    """
+
+    candidate = Path(package_input)
+    if not _has_output_layout_marker(candidate):
+        yield PackageInputLease(
+            package_root=candidate,
+            publication=None,
+            content_root_sha256=None,
+            output_root=None,
+            snapshot=None,
+        )
+        return
+
+    try:
+        guard = capture_plain_ancestor_guard(candidate / ".publish.lock")
+        require_plain_directory(candidate)
+        lock_path = candidate / ".publish.lock"
+        if not path_lexists(lock_path):
+            raise ValueError("current_output_invalid")
+        plain_file_status(lock_path)
+    except Exception as error:
+        raise ValueError("current_output_invalid") from error
+
+    with ExclusiveFileLock(lock_path):
+        try:
+            guard.validate()
+            publication, verified = resolve_current_publication_unlocked(
+                candidate
+            )
+            guard.validate()
+        except Exception as error:
+            raise ValueError("current_output_invalid") from error
+        consumer_error: BaseException | None = None
+        try:
+            yield PackageInputLease(
+                package_root=(
+                    candidate / publication.revision / "04_package"
+                ),
+                publication=publication,
+                content_root_sha256=publication.content_root_sha256,
+                output_root=candidate,
+                snapshot=verified.snapshot,
+            )
+        except BaseException as error:
+            consumer_error = error
+            raise
+        finally:
+            try:
+                guard.validate()
+            except Exception as error:
+                if consumer_error is None:
+                    raise
+                consumer_error.add_note(
+                    f"lease exit guard validation failed: {error}"
+                )
+
+
 def resolve_current_package(output_root: Path) -> Path:
     """Return the package selected and verified while holding the publish lock.
 
@@ -77,21 +152,10 @@ def resolve_current_package(output_root: Path) -> Path:
     a later publisher may retire the revision after this function returns.
     """
 
-    root = Path(output_root)
-    guard = capture_plain_ancestor_guard(root / ".publish.lock")
-    require_plain_directory(root)
-    lock_path = root / ".publish.lock"
-    if not path_lexists(lock_path):
-        raise ValueError("current_output_invalid")
-    plain_file_status(lock_path)
-    try:
-        with ExclusiveFileLock(lock_path):
-            guard.validate()
-            publication, _verified = resolve_current_publication_unlocked(root)
-            guard.validate()
-            return root / publication.revision / "04_package"
-    except Exception as error:
-        raise ValueError("current_output_invalid") from error
+    with lease_package_input(Path(output_root)) as lease:
+        if lease.publication is None:
+            raise ValueError("current_output_invalid")
+        return lease.package_root
 
 
 def resolve_current_publication_unlocked(
@@ -114,13 +178,8 @@ def resolve_current_publication_unlocked(
         require_plain_directory(revision_parent)
         revision_root = revision_parent / Path(publication.revision).name
         require_plain_directory(revision_root)
-        if (
-            revision_root.resolve(strict=True)
-            != revision_root.absolute()
-            or revision_root.parent.resolve(strict=True)
-            != revision_parent.absolute()
-        ):
-            raise ValueError("current_revision_containment_invalid")
+        require_same_identity_resolution(revision_parent)
+        require_same_identity_resolution(revision_root)
         verified = snapshot_and_verify_revision(revision_root)
         manifest = verified.manifest
         if (
@@ -210,6 +269,32 @@ def _reject_current_aliases(output_root: Path) -> None:
         raise ValueError("current_output_claim_invalid")
 
 
+def _has_output_layout_marker(candidate: Path) -> bool:
+    if not path_lexists(candidate):
+        return False
+    try:
+        require_plain_directory(candidate)
+    except Exception as error:
+        raise ValueError("current_output_invalid") from error
+    count = 0
+    try:
+        with os.scandir(candidate) as iterator:
+            for entry in iterator:
+                count += 1
+                if count > MAX_OUTPUT_ROOT_ENTRIES:
+                    raise ValueError("output_root_entry_limit")
+                if entry.name.casefold() in {
+                    CURRENT_PATH.casefold(),
+                    ".publish.lock",
+                    ".publisher",
+                    "revisions",
+                }:
+                    return True
+    except OSError as error:
+        raise ValueError("current_output_invalid") from error
+    return False
+
+
 def _unique_json_object(
     pairs: list[tuple[str, Any]],
 ) -> dict[str, Any]:
@@ -232,7 +317,9 @@ def _is_sha256(value: object) -> bool:
 
 __all__ = (
     "OutputPublication",
+    "PackageInputLease",
     "VerifiedRevision",
+    "lease_package_input",
     "output_publication_bytes",
     "parse_output_publication",
     "resolve_current_package",

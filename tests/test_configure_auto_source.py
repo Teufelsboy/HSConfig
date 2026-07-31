@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.deck_identity import build_deck_identity
 from tests.helpers.verified_deck_input import (
     VERIFIED_TEST_CARDS,
@@ -27,6 +28,15 @@ TARGETED_SHADOWPRIEST_CODE = "AAEBAa0GAbv3AwWRD9fOA6P3A633A8SoBgAA"
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_json_stdout(capsys: pytest.CaptureFixture[str]) -> dict:
+    return json.loads(capsys.readouterr().out)
+
+
+def _published_run(out: Path) -> tuple[Path, Path]:
+    package = resolve_current_package(out)
+    return package.parent, package
 
 
 def _write_shadow_cards_json(path: Path) -> None:
@@ -193,9 +203,9 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
     )
 
     assert code == 0
-    package = out / "04_package"
+    run_root, package = _published_run(out)
     autopilot = _read_json(
-        out / "02_source_autopilot" / "source_autopilot_report.json"
+        run_root / "02_source_autopilot" / "source_autopilot_report.json"
     )
     identity = _read_json(package / "reports" / "deck_identity.json")
     report = _read_json(package / "reports" / "mulligan_plan_report.json")
@@ -235,6 +245,7 @@ def test_configure_preserves_explicit_mulligan_source_gap_through_policy_fallbac
 def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulligan(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -278,9 +289,11 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
-    autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
-    package = out / "04_package"
+    summary = _read_json_stdout(capsys)
+    run_root, package = _published_run(out)
+    autopilot_report = _read_json(
+        run_root / "02_source_autopilot" / "source_autopilot_report.json"
+    )
     operator = _read_json(package / "reports" / "operator_summary.json")
     source_closure_receipt = summary["source_closure_receipt"]
     source_evidence_closure = _read_json(
@@ -295,8 +308,10 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
 
     assert code == 0
     assert summary["status"] == "OK"
-    assert summary["source_autopilot_path"] == str(out / "02_source_autopilot")
-    assert summary["source_documents_json"] == str(out / "02_source_autopilot" / "source_documents.json")
+    assert summary["source_autopilot_path"] == str(run_root / "02_source_autopilot")
+    assert summary["source_documents_json"] == str(
+        run_root / "02_source_autopilot" / "source_documents.json"
+    )
     assert autopilot_report["strong_candidate"] is False
     assert autopilot_report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
     assert (
@@ -361,6 +376,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
 def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -407,14 +423,15 @@ def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _read_json_stdout(capsys)
+    run_root, package = _published_run(out)
     autopilot = _read_json(
-        out / "02_source_autopilot" / "source_autopilot_report.json"
+        run_root / "02_source_autopilot" / "source_autopilot_report.json"
     )
     source_documents = _read_json(
-        out / "02_source_autopilot" / "source_documents.json"
+        run_root / "02_source_autopilot" / "source_documents.json"
     )["source_documents"]
-    package_reports = out / "04_package" / "reports"
+    package_reports = package / "reports"
     guide_bundle = _read_json(package_reports / "guide_claim_bundle.json")
     operator = _read_json(package_reports / "operator_summary.json")
 
@@ -473,15 +490,16 @@ def test_configure_propagates_operator_date_to_final_guide_claims(
         ]
     )
 
+    run_root, package = _published_run(out)
     ranked_sources = _read_json(
-        out / "02_source_autopilot" / "ranked_sources.json"
+        run_root / "02_source_autopilot" / "ranked_sources.json"
     )["ranked_sources"]
     source_documents = _read_json(
-        out / "02_source_autopilot" / "source_documents.json"
+        run_root / "02_source_autopilot" / "source_documents.json"
     )["source_documents"]
-    research_sources = _read_json(out / "03_research" / "guide_sources.json")
+    research_sources = _read_json(run_root / "03_research" / "guide_sources.json")
     final_guide_bundle = _read_json(
-        out / "04_package" / "reports" / "guide_claim_bundle.json"
+        package / "reports" / "guide_claim_bundle.json"
     )
     guide_claims = [
         claim
@@ -505,6 +523,7 @@ def test_configure_propagates_operator_date_to_final_guide_claims(
 def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -531,11 +550,13 @@ def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
         ]
     )
 
-    autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
-    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
-    source_closure_receipt = _read_json(out / "configure_summary.json")[
-        "source_closure_receipt"
-    ]
+    summary = _read_json_stdout(capsys)
+    run_root, package = _published_run(out)
+    autopilot_report = _read_json(
+        run_root / "02_source_autopilot" / "source_autopilot_report.json"
+    )
+    operator = _read_json(package / "reports" / "operator_summary.json")
+    source_closure_receipt = summary["source_closure_receipt"]
 
     assert code == 0
     assert autopilot_report["strong_candidate"] is False
@@ -591,8 +612,11 @@ def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_sa
         ]
     )
 
-    autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
-    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+    run_root, package = _published_run(out)
+    autopilot_report = _read_json(
+        run_root / "02_source_autopilot" / "source_autopilot_report.json"
+    )
+    operator = _read_json(package / "reports" / "operator_summary.json")
 
     assert code == 0
     assert autopilot_report["strong_candidate"] is False
@@ -605,6 +629,7 @@ def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_sa
 def test_configure_online_source_uses_registry_when_source_url_is_omitted(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -642,10 +667,15 @@ def test_configure_online_source_uses_registry_when_source_url_is_omitted(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
-    acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
-    autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
-    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+    summary = _read_json_stdout(capsys)
+    run_root, package = _published_run(out)
+    acquisition = _read_json(
+        run_root / "02_source_acquisition" / "source_acquisition_report.json"
+    )
+    autopilot = _read_json(
+        run_root / "03_source_autopilot" / "source_autopilot_report.json"
+    )
+    operator = _read_json(package / "reports" / "operator_summary.json")
 
     assert code == 0
     assert any(
@@ -654,7 +684,7 @@ def test_configure_online_source_uses_registry_when_source_url_is_omitted(
     )
     assert summary["source_urls"] == summary["source_candidate_urls"]
     assert summary["source_candidate_plan_path"] == str(
-        out / "01_manifest" / "source_candidate_plan.json"
+        run_root / "01_manifest" / "source_candidate_plan.json"
     )
     assert summary["source_candidate_plan_summary"]["authority"] == (
         "diagnostic_source_candidate_plan"
@@ -676,6 +706,7 @@ def test_configure_online_source_uses_registry_when_source_url_is_omitted(
 def test_configure_auto_source_requires_source_search_results_json(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -700,9 +731,10 @@ def test_configure_auto_source_requires_source_search_results_json(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _read_json_stdout(capsys)
 
     assert code == 1
+    assert not out.exists()
     assert summary["status"] == "failed"
     assert summary["stage"] == "source-autopilot"
     assert "--source-search-results-json is required when --auto-source is used" in summary[

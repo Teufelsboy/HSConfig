@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import multiprocessing
 import os
@@ -18,6 +19,37 @@ from hsconfig.output_publisher import publish_configure_run, reconcile_output
 from hsconfig.package_assembler import assemble_package
 from hsconfig.package_compiler import compile_package
 from tests.helpers.audited_package_request import audited_request
+
+
+_SYMLINK_UNAVAILABLE_ERRNOS = {
+    errno.EPERM,
+    errno.ENOSYS,
+    errno.ENOTSUP,
+    errno.EOPNOTSUPP,
+}
+_WINDOWS_PRIVILEGE_NOT_HELD = 1314
+
+
+def _make_symlink(
+    target: Path,
+    link: Path,
+    *,
+    target_is_directory: bool,
+) -> None:
+    try:
+        os.symlink(
+            target,
+            link,
+            target_is_directory=target_is_directory,
+        )
+    except OSError as error:
+        if (
+            getattr(error, "winerror", None)
+            == _WINDOWS_PRIVILEGE_NOT_HELD
+            or error.errno in _SYMLINK_UNAVAILABLE_ERRNOS
+        ):
+            pytest.skip(f"symlinks unavailable: {error}")
+        raise
 
 
 def build_rendered_run(
@@ -78,6 +110,65 @@ def rendered_runs_fixture(
     )  # type: ignore[return-value]
 
 
+def test_symlink_helper_reraises_unexpected_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unexpected = OSError(errno.EIO, "unexpected symlink failure")
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unexpected
+
+    monkeypatch.setattr(os, "symlink", fail_symlink)
+
+    with pytest.raises(OSError) as raised:
+        _make_symlink(
+            tmp_path / "target",
+            tmp_path / "link",
+            target_is_directory=True,
+        )
+
+    assert raised.value is unexpected
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="Windows parent-swap setup regression",
+)
+def test_parent_swap_setup_error_cannot_satisfy_production_error_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    unexpected = OSError(errno.EIO, "unexpected symlink setup failure")
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unexpected
+
+    real_rename = Path.rename
+
+    def allow_revisions_swap(
+        source: Path,
+        target: str | os.PathLike[str],
+    ) -> Path:
+        if source.name == "revisions":
+            return Path(target)
+        return real_rename(source, target)
+
+    monkeypatch.setattr(os, "symlink", fail_symlink)
+    monkeypatch.setattr(Path, "rename", allow_revisions_swap)
+
+    with pytest.raises(
+        AssertionError,
+        match="symlink setup did not complete",
+    ):
+        test_staging_root_parent_swap_cannot_create_external_directory(
+            tmp_path,
+            monkeypatch,
+            rendered_runs,
+        )
+
+
 def test_publish_is_content_addressed_current_and_idempotent(
     tmp_path: Path,
     rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
@@ -125,6 +216,54 @@ def test_windows_first_publish_supports_short_long_even_odd_paths(
         assert published.revision_root.is_dir()
         assert published.package_root.is_dir()
         assert reconcile_output(output_root) is not None
+
+
+def test_windows_publish_accepts_same_identity_short_path_alias(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows 8.3 path alias regression")
+    import ctypes
+    from ctypes import wintypes
+
+    import hsconfig.package_io as package_io
+
+    long_parent = tmp_path / "Long Ancestor Directory For Short Path Alias"
+    long_parent.mkdir()
+    get_short_path = ctypes.WinDLL(
+        "kernel32",
+        use_last_error=True,
+    ).GetShortPathNameW
+    get_short_path.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+    )
+    get_short_path.restype = wintypes.DWORD
+    required = get_short_path(str(long_parent), None, 0)
+    if required == 0:
+        pytest.skip("Windows short paths unavailable")
+    buffer = ctypes.create_unicode_buffer(required)
+    written = get_short_path(str(long_parent), buffer, len(buffer))
+    if written == 0 or written >= len(buffer):
+        pytest.skip("Windows short path could not be obtained")
+    alias_parent = Path(buffer.value)
+    if alias_parent.resolve(strict=True) == alias_parent.absolute():
+        pytest.skip("Windows volume did not provide an alternate spelling")
+
+    assert package_io.path_identity(alias_parent) == package_io.path_identity(
+        long_parent
+    )
+
+    output_root = alias_parent / "ShadowPriest"
+    published = publish_configure_run(rendered_runs[0], output_root)
+
+    assert published.revision_root.is_dir()
+    assert package_io.path_identity(output_root) == package_io.path_identity(
+        long_parent / "ShadowPriest"
+    )
+    assert reconcile_output(output_root) is not None
 
 
 def test_two_first_publishers_share_creation_and_one_reuses(
@@ -186,26 +325,33 @@ def test_staging_root_parent_swap_cannot_create_external_directory(
         package_io._create_windows_child_directory_descriptor
     )
     staging_name: str | None = None
+    symlink_setup_completed = False
 
     def swap_then_create(
         parent: package_io.PlainDirectoryMutationGuard,
         name: str,
     ) -> int:
-        nonlocal staging_name
+        nonlocal staging_name, symlink_setup_completed
         if (
             staging_name is None
             and name.startswith(".staging-")
             and parent.path.name == "revisions"
         ):
             staging_name = name
-            parent.path.rename(
-                parent.path.with_name("revisions-owned-moved")
-            )
-            os.symlink(
+            try:
+                parent.path.rename(
+                    parent.path.with_name("revisions-owned-moved")
+                )
+            except PermissionError as error:
+                if getattr(error, "winerror", None) in {5, 32}:
+                    pytest.skip(f"directory swap unavailable: {error}")
+                raise
+            _make_symlink(
                 external,
                 parent.path,
                 target_is_directory=True,
             )
+            symlink_setup_completed = True
         return original_create(parent, name)
 
     monkeypatch.setattr(
@@ -214,9 +360,13 @@ def test_staging_root_parent_swap_cannot_create_external_directory(
         swap_then_create,
     )
 
-    with pytest.raises((OSError, ValueError)):
+    with pytest.raises((OSError, ValueError)) as raised:
         publish_configure_run(rendered_runs[0], output_root)
 
+    assert symlink_setup_completed, (
+        "symlink setup did not complete before "
+        f"{raised.value!r}"
+    )
     assert staging_name is not None
     assert not (external / staging_name).exists()
 
@@ -881,6 +1031,7 @@ def test_journal_temp_parent_swap_cannot_create_external_file(
     original_open = os.open
     original_child_open = package_io._open_windows_child_file_descriptor
     temp_name: str | None = None
+    symlink_setup_completed = False
 
     def swap_then_open(
         path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
@@ -889,18 +1040,24 @@ def test_journal_temp_parent_swap_cannot_create_external_file(
         *,
         dir_fd: int | None = None,
     ) -> int:
-        nonlocal temp_name
+        nonlocal temp_name, symlink_setup_completed
         target = Path(path)
         if temp_name is None and target.name.endswith(".journal.tmp"):
             temp_name = target.name
-            target.parent.rename(
-                target.parent.with_name("transactions-owned-moved")
-            )
-            os.symlink(
+            try:
+                target.parent.rename(
+                    target.parent.with_name("transactions-owned-moved")
+                )
+            except PermissionError as error:
+                if getattr(error, "winerror", None) in {5, 32}:
+                    pytest.skip(f"directory swap unavailable: {error}")
+                raise
+            _make_symlink(
                 external,
                 target.parent,
                 target_is_directory=True,
             )
+            symlink_setup_completed = True
         return original_open(
             path,
             flags,
@@ -914,17 +1071,23 @@ def test_journal_temp_parent_swap_cannot_create_external_file(
         create: bool,
         write: bool,
     ) -> int:
-        nonlocal temp_name
+        nonlocal temp_name, symlink_setup_completed
         if temp_name is None and target.name.endswith(".journal.tmp"):
             temp_name = target.name
-            target.parent.rename(
-                target.parent.with_name("transactions-owned-moved")
-            )
-            os.symlink(
+            try:
+                target.parent.rename(
+                    target.parent.with_name("transactions-owned-moved")
+                )
+            except PermissionError as error:
+                if getattr(error, "winerror", None) in {5, 32}:
+                    pytest.skip(f"directory swap unavailable: {error}")
+                raise
+            _make_symlink(
                 external,
                 target.parent,
                 target_is_directory=True,
             )
+            symlink_setup_completed = True
         return original_child_open(
             target,
             create=create,
@@ -941,6 +1104,7 @@ def test_journal_temp_parent_swap_cannot_create_external_file(
     with pytest.raises((OSError, ValueError)):
         publish_configure_run(rendered_runs[0], output_root)
 
+    assert symlink_setup_completed, "symlink setup did not complete"
     assert temp_name is not None
     assert not (external / temp_name).exists()
 
@@ -990,14 +1154,11 @@ def test_staging_symlink_cannot_write_outside_output_root(
     original = publisher._write_rendered_run
 
     def inject(rendered: RenderedConfigureRun, staging: Path) -> None:
-        try:
-            os.symlink(
-                external,
-                staging / "01_manifest",
-                target_is_directory=True,
-            )
-        except OSError:
-            pytest.skip("directory symlinks unavailable")
+        _make_symlink(
+            external,
+            staging / "01_manifest",
+            target_is_directory=True,
+        )
         original(rendered, staging)
 
     monkeypatch.setattr(publisher, "_write_rendered_run", inject)
@@ -1052,15 +1213,26 @@ def test_staging_parent_swap_cannot_create_external_file(
         "_open_windows_child_file_descriptor",
     )
     swapped = False
+    symlink_setup_completed = False
 
     def swap_parent(target: Path) -> None:
-        nonlocal swapped
+        nonlocal swapped, symlink_setup_completed
         if swapped:
             return
         swapped = True
         moved = target.parent.with_name("01_manifest-owned-moved")
-        target.parent.rename(moved)
-        os.symlink(external, target.parent, target_is_directory=True)
+        try:
+            target.parent.rename(moved)
+        except PermissionError as error:
+            if getattr(error, "winerror", None) in {5, 32}:
+                pytest.skip(f"directory swap unavailable: {error}")
+            raise
+        _make_symlink(
+            external,
+            target.parent,
+            target_is_directory=True,
+        )
+        symlink_setup_completed = True
 
     def swap_then_os_open(
         path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
@@ -1113,6 +1285,7 @@ def test_staging_parent_swap_cannot_create_external_file(
     with pytest.raises((OSError, ValueError)):
         publisher.publish_configure_run(rendered_runs[0], output_root)
 
+    assert symlink_setup_completed, "symlink setup did not complete"
     assert swapped
     assert not (external / "input.json").exists()
 
@@ -1131,6 +1304,7 @@ def test_staging_higher_ancestor_swap_cannot_escape_lease_chain(
     external.mkdir()
     original_child_open = package_io._open_windows_child_file_descriptor
     attempted = False
+    symlink_setup_completed = False
 
     def swap_then_child_open(
         target: Path,
@@ -1138,7 +1312,7 @@ def test_staging_higher_ancestor_swap_cannot_escape_lease_chain(
         create: bool,
         write: bool,
     ) -> int:
-        nonlocal attempted
+        nonlocal attempted, symlink_setup_completed
         if (
             not attempted
             and target.name == "input.json"
@@ -1147,14 +1321,20 @@ def test_staging_higher_ancestor_swap_cannot_escape_lease_chain(
         ):
             attempted = True
             revisions = target.parents[2]
-            revisions.rename(
-                revisions.with_name("revisions-owned-moved")
-            )
-            os.symlink(
+            try:
+                revisions.rename(
+                    revisions.with_name("revisions-owned-moved")
+                )
+            except PermissionError as error:
+                if getattr(error, "winerror", None) in {5, 32}:
+                    pytest.skip(f"directory swap unavailable: {error}")
+                raise
+            _make_symlink(
                 external,
                 revisions,
                 target_is_directory=True,
             )
+            symlink_setup_completed = True
         return original_child_open(
             target,
             create=create,
@@ -1170,6 +1350,7 @@ def test_staging_higher_ancestor_swap_cannot_escape_lease_chain(
     with pytest.raises((OSError, ValueError)):
         publish_configure_run(rendered_runs[0], output_root)
 
+    assert symlink_setup_completed, "symlink setup did not complete"
     assert attempted
     assert tuple(external.iterdir()) == ()
 
@@ -1181,10 +1362,11 @@ def test_symlinked_existing_ancestor_is_rejected_before_mutation(
     external = tmp_path / "external"
     external.mkdir()
     alias = tmp_path / "outputs-alias"
-    try:
-        os.symlink(external, alias, target_is_directory=True)
-    except OSError:
-        pytest.skip("directory symlinks unavailable")
+    _make_symlink(
+        external,
+        alias,
+        target_is_directory=True,
+    )
 
     with pytest.raises(ValueError):
         publish_configure_run(rendered_runs[0], alias / "ShadowPriest")
@@ -1198,10 +1380,11 @@ def test_dangling_lock_symlink_cannot_create_external_target(
     output_root = tmp_path / "ShadowPriest"
     output_root.mkdir()
     external = tmp_path / "external-lock"
-    try:
-        os.symlink(external, output_root / ".publish.lock")
-    except OSError:
-        pytest.skip("file symlinks unavailable")
+    _make_symlink(
+        external,
+        output_root / ".publish.lock",
+        target_is_directory=False,
+    )
 
     with pytest.raises(ValueError):
         publish_configure_run(rendered_runs[0], output_root)

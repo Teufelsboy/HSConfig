@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.source_closure_optimizer import build_source_closure_optimizer_report
 from tests.test_universal_wild_no_block_matrix import (
     DECKS as PROOF_DECKS,
@@ -115,7 +116,7 @@ def test_source_closure_optimizer_handles_current_candidate_deck_packages(
                 "--json",
             ]
         ) == 0
-        packages.append(out / "04_package")
+        packages.append(resolve_current_package(out))
 
     out_json = tmp_path / "diagnostics" / "source_closure_optimizer.json"
     args = ["source-closure-optimizer"]

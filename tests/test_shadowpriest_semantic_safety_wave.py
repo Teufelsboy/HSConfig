@@ -7,6 +7,7 @@ import pytest
 
 from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.current_output import resolve_current_package
 
 
 DECK_CODE = (
@@ -223,6 +224,7 @@ def _assert_exact_globalvalues_key_sets(
 def test_real_configure_paths_preserve_runtime_and_delegation_contract(
     tmp_path,
     monkeypatch,
+    capsys,
     source_url,
     expected_source_authority,
     expected_source_keeps,
@@ -287,11 +289,11 @@ def test_real_configure_paths_preserve_runtime_and_delegation_contract(
             "--json",
         ]
     )
+    summary = json.loads(capsys.readouterr().out)
 
-    package = out / "04_package"
+    package = resolve_current_package(out)
     reports = package / "reports"
     deck_dir = package / "CustomConfig" / "shadowpriest"
-    summary = json.loads((out / "configure_summary.json").read_text(encoding="utf-8"))
     operator = json.loads(
         (reports / "operator_summary.json").read_text(encoding="utf-8")
     )

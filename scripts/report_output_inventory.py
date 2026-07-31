@@ -12,6 +12,8 @@ from itertools import islice
 from pathlib import Path
 from typing import Any
 
+from hsconfig.current_output import lease_package_input
+
 
 _MAX_METADATA_DEPTH = 128
 _MAX_METADATA_NODES = 100_000
@@ -234,33 +236,63 @@ def _inspect_entry(
     resolved_entry: Path,
 ) -> tuple[str | None, str, float | None]:
     try:
-        staged_path = entry / "04_package"
-        staged = _resolve_selected(staged_path, root)
-        if staged is not None and not staged.is_dir():
-            raise _UnsafePathError
-        package_path = staged_path if staged is not None else entry
-        package = staged if staged is not None else resolved_entry
+        with lease_package_input(entry) as lease:
+            if lease.publication is not None:
+                package_path = lease.package_root
+                package = _resolve_selected(package_path, root)
+                if package is None or not package.is_dir():
+                    raise _UnsafePathError
+            else:
+                staged_path = entry / "04_package"
+                staged = _resolve_selected(staged_path, root)
+                if staged is not None and not staged.is_dir():
+                    raise _UnsafePathError
+                package_path = staged_path if staged is not None else entry
+                package = staged if staged is not None else resolved_entry
 
-        reports = _resolve_selected(package_path / "reports", root)
-        if reports is None or not reports.is_dir():
-            return _package_inventory_result(
-                None,
-                "missing_reports",
-                package,
+            reports = _resolve_selected(package_path / "reports", root)
+            if reports is None or not reports.is_dir():
+                return _package_inventory_result(
+                    None,
+                    "missing_reports",
+                    package,
+                    root,
+                )
+
+            manifest = _resolve_selected(
+                reports / "input_manifest.json",
                 root,
             )
+            if manifest is None:
+                return _package_inventory_result(
+                    None,
+                    "missing_input_manifest",
+                    package,
+                    root,
+                )
 
-        manifest = _resolve_selected(reports / "input_manifest.json", root)
-        if manifest is None:
-            return _package_inventory_result(
-                None,
-                "missing_input_manifest",
-                package,
+            custom_config = _resolve_selected(
+                package_path / "CustomConfig",
                 root,
             )
+            if custom_config is None or not custom_config.is_dir():
+                manifest_safe, deck_name = _descriptor_deck_name(
+                    manifest,
+                    root,
+                )
+                if not manifest_safe:
+                    return (
+                        None,
+                        "package_not_found",
+                        _selected_modified_epoch([resolved_entry]),
+                    )
+                return _package_inventory_result(
+                    deck_name,
+                    "missing_custom_config",
+                    package,
+                    root,
+                )
 
-        custom_config = _resolve_selected(package_path / "CustomConfig", root)
-        if custom_config is None or not custom_config.is_dir():
             manifest_safe, deck_name = _descriptor_deck_name(manifest, root)
             if not manifest_safe:
                 return (
@@ -270,7 +302,7 @@ def _inspect_entry(
                 )
             return _package_inventory_result(
                 deck_name,
-                "missing_custom_config",
+                "complete",
                 package,
                 root,
             )
@@ -280,16 +312,12 @@ def _inspect_entry(
             "package_not_found",
             _selected_modified_epoch([resolved_entry]),
         )
-
-    manifest_safe, deck_name = _descriptor_deck_name(manifest, root)
-    if not manifest_safe:
-        return None, "package_not_found", _selected_modified_epoch([resolved_entry])
-    return _package_inventory_result(
-        deck_name,
-        "complete",
-        package,
-        root,
-    )
+    except ValueError:
+        return (
+            None,
+            "current_output_invalid",
+            _selected_modified_epoch([resolved_entry]),
+        )
 
 
 def _utc_timestamp(epoch: float) -> str:

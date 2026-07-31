@@ -997,6 +997,36 @@ def plain_file_status(path: Path) -> os.stat_result:
     return status
 
 
+def require_same_identity_resolution(
+    path: Path,
+    *,
+    expected_status: os.stat_result | None = None,
+) -> None:
+    """Reject resolution changes except Windows aliases of the same inode."""
+
+    candidate = Path(path)
+    lexical_status = candidate.lstat()
+    if (
+        expected_status is not None
+        and path_identity_from_status(lexical_status)
+        != path_identity_from_status(expected_status)
+    ):
+        raise ValueError("filesystem_path_resolution_changed")
+    if status_is_reparse(lexical_status):
+        raise ValueError("filesystem_path_resolution_changed")
+    resolved = candidate.resolve(strict=True)
+    if resolved == candidate.absolute():
+        return
+    resolved_status = resolved.lstat()
+    if (
+        os.name != "nt"
+        or status_is_reparse(resolved_status)
+        or path_identity_from_status(resolved_status)
+        != path_identity_from_status(lexical_status)
+    ):
+        raise ValueError("filesystem_path_resolution_changed")
+
+
 def capture_plain_ancestor_guard(path: Path) -> FilesystemPathGuard:
     """Bind every currently existing lexical ancestor without following links."""
 
@@ -1013,8 +1043,15 @@ def capture_plain_ancestor_guard(path: Path) -> FilesystemPathGuard:
             raise ValueError("filesystem_ancestor_reparse")
         if index < len(parts) - 1 and not stat.S_ISDIR(status.st_mode):
             raise ValueError("filesystem_ancestor_not_directory")
-        if current.resolve(strict=True) != current.absolute():
-            raise ValueError("filesystem_ancestor_resolution_changed")
+        try:
+            require_same_identity_resolution(
+                current,
+                expected_status=status,
+            )
+        except ValueError as error:
+            raise ValueError(
+                "filesystem_ancestor_resolution_changed"
+            ) from error
         rows.append((current, path_identity_from_status(status)))
     guard = FilesystemPathGuard(tuple(rows))
     guard.validate()

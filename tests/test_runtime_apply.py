@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
+from hsconfig.current_output import resolve_current_package
 from hsconfig.io import read_json, write_json
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.output_publisher import publish_configure_run
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     DERIVATION_RECEIPT_SCHEMA_VERSION,
@@ -27,12 +29,49 @@ from tests.helpers.current_runtime_surface_ledger_contract import (
 )
 from tests.helpers.verified_deck_input import install_verified_deck_input
 from tests.helpers.verified_deck_input import install_verified_deckstring_input
+from tests.test_output_publisher import build_rendered_run
 
 
 SHADOWPRIEST_DECK_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+
+
+def test_apply_cli_resolves_published_output_root_without_mutating_revision(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from hsconfig.cli import main
+
+    output_root = tmp_path / "published"
+    published = publish_configure_run(
+        build_rendered_run(tmp_path / "source", 1),
+        output_root,
+    )
+    pointer_before = (output_root / "current.json").read_bytes()
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(output_root),
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--fake",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert payload["status"] == "blocked"
+    assert (
+        payload["publication_content_root_sha256"]
+        == published.content_root_sha256
+    )
+    assert (output_root / "current.json").read_bytes() == pointer_before
+    assert resolve_current_package(output_root) == published.package_root
 
 
 def _write_validation_reports(package: Path, globalvalues: dict) -> None:
@@ -1107,6 +1146,44 @@ def test_plan_apply_package_writes_fake_receipt_without_runtime_mutation(tmp_pat
     assert receipt["runtime_write_performed"] is False
     assert (package / "reports" / "runtime_apply_fake_receipt.json").exists()
     assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_can_keep_immutable_package_receipt_free(
+    tmp_path: Path,
+) -> None:
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    before = {
+        path.relative_to(package).as_posix(): path.read_bytes()
+        for path in package.rglob("*")
+        if path.is_file()
+    }
+
+    receipt = apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        write_package_receipt=False,
+    )
+
+    after = {
+        path.relative_to(package).as_posix(): path.read_bytes()
+        for path in package.rglob("*")
+        if path.is_file()
+    }
+    assert receipt["status"] == "applied"
+    assert before == after
+    assert not (
+        package / "reports" / "runtime_apply_fake_receipt.json"
+    ).exists()
+    assert not (
+        package / "reports" / "runtime_apply_receipt.json"
+    ).exists()
+    assert (runtime / "CustomConfig" / "deck").is_dir()
 
 
 def test_apply_cli_fake_mode_does_not_write_runtime(tmp_path: Path, capsys):

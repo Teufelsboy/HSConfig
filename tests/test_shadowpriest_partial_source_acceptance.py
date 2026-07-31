@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 
 from tests.test_configure_auto_source import (
     SHADOWPRIEST_CODE,
@@ -74,7 +75,7 @@ def test_configure_shadowpriest_keeps_archetype_only_guide_mulligan_diagnostic(
         ]
     ) == 0
 
-    package = out / "04_package"
+    package = resolve_current_package(out)
     operator = _read_json(package / "reports" / "operator_summary.json")
     global_profile = _read_json(package / "reports" / "globalvalues_profile.json")
     mulligan_plan = _read_json(package / "reports" / "mulligan_plan_report.json")

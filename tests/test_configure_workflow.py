@@ -14,6 +14,7 @@ from hsconfig.configure_run_model import ConfigureRunModel
 from hsconfig.configure_run_stage_contract import configure_summary_bytes
 from hsconfig.configure_stages import ConfigureFaultPoint
 from hsconfig.configure_workflow import execute_configure
+from hsconfig.current_output import resolve_current_package
 from hsconfig.package_assembler import PackageModel
 from hsconfig.package_domain import FrozenDefinitionMapping
 from tests.helpers.verified_deck_input import deck_code_for_cards
@@ -176,8 +177,9 @@ def test_execute_configure_returns_stable_in_memory_result(
 
     result = execute_configure(request)
 
+    published_package = resolve_current_package(request.output_root)
     persisted = json.loads(
-        (request.output_root / "configure_summary.json").read_text(
+        (published_package.parent / "configure_summary.json").read_text(
             encoding="utf-8"
         )
     )
@@ -214,14 +216,14 @@ def test_execute_configure_returns_stable_in_memory_result(
             ),
         )
     )
-    assert stage_artifacts["configure_summary.json"] != (
-        request.output_root / "configure_summary.json"
+    assert stage_artifacts["configure_summary.json"] == (
+        published_package.parent / "configure_summary.json"
     ).read_bytes()
     assert stage_artifacts["02_source_documents/stage_status.json"] == (
         b'{"reason":"not_requested","status":"unavailable"}\n'
     )
-    assert not (request.output_root / "current.json").exists()
-    assert not (request.output_root / "revisions").exists()
+    assert (request.output_root / "current.json").is_file()
+    assert published_package == result.published_output.package_root
     with pytest.raises(ValueError, match="configure_result_models_required"):
         ConfigureResult("OK", 0, None, None, {"status": "OK"})
     with pytest.raises(ValueError, match="configure_result_status_invalid"):
@@ -236,12 +238,18 @@ def test_execute_configure_returns_stable_in_memory_result(
         )
     with pytest.raises(ValueError, match="configure_result_status_exit_mismatch"):
         ConfigureResult("failed", 0, None, None, {"status": "failed"})
-    assert dict(result.summary) == persisted
-    assert result.summary["package_path"] == str(
-        request.output_root / "04_package"
+    assert persisted["deck_name"] == request.deck_name
+    assert result.summary["package_path"] == str(published_package)
+    assert result.summary["published_package"] == (
+        published_package.relative_to(request.output_root).as_posix()
     )
     assert result == ConfigureResult(
-        "OK", 0, result.package_model, result.configure_run_model, persisted
+        "OK",
+        0,
+        result.package_model,
+        result.configure_run_model,
+        dict(result.summary),
+        result.published_output,
     )
 
 
@@ -366,8 +374,11 @@ def test_each_conditional_stage_failure_is_fail_closed_without_runtime_publicati
     assert result.summary["errors"] == [f"injected:{fault_point.value}"]
     assert result.package_model is None
     assert result.configure_run_model is None
-    assert not (request.output_root / "current.json").exists()
-    assert not (request.output_root / "revisions").exists()
+    if fault_point is ConfigureFaultPoint.APPLY:
+        assert resolve_current_package(request.output_root).is_dir()
+    else:
+        assert not (request.output_root / "current.json").exists()
+        assert not (request.output_root / "revisions").exists()
     assert not request.runtime_root.exists()
 
 

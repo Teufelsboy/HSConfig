@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.configure_run_model import ConfigureRunModel
+from hsconfig.output_publisher import PublishedOutput
 from hsconfig.package_assembler import PackageModel
 from hsconfig.package_domain import (
     _ImmutableAuthorityNode,
@@ -90,6 +91,7 @@ class ConfigureResult(_ImmutableAuthorityNode):
     package_model: PackageModel | None
     configure_run_model: ConfigureRunModel | None
     summary: Mapping[str, Any]
+    published_output: PublishedOutput | None = None
 
     @classmethod
     def _normalize_authority_values(
@@ -124,6 +126,10 @@ class ConfigureResult(_ImmutableAuthorityNode):
                     self.configure_run_model,
                     ConfigureRunModel,
                 )
+                or not isinstance(
+                    self.published_output,
+                    PublishedOutput,
+                )
             ):
                 raise ValueError("configure_result_models_required")
             if self.configure_run_model.package is not self.package_model:
@@ -131,6 +137,7 @@ class ConfigureResult(_ImmutableAuthorityNode):
         elif (
             self.package_model is not None
             or self.configure_run_model is not None
+            or self.published_output is not None
         ):
             raise ValueError("configure_result_models_forbidden")
 

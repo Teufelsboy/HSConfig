@@ -8,6 +8,7 @@ import pytest
 from hsconfig.acceptance_matrix import build_acceptance_matrix
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.runtime_apply import apply_package
 
 from tests.test_configure_auto_source import (
@@ -26,6 +27,7 @@ def _read_json(path: Path) -> dict:
 def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -74,11 +76,18 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
         ]
     ) == 0
 
-    summary = _read_json(out / "configure_summary.json")
-    acquisition = _read_json(out / "02_source_acquisition" / "source_search_results.json")
-    source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
-    autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
-    package = out / "04_package"
+    summary = json.loads(capsys.readouterr().out)
+    package = resolve_current_package(out)
+    run_root = package.parent
+    acquisition = _read_json(
+        run_root / "02_source_acquisition" / "source_search_results.json"
+    )
+    source_documents = _read_json(
+        run_root / "03_source_autopilot" / "source_documents.json"
+    )
+    autopilot = _read_json(
+        run_root / "03_source_autopilot" / "source_autopilot_report.json"
+    )
     operator = _read_json(package / "reports" / "operator_summary.json")
     claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
     deck_dir = next((package / "CustomConfig").iterdir())
@@ -252,12 +261,13 @@ def test_configure_shadowpriest_live_verified_source_remains_apply_eligible(
         ]
     ) == 0
 
-    package = out / "04_package"
+    package = resolve_current_package(out)
+    run_root = package.parent
     acquisition = _read_json(
-        out / "02_source_acquisition" / "source_search_results.json"
+        run_root / "02_source_acquisition" / "source_search_results.json"
     )
     source_documents = _read_json(
-        out / "03_source_autopilot" / "source_documents.json"
+        run_root / "03_source_autopilot" / "source_documents.json"
     )
     operator = _read_json(package / "reports" / "operator_summary.json")
     claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")

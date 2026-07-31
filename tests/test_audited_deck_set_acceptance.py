@@ -19,6 +19,7 @@ from hsconfig.card_metadata import (
     hydrate_card_metadata,
 )
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
 from hsconfig.input_loading import source_records_from_cards
@@ -1913,7 +1914,7 @@ def test_exact_live_verified_fixture_requires_strict_validation_for_eligibility(
             "--json",
         ]
     )
-    package = out / "04_package"
+    package = resolve_current_package(out)
     summary = read_json(package / "reports" / "operator_summary.json")
     bundle = read_json(package / "reports" / "guide_claim_bundle.json")
     validation = validate_complete_package(package)

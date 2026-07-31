@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
+from hsconfig.output_publisher import publish_configure_run
 from scripts import report_output_inventory
+from tests.test_output_publisher import build_rendered_run
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +24,13 @@ ALLOWED_ENTRY_FIELDS = {
     "modified_time",
     "package_status",
 }
+_SYMLINK_UNAVAILABLE_ERRNOS = {
+    errno.EPERM,
+    errno.ENOSYS,
+    errno.ENOTSUP,
+    errno.EOPNOTSUPP,
+}
+_WINDOWS_PRIVILEGE_NOT_HELD = 1314
 
 
 def _write_package(
@@ -73,11 +85,46 @@ def _snapshot_tree(root: Path) -> dict[str, tuple[bytes, int]]:
     }
 
 
-def _make_directory_symlink(link: Path, target: Path) -> None:
+def _make_symlink(
+    link: Path,
+    target: Path,
+    *,
+    target_is_directory: bool,
+) -> None:
     try:
-        link.symlink_to(target, target_is_directory=True)
-    except OSError as exc:
-        pytest.skip(f"directory symlinks unavailable: {exc}")
+        link.symlink_to(
+            target,
+            target_is_directory=target_is_directory,
+        )
+    except OSError as error:
+        if (
+            getattr(error, "winerror", None)
+            == _WINDOWS_PRIVILEGE_NOT_HELD
+            or error.errno in _SYMLINK_UNAVAILABLE_ERRNOS
+        ):
+            pytest.skip(f"symlinks unavailable: {error}")
+        raise
+
+
+def test_symlink_helper_reraises_unexpected_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unexpected = OSError(errno.ENOENT, "unexpected symlink failure")
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unexpected
+
+    monkeypatch.setattr(Path, "symlink_to", fail_symlink)
+
+    with pytest.raises(OSError) as raised:
+        _make_symlink(
+            tmp_path / "link",
+            tmp_path / "target",
+            target_is_directory=True,
+        )
+
+    assert raised.value is unexpected
 
 
 def _make_junction(link: Path, target: Path) -> None:
@@ -422,10 +469,11 @@ def test_manifest_swap_after_resolution_cannot_emit_outside_deck(
         resolved = original_resolve(path, root)
         if path == manifest and resolved is not None and not swapped:
             manifest.unlink()
-            try:
-                manifest.symlink_to(outside_manifest)
-            except OSError as exc:
-                pytest.skip(f"file symlinks unavailable: {exc}")
+            _make_symlink(
+                manifest,
+                outside_manifest,
+                target_is_directory=False,
+            )
             swapped = True
         return resolved
 
@@ -477,7 +525,11 @@ def test_inventory_skips_output_entry_symlink_that_escapes_root(
         staged=False,
         modified_time=1_700_000_000,
     )
-    _make_directory_symlink(outputs / "escaped", external)
+    _make_symlink(
+        outputs / "escaped",
+        external,
+        target_is_directory=True,
+    )
     before = _snapshot_tree(tmp_path)
 
     inventory = report_output_inventory.build_inventory(outputs)
@@ -523,13 +575,18 @@ def test_inventory_does_not_read_nested_package_links_that_escape_root(
     )
     if linked_component == "04_package":
         entry.mkdir(parents=True)
-        _make_directory_symlink(entry / "04_package", external)
+        _make_symlink(
+            entry / "04_package",
+            external,
+            target_is_directory=True,
+        )
     else:
         package = entry / "04_package"
         (package / "CustomConfig").mkdir(parents=True)
-        _make_directory_symlink(
+        _make_symlink(
             package / "reports",
             external / "reports",
+            target_is_directory=True,
         )
 
     inventory = report_output_inventory.build_inventory(outputs)
@@ -552,7 +609,11 @@ def test_inventory_treats_broken_nested_package_link_as_not_found(
     outputs = tmp_path / "outputs"
     entry = outputs / "broken-entry"
     entry.mkdir(parents=True)
-    _make_directory_symlink(entry / "04_package", tmp_path / "missing-package")
+    _make_symlink(
+        entry / "04_package",
+        tmp_path / "missing-package",
+        target_is_directory=True,
+    )
 
     inventory = report_output_inventory.build_inventory(outputs)
 
@@ -605,3 +666,112 @@ def test_inventory_cli_exposes_no_mutation_or_report_output_flags() -> None:
             text=True,
         )
         assert completed.returncode != 0
+
+
+def test_inventory_reports_published_output_as_one_current_package(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    output_root = outputs / "shadow-current"
+    publish_configure_run(
+        build_rendered_run(tmp_path / "source", 1),
+        output_root,
+    )
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert len(inventory["entries"]) == 1
+    assert inventory["entries"][0]["deck"] == "ShadowPriest"
+    assert inventory["entries"][0]["path"] == "shadow-current"
+    assert inventory["entries"][0]["package_status"] == "complete"
+    assert inventory["likely_duplicate_candidates"] == []
+
+
+def test_inventory_rejects_corrupt_current_without_reading_direct_fallback(
+    tmp_path: Path,
+) -> None:
+    outputs = tmp_path / "outputs"
+    output_root = outputs / "shadow-current"
+    publish_configure_run(
+        build_rendered_run(tmp_path / "source", 1),
+        output_root,
+    )
+    _write_package(
+        output_root,
+        deck_name="MUST-NOT-BE-EMITTED",
+        staged=True,
+        modified_time=1_700_000_000,
+    )
+    (output_root / "current.json").write_bytes(b"{}\n")
+
+    inventory = report_output_inventory.build_inventory(outputs)
+
+    assert inventory["entries"] == [
+        {
+            "deck": None,
+            "path": "shadow-current",
+            "modified_time": inventory["entries"][0]["modified_time"],
+            "package_status": "current_output_invalid",
+        }
+    ]
+    assert "MUST-NOT-BE-EMITTED" not in json.dumps(inventory)
+    assert inventory["likely_duplicate_candidates"] == []
+
+
+def test_inventory_holds_current_lease_through_package_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outputs = tmp_path / "outputs"
+    output_root = outputs / "shadow-current"
+    publish_configure_run(
+        build_rendered_run(tmp_path / "source", 1),
+        output_root,
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    inventory_done = threading.Event()
+    publisher_done = threading.Event()
+    original_modified_epoch = (
+        report_output_inventory._package_modified_epoch
+    )
+
+    def blocked_modified_epoch(package: Path, root: Path):
+        entered.set()
+        assert release.wait(10)
+        return original_modified_epoch(package, root)
+
+    monkeypatch.setattr(
+        report_output_inventory,
+        "_package_modified_epoch",
+        blocked_modified_epoch,
+    )
+    inventory_thread = threading.Thread(
+        target=lambda: (
+            report_output_inventory.build_inventory(outputs),
+            inventory_done.set(),
+        )
+    )
+    publisher_thread = threading.Thread(
+        target=lambda: (
+            publish_configure_run(
+                build_rendered_run(tmp_path / "competitor", 2),
+                output_root,
+            ),
+            publisher_done.set(),
+        )
+    )
+
+    inventory_thread.start()
+    assert entered.wait(10)
+    publisher_thread.start()
+    time.sleep(0.1)
+    assert not inventory_done.is_set()
+    assert not publisher_done.is_set()
+    release.set()
+    inventory_thread.join(30)
+    publisher_thread.join(30)
+    assert not inventory_thread.is_alive()
+    assert not publisher_thread.is_alive()
+    assert inventory_done.is_set()
+    assert publisher_done.is_set()

@@ -340,14 +340,38 @@ git push origin main
 ### Task 4: Route Configure Through the Publisher
 
 **Files:**
+- Modify: `docs/superpowers/plans/2026-07-28-hsconfig-pre-run-near-100-03-transactional-publication-plan.md`
 - Modify: `src/hsconfig/configure_models.py`
 - Modify: `src/hsconfig/configure_workflow.py`
-- Modify: `src/hsconfig/commands/configure.py`
+- Modify: `src/hsconfig/current_output.py`
 - Modify: `src/hsconfig/commands/apply.py`
 - Modify: `src/hsconfig/commands/runtime_match.py`
 - Modify: `src/hsconfig/package_io.py`
+- Modify: `src/hsconfig/runtime_apply.py`
+- Modify: `scripts/report_output_inventory.py`
 - Create: `tests/test_configure_publication.py`
 - Modify: `tests/test_configure_cli.py`
+- Modify: `tests/test_configure_workflow.py`
+- Modify: `tests/test_configure_auto_source.py`
+- Modify: `tests/test_configure_online_source.py`
+- Modify: `tests/test_apply_authority_boundary.py`
+- Modify: `tests/test_audited_deck_set_acceptance.py`
+- Modify: `tests/test_cli.py`
+- Modify: `tests/test_real_deck_usage_loop.py`
+- Modify: `tests/test_shadowpriest_partial_source_acceptance.py`
+- Modify: `tests/test_shadowpriest_semantic_safety_wave.py`
+- Modify: `tests/test_shadowpriest_source_contract_acceptance.py`
+- Modify: `tests/test_source_acquisition_strong_closure.py`
+- Modify: `tests/test_source_closure_optimizer_matrix.py`
+- Modify: `tests/test_universal_wild_no_block_matrix.py`
+- Test: `tests/test_configure_run_model.py`
+- Test: `tests/test_configure_stages.py`
+- Test: `tests/test_autonomous_guide_workflow_e2e.py`
+- Modify: `tests/test_current_output.py`
+- Modify: `tests/test_output_inventory.py`
+- Modify: `tests/test_output_publisher.py`
+- Modify: `tests/test_package_publication.py`
+- Modify: `tests/test_runtime_apply.py`
 - Modify: `tests/test_runtime_match_cli.py`
 
 **Interfaces:**
@@ -359,25 +383,25 @@ class ConfigureResult:
     exit_code: int
     package_model: PackageModel | None
     configure_run_model: ConfigureRunModel | None
-    published_output: PublishedOutput | None
     summary: Mapping[str, Any]
+    published_output: PublishedOutput | None = None
 ```
 
-- [ ] **Step 1: Write failing CLI publication tests**
+- [x] **Step 1: Write failing CLI publication tests**
 
 Assert successful configure returns the resolved current package path, failed configure leaves prior current unchanged, and apply/runtime-match accept the deck output root by resolving `current.json`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 python -m pytest tests/test_configure_publication.py tests/test_configure_cli.py tests/test_runtime_match_cli.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 3: Replace direct stage-directory publication**
+- [x] **Step 3: Replace direct stage-directory publication**
 
 Temporary semantic stages may live under a process-owned temporary root while being built. The renderer derives one `RenderedConfigureRun` from the typed configure/package models and all applicable stage artifacts; only that fully validated render crosses into `publish_configure_run`. Failed pre-publication stages remove only their owned temporary roots.
 
-- [ ] **Step 4: Preserve machine-readable summaries**
+- [x] **Step 4: Preserve machine-readable summaries**
 
 Add:
 
@@ -391,18 +415,18 @@ Add:
 }
 ```
 
-These four fields exist only in the transient CLI/result payload after publication; they are never persisted in the manifest-covered `configure_summary.json`. The persisted summary contains only canonical build-input, stage-status, and semantic-result data known before rendering, with no content-root, revision, reuse, absolute, or staging field.
+These five fields exist only in the transient CLI/result payload after publication; they are never persisted in the manifest-covered `configure_summary.json`. The persisted summary contains only canonical build-input, stage-status, and semantic-result data known before rendering, with no content-root, revision, reuse, absolute, or staging field.
 
-- [ ] **Step 5: Run GREEN and E2E**
+- [x] **Step 5: Run GREEN and E2E**
 
 ```powershell
-python -m pytest tests/test_configure_publication.py tests/test_configure_cli.py tests/test_runtime_match_cli.py tests/test_autonomous_guide_workflow_e2e.py -q -p no:cacheprovider
+python -m pytest tests/test_configure_publication.py tests/test_configure_cli.py tests/test_configure_workflow.py tests/test_configure_auto_source.py tests/test_configure_online_source.py tests/test_configure_run_model.py tests/test_configure_stages.py tests/test_current_output.py tests/test_output_inventory.py tests/test_output_publisher.py tests/test_runtime_apply.py tests/test_runtime_match_cli.py tests/test_autonomous_guide_workflow_e2e.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit (controller-only)**
 
 ```powershell
-git add src/hsconfig/configure_models.py src/hsconfig/configure_workflow.py src/hsconfig/commands/configure.py src/hsconfig/commands/apply.py src/hsconfig/commands/runtime_match.py src/hsconfig/package_io.py tests/test_configure_publication.py tests/test_configure_cli.py tests/test_runtime_match_cli.py
+git add docs/superpowers/plans/2026-07-28-hsconfig-pre-run-near-100-03-transactional-publication-plan.md src/hsconfig/configure_models.py src/hsconfig/configure_workflow.py src/hsconfig/current_output.py src/hsconfig/commands/apply.py src/hsconfig/commands/runtime_match.py src/hsconfig/package_io.py src/hsconfig/runtime_apply.py scripts/report_output_inventory.py tests/test_apply_authority_boundary.py tests/test_audited_deck_set_acceptance.py tests/test_cli.py tests/test_configure_publication.py tests/test_configure_cli.py tests/test_configure_workflow.py tests/test_configure_auto_source.py tests/test_configure_online_source.py tests/test_current_output.py tests/test_output_inventory.py tests/test_output_publisher.py tests/test_package_publication.py tests/test_real_deck_usage_loop.py tests/test_runtime_apply.py tests/test_runtime_match_cli.py tests/test_shadowpriest_partial_source_acceptance.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_source_acquisition_strong_closure.py tests/test_source_closure_optimizer_matrix.py tests/test_universal_wild_no_block_matrix.py
 git commit -m "refactor: route configure through current output"
 git push origin main
 ```

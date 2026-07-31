@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.source_acquisition import collect_public_source_records
 
 
@@ -272,10 +273,11 @@ def test_configure_live_http_preserves_provenance_to_strategic_receipt(
     )
     capsys.readouterr()
 
+    package = resolve_current_package(out)
     guide_claim_bundle = json.loads(
-        (
-            out / "04_package" / "reports" / "guide_claim_bundle.json"
-        ).read_text(encoding="utf-8")
+        (package / "reports" / "guide_claim_bundle.json").read_text(
+            encoding="utf-8"
+        )
     )
     receipts = guide_claim_bundle["canonical_source_receipts"]
 
