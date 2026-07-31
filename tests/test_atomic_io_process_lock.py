@@ -14,6 +14,7 @@ from typing import BinaryIO
 import pytest
 
 import hsconfig.atomic_io as atomic_io
+import hsconfig.package_io as package_io
 from hsconfig.atomic_io import ExclusiveFileLock, LockTimeoutError
 
 
@@ -257,18 +258,27 @@ def _tracking_handle(
 ) -> tuple[Path, BinaryIO]:
     lock_path = tmp_path / "publisher.lock"
     handle = lock_path.open("a+b")
-    real_path_open = Path.open
+    real_open_lock_file = atomic_io._open_lock_file
 
     def return_tracking_handle(
         path: Path,
-        *args: object,
-        **kwargs: object,
+        *,
+        create: bool,
+        expected_parent_identity: tuple[int, int, int],
     ):
         if path == lock_path:
             return handle
-        return real_path_open(path, *args, **kwargs)
+        return real_open_lock_file(
+            path,
+            create=create,
+            expected_parent_identity=expected_parent_identity,
+        )
 
-    monkeypatch.setattr(Path, "open", return_tracking_handle)
+    monkeypatch.setattr(
+        atomic_io,
+        "_open_lock_file",
+        return_tracking_handle,
+    )
     return lock_path, handle
 
 
@@ -319,6 +329,164 @@ def test_exclusive_file_lock_can_be_reacquired_after_holder_is_hard_killed(
             cleanup_problem = _release_and_reap(holder, release_path)
 
     assert cleanup_problem is None
+
+
+def test_windows_lock_inode_cannot_be_renamed_while_lock_is_held(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows lock-handle share-mode regression")
+    lock_path = tmp_path / "publisher.lock"
+    moved_path = tmp_path / "publisher.lock.moved"
+
+    with ExclusiveFileLock(lock_path, timeout_seconds=0.5):
+        with pytest.raises(PermissionError):
+            lock_path.rename(moved_path)
+        assert lock_path.is_file()
+        assert not moved_path.exists()
+
+    lock_path.rename(moved_path)
+    assert moved_path.is_file()
+    assert not lock_path.exists()
+
+
+def test_lock_swap_to_dangling_symlink_never_creates_external_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    external_target = tmp_path / "external-target"
+    symlink_probe = tmp_path / "symlink-probe"
+    try:
+        os.symlink(external_target, symlink_probe)
+    except OSError:
+        pytest.skip("file symlinks unavailable")
+    symlink_probe.unlink()
+    lock_path.write_bytes(b"")
+    real_path_open = Path.open
+    real_os_open = os.open
+    real_child_open = package_io._open_windows_child_file_descriptor
+    swapped = False
+
+    def swap_lock_path() -> None:
+        nonlocal swapped
+        if swapped:
+            return
+        swapped = True
+        lock_path.unlink()
+        os.symlink(external_target, lock_path)
+
+    def hostile_path_open(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ):
+        if path == lock_path:
+            swap_lock_path()
+        return real_path_open(path, *args, **kwargs)
+
+    def hostile_os_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if Path(path) == lock_path:
+            swap_lock_path()
+        return real_os_open(path, flags, mode, dir_fd=dir_fd)
+
+    def hostile_child_open(
+        path: Path,
+        *,
+        create: bool,
+        write: bool,
+    ) -> int:
+        if path == lock_path:
+            swap_lock_path()
+        return real_child_open(path, create=create, write=write)
+
+    monkeypatch.setattr(Path, "open", hostile_path_open)
+    monkeypatch.setattr(os, "open", hostile_os_open)
+    monkeypatch.setattr(
+        package_io,
+        "_open_windows_child_file_descriptor",
+        hostile_child_open,
+    )
+
+    with pytest.raises(
+        (OSError, ValueError, atomic_io.AtomicWriteConflictError)
+    ):
+        with ExclusiveFileLock(lock_path, timeout_seconds=0.1):
+            pytest.fail("swapped lock unexpectedly acquired")
+
+    assert swapped
+    assert not external_target.exists()
+
+
+def test_lock_parent_swap_cannot_create_external_lock_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "deck"
+    parent.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    moved = tmp_path / "deck-owned-moved"
+    lock_path = parent / ".publish.lock"
+    original_open = os.open
+    original_child_open = package_io._open_windows_child_file_descriptor
+    swapped = False
+
+    def swap_then_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == lock_path:
+            swapped = True
+            parent.rename(moved)
+            os.symlink(external, parent, target_is_directory=True)
+        return original_open(
+            path,
+            flags,
+            mode,
+            **({"dir_fd": dir_fd} if dir_fd is not None else {}),
+        )
+
+    def swap_then_child_open(
+        path: Path,
+        *,
+        create: bool,
+        write: bool,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and path == lock_path:
+            swapped = True
+            parent.rename(moved)
+            os.symlink(external, parent, target_is_directory=True)
+        return original_child_open(
+            path,
+            create=create,
+            write=write,
+        )
+
+    monkeypatch.setattr(os, "open", swap_then_open)
+    monkeypatch.setattr(
+        package_io,
+        "_open_windows_child_file_descriptor",
+        swap_then_child_open,
+    )
+
+    with pytest.raises((OSError, ValueError)):
+        with ExclusiveFileLock(lock_path):
+            pytest.fail("parent-swapped lock unexpectedly acquired")
+
+    assert swapped
+    assert not (external / ".publish.lock").exists()
 
 
 def test_noninherited_lock_handle_allows_probe_while_descendant_is_alive(

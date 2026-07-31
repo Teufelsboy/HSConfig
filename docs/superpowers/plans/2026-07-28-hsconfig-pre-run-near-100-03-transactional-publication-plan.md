@@ -19,7 +19,14 @@
 - Do not mutate a package by writing fake-apply, apply, or failure receipts inside it.
 - Do not create persistent runtime Config backups.
 - Treat `KeyboardInterrupt`, `SystemExit`, and injected `BaseException` as recovery-relevant after mutation begins.
-- Never remove an unknown path; cleanup requires a verified publisher-owned marker and root containment.
+- "Unknown" means a path that cannot be proven publisher-owned at cleanup
+  time from a valid ownership record, containment, and unchanged identity.
+  Never remove such a path.
+- The portable race guarantee covers cooperative publishers serialized by the
+  shared lock plus crash/fault recovery. Hostile same-user mutation by a
+  non-cooperating process is outside the contract; Windows adds handle-bound
+  final-entry hardening, while POSIX `dir_fd` binds containment and parent
+  identity but cannot portably make every validated name mutation hostile-CAS.
 - `operator_summary.json` remains the sole normal apply authority.
 
 ---
@@ -193,7 +200,10 @@ git push origin main
 - Create: `tests/test_output_publisher.py`
 - Create: `tests/test_current_output.py`
 - Create: `tests/test_output_publication_fault_matrix.py`
+- Modify: `src/hsconfig/atomic_io.py`
 - Modify: `src/hsconfig/package_io.py`
+- Modify: `tests/test_atomic_io.py`
+- Modify: `tests/test_atomic_io_process_lock.py`
 
 **Stable output layout:**
 
@@ -250,11 +260,11 @@ def resolve_current_package(output_root: Path) -> Path: ...
 def reconcile_output(output_root: Path) -> PublishedOutput | None: ...
 ```
 
-- [ ] **Step 1: Write failing happy-path and idempotency tests**
+- [x] **Step 1: Write failing happy-path and idempotency tests**
 
 Assert first publish creates one revision and a valid pointer; publishing identical bytes reuses it; publishing changed bytes commits a new current revision and removes the old unreferenced revision only after pointer verification.
 
-- [ ] **Step 2: Write the output fault matrix**
+- [x] **Step 2: Write the output fault matrix**
 
 Inject at:
 
@@ -271,13 +281,13 @@ during_old_revision_cleanup
 
 For every checkpoint, run both an injected exception and a subprocess hard termination. After a new process runs `reconcile_output`, exactly one complete current package must resolve. If the pointer was not committed, the old package remains current.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_output_publisher.py tests/test_current_output.py tests/test_output_publication_fault_matrix.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 4: Implement staged publication**
+- [x] **Step 4: Implement staged publication**
 
 Within the deck output lock:
 
@@ -292,20 +302,35 @@ Within the deck output lock:
 
 The external ownership record contains schema, transaction ID, deck fingerprint, staging path, revision path, full content root, and phase. Unknown, missing-record, damaged-record, or reparse-point staging/revision paths are reported and left untouched; ownership metadata is not an extra file inside the manifested revision.
 
-- [ ] **Step 5: Implement strict resolver and reconciliation**
+The portable publication guarantee covers HSConfig-cooperating publishers
+serialized by the shared lock plus crash/fault recovery. Windows additionally
+binds final child create, rename, unlink, and rmdir mutations to open handles
+and denies delete sharing for the live lock inode. On POSIX, `dir_fd`
+operations bind containment and parent-directory identity, but hostile
+same-user substitution of a final directory entry between validation and the
+name-based mutation is outside the contract. Platform-specific tests must not
+claim a stronger cross-platform guarantee.
+
+- [x] **Step 5: Implement strict resolver and reconciliation**
 
 Reject pointer traversal, deck mismatch, digest mismatch, multiple current claims, and a missing manifest. Reconciliation may delete `.staging-*` and unreferenced revisions only after containment, marker, and current-pointer verification.
 
-- [ ] **Step 6: Run GREEN**
+`resolve_current_package` holds the same publish lock while it snapshots and
+verifies the selected revision. Its returned `Path` is intentionally a
+point-in-time result: Task 4 callers that need a longer lifetime must consume
+the verified snapshot within their operation rather than assume the path
+cannot be retired after the resolver releases the lock.
+
+- [x] **Step 6: Run GREEN**
 
 ```powershell
 python -m pytest tests/test_output_publisher.py tests/test_current_output.py tests/test_output_publication_fault_matrix.py tests/test_output_inventory.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
-git add src/hsconfig/output_publisher.py src/hsconfig/current_output.py src/hsconfig/package_io.py tests/test_output_publisher.py tests/test_current_output.py tests/test_output_publication_fault_matrix.py
+git add src/hsconfig/output_publisher.py src/hsconfig/current_output.py src/hsconfig/atomic_io.py src/hsconfig/package_io.py tests/test_output_publisher.py tests/test_current_output.py tests/test_output_publication_fault_matrix.py tests/test_atomic_io.py tests/test_atomic_io_process_lock.py
 git commit -m "feat: publish one atomic current output"
 git push origin main
 ```

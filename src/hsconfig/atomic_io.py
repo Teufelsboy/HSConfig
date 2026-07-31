@@ -4,11 +4,18 @@ import errno
 import json
 import math
 import os
+import stat
 import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, BinaryIO
+
+from hsconfig.package_io import (
+    secure_open_file_descriptor,
+    secure_replace,
+    secure_unlink,
+)
 
 
 FaultHook = Callable[[str], None]
@@ -56,7 +63,10 @@ def atomic_write_bytes(
             temp_handle,
             temp_identity,
             temp_cleanup_path,
-        ) = _open_unique_sibling_temp(target)
+        ) = _open_unique_sibling_temp(
+            target,
+            expected_parent_identity=parent_identity,
+        )
         temp_handle.write(content)
         fault_hook("after_temp_write")
         temp_handle.flush()
@@ -78,7 +88,13 @@ def atomic_write_bytes(
             raise AtomicWriteConflictError(
                 f"owned temp identity changed before replace: {temp_path}"
             )
-        os.replace(temp_path, target)
+        secure_replace(
+            temp_path,
+            target,
+            expected_source_identity=temp_identity,
+            expected_source_parent_identity=parent_identity,
+            expected_target_parent_identity=parent_identity,
+        )
         temp_path = None
         temp_cleanup_path = None
         temp_identity = None
@@ -140,9 +156,66 @@ class ExclusiveFileLock:
         if self._handle is not None:
             raise RuntimeError(f"Lock is already acquired: {self.path}")
 
-        handle = self.path.open("a+b")
+        parent = self.path.parent
+        parent_status = parent.lstat()
+        parent_identity = _identity_from_status(parent_status)
+        resolved_parent_identity = _stat_identity(parent)
+        if _status_is_reparse(parent_status):
+            raise ValueError(f"Lock parent is a reparse point: {parent}")
+        before_identity: tuple[int, int, int] | None = None
+        handle: BinaryIO | None = None
+        for _ in range(100):
+            try:
+                before_status = self.path.lstat()
+            except FileNotFoundError:
+                try:
+                    handle = _open_lock_file(
+                        self.path,
+                        create=True,
+                        expected_parent_identity=parent_identity,
+                    )
+                except FileExistsError:
+                    continue
+                before_identity = None
+                break
+            before_identity = _identity_from_status(before_status)
+            if (
+                not stat.S_ISREG(before_identity[2])
+                or _status_is_reparse(before_status)
+            ):
+                raise ValueError(f"Lock path is not a plain file: {self.path}")
+            try:
+                handle = _open_lock_file(
+                    self.path,
+                    create=False,
+                    expected_parent_identity=parent_identity,
+                )
+            except FileNotFoundError:
+                continue
+            break
+        if handle is None:
+            raise AtomicWriteConflictError(
+                f"Lock path did not stabilize while opening: {self.path}"
+            )
         acquired = False
         try:
+            opened_identity = _fstat_identity(handle)
+            path_status = self.path.lstat()
+            path_identity = _identity_from_status(path_status)
+            if (
+                not stat.S_ISREG(opened_identity[2])
+                or _status_is_reparse(path_status)
+                or path_identity != opened_identity
+                or (
+                    before_identity is not None
+                    and before_identity != opened_identity
+                )
+                or _lstat_identity(parent) != parent_identity
+                or _stat_identity(parent) != resolved_parent_identity
+            ):
+                raise AtomicWriteConflictError(
+                    f"Lock path identity changed while opening: {self.path}"
+                )
             os.set_inheritable(handle.fileno(), False)
             deadline = time.monotonic() + self.timeout_seconds
             while True:
@@ -158,6 +231,16 @@ class ExclusiveFileLock:
                         ) from exc
                     time.sleep(min(0.05, remaining))
                 else:
+                    if (
+                        _lstat_identity(self.path) != opened_identity
+                        or _lstat_identity(parent) != parent_identity
+                        or _stat_identity(parent)
+                        != resolved_parent_identity
+                    ):
+                        raise AtomicWriteConflictError(
+                            "Lock path identity changed after acquisition: "
+                            f"{self.path}"
+                        )
                     acquired = True
                     self._handle = handle
                     return self
@@ -212,15 +295,43 @@ class ExclusiveFileLock:
             raise release_error
 
 
+def _open_lock_file(
+    path: Path,
+    *,
+    create: bool,
+    expected_parent_identity: tuple[int, int, int],
+) -> BinaryIO:
+    descriptor = secure_open_file_descriptor(
+        path,
+        create=create,
+        write=True,
+        expected_parent_identity=expected_parent_identity,
+    )
+    try:
+        os.set_inheritable(descriptor, False)
+        return os.fdopen(descriptor, "r+b")
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 def _open_unique_sibling_temp(
     target: Path,
+    *,
+    expected_parent_identity: tuple[int, int, int],
 ) -> tuple[Path, BinaryIO, tuple[int, int, int], Path]:
     for _ in range(100):
         candidate = target.with_name(
             f".{target.name}.{uuid.uuid4().hex}.tmp"
         )
         try:
-            handle = candidate.open("xb")
+            descriptor = secure_open_file_descriptor(
+                candidate,
+                create=True,
+                write=True,
+                expected_parent_identity=expected_parent_identity,
+            )
+            handle = os.fdopen(descriptor, "w+b")
         except FileExistsError:
             continue
         initial_identity: tuple[int, int, int] | None = None
@@ -287,6 +398,19 @@ def _stat_identity(path: Path) -> tuple[int, int, int]:
     return status.st_dev, status.st_ino, status.st_mode
 
 
+def _identity_from_status(
+    status: os.stat_result,
+) -> tuple[int, int, int]:
+    return status.st_dev, status.st_ino, status.st_mode
+
+
+def _status_is_reparse(status: os.stat_result) -> bool:
+    return stat.S_ISLNK(status.st_mode) or bool(
+        getattr(status, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    )
+
+
 def _add_cleanup_note(
     primary: BaseException,
     operation: str,
@@ -347,7 +471,11 @@ def _unlink_owned_temp_without_masking(
     if current_identity != owned_identity:
         return
     try:
-        path.unlink()
+        secure_unlink(
+            path,
+            expected_identity=owned_identity,
+            missing_ok=True,
+        )
     except FileNotFoundError:
         return
     except BaseException as cleanup_error:
