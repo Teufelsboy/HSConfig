@@ -30,10 +30,13 @@ def _format_mismatch_message(report: dict[str, Any]) -> str:
     )
 
 
-def _resolve_config_dir(package_root: Path, config_dir: str | None) -> str:
-    if config_dir is not None:
-        _validate_config_dir(config_dir)
-        return config_dir
+def _resolve_logical_config_dir(
+    package_root: Path,
+    logical_config_dir: str | None,
+) -> str:
+    if logical_config_dir is not None:
+        _validate_config_dir(logical_config_dir)
+        return logical_config_dir
 
     custom_config = package_root / "CustomConfig"
     candidates = sorted(
@@ -114,13 +117,24 @@ def _mapping_lines_for_deck_name(
 ) -> list[str]:
     if not path.is_file():
         return []
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    has_sections = any(
+        stripped.startswith("[") and stripped.endswith("]")
+        for line in lines
+        if (stripped := line.strip())
+    )
     matched_lines = []
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
+    in_configs = not has_sections
+    expected = expected_deck_name.casefold()
+    for line in lines:
         stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_configs = stripped.casefold() == "[configs]"
+            continue
         if not stripped or stripped.startswith(("#", ";")) or "=" not in stripped:
             continue
         key, _ = stripped.split("=", 1)
-        if key.strip() == expected_deck_name:
+        if in_configs and key.strip().casefold() == expected:
             matched_lines.append(line)
     return matched_lines
 
@@ -191,12 +205,32 @@ def build_runtime_package_match_report(
     package_root: str | Path,
     runtime_root: str | Path,
     config_dir: str | None = None,
+    logical_config_dir: str | None = None,
+    runtime_config_dir: str | None = None,
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
-    resolved_config_dir = _resolve_config_dir(package, config_dir)
-    package_dir = package / "CustomConfig" / resolved_config_dir
-    runtime_dir = runtime / "CustomConfig" / resolved_config_dir
+    if config_dir is not None and (
+        logical_config_dir is not None or runtime_config_dir is not None
+    ):
+        raise ValueError("config directory arguments conflict")
+    if config_dir is not None:
+        _validate_config_dir(config_dir)
+        resolved_logical_config_dir = config_dir
+        resolved_runtime_config_dir = config_dir
+    else:
+        resolved_logical_config_dir = _resolve_logical_config_dir(
+            package,
+            logical_config_dir,
+        )
+        resolved_runtime_config_dir = (
+            resolved_logical_config_dir
+            if runtime_config_dir is None
+            else runtime_config_dir
+        )
+        _validate_config_dir(resolved_runtime_config_dir)
+    package_dir = package / "CustomConfig" / resolved_logical_config_dir
+    runtime_dir = runtime / "CustomConfig" / resolved_runtime_config_dir
     deck_config_ini = runtime / "CustomConfig" / "deck_config.ini"
     expected_deck_name = _deck_name_from_manifest(package)
 
@@ -227,7 +261,7 @@ def build_runtime_package_match_report(
     matched_lines = _matching_mapping_lines(
         deck_config_ini,
         expected_deck_name=expected_deck_name,
-        config_dir=resolved_config_dir,
+        config_dir=resolved_runtime_config_dir,
     )
     deck_name_mapping_lines = _mapping_lines_for_deck_name(
         deck_config_ini,
@@ -255,7 +289,9 @@ def build_runtime_package_match_report(
         "runtime_permission_impact": "none",
         "package_root": str(package),
         "runtime_root": str(runtime),
-        "config_dir": resolved_config_dir,
+        "config_dir": resolved_runtime_config_dir,
+        "logical_config_dir": resolved_logical_config_dir,
+        "runtime_config_dir": resolved_runtime_config_dir,
         "expected_deck_name": expected_deck_name,
         "matching_mapping_count": matching_mapping_count,
         "mapping_ambiguous": mapping_ambiguous,
@@ -283,11 +319,15 @@ def assert_runtime_matches_package(
     package_root: str | Path,
     runtime_root: str | Path,
     config_dir: str | None = None,
+    logical_config_dir: str | None = None,
+    runtime_config_dir: str | None = None,
 ) -> dict[str, Any]:
     report = build_runtime_package_match_report(
         package_root=package_root,
         runtime_root=runtime_root,
         config_dir=config_dir,
+        logical_config_dir=logical_config_dir,
+        runtime_config_dir=runtime_config_dir,
     )
     if report["status"] != "matched":
         raise RuntimePackageMismatchError(report)
