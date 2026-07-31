@@ -483,10 +483,14 @@ def test_configure_apply_uses_existing_apply_command_gate(
         captured["allow_source_informed"] = args.allow_source_informed
         captured["fake"] = args.fake
         captured["from_fake_receipt"] = args.from_fake_receipt
+        captured["expected_digest"] = (
+            args.expected_publication_content_root_sha256
+        )
+        captured["expected_package"] = args.expected_published_package
         captured["json"] = args.json
         return {
             "status": "applied",
-            "receipt": {"runtime_package_match": {"status": "matched"}},
+            "receipt": {"status": "applied"},
         }, 0
 
     monkeypatch.setattr("hsconfig.commands.configure.apply_payload", fake_apply_payload)
@@ -515,14 +519,17 @@ def test_configure_apply_uses_existing_apply_command_gate(
     assert code == 0
     assert summary["apply_performed"] is True
     assert summary["apply_status"] == 0
-    assert summary["runtime_package_match_status"] == "matched"
-    assert summary["runtime_package_match"]["status"] == "matched"
+    assert summary["runtime_apply_status"] == "applied"
+    assert summary["runtime_package_match_status"] == "not_checked"
+    assert summary["runtime_package_match"] is None
     assert captured == {
-        "package": str(package),
+        "package": str(out),
         "runtime_root": str(runtime_root),
         "allow_source_informed": False,
         "fake": False,
         "from_fake_receipt": None,
+        "expected_digest": package.parent.name.removeprefix("sha256-"),
+        "expected_package": str(package),
         "json": True,
     }
 
@@ -531,7 +538,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
     "receipt",
     [{}, {"runtime_package_match": "matched"}],
 )
-def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
+def test_configure_apply_fails_closed_for_invalid_typed_status_receipt(
     tmp_path: Path,
     monkeypatch,
     capsys,
@@ -570,9 +577,7 @@ def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
     assert code == 1
     assert summary["status"] == "failed"
     assert summary["stage"] == "apply"
-    assert summary["errors"] == [
-        "Successful apply receipt lacks runtime_package_match.status=matched."
-    ]
+    assert summary["errors"] == ["configure_apply_status_invalid"]
 
 
 def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, capsys):
@@ -1565,7 +1570,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         apply_calls.append(args)
         return {
             "status": "applied",
-            "receipt": {"runtime_package_match": {"status": "matched"}},
+            "receipt": {"status": "applied"},
         }, 0
 
     monkeypatch.setattr(
@@ -1623,4 +1628,9 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
     )
     assert summary["config_proof_summary"]["forbidden_normal_surfaces_absent"] is None
     assert len(apply_calls) == 1
-    assert apply_calls[0].package == str(resolve_current_package(out))
+    package = resolve_current_package(out)
+    assert apply_calls[0].package == str(out)
+    assert apply_calls[0].expected_published_package == str(package)
+    assert apply_calls[0].expected_publication_content_root_sha256 == (
+        package.parent.name.removeprefix("sha256-")
+    )

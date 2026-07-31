@@ -82,6 +82,14 @@ from hsconfig.source_readiness_preview import build_source_readiness_preview
 
 
 ApplyPayload = Callable[[argparse.Namespace], tuple[dict[str, Any], int]]
+_RUNTIME_APPLY_SUCCESS_STATUSES = frozenset(
+    {
+        "applied",
+        "already_current",
+        "recovered",
+        "committed_receipt_pending",
+    }
+)
 BuildConfigQualityReport = Callable[[Path], dict[str, Any]]
 PackageModelObserver = Callable[[PackageModel], None]
 SourceManifestPayload = Callable[
@@ -301,58 +309,53 @@ def _apply_published_configure(
                     },
                     apply_status=1,
                 ), 1
-            invoke_configure_fault(
-                configure_fault_hook,
-                ConfigureFaultPoint.APPLY,
+            expected_package = lease.package_root
+
+        invoke_configure_fault(
+            configure_fault_hook,
+            ConfigureFaultPoint.APPLY,
+        )
+        apply_payload_result, apply_status = apply_payload_fn(
+            SimpleNamespace(
+                package=str(request.output_root),
+                runtime_root=(
+                    str(request.runtime_root)
+                    if request.runtime_root is not None
+                    else None
+                ),
+                allow_source_informed=False,
+                fake=False,
+                from_fake_receipt=None,
+                immutable_package=True,
+                expected_publication_content_root_sha256=(
+                    published.content_root_sha256
+                ),
+                expected_published_package=str(expected_package),
+                json=True,
             )
-            apply_payload_result, apply_status = apply_payload_fn(
-                SimpleNamespace(
-                    package=str(lease.package_root),
-                    runtime_root=(
-                        str(request.runtime_root)
-                        if request.runtime_root is not None
-                        else None
-                    ),
-                    allow_source_informed=False,
-                    fake=False,
-                    from_fake_receipt=None,
-                    immutable_package=True,
-                    json=True,
-                )
-            )
-            if apply_status != 0:
-                return _configure_apply_failure_summary(
-                    summary,
-                    apply_payload_result,
-                    apply_status=apply_status,
-                ), apply_status
-            apply_receipt = apply_payload_result.get("receipt")
-            runtime_package_match = (
-                apply_receipt.get("runtime_package_match")
-                if isinstance(apply_receipt, dict)
-                else None
-            )
-            if (
-                not isinstance(runtime_package_match, dict)
-                or runtime_package_match.get("status") != "matched"
-            ):
-                return _configure_apply_failure_summary(
-                    summary,
-                    {
-                        **apply_payload_result,
-                        "status": "failed",
-                        "errors": [
-                            "Successful apply receipt lacks "
-                            "runtime_package_match.status=matched."
-                        ],
-                    },
-                    apply_status=1,
-                ), 1
-            return _configure_apply_success_summary(
+        )
+        if apply_status != 0:
+            return _configure_apply_failure_summary(
                 summary,
-                apply_payload_result=apply_payload_result,
-                runtime_package_match=runtime_package_match,
-            ), 0
+                apply_payload_result,
+                apply_status=apply_status,
+            ), apply_status
+        runtime_apply_status = _runtime_apply_status(apply_payload_result)
+        if runtime_apply_status is None:
+            return _configure_apply_failure_summary(
+                summary,
+                {
+                    **apply_payload_result,
+                    "status": "failed",
+                    "errors": ["configure_apply_status_invalid"],
+                },
+                apply_status=1,
+            ), 1
+        return _configure_apply_success_summary(
+            summary,
+            apply_payload_result=apply_payload_result,
+            runtime_apply_status=runtime_apply_status,
+        ), 0
     except Exception as error:
         return _configure_apply_failure_summary(
             summary,
@@ -368,7 +371,7 @@ def _configure_apply_success_summary(
     summary: Mapping[str, Any],
     *,
     apply_payload_result: Mapping[str, Any],
-    runtime_package_match: Mapping[str, Any],
+    runtime_apply_status: str,
 ) -> dict[str, Any]:
     updated = dict(summary)
     updated.update(
@@ -377,12 +380,29 @@ def _configure_apply_success_summary(
             "apply_performed": True,
             "apply_status": 0,
             "apply_result": dict(apply_payload_result),
-            "runtime_package_match": dict(runtime_package_match),
-            "runtime_package_match_status": "matched",
+            "runtime_apply_status": runtime_apply_status,
+            "runtime_package_match": None,
+            "runtime_package_match_status": "not_checked",
         }
     )
     _project_transient_apply_state(updated, apply_status=0)
     return updated
+
+
+def _runtime_apply_status(
+    apply_payload_result: Mapping[str, Any],
+) -> str | None:
+    receipt = apply_payload_result.get("receipt")
+    if not isinstance(receipt, Mapping):
+        return None
+    receipt_status = receipt.get("status")
+    payload_status = apply_payload_result.get("status")
+    if (
+        receipt_status not in _RUNTIME_APPLY_SUCCESS_STATUSES
+        or payload_status != receipt_status
+    ):
+        return None
+    return str(receipt_status)
 
 
 def _configure_apply_failure_summary(
@@ -934,35 +954,27 @@ def _execute_configure_namespace(
         if apply_status != 0:
             return _finish(out, "failed", {"stage": "apply", **apply_payload_result}, apply_status)
 
-    apply_receipt = (
-        apply_payload_result.get("receipt")
-        if isinstance(apply_payload_result, dict)
-        else None
-    )
-    runtime_package_match = (
-        apply_receipt.get("runtime_package_match")
-        if isinstance(apply_receipt, dict)
-        else None
-    )
-    runtime_package_match_status = (
-        runtime_package_match.get("status")
-        if isinstance(runtime_package_match, dict)
-        else "not_checked"
-    )
-    if bool(getattr(args, "apply", False)) and runtime_package_match_status != "matched":
-        return _finish(
-            out,
-            "failed",
-            {
-                **(apply_payload_result if isinstance(apply_payload_result, dict) else {}),
-                "stage": "apply",
-                "status": "failed",
-                "errors": [
-                    "Successful apply receipt lacks runtime_package_match.status=matched."
-                ],
-            },
-            1,
+    runtime_apply_status = None
+    if bool(getattr(args, "apply", False)):
+        runtime_apply_status = _runtime_apply_status(
+            apply_payload_result or {}
         )
+        if runtime_apply_status is None:
+            return _finish(
+                out,
+                "failed",
+                {
+                    **(
+                        apply_payload_result
+                        if isinstance(apply_payload_result, dict)
+                        else {}
+                    ),
+                    "stage": "apply",
+                    "status": "failed",
+                    "errors": ["configure_apply_status_invalid"],
+                },
+                1,
+            )
 
     acceptance_summary = _build_acceptance_summary(
         operator_summary=operator_summary,
@@ -1059,8 +1071,9 @@ def _execute_configure_namespace(
             "apply_decision": apply_decision_payload(apply_decision),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
-            "runtime_package_match_status": runtime_package_match_status,
-            "runtime_package_match": runtime_package_match,
+            "runtime_apply_status": runtime_apply_status,
+            "runtime_package_match_status": "not_checked",
+            "runtime_package_match": None,
     }
     try:
         invoke_configure_fault(

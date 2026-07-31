@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from hsconfig.cli import main
+from hsconfig.cli_parser import build_parser
 from hsconfig.commands.apply import apply_payload as real_apply_payload
+from hsconfig.configure_workflow import _execute_configure_namespace
 from hsconfig.current_output import resolve_current_package
 from hsconfig.output_publisher import publish_configure_run
 from tests.test_output_publisher import build_rendered_run
@@ -151,10 +157,20 @@ def test_failed_configure_leaves_previous_current_byte_identical(
     assert _tree_bytes(output_root) == before_tree
 
 
+@pytest.mark.parametrize(
+    "installer_status",
+    [
+        "applied",
+        "already_current",
+        "recovered",
+        "committed_receipt_pending",
+    ],
+)
 def test_configure_apply_runs_after_publication_against_digest_bound_revision(
     tmp_path: Path,
     monkeypatch,
     capsys,
+    installer_status: str,
 ) -> None:
     _disable_remote_card_fetches(monkeypatch)
     output_root = tmp_path / "outputs" / "ShadowPriest"
@@ -167,10 +183,18 @@ def test_configure_apply_runs_after_publication_against_digest_bound_revision(
         observed["current_revision"] = json.loads(
             (output_root / "current.json").read_bytes()
         )["revision"]
+        observed["expected_digest"] = (
+            args.expected_publication_content_root_sha256
+        )
+        observed["expected_package"] = Path(
+            args.expected_published_package
+        )
         return {
-            "status": "applied",
+            "status": installer_status,
             "receipt": {
-                "runtime_package_match": {"status": "matched"},
+                "status": installer_status,
+                "logical_config_dir": "shadowpriest",
+                "versioned_config_dir": "shadowpriest--sha256-" + "a" * 64,
             },
         }, 0
 
@@ -186,15 +210,20 @@ def test_configure_apply_runs_after_publication_against_digest_bound_revision(
     payload = json.loads(capsys.readouterr().out)
     package = resolve_current_package(output_root)
     assert observed == {
-        "package": package,
+        "package": output_root,
         "current_revision": package.parent.relative_to(
             output_root
         ).as_posix(),
+        "expected_digest": package.parent.name.removeprefix("sha256-"),
+        "expected_package": package,
     }
     assert payload["status"] == "OK"
     assert payload["apply_performed"] is True
     assert payload["apply_status"] == 0
-    assert payload["runtime_package_match_status"] == "matched"
+    assert payload["apply_result"]["status"] == installer_status
+    assert payload["apply_result"]["receipt"]["status"] == installer_status
+    assert payload.get("runtime_package_match") is None
+    assert payload.get("runtime_package_match_status") == "not_checked"
     assert (
         payload["publication_content_root_sha256"]
         == package.parent.name.removeprefix("sha256-")
@@ -236,6 +265,94 @@ def test_configure_apply_failure_keeps_new_publication_current(
     )
 
 
+def test_configure_apply_releases_publication_lease_before_consumer(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import hsconfig.configure_workflow as workflow
+
+    _disable_remote_card_fetches(monkeypatch)
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    runtime_root = tmp_path / "runtime"
+    lease_active = False
+    real_lease = workflow.lease_package_input
+
+    @contextmanager
+    def instrumented_lease(package_input):
+        nonlocal lease_active
+        with real_lease(package_input) as lease:
+            assert lease_active is False
+            lease_active = True
+            try:
+                yield lease
+            finally:
+                lease_active = False
+
+    def fake_apply(_args):
+        assert lease_active is False, "configure_apply_self_deadlock"
+        return {
+            "status": "applied",
+            "receipt": {"status": "applied"},
+        }, 0
+
+    monkeypatch.setattr(workflow, "lease_package_input", instrumented_lease)
+    monkeypatch.setattr(
+        "hsconfig.commands.configure.apply_payload",
+        fake_apply,
+    )
+    args = _configure_args(output_root, runtime_root)
+    args.insert(-1, "--apply")
+
+    assert main(args) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "OK"
+    assert payload["apply_result"]["receipt"]["status"] == "applied"
+
+
+@pytest.mark.parametrize(
+    "installer_status",
+    [
+        "applied",
+        "already_current",
+        "recovered",
+        "committed_receipt_pending",
+    ],
+)
+def test_namespace_configure_consumer_accepts_typed_status_without_runtime_match(
+    tmp_path: Path,
+    monkeypatch,
+    installer_status: str,
+) -> None:
+    _disable_remote_card_fetches(monkeypatch)
+    output_root = tmp_path / "namespace-output"
+    args = build_parser().parse_args(
+        [
+            *_configure_args(output_root, tmp_path / "runtime")[:-1],
+            "--apply",
+            "--json",
+        ]
+    )
+
+    payload, code = _execute_configure_namespace(
+        args,
+        apply_payload_fn=lambda _args: (
+            {
+                "status": installer_status,
+                "receipt": {"status": installer_status},
+            },
+            0,
+        ),
+    )
+
+    assert code == 0
+    assert payload["status"] == "OK"
+    assert payload["apply_status"] == 0
+    assert payload["runtime_package_match_status"] == "not_checked"
+    assert payload["runtime_package_match"] is None
+
+
 def test_configure_apply_rejects_competing_current_digest(
     tmp_path: Path,
     monkeypatch,
@@ -257,9 +374,7 @@ def test_configure_apply_rejects_competing_current_digest(
         apply_called = True
         return {
             "status": "applied",
-            "receipt": {
-                "runtime_package_match": {"status": "matched"},
-            },
+            "receipt": {"status": "applied"},
         }, 0
 
     monkeypatch.setattr(
@@ -293,6 +408,43 @@ def test_configure_apply_rejects_competing_current_digest(
     )
 
 
+def test_apply_payload_fails_closed_when_current_drifts_after_configure_lease(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "published"
+    expected = publish_configure_run(
+        build_rendered_run(tmp_path / "expected", 1),
+        output_root,
+    )
+    current = publish_configure_run(
+        build_rendered_run(tmp_path / "current", 2),
+        output_root,
+    )
+
+    payload, code = real_apply_payload(
+        SimpleNamespace(
+            package=str(output_root),
+            runtime_root=str(tmp_path / "runtime"),
+            fake=False,
+            from_fake_receipt=None,
+            expected_publication_content_root_sha256=(
+                expected.content_root_sha256
+            ),
+            expected_published_package=str(expected.package_root),
+            json=True,
+        )
+    )
+
+    assert code == 1
+    assert payload["errors"] == [
+        "configure_apply_publication_digest_mismatch"
+    ]
+    assert (
+        payload["publication_content_root_sha256"]
+        == current.content_root_sha256
+    )
+
+
 def test_configure_apply_keeps_published_revision_byte_identical(
     tmp_path: Path,
     monkeypatch,
@@ -304,7 +456,7 @@ def test_configure_apply_keeps_published_revision_byte_identical(
     observed: dict[str, object] = {}
 
     def apply_and_compare(args):
-        revision_root = Path(args.package).parent
+        revision_root = Path(args.expected_published_package).parent
         before = _tree_bytes(revision_root)
         result = real_apply_payload(args)
         observed["before"] = before
