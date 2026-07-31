@@ -5,9 +5,11 @@ from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
+import hsconfig.package_io as package_io
 from hsconfig.operator_summary import build_operator_summary_from_inputs
 from hsconfig.operator_summary_inputs import load_operator_summary_inputs
 from hsconfig.package_assembler import assemble_package
@@ -38,6 +40,45 @@ _DIRECTORY_SYMLINK_UNAVAILABLE_ERRNOS = {
     errno.EOPNOTSUPP,
 }
 _WINDOWS_PRIVILEGE_NOT_HELD = 1314
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "changed_field", "states_are_equal"),
+    (
+        ("nt", "st_ctime_ns", True),
+        ("nt", "st_mtime_ns", False),
+        ("nt", "st_size", False),
+        ("nt", "st_ino", False),
+        ("posix", "st_ctime_ns", False),
+    ),
+)
+def test_cross_stat_file_state_compares_only_portable_windows_fields(
+    platform_name: str,
+    changed_field: str,
+    states_are_equal: bool,
+) -> None:
+    fields = {
+        "st_dev": 1,
+        "st_ino": 2,
+        "st_mode": 3,
+        "st_size": 4,
+        "st_mtime_ns": 5,
+        "st_ctime_ns": 6,
+        "st_nlink": 1,
+        "st_file_attributes": 0,
+    }
+    changed_fields = {**fields, changed_field: fields[changed_field] + 1}
+
+    before = package_io._file_state(
+        SimpleNamespace(**fields),
+        platform_name=platform_name,
+    )
+    after = package_io._file_state(
+        SimpleNamespace(**changed_fields),
+        platform_name=platform_name,
+    )
+
+    assert (before == after) is states_are_equal
 
 
 def _rendered(tmp_path: Path, deck_name: str = "ShadowPriest"):

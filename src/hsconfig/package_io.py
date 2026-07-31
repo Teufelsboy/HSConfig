@@ -1223,14 +1223,18 @@ def _bounded_inventory(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 def _file_state(
     status: os.stat_result,
-) -> tuple[int, int, int, int, int, int]:
+    *,
+    platform_name: str | None = None,
+) -> tuple[int, int, int, int, int, int | None]:
+    if platform_name is None:
+        platform_name = os.name
     return (
         status.st_dev,
         status.st_ino,
         status.st_mode,
         status.st_size,
         status.st_mtime_ns,
-        status.st_ctime_ns,
+        None if platform_name == "nt" else status.st_ctime_ns,
     )
 
 
