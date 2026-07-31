@@ -68,14 +68,14 @@ def _rehash_catalog(document: dict) -> None:
     document["content_sha256"] = _digest(_canonical(payload))
 
 
-def test_packaged_catalog_is_exact_schema_v2_audited_set() -> None:
+def test_packaged_catalog_is_exact_schema_v3_audited_set() -> None:
     audited = load_audited_build_inputs(INPUTS_PATH)
 
-    assert audited.schema_version == 2
+    assert audited.schema_version == 3
     assert tuple(row.deck_name for row in audited.builds) == AUDITED_ORDER
     assert len({row.deck_fingerprint for row in audited.builds}) == 12
     assert len({row.input_sha256 for row in audited.builds}) == 12
-    assert all(row.schema_version == 2 for row in audited.builds)
+    assert all(row.schema_version == 3 for row in audited.builds)
     assert all(row.deck_cards_resource_sha256 for row in audited.builds)
     assert all(row.card_snapshot_resource_sha256 for row in audited.builds)
     assert all(row.policy_profile_resource_sha256 for row in audited.builds)
@@ -83,6 +83,10 @@ def test_packaged_catalog_is_exact_schema_v2_audited_set() -> None:
     assert all(row.source_bundle_resource_sha256s for row in audited.builds)
     assert all(
         row.globalvalues_baseline_resource_sha256 for row in audited.builds
+    )
+    assert all(row.general_preconfig_resource_sha256 for row in audited.builds)
+    assert all(
+        row.acquisition_closure_resource_sha256 for row in audited.builds
     )
 
 
@@ -170,6 +174,8 @@ def test_catalog_rejects_order_and_duplicate_identities(
         ("evidence_contract_resource_sha256", None),
         ("source_bundle_resource_sha256s", []),
         ("globalvalues_baseline_resource_sha256", "not-a-digest"),
+        ("general_preconfig_resource_sha256", "not-a-digest"),
+        ("acquisition_closure_resource_sha256", "not-a-digest"),
     ],
 )
 def test_catalog_rejects_incomplete_or_substituted_raw_roots(

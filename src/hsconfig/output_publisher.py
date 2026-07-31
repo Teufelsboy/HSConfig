@@ -360,6 +360,40 @@ def reconcile_output(output_root: Path) -> PublishedOutput | None:
         return result
 
 
+def validate_finalized_publication_authority(
+    output_root: Path,
+    publication: OutputPublication,
+) -> None:
+    """Validate the one immutable owner journal without performing recovery."""
+
+    if not isinstance(publication, OutputPublication):
+        raise TypeError("output_publication_required")
+    root = Path(output_root)
+    journals = _load_valid_transactions(root)
+    owners = [
+        transaction
+        for _path, transaction in journals
+        if transaction.owns_revision
+        and transaction.revision == publication.revision
+    ]
+    if len(journals) != 1 or len(owners) != 1:
+        raise ValueError("publisher_finalized_authority_invalid")
+    owner = owners[0]
+    revision_root = root / publication.revision
+    if (
+        owner.phase != "finalized"
+        or owner.deck_name != publication.deck_name
+        or owner.deck_fingerprint != publication.deck_fingerprint
+        or owner.content_root_sha256 != publication.content_root_sha256
+        or owner.revision_identity != path_identity(revision_root)
+        or owner.staging_identity is not None
+        or owner.previous_revision is not None
+        or owner.previous_revision_identity is not None
+        or owner.previous_owner_transaction_id is not None
+    ):
+        raise ValueError("publisher_finalized_authority_invalid")
+
+
 def _reconcile_locked(output_root: Path) -> PublishedOutput | None:
     current: tuple[OutputPublication, Any] | None
     pointer_path = output_root / CURRENT_PATH

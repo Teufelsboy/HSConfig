@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from hsconfig.package_io import (
+    FilesystemPathGuard,
     secure_open_file_descriptor,
     secure_replace,
     secure_unlink,
@@ -145,11 +146,22 @@ def flush_file(path: Path) -> None:
 class ExclusiveFileLock:
     """Cross-process exclusive lock backed by a persistent empty lock inode."""
 
-    def __init__(self, path: Path, *, timeout_seconds: float = 30.0) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        timeout_seconds: float = 30.0,
+        expected_parent_identity: tuple[int, int, int] | None = None,
+        path_guard: FilesystemPathGuard | None = None,
+        create_if_missing: bool = True,
+    ) -> None:
         if not math.isfinite(timeout_seconds) or timeout_seconds < 0:
             raise ValueError("timeout_seconds must be finite and non-negative")
         self.path = Path(path)
         self.timeout_seconds = timeout_seconds
+        self.expected_parent_identity = expected_parent_identity
+        self.path_guard = path_guard
+        self.create_if_missing = create_if_missing
         self._handle: BinaryIO | None = None
 
     def __enter__(self) -> ExclusiveFileLock:
@@ -157,17 +169,30 @@ class ExclusiveFileLock:
             raise RuntimeError(f"Lock is already acquired: {self.path}")
 
         parent = self.path.parent
+        if self.path_guard is not None:
+            self.path_guard.validate()
         parent_status = parent.lstat()
         parent_identity = _identity_from_status(parent_status)
+        if (
+            self.expected_parent_identity is not None
+            and parent_identity != self.expected_parent_identity
+        ):
+            raise ValueError("filesystem_path_identity_changed")
         resolved_parent_identity = _stat_identity(parent)
         if _status_is_reparse(parent_status):
             raise ValueError(f"Lock parent is a reparse point: {parent}")
+        if self.path_guard is not None:
+            self.path_guard.validate()
         before_identity: tuple[int, int, int] | None = None
         handle: BinaryIO | None = None
         for _ in range(100):
+            if self.path_guard is not None:
+                self.path_guard.validate()
             try:
                 before_status = self.path.lstat()
             except FileNotFoundError:
+                if not self.create_if_missing:
+                    raise
                 try:
                     handle = _open_lock_file(
                         self.path,
@@ -191,6 +216,8 @@ class ExclusiveFileLock:
                     expected_parent_identity=parent_identity,
                 )
             except FileNotFoundError:
+                if not self.create_if_missing:
+                    raise
                 continue
             break
         if handle is None:
@@ -200,6 +227,8 @@ class ExclusiveFileLock:
         acquired = False
         try:
             opened_identity = _fstat_identity(handle)
+            if self.path_guard is not None:
+                self.path_guard.validate()
             path_status = self.path.lstat()
             path_identity = _identity_from_status(path_status)
             if (
@@ -231,6 +260,8 @@ class ExclusiveFileLock:
                         ) from exc
                     time.sleep(min(0.05, remaining))
                 else:
+                    if self.path_guard is not None:
+                        self.path_guard.validate()
                     if (
                         _lstat_identity(self.path) != opened_identity
                         or _lstat_identity(parent) != parent_identity
@@ -242,6 +273,8 @@ class ExclusiveFileLock:
                             f"{self.path}"
                         )
                     acquired = True
+                    if self.path_guard is not None:
+                        self.path_guard.validate()
                     self._handle = handle
                     return self
         except BaseException as primary:

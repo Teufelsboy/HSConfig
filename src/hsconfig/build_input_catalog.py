@@ -13,7 +13,7 @@ from typing import Any
 from hsconfig.build_inputs import CanonicalBuildInputs, canonicalize_build_inputs
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 _STORE_SCHEMA_VERSION = 1
 _AUDITED_ORDER = (
     "ShadowPriest",
@@ -45,6 +45,8 @@ _STORE_KINDS = frozenset(
         "deck_cards",
         "evidence_contract",
         "globalvalues_baseline",
+        "general_preconfig",
+        "acquisition_closure",
         "policy_profile",
         "source_bundle",
     }
@@ -58,7 +60,7 @@ _PACKAGED_STORE = "resources/audited_build_resources.json"
 # Updated only by the reviewed deterministic materialization step. This pin is
 # deliberately independent of the self-hash embedded in the catalog.
 APPROVED_AUDITED_BUILD_INPUTS_SHA256 = (
-    "sha256:d7799f7e5139ed8e121072216a38709297e931835e7dd037670af55dc75641ca"
+    "sha256:8235c5b64a622fcb84ab79c8594d29386aae1440d42537005b6212bf0675152c"
 )
 
 
@@ -256,6 +258,8 @@ def _resource_union(
                 row.policy_profile_resource_sha256,
                 row.evidence_contract_resource_sha256,
                 row.globalvalues_baseline_resource_sha256,
+                row.general_preconfig_resource_sha256,
+                row.acquisition_closure_resource_sha256,
             }
         )
         digests.update(row.source_bundle_resource_sha256s)

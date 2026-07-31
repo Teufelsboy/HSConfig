@@ -12,7 +12,7 @@ from typing import Any
 from hsconfig.package_domain import _ImmutableAuthorityNode
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 _PAYLOAD_FIELDS = frozenset(
     {
         "schema_version",
@@ -34,6 +34,8 @@ _PAYLOAD_FIELDS = frozenset(
         "evidence_contract_resource_sha256",
         "source_bundle_resource_sha256s",
         "globalvalues_baseline_resource_sha256",
+        "general_preconfig_resource_sha256",
+        "acquisition_closure_resource_sha256",
     }
 )
 _RAW_DECK_CODE_FIELDS = frozenset(
@@ -68,6 +70,8 @@ class CanonicalBuildInputs(_ImmutableAuthorityNode):
     evidence_contract_resource_sha256: str
     source_bundle_resource_sha256s: tuple[str, ...]
     globalvalues_baseline_resource_sha256: str
+    general_preconfig_resource_sha256: str
+    acquisition_closure_resource_sha256: str
     canonical_payload: bytes
     input_sha256: str
 
@@ -129,6 +133,12 @@ def canonicalize_build_inputs(
     globalvalues_baseline_resource_sha256 = _content_sha256(
         payload["globalvalues_baseline_resource_sha256"]
     )
+    general_preconfig_resource_sha256 = _content_sha256(
+        payload["general_preconfig_resource_sha256"]
+    )
+    acquisition_closure_resource_sha256 = _content_sha256(
+        payload["acquisition_closure_resource_sha256"]
+    )
 
     normalized_payload = {
         "schema_version": _SCHEMA_VERSION,
@@ -155,6 +165,12 @@ def canonicalize_build_inputs(
         ),
         "globalvalues_baseline_resource_sha256": (
             globalvalues_baseline_resource_sha256
+        ),
+        "general_preconfig_resource_sha256": (
+            general_preconfig_resource_sha256
+        ),
+        "acquisition_closure_resource_sha256": (
+            acquisition_closure_resource_sha256
         ),
     }
     canonical_payload = json.dumps(
@@ -184,6 +200,12 @@ def canonicalize_build_inputs(
         source_bundle_resource_sha256s=source_bundle_resource_sha256s,
         globalvalues_baseline_resource_sha256=(
             globalvalues_baseline_resource_sha256
+        ),
+        general_preconfig_resource_sha256=(
+            general_preconfig_resource_sha256
+        ),
+        acquisition_closure_resource_sha256=(
+            acquisition_closure_resource_sha256
         ),
         canonical_payload=canonical_payload,
         input_sha256=sha256(canonical_payload).hexdigest(),
