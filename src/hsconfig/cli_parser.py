@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 
+from hsconfig.version import __version__
+
 
 NEGATIVE_SCOPE_TEXT = (
     "HSConfig is pre-run only: it does not parse replays, inspect "
@@ -24,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--cards-json, --plan-reports-dir."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
