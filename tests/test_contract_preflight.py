@@ -371,6 +371,40 @@ def test_contract_preflight_checks_configure_acceptance_route_contract(
     assert "config_proof_summary_visible" not in payload["failures"]
 
 
+def test_contract_preflight_rejects_invalid_current_pointer_route(
+    tmp_path: Path,
+) -> None:
+    clean_payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+    assert clean_payload["status"] == "PASS"
+
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    operator_root = tmp_path / "docs" / "operator"
+    operator_root.mkdir(parents=True)
+    shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
+
+    for path in (
+        skill_root / "SKILL.md",
+        skill_root / "references" / "workflow.md",
+        operator_root / "README.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace("<out>/current.json", "<out>/invalid-pointer.json"),
+            encoding="utf-8",
+        )
+
+    payload = build_contract_preflight(tmp_path, git=_clean_git())
+
+    assert payload["checks"]["configure_acceptance_route_visible"] is False
+    assert "configure_acceptance_route_visible" in payload["failures"]
+
+
 def test_contract_preflight_checks_source_candidate_plan_visibility(
     tmp_path: Path,
 ) -> None:
