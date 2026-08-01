@@ -626,6 +626,36 @@ def test_contract_preflight_checks_pre_run_config_contract_receipt_visibility(
     assert "pre_run_config_contract_receipt_visible" not in payload["failures"]
 
 
+def test_contract_preflight_rejects_bare_handoff_contract_route(
+    tmp_path: Path,
+) -> None:
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    operator_root = tmp_path / "docs" / "operator"
+    operator_root.mkdir(parents=True)
+    shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
+
+    for path in (
+        skill_root / "SKILL.md",
+        skill_root / "references" / "workflow.md",
+        operator_root / "README.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace(
+                "<current-revision>/configure_summary.json.handoff_contract",
+                "configure_summary.json.handoff_contract",
+            ),
+            encoding="utf-8",
+        )
+
+    payload = build_contract_preflight(tmp_path, git=_clean_git())
+
+    assert payload["checks"]["pre_run_config_contract_receipt_visible"] is False
+    assert "pre_run_config_contract_receipt_visible" in payload["failures"]
+
+
 def test_contract_preflight_reports_attention_when_git_is_dirty() -> None:
     dirty_git = GitPreflight(
         branch="codex/test",
@@ -1413,8 +1443,8 @@ def test_contract_preflight_reports_attention_when_configure_acceptance_route_dr
     ):
         text = path.read_text(encoding="utf-8")
         text = text.replace(
-            "<out>/configure_summary.json.acceptance_summary",
-            "<out>/configure_summary.json",
+            "<current-revision>/configure_summary.json.acceptance_summary",
+            "<invalid-revision>/configure_summary.json.acceptance_summary",
         )
         text = text.replace("use_config_now", "use_now")
         text = text.replace("next_report_to_open", "next_report")
