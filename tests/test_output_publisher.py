@@ -55,9 +55,13 @@ def _make_symlink(
 def build_rendered_run(
     root: Path,
     revision: int,
+    *,
+    fixture_paths: bool = False,
 ) -> RenderedConfigureRun:
     package = assemble_package(
-        compile_package(audited_request(root, "ShadowPriest"))
+        compile_package(
+            audited_request(root, "ShadowPriest", fixture_paths=fixture_paths)
+        )
     )
     return render_configure_run_model(
         create_configure_run_model(
@@ -80,7 +84,7 @@ def _publish_first_worker(
     start_event: object,
     result_queue: object,
 ) -> None:
-    rendered = build_rendered_run(Path(source_root), 1)
+    rendered = build_rendered_run(Path(source_root), 1, fixture_paths=True)
     ready_queue.put(rendered.content_root_sha256)  # type: ignore[attr-defined]
     if not start_event.wait(30):  # type: ignore[attr-defined]
         result_queue.put(("error", "start timeout"))  # type: ignore[attr-defined]
@@ -269,9 +273,16 @@ def test_windows_publish_accepts_same_identity_short_path_alias(
 def test_two_first_publishers_share_creation_and_one_reuses(
     tmp_path: Path,
 ) -> None:
-    source_root = tmp_path / "shared-source"
     output_root = tmp_path / "ShadowPriest"
-    expected = build_rendered_run(source_root, 1).content_root_sha256
+    expected = build_rendered_run(
+        tmp_path / "expected-source",
+        1,
+        fixture_paths=True,
+    ).content_root_sha256
+    worker_source_roots = [
+        tmp_path / "worker-source-1",
+        tmp_path / "worker-source-2",
+    ]
     context = multiprocessing.get_context("spawn")
     ready_queue = context.Queue()
     result_queue = context.Queue()
@@ -287,7 +298,7 @@ def test_two_first_publishers_share_creation_and_one_reuses(
                 result_queue,
             ),
         )
-        for _ in range(2)
+        for source_root in worker_source_roots
     ]
     for process in processes:
         process.start()
