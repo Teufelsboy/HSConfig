@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -44,6 +45,18 @@ def journal_fixture(**overrides: object) -> RuntimeTransactionJournal:
     return RuntimeTransactionJournal(**values)  # type: ignore[arg-type]
 
 
+def _journal_write_hard_exit_worker(
+    path: Path,
+    journal: RuntimeTransactionJournal,
+    stage: str,
+) -> None:
+    def terminate(observed: str) -> None:
+        if observed == stage:
+            os._exit(77)
+
+    write_runtime_transaction_journal(path, journal, fault_hook=terminate)
+
+
 def test_journal_is_strict_canonical_and_round_trips(tmp_path: Path) -> None:
     transactions = tmp_path / ".hsconfig" / "transactions"
     transactions.mkdir(parents=True)
@@ -58,6 +71,57 @@ def test_journal_is_strict_canonical_and_round_trips(tmp_path: Path) -> None:
     assert list(payload) == sorted(payload)
     assert payload["candidate_identity"] == [7, 8, 0o40700]
     assert load_runtime_transaction_journals(tmp_path) == (journal,)
+
+
+@pytest.mark.parametrize(
+    "stage",
+    (
+        "before_temp_write",
+        "after_temp_write",
+        "after_temp_flush",
+        "before_replace",
+        "after_replace",
+        "after_parent_flush",
+    ),
+)
+def test_hard_kill_during_journal_update_recovers_old_or_new_canonical_state(
+    tmp_path: Path,
+    stage: str,
+) -> None:
+    transactions = tmp_path / ".hsconfig" / "transactions"
+    transactions.mkdir(parents=True)
+    old = journal_fixture()
+    new = replace(
+        old,
+        target_identity=old.candidate_identity,
+        owns_target=True,
+        phase=RuntimeTransactionPhase.FINALIZED,
+    )
+    path = transactions / f"{old.transaction_id}.json"
+    write_runtime_transaction_journal(path, old)
+
+    process = multiprocessing.get_context("spawn").Process(
+        target=_journal_write_hard_exit_worker,
+        args=(path, new, stage),
+    )
+    process.start()
+    process.join(60)
+    if process.is_alive():
+        process.kill()
+        process.join(10)
+        pytest.fail(f"journal worker hung at {stage}")
+    assert process.exitcode == 77
+
+    recovered = load_runtime_transaction_journals(tmp_path)
+    if stage in {
+        "before_temp_write",
+        "after_temp_write",
+        "after_temp_flush",
+        "before_replace",
+    }:
+        assert recovered in {(old,), (new,)}
+    else:
+        assert recovered == (new,)
 
 
 @pytest.mark.parametrize(
@@ -115,6 +179,118 @@ def test_journal_loader_fails_closed_on_unknown_entry(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="runtime_transaction_store_invalid"):
         load_runtime_transaction_journals(tmp_path)
+
+
+def test_journal_loader_ignores_truncated_pending_without_mutating_it(
+    tmp_path: Path,
+) -> None:
+    transactions = tmp_path / ".hsconfig" / "transactions"
+    transactions.mkdir(parents=True)
+    journal = journal_fixture()
+    path = transactions / f"{journal.transaction_id}.json"
+    pending = transactions / (
+        f".{journal.transaction_id}.json.{'2' * 32}.tmp"
+    )
+    write_runtime_transaction_journal(path, journal)
+    pending.write_bytes(b"{\n")
+    before = pending.read_bytes()
+    before_status = pending.stat()
+    before_identity = (
+        before_status.st_dev,
+        before_status.st_ino,
+        before_status.st_mode,
+    )
+
+    assert load_runtime_transaction_journals(tmp_path) == (journal,)
+
+    assert path.is_file()
+    assert pending.read_bytes() == before
+    after_status = pending.stat()
+    assert (
+        after_status.st_dev,
+        after_status.st_ino,
+        after_status.st_mode,
+    ) == before_identity
+
+
+def test_journal_loader_rejects_non_monotonic_final_pending_pair(
+    tmp_path: Path,
+) -> None:
+    transactions = tmp_path / ".hsconfig" / "transactions"
+    transactions.mkdir(parents=True)
+    journal = journal_fixture()
+    path = transactions / f"{journal.transaction_id}.json"
+    pending = transactions / (
+        f".{journal.transaction_id}.json.{'2' * 32}.tmp"
+    )
+    write_runtime_transaction_journal(path, journal)
+    conflicting = replace(journal, deck_name="OtherDeck")
+    pending.write_bytes(runtime_transaction_journal_bytes(conflicting))
+    before = pending.read_bytes()
+
+    with pytest.raises(ValueError, match="runtime_transaction_store_invalid"):
+        load_runtime_transaction_journals(tmp_path)
+
+    assert path.is_file()
+    assert pending.read_bytes() == before
+
+
+def test_journal_loader_ignores_truncated_pending_without_final(
+    tmp_path: Path,
+) -> None:
+    transactions = tmp_path / ".hsconfig" / "transactions"
+    transactions.mkdir(parents=True)
+    transaction_id = "1" * 32
+    pending = transactions / f".{transaction_id}.json.{'2' * 32}.tmp"
+    pending.write_bytes(b"")
+    before_status = pending.stat()
+
+    assert load_runtime_transaction_journals(tmp_path) == ()
+
+    after_status = pending.stat()
+    assert pending.read_bytes() == b""
+    assert (after_status.st_dev, after_status.st_ino, after_status.st_mode) == (
+        before_status.st_dev,
+        before_status.st_ino,
+        before_status.st_mode,
+    )
+
+
+def test_truncated_reserved_temp_does_not_block_later_journal_update(
+    tmp_path: Path,
+) -> None:
+    transactions = tmp_path / ".hsconfig" / "transactions"
+    transactions.mkdir(parents=True)
+    old = journal_fixture()
+    new = replace(
+        old,
+        target_identity=old.candidate_identity,
+        owns_target=True,
+        phase=RuntimeTransactionPhase.FINALIZED,
+    )
+    path = transactions / f"{old.transaction_id}.json"
+    truncated = transactions / (
+        f".{old.transaction_id}.json.{'2' * 32}.tmp"
+    )
+    write_runtime_transaction_journal(path, old)
+    truncated.write_bytes(b"{\n")
+    before_status = truncated.stat()
+    before = truncated.read_bytes()
+
+    write_runtime_transaction_journal(path, new)
+
+    assert load_runtime_transaction_journals(tmp_path) == (new,)
+    after_status = truncated.stat()
+    assert truncated.read_bytes() == before
+    assert (
+        after_status.st_dev,
+        after_status.st_ino,
+        after_status.st_mode,
+    ) == (
+        before_status.st_dev,
+        before_status.st_ino,
+        before_status.st_mode,
+    )
 
 
 def test_journal_loader_rejects_hardlinked_journal(tmp_path: Path) -> None:

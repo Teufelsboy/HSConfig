@@ -257,9 +257,10 @@ def test_skill_names_configure_normal_workflow():
         "research-deck -> prepare -> validate -> apply`."
     ) in text
     assert (
-        "3. After `configure`, read "
-        "`<out>/configure_summary.json.acceptance_summary` first; use "
-        "`reports/operator_summary.json` as the apply authority."
+        "3. After `configure`, resolve `<out>/current.json`, read "
+        "`<current-revision>/configure_summary.json.acceptance_summary` "
+        "first, and use `<current-package>/reports/operator_summary.json` "
+        "as the apply authority."
     ) in text
     assert "`hsconfig configure --auto-source --source-search-results-json ...`" in active_docs
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in active_docs
@@ -296,13 +297,13 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     )[0]
     combined = f"{operator_fragment}\n{active_docs}"
 
-    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "<current-revision>/configure_summary.json.acceptance_summary" in combined
     assert "acceptance_summary" in combined
     assert "use_config_now" in combined
     assert "next_report_to_open" in combined
-    assert "<out>/configure_summary.json.config_quality_summary" in combined
+    assert "<current-revision>/configure_summary.json.config_quality_summary" in combined
     assert "config_quality_summary" in combined
-    assert "<out>/configure_summary.json.config_proof_summary" in combined
+    assert "<current-revision>/configure_summary.json.config_proof_summary" in combined
     assert "diagnostic-only config proof" in combined
     assert "not another apply gate" in combined
     assert "does not replace `reports/operator_summary.json`" in combined
@@ -319,7 +320,7 @@ def test_docs_skill_and_workflow_route_configure_acceptance_summary_first() -> N
     )
     combined = f"{operator_docs}\n{_active_skill_docs_text()}"
 
-    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "<current-revision>/configure_summary.json.acceptance_summary" in combined
     assert "use_config_now" in combined
     assert "next_report_to_open" in combined
     assert "operator projection" in combined

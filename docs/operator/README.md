@@ -16,7 +16,7 @@ inventory are never apply authority.
 - Run `hsconfig configure` for normal operation.
 - Before source refresh, package generation, or runtime-facing apply review, run `git fetch --all --prune --tags`, `python scripts/check_hsconfig_currentness.py --cwd . --json`, and `git status --short --branch`. Runtime-facing work must start from a clean worktree and not be behind `origin/main`; feature branches may be ahead.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
-- After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
+- After `configure`, resolve `<out>/current.json` and read `<current-revision>/configure_summary.json.acceptance_summary` first, then `<current-revision>/configure_summary.json.handoff_contract`, then `<current-revision>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `<current-package>/reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed. This is the human-facing verdict only when read from `reports/operator_summary.json`; the apply command recomputes every technical authority boundary before writing.
 - A captured or diagnostic-source package can instead be
   `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`,
@@ -34,8 +34,8 @@ Preferred normal path: `hsconfig configure`.
 ## Normal Operator Path
 
 1. Run `hsconfig configure`.
-2. Read `outputs/<DeckName>/configure_summary.json.acceptance_summary`, then `<out>/configure_summary.json.handoff_contract` as the pre-run config contract receipt: compact diagnostic-only handoff proof for use_config_now, single authority, no-default-only status, forbidden-surface status, source-to-runtime trace status, Darkbishop boundary, mechanic discipline, and the next report; it does not replace `reports/operator_summary.json`, cannot apply runtime files, cannot turn source gaps into blockers, and operator_summary.json remains the only normal apply authority. Then read `<out>/configure_summary.json.source_closure_receipt` when source depth is the question; it is a compact diagnostic-only source-closure receipt that does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
-3. Use `outputs/<DeckName>/04_package/reports/operator_summary.json` as the apply authority.
+2. Resolve `outputs/<DeckName>/current.json` to its `revisions/sha256-<digest>` directory. Read `<current-revision>/configure_summary.json.acceptance_summary`, then `<current-revision>/configure_summary.json.handoff_contract` as the pre-run config contract receipt: compact diagnostic-only handoff proof for use_config_now, single authority, no-default-only status, forbidden-surface status, source-to-runtime trace status, Darkbishop boundary, mechanic discipline, and the next report; it does not replace `reports/operator_summary.json`, cannot apply runtime files, cannot turn source gaps into blockers, and operator_summary.json remains the only normal apply authority. Then read `<current-revision>/configure_summary.json.source_closure_receipt` when source depth is the question; it is a compact diagnostic-only source-closure receipt that does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
+3. Use `<current-revision>/04_package/reports/operator_summary.json` as the apply authority.
 4. Apply only through `hsconfig apply` or `hsconfig configure --apply`.
 
 reports/operator_summary.json remains the only normal apply authority.
@@ -78,7 +78,7 @@ Use `hsconfig configure` for normal operation:
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
 ```
 
-This command runs the lower-level pre-run chain, writes a validated package, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`.
+This command runs the lower-level pre-run chain, writes a validated package, atomically updates `outputs/<DeckName>/current.json`, and leaves the final decision in the resolved `revisions/sha256-<digest>/04_package/reports/operator_summary.json`.
 
 When public guide URLs are available for a fresh config, use the online source path:
 
@@ -127,8 +127,11 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 
 After `apply` or `configure --apply`, HSConfig verifies that the active
 `CustomConfig/<config_dir>` folder semantically matches the validated package
-that was copied. This is a technical install-integrity check: if the runtime
-folder differs, the apply is rolled back and the command fails.
+that was copied. This is a technical install-integrity check. Before the INI
+commit point, failure leaves the previous complete config selected. After the
+INI commit point, the new verified config remains selected and recovery
+completes advisory state or receipt work; HSConfig does not roll the committed
+INI selection back to the old config.
 
 For read-only audits, run:
 
@@ -144,9 +147,9 @@ Apply permission still comes only from `reports/operator_summary.json`.
 Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
-2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not an apply authority.
-3. Read `<out>/configure_summary.json.handoff_contract` next for the pre-run config contract receipt; it is diagnostic-only and not an apply authority.
-4. When source-contract or no-default-only diagnostics are the question, read `<out>/configure_summary.json.source_closure_receipt` after acceptance and handoff; it is diagnostic-only and not an apply gate.
+2. Resolve `<out>/current.json`, then read `<current-revision>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not an apply authority.
+3. Read `<current-revision>/configure_summary.json.handoff_contract` next for the pre-run config contract receipt; it is diagnostic-only and not an apply authority.
+4. When source-contract or no-default-only diagnostics are the question, read `<current-revision>/configure_summary.json.source_closure_receipt` after acceptance and handoff; it is diagnostic-only and not an apply gate.
 5. Treat `technical_status=VALID_PACKAGE` plus
    `runtime_apply_mode=load_safe_apply` and `runtime_apply_allowed=true` as the
    apply signal. A valid diagnostic package may still have
@@ -537,18 +540,18 @@ and does not block a technically valid package.
 
 `config_quality.checks.semantic_intent_coverage` is a diagnostic-only rollup: it shows traced per-card intent, missing semantic scores, semantic-default rows, report-only mechanic runtime leaks, and warning-only mechanics, but it does not change `reports/operator_summary.json` apply authority.
 
-`<out>/configure_summary.json.acceptance_summary` is the first post-`configure` read. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
+`<current-revision>/configure_summary.json.acceptance_summary` is the first post-`configure` read after resolving `<out>/current.json`. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
 
 `configure_summary.json.handoff_contract` is a diagnostic-only handoff proof for normal generated packages. It compresses the already-generated acceptance, config-proof, and config-quality facts into one small object: single authority, no-default-only status, forbidden normal surfaces, source-to-runtime trace status, Darkbishop boundary status, mechanic discipline, and the next report to open. It does not replace reports/operator_summary.json and it cannot grant or deny runtime writes.
 
-`<out>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages, read after acceptance and handoff when source depth is the question. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
+`<current-revision>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages, read after acceptance and handoff when source depth is the question. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
 
 `contract-preflight.research_context.latest_research_result_contract_*` exposes whether the latest research-deep result batch has HSConfig-valid fields and result payloads. This research-result sentinel is source-quality visibility only; it cannot promote, downgrade, block, or apply a package.
 `latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and operator_summary.json remains the only normal apply authority.
 
-Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof. `source_to_runtime_status` reports trace health (`clean`, `attention`, or `missing`), while `currentness_status`, `closure_schema_current`, and `cards_missing_closure` report closure freshness. `forbidden_normal_surfaces_status=unknown` means legacy-surface evidence was unavailable, not clean. `runtime_surface_boundary_details` lists `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json` as unconditional; `Combo.json` is conditional on a complete source-backed combo with a matching live-verified strategic receipt. This proof is not another apply gate and does not replace `reports/operator_summary.json`.
+Then read `<current-revision>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof. `source_to_runtime_status` reports trace health (`clean`, `attention`, or `missing`), while `currentness_status`, `closure_schema_current`, and `cards_missing_closure` report closure freshness. `forbidden_normal_surfaces_status=unknown` means legacy-surface evidence was unavailable, not clean. `runtime_surface_boundary_details` lists `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json` as unconditional; `Combo.json` is conditional on a complete source-backed combo with a matching live-verified strategic receipt. This proof is not another apply gate and does not replace `reports/operator_summary.json`.
 
-`<out>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
+`<current-revision>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <current-package>` for details. The normal apply authority remains `<current-package>/reports/operator_summary.json`.
 
 `config_intent_self_audit` is a diagnostic-only proof that generated runtime files are intentionally explained by `operator_summary.json`, source-to-runtime explainability, deck identity, or explicit non-blocking default/suppression visibility. If its status is `attention`, the package can still be technically usable through `reports/operator_summary.json`, but inspect `reports/contract_doctor.json` or run `hsconfig contract-doctor --package <04_package> --json` before calling the config qualitatively complete.
 

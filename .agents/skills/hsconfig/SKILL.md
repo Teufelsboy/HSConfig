@@ -17,9 +17,9 @@ Normal workflow:
 1. Prefer `hsconfig configure ...` for normal operation.
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
-3. After `configure`, read `<out>/configure_summary.json.acceptance_summary` first; use `reports/operator_summary.json` as the apply authority.
-Read `<out>/configure_summary.json.handoff_contract` next as diagnostic-only pre-run proof. Read `<out>/configure_summary.json.source_closure_receipt` only when source depth is the question.
-Read `<out>/configure_summary.json.config_proof_summary` and `<out>/configure_summary.json.config_quality_summary` only as diagnostic proof.
+3. After `configure`, resolve `<out>/current.json`, read `<current-revision>/configure_summary.json.acceptance_summary` first, and use `<current-package>/reports/operator_summary.json` as the apply authority.
+Read `<current-revision>/configure_summary.json.handoff_contract` next as diagnostic-only pre-run proof. Read `<current-revision>/configure_summary.json.source_closure_receipt` only when source depth is the question.
+Read `<current-revision>/configure_summary.json.config_proof_summary` and `<current-revision>/configure_summary.json.config_quality_summary` only as diagnostic proof.
 These summaries do not replace `reports/operator_summary.json`, cannot apply runtime files, and cannot turn source gaps into blockers.
 For a source-refreshed deck config on the source-backed route, use this command only when runtime installation is intended:
 `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --apply --json`

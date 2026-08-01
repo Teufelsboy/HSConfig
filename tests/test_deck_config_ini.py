@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import ctypes
+import errno
 import os
 import stat
 import subprocess
@@ -585,9 +587,10 @@ def test_posix_no_replace_commit_is_one_parent_descriptor_bound_move(
     identity = path_identity_from_status(temp.lstat())
     calls: list[tuple[int, str, str]] = []
 
-    def atomic_move(descriptor: int, source: str, destination: str) -> None:
+    def atomic_move(descriptor: int, source: str, destination: str) -> bool:
         calls.append((descriptor, source, destination))
         temp.rename(target)
+        return True
 
     monkeypatch.setattr(
         deck_config_ini,
@@ -611,7 +614,9 @@ def test_posix_no_replace_commit_is_one_parent_descriptor_bound_move(
     assert target.stat().st_nlink == 1
 
 
-def test_posix_no_replace_fails_closed_when_native_rename_is_unavailable(
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback")
+def test_posix_no_replace_uses_hard_link_when_native_rename_is_unavailable(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -621,11 +626,118 @@ def test_posix_no_replace_fails_closed_when_native_rename_is_unavailable(
         raising=False,
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match="^deck_config_ini_atomic_create_unsupported$",
-    ):
-        deck_config_ini._rename_noreplace_posix(5, "source", "target")
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    content = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir="Portable",
+    )
+
+    replace_deck_config_if_unchanged(snapshot, content)
+
+    assert path.read_bytes() == b"[CONFIGS]\nDeck = Portable"
+    assert path.stat().st_nlink == 1
+    assert _temp_residue(path) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback")
+@pytest.mark.parametrize("error_number", (errno.ENOSYS, errno.EINVAL))
+def test_posix_no_replace_falls_back_when_renameat2_syscall_is_unsupported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_number: int,
+) -> None:
+    def unsupported(*_args: object) -> int:
+        ctypes.set_errno(error_number)
+        return -1
+
+    monkeypatch.setattr(
+        deck_config_ini,
+        "_load_renameat2",
+        lambda: unsupported,
+        raising=False,
+    )
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    content = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir="Portable",
+    )
+
+    replace_deck_config_if_unchanged(snapshot, content)
+
+    assert path.read_bytes() == b"[CONFIGS]\nDeck = Portable"
+    assert path.stat().st_nlink == 1
+    assert _temp_residue(path) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback")
+def test_posix_hard_link_fallback_is_exclusive_under_concurrent_first_create(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    barrier = tmp_path / "start"
+    worker = tmp_path / "fallback-worker.py"
+    worker.write_text(
+        """
+import sys
+import time
+from pathlib import Path
+import hsconfig.deck_config_ini as deck_config_ini
+from hsconfig.deck_config_ini import (
+    read_deck_config,
+    render_deck_config,
+    replace_deck_config_if_unchanged,
+)
+deck_config_ini._load_renameat2 = lambda: None
+path = Path(sys.argv[1])
+barrier = Path(sys.argv[2])
+value = sys.argv[3]
+snapshot = read_deck_config(path, deck_name="Deck")
+content = render_deck_config(snapshot, deck_name="Deck", config_dir=value)
+while not barrier.exists():
+    time.sleep(0.01)
+try:
+    replace_deck_config_if_unchanged(snapshot, content)
+except RuntimeError as exc:
+    print(str(exc))
+    raise SystemExit(2)
+print("committed")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    source_root = str(Path(__file__).resolve().parents[1] / "src")
+    environment["PYTHONPATH"] = source_root + os.pathsep + environment.get(
+        "PYTHONPATH", ""
+    )
+    processes = [
+        subprocess.Popen(
+            [sys.executable, str(worker), str(path), str(barrier), value],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        for value in ("First", "Second")
+    ]
+    barrier.write_text("go", encoding="ascii")
+    results = [process.communicate(timeout=20) for process in processes]
+
+    assert sorted(process.returncode for process in processes) == [0, 2]
+    assert sum("committed" in stdout for stdout, _ in results) == 1
+    assert sum(
+        "deck_config_ini_concurrent_change" in stdout
+        for stdout, _ in results
+    ) == 1
+    assert path.read_bytes() in {
+        b"[CONFIGS]\nDeck = First",
+        b"[CONFIGS]\nDeck = Second",
+    }
+    assert path.stat().st_nlink == 1
+    assert _temp_residue(path) == []
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX hard-termination coverage")

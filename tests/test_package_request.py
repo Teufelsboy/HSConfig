@@ -489,6 +489,12 @@ def test_strict_resolution_context_rejects_mismatched_resource_authority() -> No
                 store.read_by_sha256(digest)
                 for digest in inputs.source_bundle_resource_sha256s
             ),
+            general_preconfig_canonical_json=store.read_by_sha256(
+                inputs.general_preconfig_resource_sha256
+            ),
+            acquisition_closure_canonical_json=store.read_by_sha256(
+                inputs.acquisition_closure_resource_sha256
+            ),
             globalvalues_baseline_canonical_json=store.read_by_sha256(
                 inputs.globalvalues_baseline_resource_sha256
             ),
@@ -650,6 +656,16 @@ def _strict_context_with_mutable_resources():
         ),
         bytearray(
             store.read_by_sha256(
+                inputs.general_preconfig_resource_sha256
+            )
+        ),
+        bytearray(
+            store.read_by_sha256(
+                inputs.acquisition_closure_resource_sha256
+            )
+        ),
+        bytearray(
+            store.read_by_sha256(
                 inputs.globalvalues_baseline_resource_sha256
             )
         ),
@@ -662,6 +678,10 @@ def _strict_context_with_mutable_resources():
         policy_profile_canonical_json=mutable_resources[2],
         evidence_contract_canonical_json=mutable_resources[3],
         source_bundle_canonical_json=mutable_resources[4 : 4 + source_count],
+        general_preconfig_canonical_json=mutable_resources[4 + source_count],
+        acquisition_closure_canonical_json=mutable_resources[
+            5 + source_count
+        ],
         globalvalues_baseline_canonical_json=mutable_resources[-1],
     )
     return context, mutable_resources

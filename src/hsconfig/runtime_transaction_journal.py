@@ -6,17 +6,22 @@ import json
 import os
 import re
 import stat
+import uuid
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from hsconfig.atomic_io import FaultHook, atomic_write_bytes, no_fault
+from hsconfig.atomic_io import FaultHook, no_fault
 from hsconfig.package_io import (
+    hold_plain_directory,
     path_lexists,
+    path_identity_from_status,
     plain_file_status,
     read_file_no_follow,
     require_plain_directory,
+    secure_replace,
+    secure_unlink,
     status_is_reparse,
 )
 from hsconfig.run_manifest import canonical_run_relative_path
@@ -26,6 +31,11 @@ RUNTIME_TRANSACTION_SCHEMA_VERSION = 1
 MAX_RUNTIME_TRANSACTION_FILES = 1024
 MAX_RUNTIME_TRANSACTION_BYTES = 1024 * 1024
 _TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
+_TRANSACTION_ENTRY = re.compile(
+    r"^(?:(?P<final_id>[0-9a-f]{32})\.json|"
+    r"\.(?P<temp_id>[0-9a-f]{32})\.json\."
+    r"(?P<nonce>[0-9a-f]{32})\.tmp)$"
+)
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _STATE_KEY = re.compile(r"^[a-z0-9][a-z0-9-]*--sha256-[0-9a-f]{64}$")
 _SAFE_COMPONENT_LIMIT = 255
@@ -257,15 +267,91 @@ def write_runtime_transaction_journal(
         or target.parent.parent.name != ".hsconfig"
     ):
         raise ValueError("runtime_transaction_journal_invalid")
-    atomic_write_bytes(
-        target,
-        runtime_transaction_journal_bytes(journal),
-        fault_hook=fault_hook,
+    content = runtime_transaction_journal_bytes(journal)
+    pending = target.with_name(
+        f".{journal.transaction_id}.json.{uuid.uuid4().hex}.tmp"
     )
+    pending_identity: tuple[int, int, int] | None = None
+    handle: Any | None = None
+    committed = False
+    fault_hook("before_temp_write")
+    try:
+        with hold_plain_directory(target.parent) as parent:
+            descriptor = parent.open_file(
+                pending.name,
+                create=True,
+                write=True,
+            )
+            handle = os.fdopen(descriptor, "wb", buffering=0)
+            pending_identity = path_identity_from_status(
+                os.fstat(handle.fileno())
+            )
+            if handle.write(content) != len(content):
+                raise OSError("runtime_transaction_journal_write_incomplete")
+            fault_hook("after_temp_write")
+            os.fsync(handle.fileno())
+            fault_hook("after_temp_flush")
+            handle.close()
+            handle = None
+            pending_status = plain_file_status(pending)
+            if (
+                path_identity_from_status(pending_status) != pending_identity
+                or read_file_no_follow(
+                    pending,
+                    expected_status=pending_status,
+                    maximum_size=MAX_RUNTIME_TRANSACTION_BYTES,
+                )
+                != content
+            ):
+                raise ValueError("runtime_transaction_journal_write_invalid")
+            fault_hook("before_replace")
+            parent.validate()
+            secure_replace(
+                pending,
+                target,
+                expected_source_identity=pending_identity,
+                expected_source_parent_identity=parent.identity,
+                expected_target_parent_identity=parent.identity,
+            )
+            committed = True
+            pending_identity = None
+            fault_hook("after_replace")
+            _flush_directory_descriptor(parent.descriptor)
+            fault_hook("after_parent_flush")
+    except BaseException as primary:
+        if handle is not None:
+            try:
+                handle.close()
+            except BaseException as cleanup_error:
+                _add_note(primary, "pending handle close failed", cleanup_error)
+        if not committed and pending_identity is not None:
+            try:
+                secure_unlink(
+                    pending,
+                    expected_identity=pending_identity,
+                    expected_parent_identity=path_identity_from_status(
+                        target.parent.lstat()
+                    ),
+                    missing_ok=True,
+                )
+            except BaseException as cleanup_error:
+                _add_note(primary, "owned pending cleanup failed", cleanup_error)
+        raise
 
 
 def read_runtime_transaction_journal(
     path: Path,
+) -> RuntimeTransactionJournal:
+    return _read_runtime_transaction_journal(
+        Path(path),
+        expected_transaction_id=None,
+    )
+
+
+def _read_runtime_transaction_journal(
+    path: Path,
+    *,
+    expected_transaction_id: str | None,
 ) -> RuntimeTransactionJournal:
     target = Path(path)
     try:
@@ -281,7 +367,14 @@ def read_runtime_transaction_journal(
             parse_constant=_reject_constant,
         )
         journal = _journal_from_payload(payload)
-        if target.name != f"{journal.transaction_id}.json":
+        expected = expected_transaction_id or journal.transaction_id
+        if (
+            journal.transaction_id != expected
+            or (
+                expected_transaction_id is None
+                and target.name != f"{journal.transaction_id}.json"
+            )
+        ):
             raise ValueError("filename")
         if content != runtime_transaction_journal_bytes(journal):
             raise ValueError("noncanonical")
@@ -298,28 +391,124 @@ def load_runtime_transaction_journals(
         return ()
     try:
         require_plain_directory(transactions)
-        entries: list[tuple[str, Path]] = []
+        finals: dict[str, tuple[Path, tuple[int, int, int]]] = {}
+        temps: dict[
+            str,
+            list[tuple[Path, tuple[int, int, int]]],
+        ] = {}
+        entry_count = 0
         with os.scandir(transactions) as iterator:
             for entry in iterator:
-                if len(entries) >= MAX_RUNTIME_TRANSACTION_FILES:
+                if entry_count >= MAX_RUNTIME_TRANSACTION_FILES:
                     raise ValueError("bounds")
+                match = _TRANSACTION_ENTRY.fullmatch(entry.name)
                 status = Path(entry.path).lstat()
                 if (
                     status_is_reparse(status)
                     or not stat.S_ISREG(status.st_mode)
                     or status.st_nlink != 1
-                    or not re.fullmatch(r"[0-9a-f]{32}\.json", entry.name)
+                    or match is None
                 ):
                     raise ValueError("entry")
-                entries.append((entry.name, Path(entry.path)))
-        journals = tuple(
-            read_runtime_transaction_journal(path)
-            for _name, path in sorted(entries)
-        )
-        transaction_ids = [journal.transaction_id for journal in journals]
-        if len(transaction_ids) != len(set(transaction_ids)):
-            raise ValueError("duplicate")
-        return journals
+                final_id = match.group("final_id")
+                transaction_id = final_id or match.group("temp_id")
+                if transaction_id is None:
+                    raise ValueError("entry")
+                value = (
+                    Path(entry.path),
+                    path_identity_from_status(status),
+                )
+                if final_id is not None:
+                    if transaction_id in finals:
+                        raise ValueError("duplicate")
+                    finals[transaction_id] = value
+                else:
+                    temps.setdefault(transaction_id, []).append(value)
+                entry_count += 1
+        journals: list[RuntimeTransactionJournal] = []
+        transaction_ids = sorted(set(finals) | set(temps))
+        for transaction_id in transaction_ids:
+            final_row = finals.get(transaction_id)
+            final = (
+                _read_runtime_transaction_journal(
+                    final_row[0],
+                    expected_transaction_id=transaction_id,
+                )
+                if final_row is not None
+                else None
+            )
+            valid_temps: list[
+                tuple[
+                    RuntimeTransactionJournal,
+                    Path,
+                    tuple[int, int, int],
+                ]
+            ] = []
+            for temp_path, temp_identity in temps.get(transaction_id, []):
+                try:
+                    candidate = _read_runtime_transaction_journal(
+                        temp_path,
+                        expected_transaction_id=transaction_id,
+                    )
+                except ValueError:
+                    continue
+                valid_temps.append((candidate, temp_path, temp_identity))
+            selected = final
+            selected_temp: tuple[Path, tuple[int, int, int]] | None = None
+            for candidate, temp_path, temp_identity in sorted(
+                valid_temps,
+                key=lambda row: _journal_progress_key(row[0]),
+            ):
+                if selected is None:
+                    if (
+                        candidate.phase != RuntimeTransactionPhase.PREPARED
+                        or candidate.candidate_identity is not None
+                        or candidate.target_identity is not None
+                    ):
+                        raise ValueError("initial")
+                    selected = candidate
+                    selected_temp = (temp_path, temp_identity)
+                    continue
+                if candidate == selected or _is_monotonic_successor(
+                    candidate,
+                    selected,
+                ):
+                    continue
+                if not _is_monotonic_successor(selected, candidate):
+                    raise ValueError("successor")
+                selected = candidate
+                selected_temp = (temp_path, temp_identity)
+            parent_identity = path_identity_from_status(transactions.lstat())
+            if selected_temp is not None:
+                final_path = transactions / f"{transaction_id}.json"
+                secure_replace(
+                    selected_temp[0],
+                    final_path,
+                    expected_source_identity=selected_temp[1],
+                    expected_source_parent_identity=parent_identity,
+                    expected_target_parent_identity=parent_identity,
+                )
+                _flush_directory(transactions)
+                if read_runtime_transaction_journal(final_path) != selected:
+                    raise ValueError("promotion")
+                final = selected
+            elif selected is not None:
+                final = selected
+            for candidate, temp_path, temp_identity in valid_temps:
+                if selected_temp is not None and temp_path == selected_temp[0]:
+                    continue
+                secure_unlink(
+                    temp_path,
+                    expected_identity=temp_identity,
+                    expected_parent_identity=parent_identity,
+                    missing_ok=True,
+                )
+            if final is None:
+                if temps.get(transaction_id):
+                    continue
+                raise ValueError("missing")
+            journals.append(final)
+        return tuple(journals)
     except Exception as error:
         raise ValueError("runtime_transaction_store_invalid") from error
 
@@ -380,6 +569,107 @@ def _parse_identity(value: object) -> tuple[int, int, int] | None:
     ):
         raise ValueError("identity")
     return value[0], value[1], value[2]
+
+
+def _is_monotonic_successor(
+    previous: RuntimeTransactionJournal,
+    successor: RuntimeTransactionJournal,
+) -> bool:
+    immutable_fields = (
+        "schema_version",
+        "transaction_id",
+        "deck_name",
+        "source_manifest_sha256",
+        "state_key",
+        "logical_config_dir",
+        "package_root_sha256",
+        "candidate_path",
+        "target_path",
+        "previous_config_dir",
+        "next_config_dir",
+        "previous_ini_sha256",
+        "next_ini_sha256",
+    )
+    phase_order = {
+        RuntimeTransactionPhase.PREPARED: 0,
+        RuntimeTransactionPhase.RUNTIME_STAGED: 1,
+        RuntimeTransactionPhase.RUNTIME_VERIFIED: 2,
+        RuntimeTransactionPhase.INI_COMMITTED: 3,
+        RuntimeTransactionPhase.STATE_COMMITTED: 4,
+        RuntimeTransactionPhase.FINALIZED: 5,
+    }
+    if any(
+        getattr(previous, field) != getattr(successor, field)
+        for field in immutable_fields
+    ):
+        return False
+    if phase_order[successor.phase] < phase_order[previous.phase]:
+        return False
+    if previous.candidate_identity not in {
+        None,
+        successor.candidate_identity,
+    }:
+        return False
+    if previous.target_identity not in {None, successor.target_identity}:
+        return False
+    if previous.owns_target and not successor.owns_target:
+        return False
+    if previous.cleanup_started:
+        return (
+            successor.cleanup_started
+            and successor.cleanup_entries == previous.cleanup_entries
+            and successor.cleanup_cursor >= previous.cleanup_cursor
+        )
+    return not successor.cleanup_started or (
+        successor.cleanup_cursor == 0
+        and successor.phase == RuntimeTransactionPhase.FINALIZED
+    )
+
+
+def _journal_progress_key(
+    journal: RuntimeTransactionJournal,
+) -> tuple[int, int, int, int, int]:
+    phase_order = {
+        RuntimeTransactionPhase.PREPARED: 0,
+        RuntimeTransactionPhase.RUNTIME_STAGED: 1,
+        RuntimeTransactionPhase.RUNTIME_VERIFIED: 2,
+        RuntimeTransactionPhase.INI_COMMITTED: 3,
+        RuntimeTransactionPhase.STATE_COMMITTED: 4,
+        RuntimeTransactionPhase.FINALIZED: 5,
+    }
+    return (
+        phase_order[journal.phase],
+        int(journal.candidate_identity is not None),
+        int(journal.target_identity is not None),
+        int(journal.cleanup_started),
+        journal.cleanup_cursor,
+    )
+
+
+def _flush_directory(path: Path) -> None:
+    try:
+        with hold_plain_directory(path) as parent:
+            _flush_directory_descriptor(parent.descriptor)
+    except OSError:
+        pass
+
+
+def _flush_directory_descriptor(descriptor: int) -> None:
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+
+
+def _add_note(
+    primary: BaseException,
+    operation: str,
+    error: BaseException,
+) -> None:
+    try:
+        primary.add_note(f"{operation}: {type(error).__name__}: {error}")
+    except BaseException:
+        pass
 
 
 def _valid_identity(value: object) -> bool:

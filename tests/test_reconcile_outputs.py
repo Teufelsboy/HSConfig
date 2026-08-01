@@ -1408,8 +1408,11 @@ def test_root_swap_rejects_an_ancestor_reparse_alias(tmp_path: Path) -> None:
         pytest.skip(f"symlinks unavailable: {error}")
     outputs = alias / "outputs"
 
-    with pytest.raises(ValueError, match="filesystem_directory_invalid"):
+    with pytest.raises(ValueError):
         apply_audited_outputs(outputs_root=outputs, catalog_path=CATALOG)
+
+    assert alias.is_symlink()
+    assert list(real.iterdir()) == []
 
 
 def test_noop_apply_rejects_an_ancestor_reparse_alias(
@@ -1421,11 +1424,15 @@ def test_noop_apply_rejects_an_ancestor_reparse_alias(
     except OSError as error:
         pytest.skip(f"symlinks unavailable: {error}")
 
-    with pytest.raises(ValueError, match="filesystem_directory_invalid"):
+    before = _tree_snapshot(canonical_outputs)
+    with pytest.raises(ValueError):
         apply_audited_outputs(
             outputs_root=alias / canonical_outputs.name,
             catalog_path=CATALOG,
         )
+
+    assert alias.is_symlink()
+    assert _tree_snapshot(canonical_outputs) == before
 
 
 def test_child_identity_substitution_during_previous_cleanup_fails_closed(
@@ -2187,7 +2194,7 @@ def test_journal_less_nonempty_cleanup_fails_closed_unchanged(
             cleanup.symlink_to(outside_directory, target_is_directory=True)
         except OSError as error:
             pytest.skip(f"symlinks unavailable: {error}")
-        expected_error = "filesystem_directory_invalid"
+        expected_error = None
         residue_before = _tree_snapshot(outside_directory)
     else:
         cleanup.mkdir()

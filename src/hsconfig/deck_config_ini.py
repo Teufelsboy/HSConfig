@@ -527,11 +527,18 @@ def _commit_owned_temp_no_replace(
             expected_target_absent=True,
         )
     elif platform_name == "posix":
-        _rename_noreplace_posix(
+        renamed = _rename_noreplace_posix(
             parent.descriptor,
             temp_name,
             target_name,
         )
+        if not renamed:
+            _link_noreplace_posix(
+                parent,
+                temp_name=temp_name,
+                target_name=target_name,
+                expected_identity=expected_identity,
+            )
     else:
         raise RuntimeError("deck_config_ini_atomic_create_unsupported")
     parent.validate()
@@ -582,10 +589,10 @@ def _rename_noreplace_posix(
     parent_descriptor: int,
     source_name: str,
     target_name: str,
-) -> None:
+) -> bool:
     renameat2 = _load_renameat2()
     if renameat2 is None:
-        raise RuntimeError("deck_config_ini_atomic_create_unsupported")
+        return False
     ctypes.set_errno(0)
     result = renameat2(
         parent_descriptor,
@@ -595,7 +602,7 @@ def _rename_noreplace_posix(
         1,
     )
     if result == 0:
-        return
+        return True
     error_number = ctypes.get_errno()
     if error_number == errno.EEXIST:
         raise FileExistsError(error_number, os.strerror(error_number), target_name)
@@ -606,8 +613,47 @@ def _rename_noreplace_posix(
         getattr(errno, "EOPNOTSUPP", errno.EINVAL),
     }
     if error_number in unsupported:
-        raise RuntimeError("deck_config_ini_atomic_create_unsupported")
+        return False
     raise OSError(error_number, os.strerror(error_number), target_name)
+
+
+def _link_noreplace_posix(
+    parent: PlainDirectoryMutationGuard,
+    *,
+    temp_name: str,
+    target_name: str,
+    expected_identity: tuple[int, int, int],
+) -> None:
+    parent.validate()
+    try:
+        os.link(
+            temp_name,
+            target_name,
+            src_dir_fd=parent.descriptor,
+            dst_dir_fd=parent.descriptor,
+            follow_symlinks=False,
+        )
+    except (NotImplementedError, TypeError) as error:
+        raise RuntimeError(
+            "deck_config_ini_atomic_create_unsupported"
+        ) from error
+    parent.validate()
+    source_status = parent.child_status(temp_name)
+    target_status = parent.child_status(target_name)
+    if (
+        path_identity_from_status(source_status) != expected_identity
+        or path_identity_from_status(target_status) != expected_identity
+        or not stat.S_ISREG(source_status.st_mode)
+        or not stat.S_ISREG(target_status.st_mode)
+        or status_is_reparse(source_status)
+        or status_is_reparse(target_status)
+        or source_status.st_nlink != 2
+        or target_status.st_nlink != 2
+    ):
+        raise RuntimeError("deck_config_ini_commit_verification_failed")
+    parent.validate()
+    os.unlink(temp_name, dir_fd=parent.descriptor)
+    parent.validate()
 
 
 def _load_renameat2() -> Any | None:

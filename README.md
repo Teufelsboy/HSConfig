@@ -43,7 +43,7 @@ hsconfig configure --auto-source --source-search-results-json ...
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing research and prepare stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`.
 
-`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and leaves the sole human-facing verdict in `outputs/<DeckName>/04_package/reports/operator_summary.json`. Individual reports are diagnostic and must not be used to infer apply readiness. It only writes runtime files when `--apply` is explicitly requested.
+`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and atomically updates `outputs/<DeckName>/current.json`. That pointer resolves to `outputs/<DeckName>/revisions/sha256-<digest>/04_package/reports/operator_summary.json`, the sole human-facing verdict. Individual reports are diagnostic and must not be used to infer apply readiness. It only writes runtime files when `--apply` is explicitly requested.
 
 Lower-level inspected path: `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 

@@ -910,24 +910,7 @@ def _cleanup_staging_if_owned(
     transaction: _Transaction,
 ) -> bool:
     if transaction.staging_identity is None:
-        if not path_lexists(staging_root):
-            return True
-        if transaction.phase != "prepared":
-            return False
-        try:
-            require_plain_directory(staging_root)
-            if any(staging_root.iterdir()):
-                return False
-            secure_rmdir(
-                staging_root,
-                expected_identity=path_identity(staging_root),
-                expected_parent_identity=path_identity(
-                    staging_root.parent
-                ),
-            )
-        except (OSError, ValueError):
-            return False
-        return True
+        return not path_lexists(staging_root)
     return _remove_owned_tree_if_present(
         staging_root,
         expected_identity=transaction.staging_identity,

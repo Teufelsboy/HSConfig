@@ -13,6 +13,7 @@ from hsconfig.output_publisher import (
     publish_configure_run,
     reconcile_output,
 )
+from hsconfig.package_io import path_identity
 from tests.test_output_publisher import build_rendered_run
 from tests.test_output_publisher import (
     rendered_runs_fixture as _rendered_runs_fixture,  # noqa: F401
@@ -48,6 +49,24 @@ def _publish_and_hard_kill(
         build_rendered_run(Path(input_root), 2),
         Path(output_root),
         fault_hook=terminate,
+    )
+
+
+def _publish_and_kill_before_staging_identity_record(
+    input_root: str,
+    output_root: str,
+) -> None:
+    original = output_publisher._write_transaction
+
+    def terminate(path: Path, transaction: object, **kwargs: object) -> None:
+        if getattr(transaction, "phase", None) == "staging_owned":
+            os._exit(92)
+        original(path, transaction, **kwargs)  # type: ignore[arg-type]
+
+    output_publisher._write_transaction = terminate
+    publish_configure_run(
+        build_rendered_run(Path(input_root), 2),
+        Path(output_root),
     )
 
 
@@ -243,7 +262,7 @@ def test_recovery_closes_revision_rename_before_journal_window(
     ] == [old.revision_root]
 
 
-def test_recovery_closes_staging_create_before_identity_journal_window(
+def test_recovery_fails_closed_before_staging_identity_is_recorded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
@@ -267,13 +286,58 @@ def test_recovery_closes_staging_create_before_identity_journal_window(
         publish_configure_run(second, output_root)
     monkeypatch.setattr(output_publisher, "_write_transaction", original)
 
-    reconciled = reconcile_output(output_root)
-    assert reconciled is not None
-    assert reconciled.revision_root == old.revision_root
-    assert not any(
-        path.name.startswith(".staging-")
+    staging = next(
+        path
         for path in (output_root / "revisions").iterdir()
+        if path.name.startswith(".staging-")
     )
+    with pytest.raises(
+        ValueError,
+        match="publisher_owned_staging_cleanup_incomplete",
+    ):
+        reconcile_output(output_root)
+    assert staging.is_dir()
+    assert old.revision_root.is_dir()
+    assert resolve_current_package(output_root) == old.package_root
+
+
+def test_hard_kill_and_identity_swap_never_deletes_unrecorded_staging(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    first, _second = rendered_runs
+    output_root = tmp_path / "ShadowPriest"
+    old = publish_configure_run(first, output_root)
+    process = multiprocessing.get_context("spawn").Process(
+        target=_publish_and_kill_before_staging_identity_record,
+        args=(str(tmp_path / "worker-input"), str(output_root)),
+    )
+    process.start()
+    process.join(60)
+    if process.is_alive():
+        process.kill()
+        process.join(10)
+        pytest.fail("publisher staging-identity worker hung")
+    assert process.exitcode == 92
+
+    staging = next(
+        path
+        for path in (output_root / "revisions").iterdir()
+        if path.name.startswith(".staging-")
+    )
+    staging.rmdir()
+    staging.mkdir()
+    replacement_identity = path_identity(staging)
+
+    with pytest.raises(
+        ValueError,
+        match="publisher_owned_staging_cleanup_incomplete",
+    ):
+        reconcile_output(output_root)
+    assert staging.is_dir()
+    assert path_identity(staging) == replacement_identity
+    assert old.revision_root.is_dir()
+    assert resolve_current_package(output_root) == old.package_root
 
 
 def test_recovery_closes_pointer_replace_before_journal_window(

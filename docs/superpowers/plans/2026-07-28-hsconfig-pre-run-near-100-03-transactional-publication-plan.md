@@ -300,7 +300,7 @@ Within the deck output lock:
 7. resolve and reverify current;
 8. remove only non-current publisher-owned revision directories.
 
-The external ownership record contains schema, transaction ID, deck fingerprint, staging path, revision path, full content root, and phase. Unknown, missing-record, damaged-record, or reparse-point staging/revision paths are reported and left untouched; ownership metadata is not an extra file inside the manifested revision.
+The external ownership record contains schema, transaction ID, deck fingerprint, staging path, revision path, full content root, recorded identities, and phase. There is an unavoidable window after exclusive staging-directory creation and before its identity is durably recorded. A crash in that window leaves the path unknown: reconciliation retains it, fails closed, and keeps the old current pointer resolvable. Unknown, missing-record, damaged-record, identity-unrecorded, identity-changed, or reparse-point staging/revision paths are reported and left untouched; ownership metadata is not an extra file inside the manifested revision.
 
 The portable publication guarantee covers HSConfig-cooperating publishers
 serialized by the shared lock plus crash/fault recovery. Windows additionally
@@ -313,7 +313,7 @@ claim a stronger cross-platform guarantee.
 
 - [x] **Step 5: Implement strict resolver and reconciliation**
 
-Reject pointer traversal, deck mismatch, digest mismatch, multiple current claims, and a missing manifest. Reconciliation may delete `.staging-*` and unreferenced revisions only after containment, marker, and current-pointer verification.
+Reject pointer traversal, deck mismatch, digest mismatch, multiple current claims, and a missing manifest. Reconciliation may delete `.staging-*` and unreferenced revisions only after valid recorded ownership identity, containment, unchanged-identity, and current-pointer verification.
 
 `resolve_current_package` holds the same publish lock while it snapshots and
 verifies the selected revision. Its returned `Path` is intentionally a
@@ -417,6 +417,16 @@ Add:
 
 These five fields exist only in the transient CLI/result payload after publication; they are never persisted in the manifest-covered `configure_summary.json`. The persisted summary contains only canonical build-input, stage-status, and semantic-result data known before rendering, with no content-root, revision, reuse, absolute, or staging field.
 
+Output publication and optional runtime activation are separate transactions.
+A build or publication failure before the `current.json` commit point leaves
+the previous current output selected. Once a validated revision is published,
+that output commit is not rolled back merely because the later optional runtime
+apply fails. Runtime activation retains its own boundary: failure before the
+DeckConfig INI commit leaves the prior runtime config selected; after the INI
+commit the new verified runtime config remains selected while recovery repairs
+advisory state and receipts. `test_configure_apply_failure_keeps_new_publication_current`
+locks this controller contract.
+
 - [x] **Step 5: Run GREEN and E2E**
 
 ```powershell
@@ -494,33 +504,42 @@ def replace_deck_config_if_unchanged(
 def read_runtime_state(runtime_root: Path) -> RuntimeState | None: ...
 ```
 
-- [ ] **Step 1: Write failing INI preservation tests**
+- [x] **Step 1: Write failing INI preservation tests**
 
 Use realistic comments, unrelated sections, whitespace, newline styles, and Unicode. Assert only the named deck mapping changes and the original encoding/newline convention remains stable.
 
-- [ ] **Step 2: Write compare-and-swap tests**
+- [x] **Step 2: Write compare-and-swap tests**
 
 Modify the INI after snapshot and assert replacement fails with `deck_config_ini_concurrent_change` without overwriting the concurrent edit.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_runtime_state.py tests/test_deck_config_ini.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 4: Implement snapshot/render/CAS**
+- [x] **Step 4: Implement snapshot/render/CAS**
 
 The INI parser must preserve untouched bytes. Atomic replacement uses Task 1. Runtime state is advisory recovery metadata and may never override the actual verified INI selection. A first install is represented as `existed=False`, `content=None`, and `sha256=None`.
 
 The compare-and-swap guarantee covers HSConfig-cooperating writers serialized by `.hsconfig/apply.lock`; portable filesystems cannot provide a content-CAS against arbitrary non-cooperating editors. Tests and docs state this boundary explicitly. Immediately before replacement, recheck the snapshot; immediately after replacement, re-read and verify. For a missing INI, publish complete bytes with atomic create-if-absent (`os.link`/platform equivalent from a fully flushed temp file), never a visible empty placeholder. An external non-cooperating writer is detected where observable but is outside the claimed serialization guarantee.
 
-- [ ] **Step 5: Run GREEN**
+On POSIX, use `renameat2(RENAME_NOREPLACE)` when available. The portable
+fallback creates a directory-descriptor-bound hard link from the fully flushed,
+identity-verified owned temp and then unlinks only that proven source name.
+Target creation is the no-overwrite commit point. A hard kill in the very small
+link-to-unlink window can leave the complete target and its owned temp as two
+links to the same inode; it cannot expose partial target bytes or overwrite a
+concurrent target, and subsequent validation must fail closed on unexpected
+link count until the owned residue is reconciled.
+
+- [x] **Step 5: Run GREEN**
 
 ```powershell
 python -m pytest tests/test_runtime_state.py tests/test_deck_config_ini.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/hsconfig/runtime_state.py src/hsconfig/deck_config_ini.py tests/test_runtime_state.py tests/test_deck_config_ini.py
@@ -611,11 +630,11 @@ def install_runtime_package(
 def recover_runtime_state(runtime_root: Path) -> RuntimeState | None: ...
 ```
 
-- [ ] **Step 1: Write the happy-path/idempotency tests**
+- [x] **Step 1: Write the happy-path/idempotency tests**
 
 Assert the runtime directory is `<logical-name>--sha256-<full-64-hex-digest>`, copied files match the revision manifest's `04_package/CustomConfig` entries, INI switches only after verification, repeated apply is `already_current`, and only a bounded per-deck receipt lives under `.hsconfig/receipts/`.
 
-- [ ] **Step 2: Write the failure matrix**
+- [x] **Step 2: Write the failure matrix**
 
 Inject at:
 
@@ -636,13 +655,13 @@ during_old_revision_cleanup
 
 Use a subprocess harness that terminates the worker with `os._exit` or `Terminate-Process` at every persisted checkpoint, not only Python exceptions. Start a fresh process and run recovery. Before INI commit, old config must remain selected. After INI commit, new config must be complete and selected. No state may select a missing or unverified directory. Receipt failure after verified state commit returns or recovers as `committed_receipt_pending`.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_runtime_installer.py tests/test_runtime_install_fault_matrix.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 4: Implement install order**
+- [x] **Step 4: Implement install order**
 
 Within `.hsconfig/apply.lock`:
 
@@ -663,17 +682,27 @@ Within `.hsconfig/apply.lock`:
 
 Recovery enumerates journals in stable order. The actual INI mapping is authoritative: a pre-commit journal cleans its unselected owned path; an `ini_committed` journal verifies the selected revision before completing state; a `state_committed` journal repairs a missing receipt. Ownership metadata stays under `.hsconfig/transactions`, never inside a VisionAI config directory that HearthRanger may scan.
 
-- [ ] **Step 5: Handle `BaseException` safely**
+Journal replacement uses only bounded reserved sibling names of the form
+`.<transaction-id>.json.<nonce>.tmp`. Recovery accepts a canonical temp only
+when its embedded transaction ID matches the filename and it is an initial
+`prepared` record or a monotonic successor of the canonical final journal.
+Canonical equal/older residue is removed with its captured identity; conflicting
+canonical candidates fail closed. Truncated or invalid reserved regular temps
+remain byte- and identity-unchanged and do not hide otherwise valid journals or
+block a later update, while unknown names, reparse points, hardlinks, and excess
+inventory still invalidate the store.
+
+- [x] **Step 5: Handle `BaseException` safely**
 
 Use `try/finally` to release locks and best-effort recovery after mutation begins. Do not catch and suppress `KeyboardInterrupt` or `SystemExit`; restore/verify state, attach notes where possible, then re-raise.
 
-- [ ] **Step 6: Run GREEN and process interruption tests**
+- [x] **Step 6: Run GREEN and process interruption tests**
 
 ```powershell
 python -m pytest tests/test_runtime_installer.py tests/test_runtime_transaction_journal.py tests/test_runtime_install_fault_matrix.py tests/test_runtime_package_match.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/hsconfig/runtime_installer.py src/hsconfig/runtime_transaction_journal.py src/hsconfig/runtime_package_match.py tests/test_runtime_installer.py tests/test_runtime_transaction_journal.py tests/test_runtime_install_fault_matrix.py tests/test_runtime_package_match.py
@@ -722,11 +751,11 @@ def apply_package(
 
 These remain compatibility facades over the publisher resolver and runtime installer.
 
-- [ ] **Step 1: Write the immutable-package test**
+- [x] **Step 1: Write the immutable-package test**
 
 Hash every package file before plan/apply/failure injection and assert the complete `(path, size, sha256)` inventory is identical afterward.
 
-- [ ] **Step 2: Write the no-backup test**
+- [x] **Step 2: Write the no-backup test**
 
 After success and each injected failure, recursively assert no runtime path matches:
 
@@ -738,7 +767,7 @@ After success and each injected failure, recursively assert no runtime path matc
 
 The test must distinguish allowed content-addressed inactive revisions from forbidden backup copies.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 python -m pytest tests/test_package_immutability_after_apply.py tests/test_runtime_apply.py tests/test_runtime_apply_receipts.py -q -p no:cacheprovider
@@ -746,21 +775,21 @@ python -m pytest tests/test_package_immutability_after_apply.py tests/test_runti
 
 Expected: current apply writes receipts into the package and creates rollback snapshots.
 
-- [ ] **Step 4: Convert legacy entrypoints to facades**
+- [x] **Step 4: Convert legacy entrypoints to facades**
 
 Remove target-directory deletion, `shutil.copytree` activation, in-place INI writes, package receipt writes, and rollback snapshot helpers. Map typed installer results to the existing CLI payload where compatibility is useful.
 
-- [ ] **Step 5: Move receipts outside packages**
+- [x] **Step 5: Move receipts outside packages**
 
 Fake/plan receipts are pure returned objects. Actual apply/failure state is atomically represented by one bounded `last_apply_receipt.json` per stable deck state key under `<runtime-root>/.hsconfig/receipts/`; no append-only receipt growth is allowed.
 
-- [ ] **Step 6: Run GREEN and apply authority regressions**
+- [x] **Step 6: Run GREEN and apply authority regressions**
 
 ```powershell
 python -m pytest tests/test_package_immutability_after_apply.py tests/test_runtime_apply.py tests/test_runtime_apply_receipts.py tests/test_apply_decision.py tests/test_apply_gate.py tests/test_apply_authority_boundary.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/hsconfig/runtime_apply.py src/hsconfig/runtime_apply_receipts.py src/hsconfig/commands/apply.py tests/test_runtime_apply.py tests/test_runtime_apply_receipts.py tests/test_apply_decision.py tests/test_apply_gate.py tests/test_package_immutability_after_apply.py
@@ -804,25 +833,25 @@ def reconcile_audited_outputs(
 ) -> OutputInventory: ...
 ```
 
-- [ ] **Step 1: Write failing inventory tests**
+- [x] **Step 1: Write failing inventory tests**
 
 Cover exactly twelve catalog decks, one valid pointer each, one revision each, no unknown deck roots, no staging, no invalid manifest, and no legacy timestamped package tree.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 python -m pytest tests/test_reconcile_outputs.py tests/test_output_inventory.py -q -p no:cacheprovider
 ```
 
-- [ ] **Step 3: Implement conservative reconciliation**
+- [x] **Step 3: Implement conservative reconciliation**
 
 The script must support `--check` and `--apply`. `--apply` rebuilds all twelve revisions from the canonical audited build-input set; it may not adopt older package bytes. It removes obsolete output roots only after all twelve new current pointers and complete configure-run manifests verify, using an explicit old-output deletion manifest. It must never create a Config backup.
 
-- [ ] **Step 4: Rebuild or migrate all twelve outputs**
+- [x] **Step 4: Rebuild or migrate all twelve outputs**
 
 Use the audited catalog, canonical build inputs, pinned card snapshot, and frozen evidence. Do not change semantics during regeneration. After all twelve pointers verify, delete only the paths in the reviewed old-output deletion manifest and process-owned staging.
 
-- [ ] **Step 5: Verify exactly-one output state**
+- [x] **Step 5: Verify exactly-one output state**
 
 ```powershell
 python scripts/reconcile_outputs.py --outputs outputs --catalog docs/operator/audited-deck-catalog.json --check --json
@@ -847,7 +876,7 @@ Expected:
 }
 ```
 
-- [ ] **Step 6: Run the transactional phase gate**
+- [x] **Step 6: Run the transactional phase gate**
 
 ```powershell
 python -m pytest tests/test_atomic_io.py tests/test_atomic_io_process_lock.py tests/test_run_manifest.py tests/test_output_publication_fault_matrix.py tests/test_configure_publication.py tests/test_deck_config_ini.py tests/test_runtime_install_fault_matrix.py tests/test_package_immutability_after_apply.py tests/test_reconcile_outputs.py -q -p no:cacheprovider
@@ -856,7 +885,7 @@ git diff --check
 git status --short
 ```
 
-- [ ] **Step 7: Commit tracked code only**
+- [x] **Step 7: Commit tracked code only**
 
 ```powershell
 git add src tests scripts .gitignore
@@ -870,15 +899,15 @@ Generated `outputs/` must remain ignored and untracked.
 
 ## Transactional Publication Acceptance Gate
 
-- [ ] Kill a child process at every documented fault stage and recover from a fresh process.
-- [ ] Confirm current output always resolves to one full-tree-manifest-valid package.
-- [ ] Confirm runtime INI always selects either the old complete revision or the new complete revision.
-- [ ] Confirm no package bytes change during plan, apply, success receipt, or failure receipt.
-- [ ] Confirm no backup, rollback-snapshot, staging, or obsolete revision remains after reconciliation.
-- [ ] Confirm twelve audited deck roots, twelve current pointers, and twelve revisions.
-- [ ] Confirm two concurrent configure processes serialize safely.
-- [ ] Confirm two concurrent HSConfig apply processes serialize safely and concurrent INI edits from HSConfig-cooperating writers fail closed under the documented lock/CAS protocol; explicitly state that non-cooperating external writers are outside this guarantee.
-- [ ] Run:
+- [x] Kill a child process at every documented fault stage and recover from a fresh process.
+- [x] Confirm current output always resolves to one full-tree-manifest-valid package.
+- [x] Confirm runtime INI always selects either the old complete revision or the new complete revision.
+- [x] Confirm no package bytes change during plan, apply, success receipt, or failure receipt.
+- [x] Confirm no backup, rollback-snapshot, staging, or obsolete revision remains after reconciliation.
+- [x] Confirm twelve audited deck roots, twelve current pointers, and twelve revisions.
+- [x] Confirm two concurrent configure processes serialize safely.
+- [x] Confirm two concurrent HSConfig apply processes serialize safely and concurrent INI edits from HSConfig-cooperating writers fail closed under the documented lock/CAS protocol; explicitly state that non-cooperating external writers are outside this guarantee.
+- [x] Run:
 
 ```powershell
 python -m pytest tests/test_output_publication_fault_matrix.py tests/test_runtime_install_fault_matrix.py tests/test_package_immutability_after_apply.py tests/test_reconcile_outputs.py -q -p no:cacheprovider
