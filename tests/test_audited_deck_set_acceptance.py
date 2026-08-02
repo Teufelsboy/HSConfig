@@ -13,6 +13,7 @@ import pytest
 
 import hsconfig.source_acquisition as source_acquisition
 from hsconfig.audited_deck_catalog import load_audited_role_manifest
+from hsconfig.build_input_catalog import load_audited_build_inputs
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.card_metadata import (
     analysis_cards_from_deck_identity,
@@ -735,6 +736,22 @@ def test_audited_deck_catalog_is_the_unique_exact_identity_source() -> None:
         else:
             assert decoded["sideboard_count"] == 0
             assert decoded["sideboards"] == []
+
+
+def test_frozen_build_inputs_preserve_the_audited_catalog_order_and_codes() -> None:
+    """Catches selecting a build input set that is not the audited deck set."""
+    catalog = read_json(AUDITED_CATALOG_PATH)["decks"]
+    audited = load_audited_build_inputs(
+        Path("src/hsconfig/resources/audited_build_inputs.json")
+    )
+
+    assert tuple(build.deck_name for build in audited.builds) == tuple(
+        str(row["deck_name"]) for row in catalog
+    )
+    assert tuple(build.deck_code_sha256 for build in audited.builds) == tuple(
+        sha256(str(row["deck_code"]).encode("utf-8")).hexdigest()
+        for row in catalog
+    )
 
 
 def test_audited_catalog_requires_exact_manifest_membership() -> None:
