@@ -383,8 +383,6 @@ def _read_plain_file(
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    if len(content) > MAX_DECK_CONFIG_BYTES:
-        raise ValueError("deck_config_ini_too_large")
     try:
         after = parent.child_status(path.name)
     except (OSError, ValueError) as exc:

@@ -4778,3 +4778,421 @@ def test_default_only_surface_details_do_not_assign_producer_unassigned_rows():
             "apply_blocking": False,
         }
     ]
+
+
+def test_operator_summary_routes_warning_surfaces_to_specific_reports():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        runtime_surface_ledger={},
+    )
+
+    reports_by_surface = {
+        row["surface"]: row["next_report_to_open"]
+        for row in summary["surface_status_ledger"]
+    }
+
+    assert reports_by_surface == {
+        "cardid_behavior": "reports/card_behavior_plan_report.json",
+        "combo": "reports/combo_plan_report.json",
+        "globalvalues": "reports/globalvalues_profile.json",
+        "mulligan": "reports/mulligan_plan_report.json",
+    }
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_preserves_explicit_bot_mulligan_delegation():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        mulligan_plan_report={
+            "rules": [],
+            "bot_delegated": [
+                {
+                    "card_id": "CARD_A",
+                    "policy_id": "bot-native-v1",
+                    "reason_code": "bot_native_mulligan",
+                },
+                {
+                    "card_id": "CARD_A",
+                    "policy_id": "bot-native-v1",
+                    "reason_code": "bot_native_mulligan",
+                },
+                "malformed-row",
+            ],
+        },
+    )
+
+    assert summary["mulligan_policy_status"] == {
+        "status": "bot_delegated",
+        "default_only": False,
+        "policy_lanes": ["E"],
+        "policy_reasons": ["bot_native_mulligan"],
+    }
+    assert summary["mulligan_bot_delegation_summary"] == {
+        "count": 2,
+        "card_ids": ["CARD_A"],
+        "policy_ids": ["bot-native-v1"],
+        "reason_codes": {"bot_native_mulligan": 2},
+    }
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_treats_malformed_diagnostic_collections_as_empty():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "claim_count": 0,
+            "summary": [],
+            "source_evidence": {},
+        },
+        claim_coverage_report={"summary": []},
+        config_readiness_summary={},
+        config_readiness_report={
+            "summary": {
+                "mechanic_support": {
+                    "support_level_counts": [],
+                    "warning_only_mechanics": "not-a-list",
+                },
+                "mechanic_visibility": {
+                    "bucket_counts": [],
+                    "mechanics_by_bucket": {},
+                    "warning_boundaries": "not-a-list",
+                },
+            }
+        },
+        semantic_enrichment_report={"summary": []},
+        source_contract_audit_report={"summary": []},
+        source_to_runtime_explainability_report={
+            "summary": [],
+            "card_rows": "not-a-list",
+        },
+        source_claim_gap_report={
+            "summary": {
+                "source_quality_lane_counts": [],
+                "next_claim_kind_counts": [],
+            }
+        },
+        mechanic_drift_report={
+            "summary": [],
+            "unknown_mechanics": [],
+            "text_only_mechanics": [],
+            "unknown_card_types": [],
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["mechanic_warning_summary"] == {
+        "support_level_counts": {
+            "direct": 0,
+            "partial": 0,
+            "warning_only": 0,
+        },
+        "warning_only_mechanics": [],
+        "warning_only_card_count": 0,
+    }
+    assert summary["mechanic_visibility_summary"]["bucket_counts"] == {
+        "direct": 0,
+        "identity_gated_direct": 0,
+        "partial": 0,
+        "warning_only": 0,
+    }
+    assert summary["mechanic_visibility_summary"]["warning_boundaries"] == []
+    assert summary["semantic_enrichment_summary"]["warning_count"] == 0
+    assert summary["source_contract_audit_summary"]["claims_total"] == 0
+    assert summary["source_contract_audit_summary"][
+        "claim_lifecycle_decision_counts"
+    ] == {}
+    assert summary["source_to_runtime_explainability_summary"][
+        "closure_schema_current"
+    ] is False
+    assert summary["source_claim_quality_summary"][
+        "source_quality_lane_counts"
+    ] == {}
+    assert summary["mechanic_drift_summary"]["mechanic_count"] == 0
+
+
+def test_operator_summary_normalizes_legacy_readiness_aliases_conservatively():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        config_readiness_report={
+            "summary": {
+                "cards_need_guide_claims": 2,
+                "cards_need_runtime_surface": 1,
+                "cards_needing_runtime_surface": 3,
+            },
+        },
+    )
+
+    strength = summary["guide_strength_summary"]
+    assert strength["cards_needing_guide_claims"] == 2
+    assert strength["cards_needing_runtime_surface"] == 3
+    blockers = {
+        row["reason"]: row["count"]
+        for row in summary["semantic_blockers"]
+        if "count" in row
+    }
+    assert blockers["cards_need_guide_claims"] == 2
+    assert blockers["cards_need_runtime_surface"] == 3
+
+
+def test_readiness_fallback_classifies_valid_rows_and_skips_malformed_rows():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        config_readiness_report={
+            "summary": {},
+            "cards": {
+                "MALFORMED": "not-a-card-row",
+                "READY": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                },
+                "COMBO": {
+                    "readiness_lane": "",
+                    "first_missing_link": "needs_combo_sequence",
+                },
+            },
+        },
+    )
+
+    strength = summary["guide_strength_summary"]
+    assert strength["total_cards"] == 3
+    assert strength["runtime_emitted_cards"] == 1
+    assert strength["cards_needing_combo_sequence"] == 1
+    combo_blocker = next(
+        row
+        for row in summary["semantic_blockers"]
+        if row.get("reason") == "cards_need_combo_sequence"
+    )
+    assert combo_blocker["affected_cards"] == [
+        {"card_id": "COMBO", "name": "COMBO"}
+    ]
+
+
+def test_operator_summary_normalizes_scalar_errors_and_skips_bad_warning_rows():
+    summary = build_operator_summary(
+        technical_validation={"status": "failed", "errors": "bad-json"},
+        globalvalue_authority={
+            "blocked_until_runtime_evidence": [
+                "not-a-warning-row",
+                {"key": "AggroModifier"},
+            ]
+        },
+    )
+
+    assert summary["technical_status"] == "INVALID_PACKAGE"
+    assert summary["primary_blockers"] == [{"reason": "bad-json"}]
+    assert summary["warnings"] == [
+        {
+            "reason": "globalvalue_runtime_evidence_required",
+            "key": "AggroModifier",
+        }
+    ]
+    assert summary["runtime_apply_allowed"] is False
+
+
+def test_operator_summary_aggregates_generated_source_runtime_closure():
+    explainability = build_source_to_runtime_explainability_report(
+        {
+            "schema_version": 1,
+            "deck_name": "Mixed Closure",
+            "claim_rows": [
+                None,
+                {},
+                {
+                    "card_id": "POLICY",
+                    "name": "Policy Keep",
+                    "claim_id": "keep",
+                    "claim_kind": "mulligan_keep",
+                    "source_type": "versioned_internal_policy",
+                    "first_missing_link": "mulligan_source",
+                },
+                {
+                    "card_id": "HERO",
+                    "name": "Hero Transform",
+                    "claim_id": "hero",
+                    "claim_kind": "hero_power_transform",
+                    "source_lane": "deck_matched_public_guide",
+                    "runtime_backed": "yes",
+                },
+                {
+                    "card_id": "POSTURE",
+                    "name": "Gameplan",
+                    "claim_id": "plan",
+                    "claim_kind": "gameplan_posture",
+                    "source_lane": "deck_matched_public_guide",
+                },
+            ],
+        },
+        runtime_files={"GlobalValues.json"},
+    )
+
+    summary = build_operator_summary(
+        deck_name="Mixed Closure",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        source_to_runtime_explainability_report=explainability,
+    )
+
+    cards = {row["card_id"]: row for row in explainability["card_rows"]}
+    assert cards["HERO"]["closure"]["lane"] == "runtime_backed"
+    assert cards["HERO"]["closure"]["runtime_surfaces"] == ["HERO.json"]
+    assert cards["POSTURE"]["closure"]["runtime_surfaces"] == [
+        "GlobalValues.json"
+    ]
+    assert cards["POLICY"]["closure"]["lane"] == "source_action_needed"
+    assert cards["POLICY"]["first_missing_source_action"] == (
+        "add_explicit_mulligan_source"
+    )
+    assert summary["source_evidence_closure_summary"] == {
+        "non_blocking": True,
+        "cards_total": 3,
+        "lane_counts": {
+            "runtime_backed": 2,
+            "source_action_needed": 1,
+        },
+        "default_only_risk_count": 0,
+        "cards_with_evidence_chain": 3,
+        "cards_missing_evidence_chain": 0,
+        "first_missing_source_action_counts": {
+            "add_explicit_mulligan_source": 1,
+        },
+        "next_report_to_open": (
+            "reports/source_to_runtime_explainability.json"
+        ),
+    }
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_legacy_card_rows_reconstruct_strong_source_closure():
+    card_rows = [
+        {
+            "card_id": claim_kind,
+            "strongest_claim_kind": claim_kind,
+            "source_lane": "deck_matched_public_guide",
+            "strategic_receipt_verified": True,
+            "closure": {"lane": "source_backed_runtime_lowered"},
+        }
+        for claim_kind in (
+            "gameplan_posture",
+            "mulligan_keep",
+            "hero_power_transform",
+        )
+    ]
+
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "card_rows": card_rows,
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert closure["closure_profile"] == "aggro_burn_hero_power"
+    assert closure["closure_profile_closed"] is True
+    assert closure["promotion_ready"] is True
+
+
+def test_mapping_shaped_contract_claim_rows_supply_closure_evidence():
+    claim_rows = {
+        claim_kind: {
+            "claim_kind": claim_kind,
+            "source_lane": "deck_matched_public_guide",
+            "strategic_receipt_verified": True,
+        }
+        for claim_kind in (
+            "gameplan_posture",
+            "mulligan_keep",
+            "hero_power_transform",
+        )
+    }
+
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_contract_audit_report={"claim_rows": claim_rows},
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert closure["closure_profile_closed"] is True
+    assert closure["strong_closure_diagnostics"] == []
+
+
+def test_explicit_promotion_veto_overrides_an_allowed_source_lane():
+    rows = _profile_claim_rows(source_lane="deck_matched_public_guide")
+    for row in rows:
+        row["promotion_eligible"] = False
+
+    summary = _source_backed_profile_summary(rows)
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["promotion_ready"] is False
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_low_confidence_card_map_fallback_surfaces_a_warning():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "source_evidence": {"warnings_count": 0},
+        },
+        claim_coverage_report={
+            "summary": {},
+            "uncovered_cards": "not-a-list",
+            "cards": {
+                "LOW": {"coverage_status": "uncovered_low_confidence"},
+                "READY": {"coverage_status": "guide_backed"},
+                "MALFORMED": "not-a-card-row",
+            },
+        },
+    )
+
+    assert {
+        (row["reason"], row.get("card_count"))
+        for row in summary["warnings"]
+    } >= {("cards_still_low_confidence", 1)}
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_conflict_count_without_conflict_rows_has_no_invented_card_ids():
+    summary = build_operator_summary(
+        technical_validation={"status": "passed", "errors": []},
+        claim_conflict_report={
+            "conflict_count": 2,
+            "conflicts": "not-a-list",
+        },
+    )
+
+    blocker = next(
+        row
+        for row in summary["semantic_blockers"]
+        if row.get("reason") == "claim_conflicts_present"
+    )
+    assert blocker["count"] == 2
+    assert blocker["affected_cards"] == []
+    assert summary["runtime_apply_allowed"] is True

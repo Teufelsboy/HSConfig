@@ -1018,14 +1018,12 @@ def _remove_owned_tree(
                 expected_identity=_identity(expected_status),
                 expected_parent_identity=path_identity(child.parent),
             )
-        elif stat.S_ISREG(current.st_mode):
+        else:
             secure_unlink(
                 child,
                 expected_identity=_identity(expected_status),
                 expected_parent_identity=path_identity(child.parent),
             )
-        else:
-            raise ValueError("publisher_owned_path_entry_invalid")
         if not deleted_one:
             deleted_one = True
             if after_first_delete is not None:

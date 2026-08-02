@@ -644,3 +644,157 @@ def test_package_input_lease_treats_any_publication_marker_as_output_root(
     with pytest.raises(ValueError, match="current_output_invalid"):
         with lease_package_input(candidate):
             pytest.fail("publication marker must force output-root handling")
+
+
+def test_lease_rejects_exit_guard_change_without_consumer_failure(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+
+    class FailingExitGuard:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def validate(self) -> None:
+            self.calls += 1
+            if self.calls == 3:
+                raise ValueError("lease_guard_changed")
+
+    monkeypatch.setattr(
+        current_output_module,
+        "capture_plain_ancestor_guard",
+        lambda _path: FailingExitGuard(),
+    )
+
+    with pytest.raises(ValueError, match="lease_guard_changed"):
+        with current_output_module.lease_package_input(output_root):
+            pass
+
+
+def test_resolve_current_package_rejects_direct_package_compatibility_path(
+    tmp_path: Path,
+) -> None:
+    direct_package = tmp_path / "04_package"
+    direct_package.mkdir()
+
+    with pytest.raises(ValueError, match="current_output_invalid"):
+        resolve_current_package(direct_package)
+
+
+def test_resolver_rejects_pointer_identity_mismatch(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from dataclasses import replace
+
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    pointer = output_root / "current.json"
+    publication = current_output_module.parse_output_publication(
+        pointer.read_bytes()
+    )
+    pointer.write_bytes(
+        current_output_module.output_publication_bytes(
+            replace(publication, deck_name="WrongIdentity")
+        )
+    )
+
+    with pytest.raises(ValueError, match="current_output_invalid") as captured:
+        resolve_current_package(output_root)
+
+    assert isinstance(captured.value.__cause__, ValueError)
+    assert isinstance(captured.value.__cause__.__cause__, ValueError)
+    assert (
+        str(captured.value.__cause__.__cause__)
+        == "current_identity_mismatch"
+    )
+
+
+def test_snapshot_rejects_package_that_fails_strict_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = SimpleNamespace(directory_names=())
+    manifest = SimpleNamespace()
+    package = object()
+    monkeypatch.setattr(
+        current_output_module,
+        "snapshot_bounded_filesystem_package",
+        lambda _root: snapshot,
+    )
+    monkeypatch.setattr(
+        current_output_module,
+        "_verify_exact_directory_set",
+        lambda observed: assert_same(snapshot, observed),
+    )
+    monkeypatch.setattr(
+        current_output_module,
+        "verify_configure_run_package",
+        lambda observed: (manifest, package),
+    )
+    monkeypatch.setattr(
+        current_output_module,
+        "validate_complete_package_from_view",
+        lambda observed: {"status": "failed", "errors": ["broken"]},
+    )
+    monkeypatch.setattr(
+        current_output_module,
+        "strict_validation_passed",
+        lambda report: report["status"] == "passed",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="published_package_semantics_invalid",
+    ):
+        current_output_module.snapshot_and_verify_revision(tmp_path)
+
+
+def assert_same(expected: object, actual: object) -> None:
+    assert actual is expected
+
+
+def test_current_alias_scan_enforces_output_root_entry_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "current.json").write_bytes(b"{}\n")
+    monkeypatch.setattr(current_output_module, "MAX_OUTPUT_ROOT_ENTRIES", 0)
+
+    with pytest.raises(ValueError, match="output_root_entry_limit"):
+        current_output_module._reject_current_aliases(tmp_path)
+
+
+def test_output_layout_marker_is_false_for_missing_candidate(
+    tmp_path: Path,
+) -> None:
+    assert not current_output_module._has_output_layout_marker(
+        tmp_path / "missing"
+    )
+
+
+def test_output_layout_scan_enforces_entry_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "entry").write_bytes(b"x")
+    monkeypatch.setattr(current_output_module, "MAX_OUTPUT_ROOT_ENTRIES", 0)
+
+    with pytest.raises(ValueError, match="output_root_entry_limit"):
+        current_output_module._has_output_layout_marker(tmp_path)
+
+
+def test_output_layout_scan_wraps_scandir_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_scandir(_path: Path) -> object:
+        raise OSError("scandir failed")
+
+    monkeypatch.setattr(current_output_module.os, "scandir", fail_scandir)
+
+    with pytest.raises(ValueError, match="current_output_invalid") as captured:
+        current_output_module._has_output_layout_marker(tmp_path)
+
+    assert isinstance(captured.value.__cause__, OSError)

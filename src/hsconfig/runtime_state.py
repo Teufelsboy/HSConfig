@@ -293,8 +293,6 @@ def _read_plain_file(
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    if len(raw) > _MAX_STATE_BYTES:
-        raise ValueError("runtime_state_too_large")
     try:
         after = parent.child_status(path.name)
     except (OSError, ValueError) as exc:

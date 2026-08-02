@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
+from hsconfig import source_autopilot
 from hsconfig.audited_deck_catalog import load_audited_role_manifest
 from hsconfig.deck_identity import build_deck_identity, stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
@@ -101,6 +103,364 @@ def test_autopilot_does_not_turn_keep_alive_into_mulligan_keep():
     )
 
     assert [row for row in rows if row["claim_kind"] == "mulligan_keep"] == []
+
+
+def test_mulligan_projection_ignores_invalid_rows_and_keeps_canonical_cards() -> None:
+    assert source_autopilot._mulligan_rows({}, {"mulligan": []}, {}) == []
+
+    rows = source_autopilot._mulligan_rows(
+        {
+            "cards": [
+                "not-a-card-row",
+                {"card_id": "LOW", "cost": 1},
+                {"card_id": "HIGH", "cost": 5},
+            ]
+        },
+        {
+            "mulligan": {
+                "keep_card_ids": ["", "KEEP"],
+                "discard_card_ids": ["", "DISCARD"],
+                "discard_cost_min": "4",
+                "evidence_text_short": " Fixture guidance ",
+            }
+        },
+        {"source_url": "https://example.invalid/guide"},
+    )
+
+    assert [(row["claim_kind"], row["cards"]) for row in rows] == [
+        ("mulligan_keep", ["KEEP"]),
+        ("mulligan_discard", ["DISCARD"]),
+        ("mulligan_discard", ["HIGH"]),
+    ]
+    assert all(row["evidence_text_short"] == "Fixture guidance" for row in rows)
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        ({"claim_kind": "unknown"}, False),
+        ({"claim_kind": "mulligan_keep"}, False),
+        ({"claim_kind": "mulligan_keep", "cards": ["A"]}, True),
+        ({"claim_kind": "combo_sequence", "cards": ["A"]}, False),
+        (
+            {
+                "claim_kind": "combo_sequence",
+                "cards": ["A"],
+                "sequence": ["A"],
+            },
+            True,
+        ),
+        ({"claim_kind": "discover_choice", "cards": ["A"]}, False),
+        (
+            {
+                "claim_kind": "discover_choice",
+                "cards": ["A"],
+                "option_card_id": "B",
+            },
+            True,
+        ),
+        ({"claim_kind": "card_role", "cards": ["A"]}, False),
+        (
+            {
+                "claim_kind": "card_role",
+                "cards": ["A"],
+                "runtime_block": "Role",
+            },
+            True,
+        ),
+    ],
+)
+def test_runtime_contract_candidate_requires_kind_specific_lowering_inputs(
+    row: dict[str, object],
+    expected: bool,
+) -> None:
+    assert source_autopilot._is_runtime_contract_candidate(row) is expected
+
+
+def test_rank_lane_and_source_lane_classify_public_evidence_shapes() -> None:
+    assert source_autopilot._rank_lane(
+        "guide",
+        3,
+        2026,
+        {"publication_year": 2026},
+        deck_match_scope="exact_deck_matched",
+    ) == "guide_current_deck_match"
+    assert source_autopilot._rank_lane(
+        "guide",
+        3,
+        2026,
+        {"publication_year": 2026},
+        deck_match_scope="archetype_matched",
+    ) == "guide_current_archetype_match"
+    assert source_autopilot._rank_lane(
+        "guide",
+        3,
+        2026,
+        {"publication_year": 2020, "format_scope": "wild"},
+        deck_match_scope="exact_deck_matched",
+    ) == "guide_evergreen_wild_archetype"
+    assert source_autopilot._rank_lane(
+        "guide",
+        1,
+        None,
+        {},
+        deck_match_scope="unknown",
+    ) == "guide_card_overlap"
+    assert source_autopilot._rank_lane(
+        "decklist",
+        0,
+        None,
+        {},
+        deck_match_scope="unknown",
+    ) == "decklist_only"
+    assert source_autopilot._rank_lane(
+        "hearthstonejson_static_semantics",
+        0,
+        None,
+        {},
+        deck_match_scope="unknown",
+    ) == "static_semantics_only"
+    assert source_autopilot._rank_lane(
+        "other",
+        0,
+        None,
+        {},
+        deck_match_scope="unknown",
+    ) == "source_unclassified"
+
+    assert source_autopilot._source_lane_for_rank(
+        "guide_current_deck_match",
+        "exact_deck_matched",
+    ) == "deck_matched_public_guide"
+    assert source_autopilot._source_lane_for_rank(
+        "guide_current_archetype_match",
+        "archetype_matched",
+    ) == "archetype_matched_public_guide"
+    assert source_autopilot._source_lane_for_rank("", "unknown") == "unknown"
+
+
+def test_evergreen_wild_and_non_opening_effect_boundaries_are_explicit() -> None:
+    assert not source_autopilot._is_evergreen_wild_source(
+        {},
+        current_year=2026,
+    )
+    assert not source_autopilot._is_evergreen_wild_source(
+        {"publication_year": 2026, "format_scope": "wild"},
+        current_year=2026,
+    )
+    assert not source_autopilot._is_evergreen_wild_source(
+        {"publication_year": 2015, "format_scope": "wild"},
+        current_year=2026,
+    )
+    assert not source_autopilot._is_evergreen_wild_source(
+        {"publication_year": 2020, "format_scope": "standard"},
+        current_year=2026,
+    )
+    assert source_autopilot._is_evergreen_wild_source(
+        {
+            "publication_year": 2020,
+            "format_scope": "standard",
+            "evergreen_wild_archetype": "yes",
+        },
+        current_year=2026,
+    )
+    assert source_autopilot._is_evergreen_wild_source(
+        {"publication_year": 2020, "format_scope": "wild"},
+        current_year=2026,
+    )
+
+    assert source_autopilot._truthy(True)
+    assert not source_autopilot._truthy(False)
+    assert source_autopilot._truthy("Y")
+    assert not source_autopilot._truthy("no")
+    assert source_autopilot._is_non_opening_hand_effect_card(
+        {"roles": ["START_OF_GAME"]}
+    )
+    assert source_autopilot._is_non_opening_hand_effect_card(
+        {"text": "At the start of game, transform."}
+    )
+    assert source_autopilot._is_non_opening_hand_effect_card(
+        {"name": "Darkbishop Benedictus"}
+    )
+    assert not source_autopilot._is_non_opening_hand_effect_card(
+        {"name": "Ordinary Minion", "text": "Battlecry"}
+    )
+
+
+def test_match_scope_and_date_helpers_preserve_deterministic_inputs() -> None:
+    assert source_autopilot._quantitative_deck_match_scope(
+        deck_name_match=True,
+        card_overlap=2,
+        unique_deck_card_count=5,
+    ) == "archetype_matched"
+    assert source_autopilot._quantitative_deck_match_scope(
+        deck_name_match=False,
+        card_overlap=1,
+        unique_deck_card_count=5,
+    ) == "card_overlap"
+    assert source_autopilot._quantitative_deck_match_scope(
+        deck_name_match=True,
+        card_overlap=0,
+        unique_deck_card_count=5,
+    ) == "unknown"
+    assert source_autopilot._publication_year({"publication_year": "2026"}) == 2026
+    assert source_autopilot._publication_year({"published_at": "2025-01-02"}) == 2025
+    assert source_autopilot._publication_year({"published_at": "unknown"}) is None
+    assert source_autopilot._iso_datetime("2026-08-01") == "2026-08-01T00:00:00Z"
+    assert source_autopilot._iso_datetime("2026-08-01T12:30:00Z") == (
+        "2026-08-01T12:30:00Z"
+    )
+
+
+def test_strong_guide_lane_requires_shape_and_verified_promotion_authority() -> None:
+    row = {
+        **_strong_ranked_source(normalized_text="A" * 200),
+        "source_freshness_lane": "current",
+        "freshness_status": "current",
+        "acquisition_provenance": acquire_live_test_provenance(),
+        "promotion_eligible": True,
+        "strong_promotion_eligible": True,
+        "promotion_blockers": [],
+        "source_record_strength": "candidate_strong",
+        "claim_kind": "mulligan_keep",
+        "cards": ["SW_446"],
+    }
+    assert source_autopilot._is_strong_guide_lane_shape(row, "2026-08-01")
+    assert source_autopilot._strong_lane_blockers(row) == []
+    assert source_autopilot._is_strong_guide_lane(row, "2026-08-01")
+
+    shape_mutations = [
+        {"source_lane": "unknown"},
+        {"deck_match_scope": "archetype_matched"},
+        {"freshness_status": "stale"},
+        {"source_rank_lane": "guide_card_overlap"},
+        {"source_visibility": "snippet_only"},
+    ]
+    for mutation in shape_mutations:
+        assert not source_autopilot._is_strong_guide_lane_shape(
+            {**row, **mutation},
+            "2026-08-01",
+        )
+    blockers = source_autopilot._strong_lane_blockers(
+        {
+            **row,
+            "acquisition_provenance": {},
+            "promotion_eligible": False,
+            "strong_promotion_eligible": False,
+            "promotion_blockers": ["missing_exact_deck_match", ""],
+            "source_family": "decklist",
+            "claim_kind": "card_role",
+            "source_record_strength": "weak",
+        }
+    )
+    assert blockers == sorted(
+        {
+            source_autopilot.STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+            "promotion_explicitly_disabled",
+            "missing_exact_deck_match",
+            "non_promoting_source_record",
+            "non_strong_source_record_strength_weak",
+        }
+    )
+
+
+def test_emitted_surface_and_suppression_summaries_ignore_empty_rows() -> None:
+    rows = [
+        {"claim_kind": "combo_sequence", "cards": ["A"], "sequence": ["A"]},
+        {"claim_kind": "card_role", "cards": ["", "CARD"], "runtime_block": "Role"},
+        {"claim_kind": "hero_power_transform", "cards": []},
+    ]
+    surfaces = source_autopilot._expected_emitted_surfaces(rows)
+    assert "Combo.json" in surfaces
+    assert "CARD.json" in surfaces
+
+    assert source_autopilot._suppressed_claim_kinds(
+        [
+            {"claim_kind": "ignored"},
+            {"suppressed": True, "claim_kind": ""},
+            {"suppressed": True, "claim_kind": "card_role"},
+            {"runtime_lowering": "suppressed", "claim_kind": "card_role"},
+            {"runtime_lowering": "suppressed", "claim_kind": "combo_sequence"},
+        ]
+    ) == ["card_role", "combo_sequence"]
+
+
+def test_profile_gap_actions_name_the_exact_missing_evidence_family() -> None:
+    expectations = {
+        "none": "none",
+        "default_only_surface:combo": (
+            "replace_default_only_surface_with_source_or_policy_row"
+        ),
+        "claim_kind:mulligan_keep|mulligan_discard": (
+            "add_current_mulligan_keep_or_discard_source"
+        ),
+        "claim_kind:targeting_rule": (
+            "add_current_targeting_or_card_behavior_source"
+        ),
+        "claim_kind:combo_sequence": "add_current_combo_sequence_source",
+        "missing_surface:Combo.json": "emit_or_explain_missing_runtime_surface",
+        "claim_kind:hero_power_transform": (
+            "add_current_card_specific_runtime_source"
+        ),
+        "unexpected_gap": "add_current_card_specific_runtime_source",
+    }
+
+    assert {
+        gap: _action_from_profile_gap(gap)
+        for gap in expectations
+    } == expectations
+
+
+def test_source_projection_helpers_fail_closed_on_malformed_optional_shapes() -> None:
+    base = {"source_url": "https://example.test/guide"}
+    rows = source_autopilot._explicit_claim_rows(
+        {"claims": ["invalid", {"claim_kind": "card_role", "cards": ["A"]}]},
+        base,
+    )
+    assert rows == [
+        {
+            **base,
+            "claim_kind": "card_role",
+            "cards": ["A"],
+            "source_confidence": "medium",
+            "scope": "card",
+            "evidence_text_short": "Structured public source claim.",
+        }
+    ]
+    assert source_autopilot._runtime_surfaces_for_row(
+        {"claim_kind": "missing"}
+    ) == set()
+    assert source_autopilot._source_action_for_claim_kind("discover_choice") == (
+        "add_generated_entity_or_option_identity_source"
+    )
+    assert not source_autopilot._is_apply_surface_candidate(
+        {"claim_kind": "archetype"}
+    )
+    assert source_autopilot._as_list(None) == []
+    original = ["A"]
+    assert source_autopilot._as_list(original) is original
+
+
+def test_date_and_document_shape_helpers_keep_defaults_deterministic() -> None:
+    day = date(2026, 8, 1)
+    assert source_autopilot._current_year(day) == 2026
+    assert source_autopilot._iso_datetime(day) == "2026-08-01T00:00:00Z"
+    assert source_autopilot._source_family_for_documents(
+        {"source_family": "hearthstonejson_static_semantics"}
+    ) == "static_semantics"
+    assert source_autopilot._source_family_for_documents(
+        {"source_family": "metadata"}
+    ) == "metadata"
+    assert source_autopilot._source_family_for_documents({}) == "guide"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "decklist"}
+    ) == "decklist_only"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "guide", "normalized_text": "short"}
+    ) == "snippet_only"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "guide"}
+    ) == "unknown"
 
 
 def test_autopilot_does_not_carry_mulligan_context_to_later_keep_sentence():
@@ -1793,3 +2153,321 @@ def test_source_evidence_rows_preserve_provenance_projection() -> None:
     assert rows[0]["current_or_evergreen"] is True
     assert rows[0]["current_or_evergreen_reason"] == "publication_year_matches_current_year"
     assert rows[0]["source_status_apply_blocking"] is False
+
+
+def test_source_autopilot_small_value_helpers_cover_documented_fallbacks() -> None:
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_visibility": " Snippet_Only "}
+    ) == "snippet_only"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "decklist"}
+    ) == "decklist_only"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "guide", "normalized_text": "x" * 180}
+    ) == "full_text"
+    assert source_autopilot._source_visibility_for_documents(
+        {"source_family": "guide", "normalized_text": "brief"}
+    ) == "snippet_only"
+    assert source_autopilot._source_visibility_for_documents({}) == "unknown"
+
+    assert source_autopilot._source_family_for_documents(
+        {"source_family": "decklist"}
+    ) == "metadata"
+    assert source_autopilot._source_family_for_documents(
+        {"source_family": "hearthstonejson_static_semantics"}
+    ) == "static_semantics"
+    assert source_autopilot._source_family_for_documents({}) == "guide"
+
+    assert source_autopilot._current_year(date(2025, 1, 2)) == 2025
+    assert source_autopilot._current_year("2024-09-01") == 2024
+    assert isinstance(source_autopilot._current_year(None), int)
+    assert source_autopilot._iso_datetime(date(2025, 1, 2)) == (
+        "2025-01-02T00:00:00Z"
+    )
+    assert source_autopilot._iso_datetime("2025-01-02") == (
+        "2025-01-02T00:00:00Z"
+    )
+    assert source_autopilot._iso_datetime("2025-01-02T03:04:05Z") == (
+        "2025-01-02T03:04:05Z"
+    )
+    assert source_autopilot._iso_datetime(None).endswith("Z")
+    assert source_autopilot._int_or_none("7") == 7
+    assert source_autopilot._int_or_none("invalid") is None
+    assert source_autopilot._as_list(None) == []
+    assert source_autopilot._as_list([1]) == [1]
+    assert source_autopilot._as_list(1) == [1]
+
+
+def test_source_autopilot_policy_action_and_profile_mechanics_cover_each_lane() -> None:
+    assert source_autopilot._source_policy_missing_action(
+        [{"promotion_blockers": [source_autopilot.STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED]}]
+    ) == "acquire_strategic_source_via_live_http"
+    assert source_autopilot._source_policy_missing_action(
+        [{"promotion_blockers": ["source_not_current_or_evergreen_wild"]}]
+    ) == "add_current_or_evergreen_wild_public_guide"
+    assert source_autopilot._source_policy_missing_action([{}]) == ""
+
+    mechanics = source_autopilot._primary_mechanics_for_profile(
+        deck_name="Shadow Priest",
+        evidence_rows=[
+            {
+                "mechanic": "Weapon Pirate",
+                "mechanics": ["Mech Magnetic", ""],
+                "deck_name": "Discard Warlock",
+                "archetype": "Big Cheat Hunter",
+            }
+        ],
+        claim_kinds=["hero_power_transform", "targeting_rule", "combo_sequence"],
+    )
+    assert {
+        "aggro",
+        "burn",
+        "combo",
+        "discard",
+        "hero_power",
+        "magnetic",
+        "mech",
+        "pirate",
+        "shadow_hero_power",
+        "weapon",
+    } <= set(mechanics)
+
+
+def test_source_autopilot_card_and_surface_repair_maps_filter_invalid_rows() -> None:
+    deck_identity = {
+        "cards": [
+            "invalid",
+            {"card_id": ""},
+            {"card_id": "A", "name": "Quick Pick"},
+            {"card_id": "B", "name": "Second"},
+        ]
+    }
+    evidence = [
+        {
+            "cards": ["B"],
+            "claim_kind": "targeting_rule",
+            "runtime_surfaces": ["CardID.json"],
+            "source_family": "guide",
+        },
+        {
+            "cards": ["A"],
+            "claim_kind": "mulligan_keep",
+            "runtime_surfaces": ["Mulligan.json"],
+            "suppressed": True,
+        },
+    ]
+
+    by_card = source_autopilot._first_missing_source_action_by_card(
+        "Fixture",
+        deck_identity,
+        evidence,
+        current_date="2026-08-01",
+        profile_first_missing="",
+    )
+    assert by_card == {
+        "A": "add_exact_mulligan_keep_or_discard_source",
+        "B": "add_card_specific_targeting_source",
+    }
+
+    assert source_autopilot._first_missing_source_action_by_surface(
+        evidence,
+        current_date="2026-08-01",
+        summary={"first_missing_source_action": "add_current_guide"},
+    ) == {
+        "CardID.json": "add_card_specific_targeting_source",
+        "Mulligan.json": "add_exact_mulligan_keep_or_discard_source",
+    }
+    assert source_autopilot._first_missing_source_action_by_surface(
+        [],
+        current_date="2026-08-01",
+        summary={"first_missing_source_action": "none"},
+    ) == {}
+
+    lanes = source_autopilot._card_lane_rows(
+        deck_identity,
+        evidence,
+        current_date="2026-08-01",
+    )
+    assert [row["card_id"] for row in lanes] == ["A", "B"]
+    assert source_autopilot._card_lane(
+        [{"suppressed": True}], current_date="2026-08-01"
+    ) == "suppressed"
+    assert source_autopilot._card_lane(
+        [{"source_family": "hearthstonejson_static_semantics"}],
+        current_date="2026-08-01",
+    ) == "static_only"
+    assert source_autopilot._card_lane([], current_date="2026-08-01") == (
+        "source_gap"
+    )
+
+
+def test_source_autopilot_identity_dedupe_and_policy_projection_fail_softly() -> None:
+    rows: list[dict[str, object]] = []
+    seen: set[tuple[object, ...]] = set()
+    row = {
+        "source_url": "https://example.test/guide",
+        "claim_kind": "card_role",
+        "cards": ["A"],
+        "card_mentions": [],
+        "stance": "role",
+        "condition": "always",
+        "runtime_block": "CastSpellsModifiers",
+    }
+    source_autopilot._append_unique(rows, seen, row)
+    source_autopilot._append_unique(rows, seen, dict(row))
+    assert rows == [row]
+
+    assert not source_autopilot._has_independent_deck_match(
+        {}, "", card_overlap=1
+    )
+    assert not source_autopilot._has_exact_deck_evidence(
+        {"deck_match": []}, {"deck_fingerprint": "sha256:fixture"}
+    )
+    policy = source_autopilot._policy_fields(
+        {
+            "source_rank_lane": "guide_current_deck_match",
+            "promotion_eligible": True,
+        },
+        include_rank_lane=False,
+    )
+    assert policy == {"promotion_eligible": True}
+
+    base = source_autopilot._source_base(
+        "Fixture",
+        {"cards": []},
+        {
+            "source_url": "http://localhost/private",
+            "source_family": "static",
+            "deck_match": "invalid",
+        },
+        "2026-08-01",
+    )
+    assert "deck_match" not in base
+    assert base["deck_name"] == ""
+    assert base["archetype"] == ""
+    assert base["source_visibility"] == "unknown"
+
+
+def test_rank_public_sources_penalizes_static_private_sources_with_bad_match_shape() -> None:
+    ranked = rank_public_sources(
+        deck_name="",
+        deck_identity={"cards": []},
+        source_search_records=[
+            {
+                "source_family": "hearthstonejson_static_semantics",
+                "source_url": "http://localhost/private",
+                "deck_match": "invalid",
+            }
+        ],
+        current_date="2026-08-01",
+    )
+
+    assert ranked[0]["deck_match"] == {
+        "matched_card_ids": [],
+        "matched_card_count": 0,
+        "unique_deck_card_count": 0,
+        "card_overlap_ratio": 0.0,
+    }
+    assert ranked[0]["source_rank_score"] == -120
+    assert ranked[0]["source_visibility"] == "unknown"
+
+
+def test_surface_lane_projection_preserves_suppression_and_missing_profile_surface() -> None:
+    verdict = source_autopilot.ClosureProfileVerdict(
+        profile_name="fixture",
+        closed=False,
+        strong_eligible=False,
+        first_missing_link="missing_surface:Combo.json",
+        missing_claim_groups=(),
+        missing_surfaces=("Combo.json",),
+    )
+
+    rows = source_autopilot._surface_lane_rows(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["A"],
+                "suppressed": True,
+            },
+            {
+                "claim_kind": "targeting_rule",
+                "cards": ["B"],
+                "source_family": "guide",
+            },
+        ],
+        current_date="2026-08-01",
+        profile_verdict=verdict,
+    )
+
+    assert rows == [
+        {
+            "surface": "CardID.json",
+            "lane": "source_gap",
+            "claim_kinds": ["targeting_rule"],
+            "source_families": ["guide"],
+            "first_missing_source_action": (
+                "add_current_deck_guide_or_mulligan_guide"
+            ),
+        },
+        {
+            "surface": "Combo.json",
+            "lane": "source_gap",
+            "claim_kinds": [],
+            "source_families": [],
+            "first_missing_source_action": "emit_or_explain_missing_runtime_surface",
+        },
+        {
+            "surface": "Mulligan.json",
+            "lane": "suppressed",
+            "claim_kinds": ["mulligan_keep"],
+            "source_families": [],
+            "first_missing_source_action": "emit_or_explain_missing_runtime_surface",
+        },
+    ]
+
+
+def test_strong_guide_shape_requires_current_year_for_current_lane() -> None:
+    row = {
+        "source_family": "guide",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match_scope": "exact_deck_matched",
+        "freshness_status": "current",
+        "source_rank_lane": "guide_current_deck_match",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+    }
+
+    assert source_autopilot._is_strong_guide_lane_shape(row, "2026-08-01")
+    assert not source_autopilot._is_strong_guide_lane_shape(
+        {**row, "publication_year": 2025},
+        "2026-08-01",
+    )
+    assert source_autopilot._policy_fields(
+        {"source_rank_lane": "guide_current_deck_match"},
+        include_rank_lane=True,
+    ) == {"source_rank_lane": "guide_current_deck_match"}
+
+    evergreen = {
+        **row,
+        "source_rank_lane": "guide_evergreen_wild_archetype",
+        "source_freshness_lane": "evergreen_wild_archetype",
+    }
+    assert source_autopilot._is_strong_guide_lane_shape(
+        evergreen,
+        "2026-08-01",
+    )
+
+
+def test_candidate_blockers_and_card_repair_preserve_actionable_diagnostics() -> None:
+    assert source_autopilot._strong_candidate_blockers(
+        card_specific_lowerable_guide_rows=[{}],
+        apply_surface_guide_rows=[{}],
+        strong_shaped_non_promoting_rows=[],
+        draft={"unresolved_mentions": ["Unknown Card"]},
+        verification={"status": "passed", "warnings": []},
+    ) == ["unresolved_source_mentions"]
+    assert source_autopilot._card_missing_action_from_profile(
+        "UnregisteredDeck",
+        {"card_id": "UNREGISTERED", "name": "Quick Pick Fixture"},
+        "",
+    ) == "add_exact_mulligan_keep_or_discard_source"

@@ -867,3 +867,612 @@ def test_replace_rejects_snapshot_path_that_becomes_hardlinked(
         replace_deck_config_if_unchanged(snapshot, new)
 
     assert path.read_bytes() == b"[CONFIGS]\nDeck = Old"
+
+
+def test_read_wraps_oserror_as_unsafe_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        deck_config_ini,
+        "capture_plain_ancestor_guard",
+        lambda _path: (_ for _ in ()).throw(OSError("ancestor")),
+    )
+    with pytest.raises(ValueError, match="^deck_config_ini_unsafe_path$"):
+        read_deck_config(tmp_path / "deck_config.ini", deck_name="Deck")
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    (
+        deck_config_ini.DeckConfigSnapshot(Path("x"), True, None, None, None),
+        deck_config_ini.DeckConfigSnapshot(Path("x"), False, b"", None, None),
+    ),
+)
+def test_render_rejects_internally_inconsistent_snapshot(
+    snapshot: deck_config_ini.DeckConfigSnapshot,
+) -> None:
+    with pytest.raises(ValueError, match="deck_config_ini_invalid_snapshot"):
+        render_deck_config(snapshot, deck_name="Deck", config_dir="Config")
+
+
+def test_render_rejects_ambiguous_existing_mapping() -> None:
+    content = b"[CONFIGS]\nDeck=A\ndeck=B\n"
+    snapshot = deck_config_ini.DeckConfigSnapshot(
+        Path("deck_config.ini"),
+        True,
+        content,
+        hashlib.sha256(content).hexdigest(),
+        None,
+    )
+    with pytest.raises(ValueError, match="deck_config_ini_ambiguous_mapping"):
+        render_deck_config(snapshot, deck_name="Deck", config_dir="Config")
+
+
+@pytest.mark.parametrize(
+    ("lines", "final_newline", "expected"),
+    (
+        ([], False, [("value", "")]),
+        ([("last", "\n")], True, [("last", "\n"), ("value", "\n")]),
+        ([("last", "")], False, [("last", "\n"), ("value", "")]),
+    ),
+)
+def test_insert_line_handles_empty_and_append_layouts(
+    lines: list[tuple[str, str]],
+    final_newline: bool,
+    expected: list[tuple[str, str]],
+) -> None:
+    deck_config_ini._insert_line(lines, len(lines), "value", "\n", final_newline)
+    assert lines == expected
+
+
+class _ReadParent:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        first_error: BaseException | None = None,
+        open_error: BaseException | None = None,
+        final_error: BaseException | None = None,
+        final_identity_change: bool = False,
+    ) -> None:
+        self.path = path.parent
+        self.first_error = first_error
+        self.open_error = open_error
+        self.final_error = final_error
+        self.final_identity_change = final_identity_change
+        self.status_calls = 0
+
+    def child_status(self, name: str) -> os.stat_result:
+        self.status_calls += 1
+        if self.status_calls == 1 and self.first_error is not None:
+            raise self.first_error
+        if self.status_calls > 1 and self.final_error is not None:
+            raise self.final_error
+        status = (self.path / name).stat()
+        if self.status_calls > 1 and self.final_identity_change:
+            values = list(status)
+            values[1] += 1
+            return os.stat_result(values)
+        return status
+
+    def open_file(self, name: str, **_kwargs: object) -> int:
+        if self.open_error is not None:
+            raise self.open_error
+        return os.open(self.path / name, os.O_RDONLY)
+
+    def validate(self) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    ("slot", "error"),
+    (
+        ("first_error", OSError("status")),
+        ("open_error", OSError("open")),
+        ("final_error", OSError("final")),
+    ),
+)
+def test_read_plain_file_wraps_parent_operation_errors(
+    tmp_path: Path,
+    slot: str,
+    error: BaseException,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    path.write_bytes(b"[CONFIGS]\nDeck=A")
+    parent = _ReadParent(path, **{slot: error})
+    with pytest.raises(ValueError, match="deck_config_ini_unsafe_path"):
+        deck_config_ini._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+
+
+def test_read_plain_file_closes_descriptor_when_fstat_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    path.write_bytes(b"[CONFIGS]\nDeck=A")
+    parent = _ReadParent(path)
+    closes: list[int] = []
+    real_close = os.close
+    monkeypatch.setattr(
+        deck_config_ini.os,
+        "fstat",
+        lambda _descriptor: (_ for _ in ()).throw(OSError("fstat")),
+    )
+    monkeypatch.setattr(deck_config_ini.os, "close", closes.append)
+    with pytest.raises(OSError, match="fstat"):
+        deck_config_ini._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+    assert len(closes) == 1
+    real_close(closes[0])
+
+
+def test_read_plain_file_rejects_opened_and_final_identity_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    path.write_bytes(b"[CONFIGS]\nDeck=A")
+    real_fstat = os.fstat
+    calls = 0
+
+    def changed_opened(descriptor: int) -> os.stat_result:
+        nonlocal calls
+        calls += 1
+        status = real_fstat(descriptor)
+        if calls == 1:
+            values = list(status)
+            values[1] += 1
+            return os.stat_result(values)
+        return status
+
+    monkeypatch.setattr(deck_config_ini.os, "fstat", changed_opened)
+    with pytest.raises(ValueError, match="deck_config_ini_unsafe_path"):
+        deck_config_ini._read_plain_file(path, parent=_ReadParent(path))  # type: ignore[arg-type]
+    monkeypatch.setattr(deck_config_ini.os, "fstat", real_fstat)
+    with pytest.raises(ValueError, match="deck_config_ini_unsafe_path"):
+        deck_config_ini._read_plain_file(
+            path,
+            parent=_ReadParent(path, final_identity_change=True),  # type: ignore[arg-type]
+        )
+
+
+def test_replace_rejects_invalid_missing_snapshot_metadata(tmp_path: Path) -> None:
+    snapshot = deck_config_ini.DeckConfigSnapshot(
+        tmp_path / "deck_config.ini",
+        False,
+        b"stale",
+        "0" * 64,
+        None,
+    )
+    with pytest.raises(ValueError, match="deck_config_ini_invalid_snapshot"):
+        replace_deck_config_if_unchanged(snapshot, b"new")
+
+
+def test_replace_missing_snapshot_rejects_concurrent_file(tmp_path: Path) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    path.write_bytes(b"concurrent")
+    with pytest.raises(RuntimeError, match="deck_config_ini_concurrent_change"):
+        replace_deck_config_if_unchanged(snapshot, b"new")
+
+
+def test_replace_detects_failed_commit_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    values = iter((None, b"wrong"))
+    monkeypatch.setattr(
+        deck_config_ini,
+        "_current_bytes_or_none",
+        lambda *_args, **_kwargs: next(values),
+    )
+    monkeypatch.setattr(deck_config_ini, "_atomic_create_if_absent", lambda *_args, **_kwargs: None)
+    with pytest.raises(RuntimeError, match="commit_verification_failed"):
+        replace_deck_config_if_unchanged(snapshot, b"new")
+
+
+@pytest.mark.parametrize(
+    ("error", "error_type", "message"),
+    (
+        (ValueError("generic"), ValueError, "deck_config_ini_unsafe_path"),
+        (OSError(errno.EEXIST, "exists"), RuntimeError, "deck_config_ini_concurrent_change"),
+        (OSError(errno.EIO, "io"), ValueError, "deck_config_ini_unsafe_path"),
+    ),
+)
+def test_replace_normalizes_guard_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+    error_type: type[BaseException],
+    message: str,
+) -> None:
+    snapshot = deck_config_ini.DeckConfigSnapshot(
+        tmp_path / "deck_config.ini",
+        False,
+        None,
+        None,
+        None,
+    )
+    monkeypatch.setattr(
+        deck_config_ini,
+        "capture_plain_ancestor_guard",
+        lambda _path: (_ for _ in ()).throw(error),
+    )
+    with pytest.raises(error_type, match=message):
+        replace_deck_config_if_unchanged(snapshot, b"new")
+
+
+class _AtomicParent:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.identity = path_identity_from_status(path.stat())
+        self.descriptor = -1
+
+    def close(self) -> None:
+        pass
+
+    def validate(self) -> None:
+        pass
+
+    def open_file(self, name: str, *, create: bool, write: bool) -> int:
+        flags = os.O_RDWR if write else os.O_RDONLY
+        if create:
+            flags |= os.O_CREAT | os.O_EXCL
+        return os.open(self.path / name, flags)
+
+    def child_status(self, name: str) -> os.stat_result:
+        return (self.path / name).stat()
+
+
+def test_atomic_create_exhausts_temp_name_collisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    try:
+        monkeypatch.setattr(
+            parent,
+            "open_file",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(FileExistsError()),
+        )
+        with pytest.raises(FileExistsError, match="temp_creation_failed"):
+            deck_config_ini._atomic_create_if_absent(
+                tmp_path / "deck_config.ini",
+                b"content",
+                parent=parent,  # type: ignore[arg-type]
+                fault_hook=deck_config_ini.no_fault,
+            )
+    finally:
+        parent.close()
+
+
+def test_atomic_create_propagates_non_collision_commit_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    monkeypatch.setattr(
+        deck_config_ini,
+        "_commit_owned_temp_no_replace",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(errno.EIO, "commit")),
+    )
+    try:
+        with pytest.raises(OSError, match="commit"):
+            deck_config_ini._atomic_create_if_absent(
+                tmp_path / "deck_config.ini",
+                b"content",
+                parent=parent,  # type: ignore[arg-type]
+                fault_hook=deck_config_ini.no_fault,
+            )
+    finally:
+        parent.close()
+
+
+def test_atomic_create_records_cleanup_failures_without_masking_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    primary = InjectedBaseFault("write")
+
+    class BrokenHandle:
+        def write(self, _content: bytes) -> int:
+            raise primary
+
+        def close(self) -> None:
+            raise RuntimeError("close")
+
+        def fileno(self) -> int:
+            return 0
+
+    monkeypatch.setattr(parent, "open_file", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(deck_config_ini.os, "fdopen", lambda *_args, **_kwargs: BrokenHandle())
+    monkeypatch.setattr(deck_config_ini.os, "fstat", lambda _fd: tmp_path.stat())
+    monkeypatch.setattr(
+        parent,
+        "child_status",
+        lambda _name: (_ for _ in ()).throw(OSError("cleanup")),
+    )
+    try:
+        with pytest.raises(InjectedBaseFault, match="write") as caught:
+            deck_config_ini._atomic_create_if_absent(
+                tmp_path / "deck_config.ini",
+                b"content",
+                parent=parent,  # type: ignore[arg-type]
+                fault_hook=deck_config_ini.no_fault,
+            )
+    finally:
+        parent.close()
+    assert any("temp handle close failed" in note for note in caught.value.__notes__)
+    assert any("owned temp cleanup failed" in note for note in caught.value.__notes__)
+
+
+def test_atomic_create_ignores_missing_temp_during_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    monkeypatch.setattr(
+        deck_config_ini.os,
+        "fdopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InjectedBaseFault("fdopen")),
+    )
+    monkeypatch.setattr(
+        parent,
+        "child_status",
+        lambda _name: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    with pytest.raises(InjectedBaseFault, match="fdopen"):
+        deck_config_ini._atomic_create_if_absent(
+            tmp_path / "deck_config.ini",
+            b"content",
+            parent=parent,  # type: ignore[arg-type]
+            fault_hook=deck_config_ini.no_fault,
+        )
+
+
+def test_atomic_create_ignores_temp_that_disappears_after_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    monkeypatch.setattr(
+        parent,
+        "child_status",
+        lambda _name: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    with pytest.raises(InjectedBaseFault, match="after_temp_write"):
+        deck_config_ini._atomic_create_if_absent(
+            tmp_path / "deck_config.ini",
+            b"content",
+            parent=parent,  # type: ignore[arg-type]
+            fault_hook=_fault_at("after_temp_write", InjectedBaseFault),
+        )
+    for residue in tmp_path.glob("*.tmp"):
+        residue.unlink()
+
+
+def test_commit_owned_temp_rejects_unknown_platform(tmp_path: Path) -> None:
+    parent = _AtomicParent(tmp_path)
+    temp = tmp_path / "temp"
+    temp.write_bytes(b"content")
+    identity = path_identity_from_status(temp.stat())
+    with pytest.raises(RuntimeError, match="atomic_create_unsupported"):
+        deck_config_ini._commit_owned_temp_no_replace(
+            parent,  # type: ignore[arg-type]
+            temp_name="temp",
+            target_name="target",
+            expected_identity=identity,
+            expected_content=b"content",
+            platform_name="unknown",
+        )
+
+
+def test_posix_commit_uses_link_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    temp = tmp_path / "temp"
+    temp.write_bytes(b"content")
+    identity = path_identity_from_status(temp.stat())
+    calls: list[str] = []
+    monkeypatch.setattr(deck_config_ini, "_rename_noreplace_posix", lambda *_args: False)
+    monkeypatch.setattr(
+        deck_config_ini,
+        "_link_noreplace_posix",
+        lambda *_args, **_kwargs: calls.append("link"),
+    )
+    monkeypatch.setattr(deck_config_ini, "_validate_owned_child", lambda *_args, **_kwargs: None)
+    deck_config_ini._commit_owned_temp_no_replace(
+        parent,  # type: ignore[arg-type]
+        temp_name="temp",
+        target_name="target",
+        expected_identity=identity,
+        expected_content=b"content",
+        platform_name="posix",
+    )
+    assert calls == ["link"]
+
+
+@pytest.mark.parametrize("mode", ("initial", "final", "wrapped"))
+def test_validate_owned_child_rejects_invalid_or_unreadable_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    target = tmp_path / "target"
+    target.write_bytes(b"content")
+    identity = path_identity_from_status(target.stat())
+    expected_identity = identity
+    if mode == "initial":
+        expected_identity = (identity[0], identity[1] + 1, identity[2])
+    elif mode == "final":
+        real_identity = deck_config_ini.path_identity_from_status
+        identity_calls = 0
+
+        def changed_final(status: os.stat_result) -> tuple[int, int, int]:
+            nonlocal identity_calls
+            identity_calls += 1
+            result = real_identity(status)
+            if identity_calls == 2:
+                return (result[0], result[1] + 1, result[2])
+            return result
+
+        monkeypatch.setattr(
+            deck_config_ini,
+            "path_identity_from_status",
+            changed_final,
+        )
+        monkeypatch.setattr(
+            deck_config_ini,
+            "_read_plain_file",
+            lambda *_args, **_kwargs: b"content",
+        )
+    else:
+        monkeypatch.setattr(
+            parent,
+            "child_status",
+            lambda _name: (_ for _ in ()).throw(OSError("status")),
+        )
+    with pytest.raises(RuntimeError, match="verification_failed"):
+        deck_config_ini._validate_owned_child(
+            parent,  # type: ignore[arg-type]
+            name="target",
+            expected_identity=expected_identity,
+            expected_content=b"content",
+            error_code="verification_failed",
+        )
+
+
+class _FakeRename:
+    def __init__(self, result: int, error_number: int = 0) -> None:
+        self.result = result
+        self.error_number = error_number
+
+    def __call__(self, *_args: object) -> int:
+        ctypes.set_errno(self.error_number)
+        return self.result
+
+
+@pytest.mark.parametrize(
+    ("function", "expected"),
+    ((None, False), (_FakeRename(0), True), (_FakeRename(-1, errno.ENOSYS), False)),
+)
+def test_rename_noreplace_posix_reports_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    function: _FakeRename | None,
+    expected: bool,
+) -> None:
+    monkeypatch.setattr(deck_config_ini, "_load_renameat2", lambda: function)
+    assert deck_config_ini._rename_noreplace_posix(1, "source", "target") is expected
+
+
+@pytest.mark.parametrize("error_number", (errno.EEXIST, errno.EIO))
+def test_rename_noreplace_posix_propagates_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    error_number: int,
+) -> None:
+    monkeypatch.setattr(
+        deck_config_ini,
+        "_load_renameat2",
+        lambda: _FakeRename(-1, error_number),
+    )
+    expected = FileExistsError if error_number == errno.EEXIST else OSError
+    with pytest.raises(expected):
+        deck_config_ini._rename_noreplace_posix(1, "source", "target")
+
+
+def test_link_noreplace_wraps_unsupported_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    monkeypatch.setattr(
+        deck_config_ini.os,
+        "link",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(NotImplementedError()),
+    )
+    with pytest.raises(RuntimeError, match="atomic_create_unsupported"):
+        deck_config_ini._link_noreplace_posix(
+            parent,  # type: ignore[arg-type]
+            temp_name="temp",
+            target_name="target",
+            expected_identity=(1, 2, 3),
+        )
+
+
+@pytest.mark.parametrize("valid", (False, True))
+def test_link_noreplace_validates_and_unlinks_owned_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    valid: bool,
+) -> None:
+    parent = _AtomicParent(tmp_path)
+    temp = tmp_path / "temp"
+    target = tmp_path / "target"
+    temp.write_bytes(b"content")
+    identity = path_identity_from_status(temp.stat())
+    real_link = os.link
+    real_unlink = os.unlink
+
+    def fake_link(source: str, destination: str, **_kwargs: object) -> None:
+        real_link(tmp_path / source, tmp_path / destination)
+
+    def fake_unlink(name: str, **_kwargs: object) -> None:
+        real_unlink(tmp_path / name)
+
+    monkeypatch.setattr(deck_config_ini.os, "link", fake_link)
+    monkeypatch.setattr(deck_config_ini.os, "unlink", fake_unlink)
+    expected_identity = identity if valid else (identity[0], identity[1] + 1, identity[2])
+    if valid:
+        deck_config_ini._link_noreplace_posix(
+            parent,  # type: ignore[arg-type]
+            temp_name="temp",
+            target_name="target",
+            expected_identity=expected_identity,
+        )
+        assert not temp.exists()
+        assert target.read_bytes() == b"content"
+    else:
+        with pytest.raises(RuntimeError, match="commit_verification_failed"):
+            deck_config_ini._link_noreplace_posix(
+                parent,  # type: ignore[arg-type]
+                temp_name="temp",
+                target_name="target",
+                expected_identity=expected_identity,
+            )
+
+
+def test_load_renameat2_handles_missing_symbol_and_configures_function(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        deck_config_ini.ctypes,
+        "CDLL",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("missing")),
+    )
+    assert deck_config_ini._load_renameat2() is None
+
+    class FakeFunction:
+        argtypes: object = None
+        restype: object = None
+
+    function = FakeFunction()
+    library = type("Library", (), {"renameat2": function})()
+    monkeypatch.setattr(deck_config_ini.ctypes, "CDLL", lambda *_args, **_kwargs: library)
+    assert deck_config_ini._load_renameat2() is function
+    assert function.argtypes is not None
+    assert function.restype is ctypes.c_int
+
+
+class _HostilePrimary(BaseException):
+    def add_note(self, _note: str) -> None:
+        raise RuntimeError("hostile")
+
+
+def test_add_note_never_masks_hostile_primary() -> None:
+    deck_config_ini._add_note(_HostilePrimary(), "cleanup", RuntimeError("secondary"))

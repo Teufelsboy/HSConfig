@@ -416,3 +416,198 @@ def test_serialize_runtime_state_rejects_invalid_or_duplicate_models() -> None:
         serialize_runtime_state(
             RuntimeState(1, (_deck(package_root_sha256=123),))  # type: ignore[arg-type]
         )
+
+
+def test_read_runtime_state_returns_none_when_state_directory_is_empty(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".hsconfig").mkdir()
+
+    assert read_runtime_state(tmp_path) is None
+
+
+def test_read_runtime_state_wraps_ancestor_guard_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_guard(_path: Path) -> object:
+        raise OSError("ancestor unavailable")
+
+    monkeypatch.setattr(
+        runtime_state,
+        "capture_plain_ancestor_guard",
+        fail_guard,
+    )
+
+    with pytest.raises(ValueError, match="^runtime_state_unsafe_path$") as captured:
+        read_runtime_state(tmp_path)
+
+    assert isinstance(captured.value.__cause__, OSError)
+
+
+def test_read_runtime_state_rejects_nonfinite_json_constant(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".hsconfig" / "state.json"
+    path.parent.mkdir()
+    path.write_bytes(b'{"decks":[],"schema_version":NaN}\n')
+
+    with pytest.raises(ValueError, match="^runtime_state_invalid_json$"):
+        read_runtime_state(tmp_path)
+
+
+def test_read_runtime_state_rejects_non_string_deck_field(
+    tmp_path: Path,
+) -> None:
+    payload = _payload()
+    payload["decks"][0]["deck_name"] = 123
+    path = tmp_path / ".hsconfig" / "state.json"
+    path.parent.mkdir()
+    path.write_bytes(_state_bytes(payload))
+
+    with pytest.raises(ValueError, match="^runtime_state_invalid_schema$"):
+        read_runtime_state(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "state",
+    (
+        RuntimeState(2, ()),
+        RuntimeState(1, (object(),)),  # type: ignore[arg-type]
+    ),
+)
+def test_serialize_runtime_state_rejects_invalid_model_envelope(
+    state: RuntimeState,
+) -> None:
+    with pytest.raises(ValueError, match="^runtime_state_invalid_schema$"):
+        serialize_runtime_state(state)
+
+
+class _RuntimeStateFileParent:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        child_results: list[object] | None = None,
+        open_error: BaseException | None = None,
+    ) -> None:
+        self.path = path.parent
+        self._file = path
+        self._child_results = list(child_results or [])
+        self._open_error = open_error
+        self.opened_descriptor: int | None = None
+
+    def child_status(self, _name: str) -> os.stat_result:
+        if self._child_results:
+            result = self._child_results.pop(0)
+            if isinstance(result, BaseException):
+                raise result
+            return result  # type: ignore[return-value]
+        return self._file.lstat()
+
+    def open_file(self, _name: str, *, create: bool, write: bool) -> int:
+        assert create is False
+        assert write is False
+        if self._open_error is not None:
+            raise self._open_error
+        self.opened_descriptor = os.open(self._file, os.O_RDONLY)
+        return self.opened_descriptor
+
+    def validate(self) -> None:
+        return None
+
+
+def test_runtime_state_plain_read_wraps_initial_child_status_error(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state.json"
+    parent = _RuntimeStateFileParent(
+        path,
+        child_results=[OSError("status failed")],
+    )
+
+    with pytest.raises(ValueError, match="^runtime_state_unsafe_path$") as captured:
+        runtime_state._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+
+    assert isinstance(captured.value.__cause__, OSError)
+
+
+def test_runtime_state_plain_read_wraps_open_error(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+    path.write_bytes(b"{}\n")
+    parent = _RuntimeStateFileParent(
+        path,
+        open_error=OSError("open failed"),
+    )
+
+    with pytest.raises(ValueError, match="^runtime_state_unsafe_path$") as captured:
+        runtime_state._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+
+    assert isinstance(captured.value.__cause__, OSError)
+
+
+def test_runtime_state_plain_read_rejects_opened_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "state.json"
+    path.write_bytes(b"{}\n")
+    parent = _RuntimeStateFileParent(path)
+    real_fstat = os.fstat
+
+    def changed_open_status(descriptor: int) -> os.stat_result:
+        return _StatusWithLinkCount(real_fstat(descriptor), 2)  # type: ignore[return-value]
+
+    monkeypatch.setattr(runtime_state.os, "fstat", changed_open_status)
+
+    with pytest.raises(ValueError, match="^runtime_state_unsafe_path$"):
+        runtime_state._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+
+
+def test_runtime_state_plain_read_closes_descriptor_when_fstat_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "state.json"
+    path.write_bytes(b"{}\n")
+    parent = _RuntimeStateFileParent(path)
+    real_fstat = os.fstat
+
+    def fail_fstat(_descriptor: int) -> os.stat_result:
+        raise OSError("fstat failed")
+
+    monkeypatch.setattr(runtime_state.os, "fstat", fail_fstat)
+
+    with pytest.raises(OSError, match="fstat failed"):
+        runtime_state._read_plain_file(path, parent=parent)  # type: ignore[arg-type]
+
+    assert parent.opened_descriptor is not None
+    with pytest.raises(OSError):
+        real_fstat(parent.opened_descriptor)
+
+
+@pytest.mark.parametrize(
+    "final_result",
+    (
+        OSError("final status failed"),
+        "link-count-change",
+    ),
+)
+def test_runtime_state_plain_read_rejects_final_path_change(
+    tmp_path: Path,
+    final_result: object,
+) -> None:
+    path = tmp_path / "state.json"
+    path.write_bytes(b"{}\n")
+    initial = path.lstat()
+    changed = _StatusWithLinkCount(initial, 2)
+    parent = _RuntimeStateFileParent(
+        path,
+        child_results=[
+            initial,
+            changed if final_result == "link-count-change" else final_result,
+        ],
+    )
+
+    with pytest.raises(ValueError, match="^runtime_state_unsafe_path$"):
+        runtime_state._read_plain_file(path, parent=parent)  # type: ignore[arg-type]

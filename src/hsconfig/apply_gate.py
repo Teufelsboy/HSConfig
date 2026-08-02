@@ -495,9 +495,6 @@ def _actual_files_missing_from_summary_reasons(
             }
         ]
     for path in actual_files:
-        relative_parts = path.relative_to(custom_config).parts
-        if len(relative_parts) != 2:
-            continue
         summary_key = _normalize_generated_file_path(path.relative_to(package))
         if summary_key not in summary_files:
             reasons.append(

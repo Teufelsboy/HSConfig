@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hsconfig import source_contract_audit
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_claim_lifecycle import build_initial_lifecycle_rows
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -24,6 +25,284 @@ REQUIRED_LIFECYCLE_FIELDS = {
     "first_missing_link",
     "operator_impact",
 }
+
+
+def test_claim_card_and_reference_helpers_normalize_legacy_shapes() -> None:
+    assert source_contract_audit._claim_cards({"cards": "A"}) == ["A"]
+    assert source_contract_audit._claim_cards({"cards": ["B", "", "A", "A"]}) == [
+        "A",
+        "B",
+    ]
+    assert source_contract_audit._claim_cards({"cards": {}, "card_id": "C"}) == [
+        "C"
+    ]
+    assert source_contract_audit._claim_cards({"card": "D"}) == ["D"]
+    assert source_contract_audit._claim_cards({}) == []
+
+    assert source_contract_audit._claim_reference_keys(
+        "fallback",
+        {"claim_id": "explicit", "source_refs": "source:one"},
+    ) == {"fallback", "explicit", "source:one"}
+    assert source_contract_audit._claim_reference_keys(
+        "fallback",
+        {"source_refs": ["source:two", "", "source:three"]},
+    ) == {"fallback", "source:two", "source:three"}
+
+
+def test_claim_row_id_helpers_collect_all_supported_reference_families() -> None:
+    row = {
+        "claim_id": "one",
+        "source_claim_id": "two",
+        "claim_ids": "three",
+        "source_claim_ids": ["four", ""],
+        "merged_claim_ids": ["five", "six"],
+        "claim_refs": "seven",
+    }
+    assert source_contract_audit._row_claim_ids(row) == {
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+    }
+    assert source_contract_audit._ids_from_rows(["invalid", row]) == (
+        source_contract_audit._row_claim_ids(row)
+    )
+    assert source_contract_audit._rows("invalid") == []
+    assert source_contract_audit._rows(["invalid", row]) == [row]
+
+
+def test_combo_card_parser_supports_structured_and_legacy_sequences() -> None:
+    assert source_contract_audit._combo_cards({"cards": "A"}) == ["A"]
+    assert source_contract_audit._combo_cards({"cards": ["A", "", "B"]}) == [
+        "A",
+        "B",
+    ]
+    assert source_contract_audit._combo_cards({"combo": " A >> B >> "}) == [
+        "A",
+        "B",
+    ]
+    assert source_contract_audit._combo_cards({}) == []
+
+
+def test_suppression_reason_maps_to_the_first_actionable_missing_link() -> None:
+    cases = {
+        None: None,
+        "missing_target_scope": "needs_target_scope",
+        "no_target_scope": "needs_target_scope",
+        "invalid_target_scope": "needs_invalid_target_scope",
+        "target_scope_not_encoded": "needs_target_surface",
+        "requires_runtime_evidence": "runtime_evidence",
+        "source_evidence_required": "source_evidence",
+        "surface_gate_rejected": "surface_gate",
+        "builder_or_router_missing": "builder_or_router",
+        "other": "runtime_surface",
+    }
+    assert {
+        reason: source_contract_audit._first_missing_link_for_suppression(reason)
+        for reason in cases
+    } == cases
+
+
+def test_legacy_lowering_fallback_respects_surface_and_authority_boundaries() -> None:
+    emitted = {"mulligan": {"direct"}, "cardid": set(), "combo": set()}
+    plans = {
+        "mulligan_plan": {"rules": [{"card": "A"}]},
+        "card_behavior_plan": {
+            "rows": [
+                {"card_id": "A", "meaningful_runtime_surface": False},
+                {"card_id": "B", "meaningful_runtime_surface": True},
+            ]
+        },
+        "combo_plan": {"combos": [{"combo": "A >> C"}]},
+    }
+
+    def lowered(
+        surface: str,
+        claim: dict[str, object],
+        *,
+        claim_id: str = "claim",
+        allow_legacy: bool = True,
+    ) -> bool:
+        return source_contract_audit._claim_lowered_to_surface(
+            claim_id=claim_id,
+            claim=claim,
+            surface=surface,
+            emitted_claim_ids=emitted,
+            allow_legacy_card_fallback=allow_legacy,
+            **plans,
+        )
+
+    assert lowered("mulligan", {}, claim_id="direct")
+    assert not lowered("globalvalues", {"cards": ["A"]})
+    assert not lowered("mulligan", {"cards": ["A"]}, allow_legacy=False)
+    assert not lowered("mulligan", {})
+    assert lowered("mulligan", {"cards": ["A"]})
+    assert not lowered("cardid", {"cards": ["A"]})
+    assert lowered("cardid", {"cards": ["B"]})
+    assert lowered("combo", {"cards": ["C"]})
+    assert not lowered("unknown", {"cards": ["A"]})
+
+
+def test_lifecycle_surface_prefers_emission_then_gate_specificity() -> None:
+    def surface(
+        emission: dict[str, object],
+        emitted: list[str],
+        surfaces: object,
+    ) -> str:
+        return source_contract_audit._lifecycle_surface(
+            emission=emission,
+            emitted_surfaces=emitted,
+            claim_row={"surfaces": surfaces},
+        )
+
+    assert surface({"surface": "combo"}, ["cardid"], {}) == "combo"
+    assert surface({}, ["cardid"], {}) == "cardid"
+    assert surface(
+        {},
+        [],
+        {"mulligan": {"reason": "requires_runtime_evidence"}},
+    ) == "mulligan"
+    assert surface({}, [], {"combo": {"allowed": True}}) == "combo"
+    assert surface({}, [], {"cardid": {"allowed": False}}) == "cardid"
+    assert surface({}, [], []) == ""
+
+
+def test_emission_merge_prefers_emitted_rows_and_specific_suppression() -> None:
+    index: dict[str, dict[str, object]] = {}
+    source_contract_audit._merge_emission_rows(
+        index,
+        [
+            {"claim_id": ""},
+            {
+                "claim_id": "claim",
+                "decision": "suppressed",
+                "surface": None,
+                "emitted_files": ["A.json"],
+                "suppressed_reason": "builder_or_router_missing",
+            },
+            {
+                "claim_id": "claim",
+                "decision": "suppressed",
+                "surface": "combo",
+                "emitted_files": ["B.json"],
+                "suppressed_reason": "requires_runtime_evidence",
+            },
+        ],
+    )
+    assert index["claim"] == {
+        "decision": "suppressed",
+        "surface": "combo",
+        "runtime_surface": None,
+        "emitted_files": ["A.json", "B.json"],
+        "suppressed_reason": "requires_runtime_evidence",
+    }
+
+    source_contract_audit._merge_emission_rows(
+        index,
+        [
+            {
+                "claim_id": "claim",
+                "decision": "emitted",
+                "surface": "cardid",
+                "runtime_surface": "CARD.json",
+                "emitted_files": ["CARD.json"],
+            }
+        ],
+    )
+    assert index["claim"]["decision"] == "emitted"
+    assert index["claim"]["suppressed_reason"] is None
+    assert index["claim"]["surface"] == "cardid"
+    assert index["claim"]["runtime_surface"] == "CARD.json"
+
+
+def test_deck_card_projection_ignores_invalid_and_unnamed_rows() -> None:
+    assert source_contract_audit._deck_cards({"cards": "invalid"}) == {}
+    valid = {"card_id": "A", "name": "Alpha"}
+    assert source_contract_audit._deck_cards(
+        {"cards": ["invalid", {"card_id": ""}, valid]}
+    ) == {"A": valid}
+
+
+def test_runtime_identity_preserves_only_meaningful_surface_selectors() -> None:
+    assert source_contract_audit._claim_runtime_identity(
+        {},
+        claim_kind="mulligan_keep",
+        cards=["A"],
+    ) == {"selector": "A", "action": "hold", "condition": "*"}
+    assert source_contract_audit._claim_runtime_identity(
+        {"mulligan": "A or B", "intent": "discard", "condition": "versus aggro"},
+        claim_kind="mulligan_discard",
+        cards=["A", "B"],
+    ) == {
+        "selector": "A or B",
+        "action": "discard",
+        "condition": "versus aggro",
+    }
+    assert source_contract_audit._claim_runtime_identity(
+        {"timing_kind": "before", "globalvalues_key": "Legacy"},
+        claim_kind="combo_sequence",
+        cards=["A", "B"],
+        globalvalues_keys=["Canonical", ""],
+    ) == {
+        "timing_kind": "before",
+        "operator": ">>",
+        "globalvalues_key": "Legacy",
+        "globalvalues_keys": ["Canonical"],
+        "key": "Canonical",
+    }
+
+
+def test_audit_helpers_default_malformed_optional_containers_without_authority() -> None:
+    assert source_contract_audit._guide_claims({"claims": "invalid"}) == []
+    assert source_contract_audit._card_roles_from_readiness(
+        {"cards": "invalid"}
+    ) == {}
+    assert source_contract_audit._card_roles_from_readiness(
+        {"cards": {"A": {"roles": ["anchor"]}, "B": "invalid"}}
+    ) == {"A": {"roles": ["anchor"]}}
+    assert source_contract_audit._normalized_suppression_reason(
+        {"reason": "requires_runtime_evidence"}
+    ) == "runtime_evidence_required"
+    assert source_contract_audit._normalized_suppression_reason({}) == "suppressed"
+    assert source_contract_audit._int("7") == 7
+    assert source_contract_audit._int("invalid") == 0
+
+
+def test_audit_markdown_ignores_malformed_rows_and_escapes_table_values() -> None:
+    markdown = render_source_contract_audit_markdown(
+        {
+            "deck_name": "Deck|Name",
+            "summary": "invalid",
+            "card_rows": {
+                "invalid": "not-a-row",
+                "CARD": {
+                    "name": "Card|Name",
+                    "readiness_lane": "ready",
+                    "claim_lanes": {},
+                    "first_missing_link": "none",
+                },
+            },
+            "claim_lifecycle_rows": [
+                "invalid",
+                {
+                    "claim_id": "claim|one",
+                    "claim_kind": "card_role",
+                    "policy_lane": "runtime_lowerable",
+                    "surface_gate_decision": "allowed",
+                    "builder_or_router_decision": "emitted",
+                    "runtime_surface": "CARD.json",
+                    "first_missing_link": "none",
+                },
+            ],
+        }
+    )
+
+    assert "# Source Contract Audit - Deck|Name" in markdown
+    assert "| CARD Card\\|Name | ready | none |  |  |" in markdown
+    assert "| claim\\|one | card_role | runtime_lowerable |" in markdown
 
 
 def _verified_posture_claim(claim_id: str = "posture_claim") -> dict:

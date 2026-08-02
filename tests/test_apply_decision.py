@@ -104,3 +104,117 @@ def test_missing_exact_source_is_visible_without_becoming_a_second_gate() -> Non
         {"reason": "runtime_load_safe_package"},
         {"reason": "exact_source_not_closed", "blocking": False},
     )
+
+
+def test_blocked_decision_derives_literal_reasons_when_caller_provides_none() -> None:
+    from hsconfig.apply_decision import ApplyFacts, build_apply_decision
+
+    decision = build_apply_decision(
+        ApplyFacts(
+            strict_package_validation=False,
+            actual_runtime_surface_inventory=True,
+            deck_input_verification=True,
+            source_receipt_validity=True,
+            source_acquisition_eligibility=True,
+            derivation_receipt_validity=True,
+            package_summary_parity=False,
+        )
+    )
+
+    assert decision.reasons == (
+        {
+            "reason": "strict_package_validation_failed",
+            "code": "strict_package_validation_failed",
+        },
+        {
+            "reason": "operator_summary_package_parity_mismatch",
+            "code": "operator_summary_package_parity_mismatch",
+        },
+    )
+
+
+def test_apply_decision_payload_returns_detached_plain_reason_rows() -> None:
+    from hsconfig.apply_decision import (
+        ApplyDecision,
+        apply_decision_payload,
+    )
+
+    reason = {"reason": "blocked", "detail": "original"}
+    payload = apply_decision_payload(
+        ApplyDecision(
+            allowed=False,
+            mode="blocked",
+            policy="BLOCKED",
+            reasons=(reason,),
+        )
+    )
+    payload["reasons"][0]["detail"] = "changed"
+
+    assert payload == {
+        "allowed": False,
+        "mode": "blocked",
+        "policy": "BLOCKED",
+        "reasons": [{"reason": "blocked", "detail": "changed"}],
+    }
+    assert reason == {"reason": "blocked", "detail": "original"}
+
+
+def test_summary_projection_reports_invalid_technical_facts_and_primary_reason() -> None:
+    from hsconfig.apply_decision import (
+        ApplyFacts,
+        apply_decision_summary_projection,
+        build_apply_decision,
+    )
+
+    facts = ApplyFacts(
+        strict_package_validation=True,
+        actual_runtime_surface_inventory=False,
+        deck_input_verification=True,
+        source_receipt_validity=True,
+        source_acquisition_eligibility=True,
+        derivation_receipt_validity=True,
+        package_summary_parity=True,
+    )
+    decision = build_apply_decision(facts)
+
+    assert facts.technical_valid is False
+    assert apply_decision_summary_projection(decision, facts) == {
+        "technical_status": "INVALID_PACKAGE",
+        "apply_policy": "BLOCKED",
+        "runtime_apply_allowed": False,
+        "runtime_apply_mode": "blocked",
+        "runtime_apply_reason": "runtime_surface_inventory_invalid",
+    }
+
+
+@pytest.mark.parametrize(
+    ("allowed", "expected"),
+    ((True, "runtime_load_safe_package"), (False, "blocked")),
+)
+def test_primary_apply_reason_handles_decisions_without_reason_rows(
+    allowed: bool,
+    expected: str,
+) -> None:
+    from hsconfig.apply_decision import ApplyDecision, primary_apply_reason
+
+    decision = ApplyDecision(
+        allowed=allowed,
+        mode="load_safe_apply" if allowed else "blocked",
+        policy="ALLOWED" if allowed else "BLOCKED",
+        reasons=(),
+    )
+
+    assert primary_apply_reason(decision) == expected
+
+
+def test_primary_apply_reason_fails_closed_for_blank_reason_value() -> None:
+    from hsconfig.apply_decision import ApplyDecision, primary_apply_reason
+
+    decision = ApplyDecision(
+        allowed=True,
+        mode="load_safe_apply",
+        policy="ALLOWED_WITH_WARNINGS",
+        reasons=({"reason": ""},),
+    )
+
+    assert primary_apply_reason(decision) == "blocked"

@@ -135,6 +135,50 @@ def test_status_preserves_exact_ready_and_warning_domain() -> None:
     assert strong.apply_policy == "ALLOWED"
 
 
+def test_sealed_technical_validity_excludes_source_eligibility_only() -> None:
+    facts = operator_status_module._SealedApplyFacts(
+        strict_package_validation=True,
+        actual_runtime_surface_inventory=True,
+        deck_input_verification=True,
+        source_receipt_validity=True,
+        source_acquisition_eligibility=False,
+        derivation_receipt_validity=True,
+        package_summary_parity=True,
+        blocking_reasons=(),
+        informational_reasons=(),
+    )
+
+    assert facts.technical_valid is True
+    assert facts._replace(package_summary_parity=False).technical_valid is False
+
+
+def test_unbound_semantic_projector_fails_closed() -> None:
+    with pytest.raises(
+        RuntimeError,
+        match="operator_status_semantic_projector_unbound",
+    ):
+        operator_status_module._status_semantic_projector_unbound(
+            _allowed_inputs()
+        )
+
+
+def test_open_exact_source_adds_warning_without_blocking_load_safe_apply() -> None:
+    inputs = _allowed_inputs(strong=True)
+    inputs = replace(
+        inputs,
+        authority=replace(
+            inputs.authority,
+            package_authority={"exact_source_closed": False},
+        ),
+    )
+
+    projection = build_operator_status(inputs)
+
+    assert projection.runtime_apply_allowed is True
+    assert projection.apply_policy == "ALLOWED_WITH_WARNINGS"
+    assert projection.next_action == "READY_TO_APPLY_OR_HANDOFF"
+
+
 @pytest.mark.parametrize(
     ("fact_name", "reason", "next_action"),
     [

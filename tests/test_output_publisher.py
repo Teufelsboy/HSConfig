@@ -7,8 +7,11 @@ import os
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+import hsconfig.output_publisher as output_publisher
 
 from hsconfig.configure_run_model import (
     RenderedConfigureRun,
@@ -1654,3 +1657,1368 @@ def test_multiple_revision_owner_journals_fail_closed(
         path.name: path.read_bytes()
         for path in transactions.iterdir()
     } == before
+
+
+def _unit_transaction(
+    *,
+    transaction_id: str = "1" * 32,
+    phase: str = "prepared",
+    staging_identity: tuple[int, int, int] | None = None,
+    revision_identity: tuple[int, int, int] | None = None,
+    owns_revision: bool = False,
+    previous_revision: str | None = None,
+    previous_revision_identity: tuple[int, int, int] | None = None,
+    previous_owner_transaction_id: str | None = None,
+) -> output_publisher._Transaction:
+    digest = "a" * 64
+    return output_publisher._Transaction(
+        schema_version=1,
+        transaction_id=transaction_id,
+        deck_name="Deck",
+        deck_fingerprint="b" * 64,
+        content_root_sha256=digest,
+        staging=f"revisions/.staging-{transaction_id}",
+        revision=f"revisions/sha256-{digest}",
+        previous_revision=previous_revision,
+        previous_revision_identity=previous_revision_identity,
+        previous_owner_transaction_id=previous_owner_transaction_id,
+        staging_identity=staging_identity,
+        revision_identity=revision_identity,
+        owns_revision=owns_revision,
+        phase=phase,
+    )
+
+
+def test_transaction_and_publish_reject_invalid_contract_types(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="publisher_transaction_invalid"):
+        replace(_unit_transaction(), phase="unknown")
+    with pytest.raises(TypeError, match="rendered_configure_run_required"):
+        publish_configure_run(object(), tmp_path)  # type: ignore[arg-type]
+
+
+def test_reconcile_missing_output_is_none(tmp_path: Path) -> None:
+    assert reconcile_output(tmp_path / "missing") is None
+
+
+def test_finalized_authority_requires_typed_publication(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(TypeError, match="output_publication_required"):
+        output_publisher.validate_finalized_publication_authority(
+            tmp_path,
+            object(),  # type: ignore[arg-type]
+        )
+
+
+def test_finalized_authority_rejects_missing_or_inconsistent_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication = SimpleNamespace(
+        revision=f"revisions/sha256-{'a' * 64}",
+        deck_name="Deck",
+        deck_fingerprint="b" * 64,
+        content_root_sha256="a" * 64,
+    )
+    monkeypatch.setattr(output_publisher, "OutputPublication", SimpleNamespace)
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: [])
+    with pytest.raises(ValueError, match="finalized_authority_invalid"):
+        output_publisher.validate_finalized_publication_authority(tmp_path, publication)  # type: ignore[arg-type]
+
+    owner = _unit_transaction(
+        phase="revision_ready",
+        revision_identity=(1, 2, 3),
+        owns_revision=True,
+    )
+    monkeypatch.setattr(
+        output_publisher,
+        "_load_valid_transactions",
+        lambda _root: [(Path("journal"), owner)],
+    )
+    monkeypatch.setattr(output_publisher, "path_identity", lambda _path: (1, 2, 3))
+    with pytest.raises(ValueError, match="finalized_authority_invalid"):
+        output_publisher.validate_finalized_publication_authority(tmp_path, publication)  # type: ignore[arg-type]
+
+
+def test_parse_transaction_rejects_noncanonical_and_invalid_identity() -> None:
+    transaction = _unit_transaction()
+    canonical = output_publisher._transaction_bytes(transaction)
+    payload = json.loads(canonical)
+    payload["previous_revision_identity"] = [1, -1, 3]
+    invalid_identity = json.dumps(payload, sort_keys=True).encode()
+    with pytest.raises(ValueError, match="identity_invalid"):
+        output_publisher._parse_transaction(invalid_identity)
+
+    noncanonical = json.dumps(json.loads(canonical), separators=(",", ":")).encode()
+    with pytest.raises(ValueError, match="transaction_noncanonical"):
+        output_publisher._parse_transaction(noncanonical)
+
+
+def test_remove_file_if_plain_handles_missing_and_nonfile(tmp_path: Path) -> None:
+    output_publisher._remove_file_if_plain(tmp_path / "missing")
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    output_publisher._remove_file_if_plain(directory)
+    assert directory.is_dir()
+
+
+def test_canonical_revision_identity_phase_and_json_helpers() -> None:
+    assert output_publisher._canonical_revision(None) is False
+    transaction = _unit_transaction()
+    values = {
+        field: getattr(transaction, field)
+        for field in transaction.__dataclass_fields__
+    }
+    invalid_bound = SimpleNamespace(**values)
+    invalid_bound.previous_revision_identity = (1, 2, 3)
+    assert output_publisher._valid_phase_state(invalid_bound) is False
+    with pytest.raises(ValueError, match="duplicate_json_key"):
+        output_publisher._unique_json_object([("key", 1), ("key", 2)])
+
+
+def test_write_transaction_calls_generic_and_phase_specific_fault_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transaction = _unit_transaction()
+    stages: list[str] = []
+
+    def fake_atomic_replace(
+        _path: Path,
+        _content: bytes,
+        *,
+        fault_hook: object,
+        **_kwargs: object,
+    ) -> None:
+        fault_hook("before_temp_write")  # type: ignore[operator]
+        fault_hook("after_journal_temp_write")  # type: ignore[operator]
+
+    monkeypatch.setattr(output_publisher, "_owned_atomic_replace", fake_atomic_replace)
+    output_publisher._write_transaction(
+        tmp_path / "journal.json",
+        transaction,
+        fault_hook=stages.append,
+    )
+    assert stages == [
+        "before_temp_write",
+        "after_journal_temp_write",
+        "after_journal_prepared_temp_write",
+    ]
+
+
+def test_exact_directory_entries_rejects_count_file_and_reparse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child = tmp_path / "child"
+    child.write_bytes(b"x")
+    with pytest.raises(ValueError, match="residue_count_limit"):
+        output_publisher._require_exact_directory_entries(
+            tmp_path,
+            allowed={"child"},
+            maximum=0,
+        )
+    with pytest.raises(ValueError, match="revision_residue_invalid"):
+        output_publisher._require_exact_directory_entries(
+            tmp_path,
+            allowed={"child"},
+            maximum=2,
+            directories_only=True,
+        )
+    monkeypatch.setattr(output_publisher, "status_is_reparse", lambda _status: True)
+    with pytest.raises(ValueError, match="residue_reparse"):
+        output_publisher._require_exact_directory_entries(
+            tmp_path,
+            allowed={"child"},
+            maximum=2,
+        )
+
+
+def test_exact_directory_entries_rejects_casefold_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child = tmp_path / "child"
+    child.mkdir()
+    entries = [
+        SimpleNamespace(name="Name", path=str(child)),
+        SimpleNamespace(name="name", path=str(child)),
+    ]
+
+    class FakeScandir:
+        def __enter__(self) -> object:
+            return iter(entries)
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+    monkeypatch.setattr(output_publisher.os, "scandir", lambda _path: FakeScandir())
+    with pytest.raises(ValueError, match="casefold_collision"):
+        output_publisher._require_exact_directory_entries(
+            tmp_path,
+            allowed=set(),
+            maximum=3,
+        )
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ("staging_exists", "revision_mismatch", "verify_error", "manifest_mismatch", "success"),
+)
+def test_recover_interrupted_revision_move_handles_all_observable_states(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    identity = (1, 2, 3)
+    transaction = _unit_transaction(
+        phase="staging_verified",
+        staging_identity=identity,
+    )
+    staging = tmp_path / transaction.staging
+
+    def probe(path: Path) -> tuple[int, int, int]:
+        if path == staging:
+            if mode == "staging_exists":
+                return identity
+            raise FileNotFoundError()
+        if mode == "revision_mismatch":
+            return (1, 9, 3)
+        return identity
+
+    manifest = SimpleNamespace(
+        content_root_sha256="wrong" if mode == "manifest_mismatch" else transaction.content_root_sha256,
+        deck_name=transaction.deck_name,
+        deck_fingerprint=transaction.deck_fingerprint,
+    )
+    monkeypatch.setattr(output_publisher, "path_identity", probe)
+    if mode == "verify_error":
+        monkeypatch.setattr(
+            output_publisher,
+            "snapshot_and_verify_revision",
+            lambda _path: (_ for _ in ()).throw(ValueError("verify")),
+        )
+    else:
+        monkeypatch.setattr(
+            output_publisher,
+            "snapshot_and_verify_revision",
+            lambda _path: SimpleNamespace(manifest=manifest),
+        )
+    written: list[output_publisher._Transaction] = []
+    monkeypatch.setattr(output_publisher, "_write_transaction", lambda _path, row: written.append(row))
+    result = output_publisher._recover_interrupted_revision_move(
+        tmp_path,
+        Path("journal"),
+        transaction,
+    )
+    if mode == "success":
+        assert result.phase == "revision_ready"
+        assert written == [result]
+    else:
+        assert result == transaction
+
+
+@pytest.mark.parametrize("owner_found", (False, True))
+def test_cleanup_after_commit_finalizes_or_adopts_existing_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_found: bool,
+) -> None:
+    identity = (1, 2, 3)
+    transaction = _unit_transaction(
+        phase="revision_ready",
+        revision_identity=identity,
+        owns_revision=False,
+    )
+    owner = _unit_transaction(
+        transaction_id="2" * 32,
+        phase="finalized",
+        revision_identity=identity,
+        owns_revision=True,
+    )
+    journal = tmp_path / "journal"
+    rows = [(tmp_path / "owner", owner)] if owner_found else []
+    removed: list[Path] = []
+    written: list[output_publisher._Transaction] = []
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: rows)
+    monkeypatch.setattr(output_publisher, "_remove_file_if_plain", removed.append)
+    monkeypatch.setattr(
+        output_publisher,
+        "_write_transaction",
+        lambda _path, row, **_kwargs: written.append(row),
+    )
+    output_publisher._cleanup_after_commit(
+        tmp_path,
+        transaction,
+        journal,
+        fault_hook=output_publisher.no_fault,
+    )
+    if owner_found:
+        assert removed == [journal]
+        assert written == []
+    else:
+        assert written[0].phase == "finalized"
+
+
+def test_cleanup_after_commit_skips_nonmatching_journal_before_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = (1, 2, 3)
+    transaction = _unit_transaction(
+        phase="revision_ready",
+        revision_identity=identity,
+        owns_revision=False,
+    )
+    owner = _unit_transaction(
+        transaction_id="2" * 32,
+        phase="finalized",
+        revision_identity=identity,
+        owns_revision=True,
+    )
+    journal = tmp_path / "journal"
+    rows = [(journal, transaction), (tmp_path / "owner", owner)]
+    removed: list[Path] = []
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: rows)
+    monkeypatch.setattr(output_publisher, "_remove_file_if_plain", removed.append)
+    monkeypatch.setattr(output_publisher, "_write_transaction", lambda *_args, **_kwargs: None)
+    output_publisher._cleanup_after_commit(
+        tmp_path,
+        transaction,
+        journal,
+        fault_hook=output_publisher.no_fault,
+    )
+    assert removed == [journal]
+
+
+def test_continue_cleanup_returns_when_no_distinct_previous_revision(
+    tmp_path: Path,
+) -> None:
+    transaction = _unit_transaction()
+    assert output_publisher._continue_or_prepare_old_cleanup(
+        tmp_path,
+        transaction,
+        Path("journal"),
+        journals=[],
+        fault_hook=output_publisher.no_fault,
+    ) == transaction
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("started_missing_owner", "cleanup_owner_missing"),
+        ("started_identity_change", "cleanup_identity_changed"),
+        ("ambiguous", "cleanup_owner_ambiguous"),
+        ("manifest", "cleanup_manifest_mismatch"),
+    ),
+)
+def test_continue_cleanup_rejects_ambiguous_or_changed_old_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    identity = (1, 2, 3)
+    previous = f"revisions/sha256-{'c' * 64}"
+    owner = replace(
+        _unit_transaction(
+            transaction_id="2" * 32,
+            phase="finalized",
+            revision_identity=identity,
+            owns_revision=True,
+        ),
+        content_root_sha256="c" * 64,
+        revision=previous,
+    )
+    if mode.startswith("started"):
+        transaction = _unit_transaction(
+            phase="cleanup_started",
+            revision_identity=(4, 5, 6),
+            previous_revision=previous,
+            previous_revision_identity=identity,
+            previous_owner_transaction_id=owner.transaction_id,
+        )
+        journals = [] if mode == "started_missing_owner" else [(Path("owner"), owner)]
+    else:
+        transaction = _unit_transaction(
+            phase="pointer_committed",
+            revision_identity=(4, 5, 6),
+            previous_revision=previous,
+        )
+        journals = [] if mode == "ambiguous" else [(Path("owner"), owner)]
+    monkeypatch.setattr(
+        output_publisher,
+        "path_identity",
+        lambda _path: (1, 9, 3) if mode == "started_identity_change" else identity,
+    )
+    monkeypatch.setattr(
+        output_publisher,
+        "snapshot_and_verify_revision",
+        lambda _path: SimpleNamespace(
+            manifest=SimpleNamespace(
+                content_root_sha256="wrong",
+                deck_name=owner.deck_name,
+                deck_fingerprint=owner.deck_fingerprint,
+            )
+        ),
+    )
+    with pytest.raises(ValueError, match=message):
+        output_publisher._continue_or_prepare_old_cleanup(
+            tmp_path,
+            transaction,
+            Path("journal"),
+            journals=journals,
+            fault_hook=output_publisher.no_fault,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    (
+        ("no_identity", False),
+        ("missing", True),
+        ("identity", False),
+        ("verify_error", False),
+        ("digest", False),
+        ("success", True),
+    ),
+)
+def test_remove_owned_tree_if_present_returns_verified_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected: bool,
+) -> None:
+    identity = (1, 2, 3)
+    expected_identity = None if mode == "no_identity" else identity
+    if mode == "missing":
+        monkeypatch.setattr(
+            output_publisher,
+            "path_identity",
+            lambda _path: (_ for _ in ()).throw(FileNotFoundError()),
+        )
+    else:
+        monkeypatch.setattr(
+            output_publisher,
+            "path_identity",
+            lambda _path: (1, 9, 3) if mode == "identity" else identity,
+        )
+    if mode == "verify_error":
+        monkeypatch.setattr(
+            output_publisher,
+            "snapshot_and_verify_revision",
+            lambda _path: (_ for _ in ()).throw(ValueError("verify")),
+        )
+    else:
+        monkeypatch.setattr(
+            output_publisher,
+            "snapshot_and_verify_revision",
+            lambda _path: SimpleNamespace(
+                manifest=SimpleNamespace(
+                    content_root_sha256="wrong" if mode == "digest" else "a" * 64
+                )
+            ),
+        )
+    removed: list[Path] = []
+    monkeypatch.setattr(
+        output_publisher,
+        "_remove_owned_tree",
+        lambda path, **_kwargs: removed.append(path),
+    )
+    result = output_publisher._remove_owned_tree_if_present(
+        tmp_path / "target",
+        expected_identity=expected_identity,
+        require_verified_root="a" * 64 if mode in {"verify_error", "digest", "success"} else None,
+    )
+    assert result is expected
+    assert bool(removed) is (mode == "success")
+
+
+def test_write_rendered_run_requires_one_manifest(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "staging"
+    destination.mkdir()
+    with pytest.raises(ValueError, match="manifest_missing"):
+        output_publisher._write_rendered_run(
+            SimpleNamespace(artifacts=()),  # type: ignore[arg-type]
+            destination,
+        )
+
+
+def test_owned_atomic_replace_rejects_preexisting_temp(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    temp = tmp_path / "temp"
+    temp.write_bytes(b"owned")
+    with pytest.raises(ValueError, match="owned_temp_preexisting"):
+        output_publisher._owned_atomic_replace(
+            target,
+            b"content",
+            temp_path=temp,
+            temp_stage="stage",
+        )
+
+
+class _NoopGuard:
+    def validate(self) -> None:
+        pass
+
+
+class _NoopLock:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def __enter__(self) -> _NoopLock:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    "mode",
+    (
+        "staging_identity",
+        "staged_manifest",
+        "reuse_existing",
+        "existing_conflict",
+        "revision_identity",
+        "pointer_verification",
+    ),
+)
+def test_publish_detects_internal_contract_failures_and_reuses_digest_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    rendered = build_rendered_run(tmp_path / "source", 1)
+    root = tmp_path / "output"
+    root.mkdir()
+    transaction = output_publisher._new_transaction(rendered, None)
+    identity = (1, 2, 3)
+    staged_manifest = SimpleNamespace(
+        content_root_sha256=(
+            "f" * 64 if mode == "staged_manifest" else rendered.content_root_sha256
+        ),
+        deck_name=rendered.model.deck_name,
+        deck_fingerprint=rendered.model.deck_fingerprint,
+    )
+    publication_rows: list[object] = []
+    monkeypatch.setattr(output_publisher, "capture_plain_ancestor_guard", lambda _path: _NoopGuard())
+    monkeypatch.setattr(output_publisher, "_ensure_layout", lambda _root: None)
+    monkeypatch.setattr(output_publisher, "_capture_layout_guards", lambda _root: ())
+    monkeypatch.setattr(output_publisher, "_validate_layout_guards", lambda _guards: None)
+    monkeypatch.setattr(output_publisher, "ExclusiveFileLock", _NoopLock)
+    monkeypatch.setattr(output_publisher, "_reconcile_locked", lambda _root: None)
+    monkeypatch.setattr(output_publisher, "_snapshot_pointer", lambda _root: object())
+    monkeypatch.setattr(output_publisher, "_new_transaction", lambda *_args: transaction)
+    monkeypatch.setattr(output_publisher, "_write_transaction", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(output_publisher, "secure_create_directory", lambda *_args, **_kwargs: identity)
+
+    def probe_identity(path: Path) -> tuple[int, int, int]:
+        if mode == "staging_identity" and path.name.startswith(".staging-"):
+            return (1, 9, 3)
+        if mode == "revision_identity" and path.name.startswith("sha256-"):
+            return (1, 9, 3)
+        return identity
+
+    monkeypatch.setattr(output_publisher, "path_identity", probe_identity)
+    monkeypatch.setattr(output_publisher, "_write_rendered_run", lambda *_args: None)
+    def snapshot(path: Path) -> SimpleNamespace:
+        if mode == "existing_conflict" and path.name.startswith("sha256-"):
+            return SimpleNamespace(
+                manifest=SimpleNamespace(
+                    content_root_sha256="f" * 64,
+                    deck_name=rendered.model.deck_name,
+                    deck_fingerprint=rendered.model.deck_fingerprint,
+                )
+            )
+        return SimpleNamespace(manifest=staged_manifest)
+
+    monkeypatch.setattr(
+        output_publisher,
+        "snapshot_and_verify_revision",
+        snapshot,
+    )
+    monkeypatch.setattr(
+        output_publisher,
+        "path_lexists",
+        lambda path: (
+            path == root
+            or (
+                mode in {"reuse_existing", "existing_conflict"}
+                and path.name.startswith("sha256-")
+            )
+        ),
+    )
+    monkeypatch.setattr(output_publisher, "plain_file_status", lambda _path: None)
+    monkeypatch.setattr(output_publisher, "require_plain_directory", lambda _path: None)
+    monkeypatch.setattr(output_publisher, "_remove_owned_tree", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(output_publisher, "secure_replace", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(output_publisher, "_replace_pointer_if_unchanged", lambda *_args, **_kwargs: None)
+
+    def resolve(_root: Path) -> tuple[object, object]:
+        publication = output_publisher.OutputPublication(
+            schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+            deck_name=("Wrong" if mode == "pointer_verification" else rendered.model.deck_name),
+            deck_fingerprint=rendered.model.deck_fingerprint,
+            revision=transaction.revision,
+            content_root_sha256=rendered.content_root_sha256,
+        )
+        publication_rows.append(publication)
+        return publication, object()
+
+    monkeypatch.setattr(output_publisher, "resolve_current_publication_unlocked", resolve)
+    monkeypatch.setattr(output_publisher, "_cleanup_after_commit", lambda *_args, **_kwargs: None)
+    expected_errors = {
+        "staging_identity": "staging_identity_mismatch",
+        "staged_manifest": "staged_revision_identity_mismatch",
+        "existing_conflict": "digest_target_conflict",
+        "revision_identity": "revision_identity_mismatch",
+        "pointer_verification": "pointer_verification_failed",
+    }
+    if mode in expected_errors:
+        with pytest.raises(ValueError, match=expected_errors[mode]):
+            publish_configure_run(rendered, root)
+    else:
+        result = publish_configure_run(rendered, root)
+        assert result.reused_existing_revision is True
+
+
+def test_finalized_authority_accepts_exact_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = (1, 2, 3)
+    owner = _unit_transaction(
+        phase="finalized",
+        revision_identity=identity,
+        owns_revision=True,
+    )
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name=owner.deck_name,
+        deck_fingerprint=owner.deck_fingerprint,
+        revision=owner.revision,
+        content_root_sha256=owner.content_root_sha256,
+    )
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: [(Path("journal"), owner)])
+    monkeypatch.setattr(output_publisher, "path_identity", lambda _path: identity)
+    output_publisher.validate_finalized_publication_authority(tmp_path, publication)
+
+
+def test_reconcile_rejects_incomplete_owned_staging_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = _unit_transaction(
+        phase="finalized",
+        revision_identity=(1, 2, 3),
+        owns_revision=True,
+    )
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name=owner.deck_name,
+        deck_fingerprint=owner.deck_fingerprint,
+        revision=owner.revision,
+        content_root_sha256=owner.content_root_sha256,
+    )
+    monkeypatch.setattr(output_publisher, "path_lexists", lambda _path: True)
+    monkeypatch.setattr(output_publisher, "resolve_current_publication_unlocked", lambda _root: (publication, object()))
+    monkeypatch.setattr(output_publisher, "_recover_owned_atomic_temps", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: [(Path("journal"), owner)])
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(output_publisher, "_recover_interrupted_revision_move", lambda *_args: owner)
+    monkeypatch.setattr(output_publisher, "_cleanup_staging_if_owned", lambda *_args: False)
+    with pytest.raises(ValueError, match="staging_cleanup_incomplete"):
+        output_publisher._reconcile_locked(tmp_path)
+
+
+def test_remove_owned_tree_rejects_root_identity_change(tmp_path: Path) -> None:
+    root = tmp_path / "owned"
+    root.mkdir()
+    identity = output_publisher.path_identity(root)
+    with pytest.raises(ValueError, match="owned_path_identity_changed"):
+        output_publisher._remove_owned_tree(
+            root,
+            expected_identity=(identity[0], identity[1] + 1, identity[2]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("root_reparse", "owned_path_reparse"),
+        ("child_reparse", "owned_path_reparse"),
+        ("invalid_name", "owned_path_invalid"),
+        ("invalid_entry", "owned_path_entry_invalid"),
+        ("disappears", None),
+        ("identity_change", "owned_path_identity_changed"),
+        ("type_change", "owned_path_identity_changed"),
+        ("final_identity", "owned_path_identity_changed"),
+    ),
+)
+def test_remove_owned_tree_handles_hostile_inventory_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str | None,
+) -> None:
+    root = tmp_path / "owned"
+    root.mkdir()
+    child = root / "file"
+    child.write_bytes(b"x")
+    identity = output_publisher.path_identity(root)
+    real_lstat = Path.lstat
+    child_lstats = 0
+
+    def hostile_lstat(path: Path) -> object:
+        nonlocal child_lstats
+        status = real_lstat(path)
+        if path == child:
+            child_lstats += 1
+            if mode == "disappears" and child_lstats == 2:
+                os.unlink(child)
+                raise FileNotFoundError()
+            if mode in {"identity_change", "type_change"} and child_lstats == 2:
+                return SimpleNamespace(
+                    st_dev=status.st_dev,
+                    st_ino=status.st_ino + (1 if mode == "identity_change" else 0),
+                    st_mode=(0 if mode == "type_change" else status.st_mode),
+                    st_nlink=status.st_nlink,
+                    st_size=status.st_size,
+                    st_file_attributes=0,
+                )
+            if mode == "invalid_entry" and child_lstats == 1:
+                return SimpleNamespace(
+                    st_dev=status.st_dev,
+                    st_ino=status.st_ino,
+                    st_mode=0,
+                    st_nlink=status.st_nlink,
+                    st_size=status.st_size,
+                    st_file_attributes=0,
+                )
+        return status
+
+    monkeypatch.setattr(Path, "lstat", hostile_lstat)
+    reparse_calls = 0
+
+    def hostile_reparse(_status: object) -> bool:
+        nonlocal reparse_calls
+        reparse_calls += 1
+        return (
+            (mode == "root_reparse" and reparse_calls == 1)
+            or (mode == "child_reparse" and reparse_calls == 2)
+        )
+
+    monkeypatch.setattr(output_publisher, "status_is_reparse", hostile_reparse)
+    if mode == "invalid_name":
+        monkeypatch.setattr(output_publisher, "canonical_relative_path", lambda _value: "different")
+    real_path_identity = output_publisher.path_identity
+    root_probes = 0
+
+    def final_identity(path: Path) -> tuple[int, int, int]:
+        nonlocal root_probes
+        result = real_path_identity(path)
+        if path == root:
+            root_probes += 1
+            if mode == "final_identity" and root_probes == 3:
+                return (result[0], result[1] + 1, result[2])
+        return result
+
+    monkeypatch.setattr(output_publisher, "path_identity", final_identity)
+    if message is not None:
+        with pytest.raises(ValueError, match=message):
+            output_publisher._remove_owned_tree(root, expected_identity=identity)
+    else:
+        output_publisher._remove_owned_tree(root, expected_identity=identity)
+        assert not root.exists()
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("root_before", "staging_identity_changed"),
+        ("file_identity", "staging_file_identity_invalid"),
+        ("path_changed", "staging_path_changed"),
+        ("write_failed", "staging_write_failed"),
+        ("final_root", "staging_identity_changed"),
+    ),
+)
+def test_write_rendered_run_detects_identity_and_write_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    destination = tmp_path / "staging"
+    destination.mkdir()
+    artifact = SimpleNamespace(
+        relative_path="package_manifest.json",
+        content=b"manifest",
+    )
+    rendered = SimpleNamespace(artifacts=(artifact,))
+    root_identity = output_publisher.path_identity(destination)
+    target = destination / artifact.relative_path
+    real_path_identity = output_publisher.path_identity
+    root_calls = 0
+
+    def probe_identity(path: Path) -> tuple[int, int, int]:
+        nonlocal root_calls
+        result = real_path_identity(path)
+        if path == destination:
+            root_calls += 1
+            if mode == "root_before" and root_calls == 2:
+                return (result[0], result[1] + 1, result[2])
+            if mode == "final_root" and root_calls == 4:
+                return (result[0], result[1] + 1, result[2])
+        if mode == "path_changed" and path == target:
+            return (result[0], result[1] + 1, result[2])
+        return result
+
+    monkeypatch.setattr(output_publisher, "path_identity", probe_identity)
+    if mode == "file_identity":
+        real_status_identity = output_publisher.path_identity_from_status
+        status_calls = 0
+
+        def changed_status(status: os.stat_result) -> tuple[int, int, int]:
+            nonlocal status_calls
+            status_calls += 1
+            result = real_status_identity(status)
+            if status_calls == 2:
+                return (result[0], result[1] + 1, result[2])
+            return result
+
+        monkeypatch.setattr(output_publisher, "path_identity_from_status", changed_status)
+    if mode == "write_failed":
+        monkeypatch.setattr(output_publisher, "read_file_no_follow", lambda *_args, **_kwargs: b"wrong")
+    with pytest.raises(ValueError, match=message):
+        output_publisher._write_rendered_run(rendered, destination)  # type: ignore[arg-type]
+    assert root_identity == real_path_identity(destination)
+
+
+@pytest.mark.parametrize("mode", ("created", "owned"))
+def test_write_rendered_run_rejects_changed_nested_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    destination = tmp_path / "staging"
+    destination.mkdir()
+    artifacts = (
+        SimpleNamespace(relative_path="nested/a.json", content=b"a"),
+        SimpleNamespace(relative_path="nested/b.json", content=b"b"),
+        SimpleNamespace(relative_path="package_manifest.json", content=b"m"),
+    )
+    nested = destination / "nested"
+    real_identity = output_publisher.path_identity
+    nested_calls = 0
+
+    def changed_nested(path: Path) -> tuple[int, int, int]:
+        nonlocal nested_calls
+        result = real_identity(path)
+        if path == nested:
+            nested_calls += 1
+            if (mode == "created" and nested_calls == 1) or (
+                mode == "owned" and nested_calls >= 3
+            ):
+                return (result[0], result[1] + 1, result[2])
+        return result
+
+    monkeypatch.setattr(output_publisher, "path_identity", changed_nested)
+    with pytest.raises(ValueError, match="staging_directory_changed"):
+        output_publisher._write_rendered_run(
+            SimpleNamespace(artifacts=artifacts),  # type: ignore[arg-type]
+            destination,
+        )
+
+
+def test_write_rendered_run_rejects_preexisting_target(tmp_path: Path) -> None:
+    destination = tmp_path / "staging"
+    destination.mkdir()
+    target = destination / "package_manifest.json"
+    target.write_bytes(b"existing")
+    with pytest.raises(ValueError, match="staging_path_preexisting"):
+        output_publisher._write_rendered_run(
+            SimpleNamespace(
+                artifacts=(
+                    SimpleNamespace(
+                        relative_path="package_manifest.json",
+                        content=b"manifest",
+                    ),
+                )
+            ),  # type: ignore[arg-type]
+            destination,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("identity", "owned_temp_identity_invalid"),
+        ("verification", "owned_temp_verification_failed"),
+    ),
+)
+def test_owned_atomic_replace_detects_temp_identity_or_content_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    target = tmp_path / "target"
+    temp = tmp_path / "temp"
+    if mode == "identity":
+        real_identity = output_publisher.path_identity_from_status
+        calls = 0
+
+        def changed(status: os.stat_result) -> tuple[int, int, int]:
+            nonlocal calls
+            calls += 1
+            result = real_identity(status)
+            if calls == 2:
+                return (result[0], result[1] + 1, result[2])
+            return result
+
+        monkeypatch.setattr(output_publisher, "path_identity_from_status", changed)
+    else:
+        monkeypatch.setattr(output_publisher, "read_file_no_follow", lambda *_args, **_kwargs: b"wrong")
+    with pytest.raises(ValueError, match=message):
+        output_publisher._owned_atomic_replace(
+            target,
+            b"content",
+            temp_path=temp,
+            temp_stage="stage",
+        )
+
+
+def test_layout_creation_races_are_revalidated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "output"
+    root.mkdir()
+
+    def race_child(path: Path, **_kwargs: object) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        raise FileExistsError()
+
+    monkeypatch.setattr(output_publisher, "secure_create_directory", race_child)
+    output_publisher._ensure_layout(root)
+    assert (root / ".publisher" / "transactions").is_dir()
+
+    chain = tmp_path / "chain" / "nested"
+    output_publisher._secure_create_directory_chain(chain)
+    assert chain.is_dir()
+
+
+def _transaction_directory(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path / "output"
+    directory = root / ".publisher" / "transactions"
+    directory.mkdir(parents=True)
+    return root, directory
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("count", "transaction_count_limit"),
+        ("invalid_file", "transaction_file_invalid"),
+        ("final_name", "transaction_name_mismatch"),
+        ("temp_name", "transaction_temp_mismatch"),
+        ("residue", "transaction_residue_invalid"),
+        ("temp_conflict", "transaction_temp_conflict"),
+        ("equal_conflict", "transaction_temp_conflict"),
+        ("phase_jump", "transaction_phase_jump"),
+        ("pointer_missing", "pointer_temp_owner_missing"),
+        ("pointer_mismatch", "pointer_temp_owner_mismatch"),
+    ),
+)
+def test_atomic_temp_recovery_rejects_invalid_residue_and_transitions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    transaction_id = transaction.transaction_id
+    if mode == "count":
+        monkeypatch.setattr(output_publisher, "_MAX_TRANSACTION_FILES", 0)
+        (directory / "entry").write_bytes(b"x")
+    elif mode == "invalid_file":
+        (directory / f"{transaction_id}.json").mkdir()
+    elif mode == "final_name":
+        (directory / f"{'2' * 32}.json").write_bytes(
+            output_publisher._transaction_bytes(transaction)
+        )
+    elif mode == "temp_name":
+        (directory / f".{'2' * 32}.journal.tmp").write_bytes(
+            output_publisher._transaction_bytes(transaction)
+        )
+    elif mode == "residue":
+        (directory / "unexpected").write_bytes(b"x")
+    elif mode in {"temp_conflict", "equal_conflict", "phase_jump"}:
+        if mode == "temp_conflict":
+            final = transaction
+            temp = replace(
+                transaction,
+                deck_fingerprint="c" * 64,
+            )
+        elif mode == "equal_conflict":
+            final = replace(
+                transaction,
+                phase="staging_owned",
+                staging_identity=(1, 2, 3),
+            )
+            temp = replace(final, staging_identity=(1, 2, 4))
+        else:
+            final = transaction
+            temp = replace(
+                transaction,
+                phase="staging_verified",
+                staging_identity=(1, 2, 3),
+            )
+        (directory / f"{transaction_id}.json").write_bytes(
+            output_publisher._transaction_bytes(final)
+        )
+        (directory / f".{transaction_id}.journal.tmp").write_bytes(
+            output_publisher._transaction_bytes(temp)
+        )
+        if mode == "equal_conflict":
+            monkeypatch.setattr(
+                output_publisher,
+                "_same_transaction_identity",
+                lambda *_args: True,
+            )
+    else:
+        publication = output_publisher.OutputPublication(
+            schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+            deck_name=("Other" if mode == "pointer_mismatch" else transaction.deck_name),
+            deck_fingerprint=transaction.deck_fingerprint,
+            revision=transaction.revision,
+            content_root_sha256=transaction.content_root_sha256,
+        )
+        if mode == "pointer_mismatch":
+            (directory / f"{transaction_id}.json").write_bytes(
+                output_publisher._transaction_bytes(transaction)
+            )
+        (directory / f".{transaction_id}.current.tmp").write_bytes(
+            output_publisher.output_publication_bytes(publication)
+        )
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    with pytest.raises(ValueError, match=message):
+        output_publisher._recover_owned_atomic_temps(
+            root,
+            current_revision=None,
+        )
+
+
+def test_atomic_temp_recovery_removes_lower_rank_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    final = replace(
+        transaction,
+        phase="staging_owned",
+        staging_identity=(1, 2, 3),
+    )
+    temp = transaction
+    final_path = directory / f"{transaction.transaction_id}.json"
+    temp_path = directory / f".{transaction.transaction_id}.journal.tmp"
+    final_path.write_bytes(output_publisher._transaction_bytes(final))
+    temp_path.write_bytes(output_publisher._transaction_bytes(temp))
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    output_publisher._recover_owned_atomic_temps(root, current_revision=None)
+    assert final_path.is_file()
+    assert not temp_path.exists()
+
+
+def test_atomic_temp_recovery_removes_identical_rank_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    final_path = directory / f"{transaction.transaction_id}.json"
+    temp_path = directory / f".{transaction.transaction_id}.journal.tmp"
+    content = output_publisher._transaction_bytes(transaction)
+    final_path.write_bytes(content)
+    temp_path.write_bytes(content)
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    output_publisher._recover_owned_atomic_temps(root, current_revision=None)
+    assert final_path.read_bytes() == content
+    assert not temp_path.exists()
+
+
+def test_atomic_temp_recovery_promotes_or_replaces_newer_journal_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for mode in ("create", "replace"):
+        case_root = tmp_path / mode
+        root, directory = _transaction_directory(case_root)
+        transaction = _unit_transaction()
+        final_path = directory / f"{transaction.transaction_id}.json"
+        temp_path = directory / f".{transaction.transaction_id}.journal.tmp"
+        if mode == "create":
+            temp = transaction
+        else:
+            final_path.write_bytes(output_publisher._transaction_bytes(transaction))
+            temp = replace(
+                transaction,
+                phase="staging_owned",
+                staging_identity=(1, 2, 3),
+            )
+        temp_path.write_bytes(output_publisher._transaction_bytes(temp))
+        monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+        output_publisher._recover_owned_atomic_temps(root, current_revision=None)
+        assert output_publisher._parse_transaction(final_path.read_bytes()) == temp
+        assert not temp_path.exists()
+
+
+def test_atomic_temp_recovery_removes_valid_pointer_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    final_path = directory / f"{transaction.transaction_id}.json"
+    pointer_path = directory / f".{transaction.transaction_id}.current.tmp"
+    final_path.write_bytes(output_publisher._transaction_bytes(transaction))
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name=transaction.deck_name,
+        deck_fingerprint=transaction.deck_fingerprint,
+        revision=transaction.revision,
+        content_root_sha256=transaction.content_root_sha256,
+    )
+    pointer_path.write_bytes(output_publisher.output_publication_bytes(publication))
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    output_publisher._recover_owned_atomic_temps(root, current_revision=None)
+    assert final_path.is_file()
+    assert not pointer_path.exists()
+
+
+@pytest.mark.parametrize("mode", ("journal", "pointer"))
+def test_atomic_temp_recovery_rejects_identity_change_before_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    if mode == "journal":
+        final = replace(
+            transaction,
+            phase="staging_owned",
+            staging_identity=(1, 2, 3),
+        )
+        final_path = directory / f"{transaction.transaction_id}.json"
+        temp_path = directory / f".{transaction.transaction_id}.journal.tmp"
+        final_path.write_bytes(output_publisher._transaction_bytes(final))
+        temp_path.write_bytes(output_publisher._transaction_bytes(transaction))
+    else:
+        final_path = directory / f"{transaction.transaction_id}.json"
+        temp_path = directory / f".{transaction.transaction_id}.current.tmp"
+        final_path.write_bytes(output_publisher._transaction_bytes(transaction))
+        publication = output_publisher.OutputPublication(
+            schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+            deck_name=transaction.deck_name,
+            deck_fingerprint=transaction.deck_fingerprint,
+            revision=transaction.revision,
+            content_root_sha256=transaction.content_root_sha256,
+        )
+        temp_path.write_bytes(output_publisher.output_publication_bytes(publication))
+    real_identity = output_publisher.path_identity
+    if mode == "journal":
+        monkeypatch.setattr(
+            output_publisher,
+            "_same_transaction_identity",
+            lambda *_args: True,
+        )
+    monkeypatch.setattr(
+        output_publisher,
+        "path_identity",
+        lambda path: (
+            lambda value: (value[0], value[1] + 1, value[2])
+        )(real_identity(path))
+        if path == temp_path
+        else real_identity(path),
+    )
+    monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
+    with pytest.raises(ValueError, match="owned_temp_identity_changed"):
+        output_publisher._recover_owned_atomic_temps(root, current_revision=None)
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("count", "transaction_count_limit"),
+        ("name", "transaction_residue_invalid"),
+        ("file", "transaction_file_invalid"),
+        ("bytes", "transaction_bytes_limit"),
+        ("parse", "transaction_invalid"),
+        ("mismatch", "transaction_name_mismatch"),
+        ("owners", "revision_owner_ambiguous"),
+    ),
+)
+def test_load_transactions_fails_closed_on_every_invalid_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    root, directory = _transaction_directory(tmp_path)
+    transaction = _unit_transaction()
+    if mode == "count":
+        monkeypatch.setattr(output_publisher, "_MAX_TRANSACTION_FILES", 0)
+        (directory / f"{transaction.transaction_id}.json").write_bytes(b"x")
+    elif mode == "name":
+        (directory / "bad").write_bytes(b"x")
+    elif mode == "file":
+        (directory / f"{transaction.transaction_id}.json").mkdir()
+    elif mode == "bytes":
+        monkeypatch.setattr(output_publisher, "_MAX_TRANSACTION_BYTES", 0)
+        (directory / f"{transaction.transaction_id}.json").write_bytes(
+            output_publisher._transaction_bytes(transaction)
+        )
+    elif mode == "parse":
+        (directory / f"{transaction.transaction_id}.json").write_bytes(b"not-json")
+    elif mode == "mismatch":
+        (directory / f"{'2' * 32}.json").write_bytes(
+            output_publisher._transaction_bytes(transaction)
+        )
+    else:
+        identity = (1, 2, 3)
+        owner = replace(
+            transaction,
+            phase="finalized",
+            revision_identity=identity,
+            owns_revision=True,
+        )
+        other_id = "2" * 32
+        duplicate = replace(
+            owner,
+            transaction_id=other_id,
+            staging=f"revisions/.staging-{other_id}",
+        )
+        (directory / f"{owner.transaction_id}.json").write_bytes(
+            output_publisher._transaction_bytes(owner)
+        )
+        (directory / f"{duplicate.transaction_id}.json").write_bytes(
+            output_publisher._transaction_bytes(duplicate)
+        )
+    with pytest.raises(ValueError, match=message):
+        output_publisher._load_valid_transactions(root)
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ("current_owner", "current_owner_invalid"),
+        ("current_mismatch", "current_owner_invalid"),
+        ("revision_count", "residue_count_limit"),
+        ("revision_file", "revision_residue_invalid"),
+        ("journal_residue", "noncurrent_journal_residue"),
+        ("stale_owner", "cleanup_owner_ambiguous"),
+        ("stale_phase", "cleanup_owner_not_finalized"),
+        ("active_reference", "cleanup_reference_ambiguous"),
+        ("stale_manifest", "cleanup_manifest_mismatch"),
+    ),
+)
+def test_detached_cleanup_rejects_ambiguous_or_unverified_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    root = tmp_path / "output"
+    revisions = root / "revisions"
+    revisions.mkdir(parents=True)
+    current_identity = None
+    stale_identity = None
+    current = _unit_transaction(
+        phase="finalized",
+        revision_identity=(1, 2, 3),
+        owns_revision=True,
+    )
+    current_root = root / current.revision
+    current_root.mkdir()
+    current_identity = output_publisher.path_identity(current_root)
+    current = replace(
+        current,
+        revision_identity=current_identity,
+        deck_name="Wrong" if mode == "current_mismatch" else current.deck_name,
+    )
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name="Deck",
+        deck_fingerprint="b" * 64,
+        revision=current.revision,
+        content_root_sha256=current.content_root_sha256,
+    )
+    stale_digest = "c" * 64
+    stale_revision = f"revisions/sha256-{stale_digest}"
+    stale_root = root / stale_revision
+    if mode != "journal_residue":
+        if mode == "revision_file":
+            stale_root.write_bytes(b"file")
+        else:
+            stale_root.mkdir()
+            stale_identity = output_publisher.path_identity(stale_root)
+    stale_owner = replace(
+        _unit_transaction(
+            transaction_id="2" * 32,
+            phase="finalized",
+            revision_identity=(4, 5, 6),
+            owns_revision=True,
+        ),
+        content_root_sha256=stale_digest,
+        revision=stale_revision,
+        revision_identity=stale_identity or (4, 5, 6),
+        phase="revision_ready" if mode == "stale_phase" else "finalized",
+    )
+    rows: list[tuple[Path, output_publisher._Transaction]] = (
+        [] if mode == "current_owner" else [(Path("current"), current)]
+    )
+    if mode not in {"current_owner", "stale_owner", "journal_residue", "revision_count", "revision_file"}:
+        rows.append((Path("stale"), stale_owner))
+    if mode == "journal_residue":
+        rows.append((Path("extra"), _unit_transaction(transaction_id="3" * 32)))
+    if mode == "active_reference":
+        rows.append(
+            (
+                Path("active"),
+                _unit_transaction(
+                    transaction_id="3" * 32,
+                    phase="revision_ready",
+                    revision_identity=current_identity,
+                    previous_revision=stale_revision,
+                ),
+            )
+        )
+    monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: rows)
+    if mode == "revision_count":
+        monkeypatch.setattr(output_publisher, "_MAX_TRANSACTION_FILES", 0)
+
+    def verified(path: Path) -> SimpleNamespace:
+        is_stale = path == stale_root
+        transaction = stale_owner if is_stale else current
+        return SimpleNamespace(
+            manifest=SimpleNamespace(
+                content_root_sha256=(
+                    "wrong"
+                    if mode == "stale_manifest" and is_stale
+                    else transaction.content_root_sha256
+                ),
+                deck_name=transaction.deck_name,
+                deck_fingerprint=transaction.deck_fingerprint,
+            )
+        )
+
+    monkeypatch.setattr(output_publisher, "snapshot_and_verify_revision", verified)
+    with pytest.raises(ValueError, match=message):
+        output_publisher._cleanup_detached_owned_revisions(root, publication)

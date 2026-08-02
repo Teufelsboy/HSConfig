@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import hsconfig.apply_gate as apply_gate_module
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
@@ -998,3 +999,352 @@ def test_package_io_returns_none_when_optional_profile_missing(tmp_path: Path):
 def test_package_io_requires_globalvalues_baseline(tmp_path: Path):
     with pytest.raises(ValueError, match="Missing GlobalValues baseline report"):
         read_required_baseline(tmp_path / "package")
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    ((b"{", "invalid_operator_summary_json"), (b"[]\n", "invalid_operator_summary")),
+)
+def test_apply_gate_rejects_invalid_operator_summary_document(
+    tmp_path: Path,
+    content: bytes,
+    reason: str,
+) -> None:
+    operator = tmp_path / "reports" / "operator_summary.json"
+    operator.parent.mkdir()
+    operator.write_bytes(content)
+
+    gate = evaluate_apply_gate(tmp_path)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0]["reason"] == reason
+
+
+def test_recompute_without_summary_core_enforcement_returns_recomputed_facts(
+    tmp_path: Path,
+) -> None:
+    decision, facts = apply_gate_module.recompute_apply_decision(
+        tmp_path,
+        {},
+        enforce_summary_core_fields=False,
+    )
+
+    assert decision.allowed is False
+    assert decision.reasons[0]["reason"] == "missing_custom_config_directory"
+    assert facts.actual_runtime_surface_inventory is False
+    assert facts.package_summary_parity is True
+
+
+def test_deck_input_reasons_preserve_existing_authority_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = [{"reason": "deck_input_receipt_stale", "code": "stale"}]
+    monkeypatch.setattr(
+        apply_gate_module,
+        "deck_input_apply_eligibility_reasons",
+        lambda _package: existing,
+    )
+
+    assert apply_gate_module._deck_input_verification_reasons(tmp_path, {}) is existing
+
+
+@pytest.mark.parametrize(
+    ("manifest", "identity", "detail"),
+    (
+        ([], {}, "deck input authority documents must be objects"),
+        ({}, {"cards": {}}, "deck identity cards must be a list"),
+    ),
+)
+def test_deck_input_reasons_reject_invalid_authority_document_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    manifest: object,
+    identity: object,
+    detail: str,
+) -> None:
+    reports = tmp_path / "reports"
+    write_json(reports / "input_manifest.json", manifest)
+    write_json(reports / "deck_identity.json", identity)
+    monkeypatch.setattr(
+        apply_gate_module,
+        "deck_input_apply_eligibility_reasons",
+        lambda _package: [],
+    )
+
+    reasons = apply_gate_module._deck_input_verification_reasons(tmp_path, {})
+
+    assert reasons == [
+        {
+            "reason": "deck_input_not_verified",
+            "code": "deck_input_not_verified",
+            "detail": detail,
+        }
+    ]
+
+
+def test_strict_validation_surfaces_linked_owner_error_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    linked_code = apply_gate_module.LINKED_RUNTIME_OWNER_EVIDENCE_MISSING
+    monkeypatch.setattr(
+        apply_gate_module,
+        "validate_complete_package",
+        lambda _package: {"status": "failed", "errors": [linked_code]},
+    )
+    monkeypatch.setattr(
+        apply_gate_module,
+        "strict_validation_passed",
+        lambda _report: False,
+    )
+
+    assert apply_gate_module._strict_package_validation_reasons(tmp_path) == [
+        {
+            "reason": linked_code,
+            "code": linked_code,
+            "detail": "Linked runtime owner evidence is unavailable or invalid.",
+            "errors": [linked_code],
+        }
+    ]
+
+
+def _write_derivation_payload(package: Path, payload: object) -> Path:
+    receipt = package / DERIVATION_RECEIPT_PATH
+    write_json(receipt, payload)
+    return receipt
+
+
+def test_derivation_reasons_require_summary_metadata_when_receipt_exists(
+    tmp_path: Path,
+) -> None:
+    _write_derivation_payload(tmp_path, {"schema_version": 1})
+
+    reasons = apply_gate_module._package_derivation_reasons(tmp_path, {})
+
+    assert reasons[0]["reason"] == "operator_summary_derivation_inconsistent"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_detail"),
+    (
+        (b"{", "Package derivation receipt is not valid JSON."),
+        (b"[]\n", "Package derivation receipt must be an object."),
+    ),
+)
+def test_derivation_reasons_reject_invalid_receipt_document(
+    tmp_path: Path,
+    raw: bytes,
+    expected_detail: str,
+) -> None:
+    receipt = tmp_path / DERIVATION_RECEIPT_PATH
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_bytes(raw)
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        {"package_derivation": {}},
+    )
+
+    assert reasons[0]["reason"] == "package_derivation_receipt_digest_mismatch"
+    assert reasons[0]["detail"] == expected_detail
+
+
+def test_derivation_reasons_reject_unsupported_receipt_schema(tmp_path: Path) -> None:
+    _write_derivation_payload(tmp_path, {"schema_version": 999})
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        {"package_derivation": {}},
+    )
+
+    assert reasons[0]["reason"] == "package_derivation_receipt_schema_unsupported"
+
+
+def test_derivation_reasons_reject_inconsistent_summary_schema(
+    tmp_path: Path,
+) -> None:
+    _write_derivation_payload(
+        tmp_path,
+        {"schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION},
+    )
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        {"package_derivation": {"schema_version": 999, "verified": True}},
+    )
+
+    assert reasons[0]["reason"] == "operator_summary_derivation_inconsistent"
+
+
+def _patch_derivation_verifiers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    verified: bool,
+    verification_reasons: list[dict] | None = None,
+) -> None:
+    monkeypatch.setattr(
+        apply_gate_module,
+        "derivation_schema_version_supported",
+        lambda _version: True,
+    )
+    monkeypatch.setattr(
+        apply_gate_module,
+        "package_derivation_receipt_sha256",
+        lambda _receipt: "digest",
+    )
+    monkeypatch.setattr(
+        apply_gate_module,
+        "verify_package_derivation_receipt",
+        lambda _package, _receipt: (verified, verification_reasons or []),
+    )
+
+
+def _summary_derivation(**overrides: object) -> dict[str, object]:
+    summary = {
+        "schema_version": 1,
+        "receipt_path": DERIVATION_RECEIPT_PATH,
+        "receipt_sha256": "digest",
+        "verified": True,
+    }
+    summary.update(overrides)
+    return {"package_derivation": summary}
+
+
+def test_derivation_reasons_reject_summary_digest_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _patch_derivation_verifiers(monkeypatch, verified=True)
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        _summary_derivation(receipt_sha256="wrong"),
+    )
+
+    assert reasons[0]["reason"] == "package_derivation_receipt_digest_mismatch"
+
+
+def test_derivation_reasons_use_default_code_for_empty_verification_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _patch_derivation_verifiers(monkeypatch, verified=False)
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        _summary_derivation(),
+    )
+
+    assert reasons[0]["reason"] == "package_derivation_mismatch"
+    assert reasons[0]["detail"] == (
+        "Authoritative package content differs from its receipt."
+    )
+
+
+def test_derivation_reasons_reject_noncanonical_summary_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _patch_derivation_verifiers(monkeypatch, verified=True)
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        _summary_derivation(receipt_path="wrong.json"),
+    )
+
+    assert reasons[0]["reason"] == "operator_summary_derivation_inconsistent"
+
+
+@pytest.mark.parametrize(
+    ("deck_directories", "reason"),
+    ((0, "missing_deck_runtime_directory"), (2, "multiple_deck_runtime_directories")),
+)
+def test_required_structure_rejects_invalid_deck_directory_count(
+    tmp_path: Path,
+    deck_directories: int,
+    reason: str,
+) -> None:
+    (tmp_path / "CustomConfig").mkdir()
+    write_json(tmp_path / "reports" / "input_manifest.json", {})
+    for index in range(deck_directories):
+        (tmp_path / "CustomConfig" / f"deck-{index}").mkdir()
+
+    reasons = apply_gate_module._required_package_structure_reasons(tmp_path, {})
+
+    assert reasons[0]["reason"] == reason
+
+
+def test_required_structure_rejects_missing_required_runtime_file(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "CustomConfig" / "deck").mkdir(parents=True)
+    write_json(tmp_path / "reports" / "input_manifest.json", {})
+
+    reasons = apply_gate_module._required_package_structure_reasons(tmp_path, {})
+
+    assert reasons[0]["reason"] == "missing_required_runtime_file"
+
+
+def test_summary_missing_from_actual_reports_each_missing_runtime_file(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "CustomConfig").mkdir()
+    generated_file = "CustomConfig/deck/Missing.json"
+
+    reasons = apply_gate_module._summary_files_missing_from_actual_reasons(
+        tmp_path,
+        {"generated_files": [generated_file]},
+    )
+
+    assert reasons == [
+        {
+            "reason": "operator_summary_runtime_file_missing",
+            "generated_file": generated_file,
+        }
+    ]
+
+
+def test_actual_runtime_json_reasons_report_invalid_two_part_json(
+    tmp_path: Path,
+) -> None:
+    runtime_file = tmp_path / "CustomConfig" / "deck" / "Broken.json"
+    runtime_file.parent.mkdir(parents=True)
+    runtime_file.write_bytes(b"{")
+
+    reasons = apply_gate_module._actual_runtime_json_reasons(tmp_path)
+
+    assert reasons[0]["reason"] == "invalid_runtime_json"
+    assert reasons[0]["generated_file"] == "CustomConfig/deck/Broken.json"
+
+
+def test_informational_reasons_are_suppressed_by_source_receipt_failure(
+    tmp_path: Path,
+) -> None:
+    reasons = apply_gate_module._informational_reasons(
+        tmp_path,
+        summary={"semantic_status": "weak"},
+        source_receipt_reasons=[{"reason": "source_invalid"}],
+    )
+
+    assert reasons == ()
+
+
+def test_informational_reasons_accept_nonempty_source_receipts_without_warning(
+    tmp_path: Path,
+) -> None:
+    write_json(
+        tmp_path / "reports" / "guide_claim_bundle.json",
+        {"canonical_source_receipts": [{"source_id": "guide"}]},
+    )
+
+    reasons = apply_gate_module._informational_reasons(
+        tmp_path,
+        summary={"semantic_status": "SOURCE_BACKED_STRONG"},
+        source_receipt_reasons=[],
+    )
+
+    assert reasons == ()
