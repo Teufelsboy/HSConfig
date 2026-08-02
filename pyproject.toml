@@ -39,6 +39,7 @@ hsconfig = ["policies/*.json", "resources/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--hypothesis-profile=default --hypothesis-seed=8675309"
 
 [tool.coverage.run]
 branch = true

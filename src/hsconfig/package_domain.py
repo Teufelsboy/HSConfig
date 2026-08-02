@@ -287,11 +287,25 @@ def _freeze_stable_strings(values: tuple[str, ...], *, field: str) -> tuple[str,
     return frozen
 
 
+_UNICODE_CONFUSABLE_PATH_SEPARATORS = frozenset(
+    {
+        "\u2044",  # fraction slash
+        "\u2215",  # division slash
+        "\u29f5",  # reverse solidus operator
+        "\u29f8",  # big solidus
+        "\ufe68",  # small reverse solidus
+        "\uff0f",  # fullwidth solidus
+        "\uff3c",  # fullwidth reverse solidus
+    }
+)
+
+
 def canonical_relative_path(value: str) -> str:
     if (
         not isinstance(value, str)
         or not value
         or "\\" in value
+        or any(separator in value for separator in _UNICODE_CONFUSABLE_PATH_SEPARATORS)
         or "\x00" in value
         or ":" in value
         or value.startswith("/")
