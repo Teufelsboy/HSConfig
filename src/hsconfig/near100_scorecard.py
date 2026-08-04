@@ -335,9 +335,12 @@ def _dirty_tree_fingerprint(root: Path) -> tuple[str, str]:
         "-z",
         text=False,
     )
-    assert isinstance(status, bytes)
-    assert isinstance(diff, bytes)
-    assert isinstance(untracked, bytes)
+    if not isinstance(status, bytes):
+        raise Near100EvidenceError("repository status inspection returned text")
+    if not isinstance(diff, bytes):
+        raise Near100EvidenceError("repository diff inspection returned text")
+    if not isinstance(untracked, bytes):
+        raise Near100EvidenceError("repository untracked inspection returned text")
     digest = hashlib.sha256()
     digest.update(b"status\0" + status)
     digest.update(b"diff\0" + diff)
