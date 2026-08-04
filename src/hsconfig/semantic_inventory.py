@@ -51,7 +51,7 @@ _GLOBALVALUES_BASELINE_KEYS = (
     "SecondTurnValueWeight",
 )
 _INVENTORY_KEYS = frozenset(
-    {"schema_version", "decks", "canonical_content_sha256"}
+    {"schema_version", "decks", "semantic_claims", "canonical_content_sha256"}
 )
 _DECK_KEYS = frozenset(
     {
@@ -75,8 +75,18 @@ _SIDEBARD_MODULE_KEYS = frozenset(
     }
 )
 _CLAIM_KEYS = frozenset({"claim_id", "claim_key"})
+_SEMANTIC_CLAIM_KEYS = frozenset(
+    {
+        "claim_key",
+        "claim_kind",
+        "evidence_text_short",
+        "cards",
+        "lowered_surfaces",
+        "source_title",
+    }
+)
 _APPROVED_CONTENT_SHA256 = (
-    "c012df4514f5c86e6f17e1593a302b135f44c2dd03a51a1adb1b04fa3436c37a"
+    "2371bf038469ecd071bccb4930d931cb1c1d209761feb651182c5661e3937c17"
 )
 
 
@@ -112,25 +122,42 @@ def validate_semantic_inventory(
 
     main_cards: list[Mapping[str, Any]] = []
     modules: list[Mapping[str, Any]] = []
-    claims: list[Mapping[str, Any]] = []
+    all_deck_claims: list[Mapping[str, Any]] = []
     decisions: list[str] = []
     all_claim_keys: list[str] = []
 
     for row, catalog_row in zip(rows, expected_catalog, strict=True):
-        deck_main, deck_modules, deck_claims, deck_decisions = _validate_deck_row(
+        deck_main, deck_modules, current_deck_claims, deck_decisions = _validate_deck_row(
             row,
             catalog_row,
         )
         main_cards.extend(deck_main)
         modules.extend(deck_modules)
-        claims.extend(deck_claims)
+        all_deck_claims.extend(current_deck_claims)
         decisions.extend(deck_decisions)
-        all_claim_keys.extend(_required_string(claim, "claim_key") for claim in deck_claims)
+        all_claim_keys.extend(
+            _required_string(claim, "claim_key") for claim in current_deck_claims
+        )
 
     if len(set(all_claim_keys)) != len(all_claim_keys):
         raise ValueError("semantic_inventory_claim_key_invalid")
+    if len(all_deck_claims) != 316:
+        raise ValueError("semantic_inventory_deck_claim_count_invalid")
     for row in rows:
         _validate_claim_keys(row)
+    semantic_claims = _mapping_rows(
+        inventory.get("semantic_claims"), "semantic_inventory_semantic_claim_invalid"
+    )
+    if len(semantic_claims) != 316:
+        raise ValueError("semantic_inventory_semantic_claim_count_invalid")
+    if any(set(row) != _SEMANTIC_CLAIM_KEYS for row in semantic_claims):
+        raise ValueError("semantic_inventory_semantic_claim_invalid")
+    canonical_claims = tuple(canonical_semantic_claim(row) for row in semantic_claims)
+    if tuple(dict(row) for row in semantic_claims) != canonical_claims:
+        raise ValueError("semantic_inventory_semantic_claim_invalid")
+    semantic_claim_keys = tuple(row["claim_key"] for row in canonical_claims)
+    if len(set(semantic_claim_keys)) != len(semantic_claim_keys):
+        raise ValueError("semantic_inventory_semantic_claim_identity_invalid")
     if content_sha256 != _APPROVED_CONTENT_SHA256:
         raise ValueError("semantic_inventory_approved_content_sha256_invalid")
 
@@ -140,9 +167,46 @@ def validate_semantic_inventory(
         main_card_identity_count=len(main_cards),
         sideboard_module_count=len(modules),
         disposition_row_count=len(main_cards) + len(modules),
-        claim_count=len(claims),
+        claim_count=len(semantic_claims),
         globalvalues_decision_count=len(decisions),
     )
+
+
+def canonical_semantic_claim(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the closed canonical semantic claim and its full SHA-256 identity."""
+    required = _SEMANTIC_CLAIM_KEYS - {"claim_key"}
+    if not isinstance(row, Mapping) or not required <= set(row):
+        raise ValueError("semantic_inventory_semantic_claim_invalid")
+    claim_kind = _required_string(row, "claim_kind").strip()
+    evidence_text = " ".join(_required_string(row, "evidence_text_short").split())
+    source_title = _required_string(row, "source_title").strip()
+    if not claim_kind or not evidence_text or not source_title:
+        raise ValueError("semantic_inventory_semantic_claim_invalid")
+
+    def canonical_strings(field: str) -> list[str]:
+        raw = row.get(field)
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+            raise ValueError("semantic_inventory_semantic_claim_invalid")
+        values = [value.strip() for value in raw if isinstance(value, str)]
+        if len(values) != len(raw) or any(not value for value in values):
+            raise ValueError("semantic_inventory_semantic_claim_invalid")
+        return sorted(set(values))
+
+    payload = {
+        "claim_kind": claim_kind,
+        "evidence_text_short": evidence_text,
+        "cards": canonical_strings("cards"),
+        "lowered_surfaces": canonical_strings("lowered_surfaces"),
+        "source_title": source_title,
+    }
+    canonical = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    claim_key = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    existing = row.get("claim_key")
+    if existing is not None and existing != claim_key:
+        raise ValueError("semantic_inventory_semantic_claim_identity_invalid")
+    return {"claim_key": claim_key, **payload}
 
 
 def _validate_inventory_content_sha256(inventory: Mapping[str, Any]) -> str:

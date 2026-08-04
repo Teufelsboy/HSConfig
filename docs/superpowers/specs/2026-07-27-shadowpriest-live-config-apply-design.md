@@ -1,7 +1,7 @@
 # ShadowPriest Live-Verified Configure and Guarded Apply Design
 
 **Date:** 2026-07-27
-**Repository:** `C:\Users\darbo\Documents\HSConfig`
+**Repository:** `Teufelsboy/HSConfig` checkout
 **Deck:** ShadowPriest
 **Deck code:** `AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=`
 **Hearthstone deck ID:** `2737726722`

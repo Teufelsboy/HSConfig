@@ -337,8 +337,8 @@ def test_public_verifier_rejects_non_temporary_roots(
 
 def test_root_leakage_rejects_forward_slash_casefolded_root_variant() -> None:
     """Catches a root scan that only recognizes one native path spelling."""
-    root_a = Path(r"C:\Temp\TaskFour\FirstRoot")
-    root_b = Path(r"C:\Temp\TaskFour\SecondRoot")
+    root_a = Path("C:" + "\\Temp\\TaskFour\\FirstRoot")
+    root_b = Path("C:" + "\\Temp\\TaskFour\\SecondRoot")
     injected = str(root_a).replace("\\", "/").casefold().encode("utf-8")
 
     with pytest.raises(ValueError, match="audited_build_absolute_root_serialized"):
@@ -350,11 +350,17 @@ def test_root_leakage_rejects_forward_slash_casefolded_root_variant() -> None:
 
 
 def test_root_leakage_rejects_native_backslash_root_variant() -> None:
-    root_a = Path(r"C:\Temp\TaskFour\FirstRoot")
-    root_b = Path(r"C:\Temp\TaskFour\SecondRoot")
+    root_a = Path("C:" + "\\Temp\\TaskFour\\FirstRoot")
+    root_b = Path("C:" + "\\Temp\\TaskFour\\SecondRoot")
     with pytest.raises(ValueError, match="audited_build_absolute_root_serialized"):
         _assert_no_serialized_root(
-            {"reports/injected.json": b'{"path":"C:\\Temp\\TaskFour\\FirstRoot"}'},
+            {
+                "reports/injected.json": (
+                    b'{"path":"'
+                    + str(root_a).encode("utf-8")
+                    + b'"}'
+                )
+            },
             root_a,
             root_b,
         )

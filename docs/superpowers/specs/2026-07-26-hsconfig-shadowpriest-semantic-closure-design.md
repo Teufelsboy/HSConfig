@@ -2,7 +2,7 @@
 
 **Status:** Approved audit recommendation; implementation planning requested on 2026-07-26.
 
-**Scope:** `C:\Users\darbo\Documents\HSConfig` only. The design changes source
+**Scope:** this repository checkout only. The design changes source
 classification, runtime lowering, reporting, tests, and operator documentation.
 It does not apply a package, write HearthRanger runtime files, use HSTuner, add
 unsupported VisionAI syntax, or claim in-client optimality.

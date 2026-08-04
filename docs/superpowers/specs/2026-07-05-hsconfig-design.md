@@ -2,7 +2,7 @@
 
 Date: 2026-07-05
 Repository target: `Teufelsboy/HSConfig`
-Local workspace: `C:\Users\darbo\Documents\HSConfig`
+Local workspace: repository checkout root
 
 > Historical note: this design spec is superseded for normal operator usage by
 > `docs/operator/README.md` and
@@ -140,7 +140,7 @@ Required:
 {
   "deck_name": "ShadowPriest",
   "deck_code": "AAEBA...",
-  "runtime_root": "C:\\Users\\darbo\\Desktop\\HS"
+  "runtime_root": "<HearthRangerRoot>"
 }
 ```
 
@@ -208,9 +208,9 @@ outputs/<deck_slug>/
 The CLI should stay small:
 
 ```powershell
-hsconfig build --deck-name "DeckName" --deck-code "..." --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\deckname" --json
+hsconfig build --deck-name "DeckName" --deck-code "..." --runtime-root "<HearthRangerRoot>" --out ".\outputs\deckname" --json
 hsconfig validate --package ".\outputs\deckname" --json
-hsconfig apply --package ".\outputs\deckname" --runtime-root "C:\Users\darbo\Desktop\HS" --json
+hsconfig apply --package ".\outputs\deckname" --runtime-root "<HearthRangerRoot>" --json
 ```
 
 `build` performs deck identity, research, contracts, compilers, and validation.
@@ -222,7 +222,7 @@ hsconfig apply --package ".\outputs\deckname" --runtime-root "C:\Users\darbo\Des
 ## 8. Repository Layout
 
 ```text
-C:\Users\darbo\Documents\HSConfig
+<repository-root>
 ├─ AGENTS.md
 ├─ README.md
 ├─ pyproject.toml
@@ -574,7 +574,7 @@ Output:
 The repo-local skill path should be:
 
 ```text
-C:\Users\darbo\Documents\HSConfig\.agents\skills\hsconfig
+<repository-root>\.agents\skills\hsconfig
 ```
 
 `SKILL.md` must stay short:

@@ -226,10 +226,10 @@ python -m pytest tests/test_source_evidence_closure.py tests/test_skill_sync.py 
 
 ```powershell
 python scripts\sync_installed_skill.py
-# Synced HSConfig skill to C:\Users\darbo\.codex\skills\hsconfig
+# Synced HSConfig skill to the configured Codex skill root
 
 python scripts\sync_installed_skill.py --check
-# HSConfig skill is in sync: C:\Users\darbo\.codex\skills\hsconfig
+# HSConfig skill is in sync at the configured Codex skill root
 ```
 
 The installed skill was updated outside the repository and is intentionally not

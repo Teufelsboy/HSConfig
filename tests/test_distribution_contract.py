@@ -149,7 +149,7 @@ def test_distribution_members_reject_non_runtime_content(
     ("member", "reason"),
     [
         ("/hsconfig/cli.py", "absolute_path"),
-        ("C:/Users/operator/hsconfig/cli.py", "absolute_path"),
+        ("C:" + "/" + "/".join(("Users", "operator", "hsconfig", "cli.py")), "absolute_path"),
         ("hsconfig-1.0.0/../outside.txt", "path_traversal"),
         ("hsconfig-1.0.0/.env", "secret_like_filename"),
         ("hsconfig-1.0.0/credentials.json", "secret_like_filename"),

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "check_names": [
+    "ruff",
+    "full_tests_and_coverage",
+    "contract_spine",
+    "twelve_deck_acceptance",
+    "contract_mutations",
+    "dependency_audit",
+    "distribution",
+    "twelve_deck_determinism",
+    "publishable_path_scan",
+    "output_inventory",
+    "package_immutability",
+    "transaction_fault_matrix",
+    "repository_hygiene",
+    "version_consistency",
+    "near100_scorecard"
+  ],
+  "working_pre_cutover_excluded_prefixes": [
+    "docs/superpowers/plans/",
+    "docs/research/",
+    "docs/history/"
+  ],
+  "outputs_root_contract": "exactly_twelve_catalog_deck_directories",
+  "evidence_transport": "canonical_json_stdin_envelope",
+  "evidence_files_written": false,
+  "named_evidence_workspace": null,
+  "embedded_receipt_schema_version": 2,
+  "embedded_receipt_binding_fields": [
+    "repository_identity",
+    "commit_oid",
+    "tree_oid",
+    "tree_state",
+    "dirty_tree_fingerprint",
+    "generation_mode"
+  ],
+  "legacy_file_mode": "diagnostic_schema1_compatibility_only",
+  "authority_producer": "hsconfig.release_gate",
+  "semantic_claim_authority_distribution": {
+    "A": 267,
+    "B": 0,
+    "C": 49,
+    "D": 0,
+    "E": 0
+  },
+  "final_live_transaction": [
+    "repository_settings",
+    "active_branch_ruleset",
+    "version_tag",
+    "github_release",
+    "empty_asset_inventory"
+  ],
+  "final_release_ready_by_mode": {
+    "working-pre-cutover": false,
+    "candidate": false,
+    "final": true
+  }
+}

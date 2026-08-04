@@ -22,7 +22,7 @@ Status: DONE
    Result: `1 passed in 0.10s`
 3. Skill sync:
    `python scripts/sync_installed_skill.py`
-   Result: installed skill synced to `C:\Users\darbo\.codex\skills\hsconfig`.
+Result: installed skill synced to the configured Codex skill root.
 4. Skill sync check:
    `python scripts/sync_installed_skill.py --check`
    Result: installed skill is in sync.

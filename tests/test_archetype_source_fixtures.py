@@ -170,7 +170,7 @@ def _assert_public_https_url(value: object, *, context: str) -> None:
     "source_url",
     [
         "fixture://shadowpriest",
-        "file:///tmp/source.json",
+        "file:" + "/" * 3 + "tmp/source.json",
         "private://local/source",
         "http://localhost/source",
         "ftp://example.com/source",

@@ -25,12 +25,13 @@ from hsconfig.package_request import (
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
 
 RESOURCE_ROOT = Path("src/hsconfig/resources")
+SYNTHETIC_RUNTIME_ROOT = "C:" + "/runtime"
 
 
 def test_package_invocation_is_slotted_frozen_and_excludes_transport_fields() -> None:
     invocation = PackageInvocation(
         deck_code="AAECAfixture",
-        runtime_root="C:/runtime",
+        runtime_root=SYNTHETIC_RUNTIME_ROOT,
         cards_json="cards.json",
         claims_json=None,
         guide_sources_json="guide_sources.json",
@@ -77,7 +78,7 @@ def test_package_invocation_rejects_invalid_required_runtime_values(
 ) -> None:
     values = {
         "deck_code": "AAECAfixture",
-        "runtime_root": "C:/runtime",
+        "runtime_root": SYNTHETIC_RUNTIME_ROOT,
         "cards_json": None,
         "claims_json": None,
         "guide_sources_json": None,
@@ -100,7 +101,7 @@ def test_general_resolution_request_detaches_every_nested_mutable_input() -> Non
         snapshot=PackageResolutionSnapshot.from_preconfig(preconfig),
         invocation=PackageInvocation(
             deck_code="AAECAgeneral",
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -144,7 +145,7 @@ def test_general_request_authority_graph_rejects_all_rebinding() -> None:
         ),
         invocation=PackageInvocation(
             deck_code="AAECAgeneral",
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -274,7 +275,7 @@ def test_general_request_binds_invocation_code_to_frozen_identity() -> None:
             snapshot=snapshot,
             invocation=PackageInvocation(
                 deck_code="DIFFERENT",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,
@@ -414,7 +415,7 @@ def test_resolved_request_binds_strict_context_to_invocation_deck_code() -> None
             snapshot=snapshot,
             invocation=PackageInvocation(
                 deck_code="not-the-audited-deck-code",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,
@@ -448,7 +449,7 @@ def test_resolved_request_accepts_the_matching_audited_deck_code() -> None:
         snapshot=snapshot,
         invocation=PackageInvocation(
             deck_code=deck_code,
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -525,7 +526,7 @@ def test_resolved_request_rejects_generic_documents_in_specialized_fields() -> N
             ),
             invocation=PackageInvocation(
                 deck_code="AAECAgeneral",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,

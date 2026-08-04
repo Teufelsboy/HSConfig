@@ -109,7 +109,7 @@ Legend:
 ## Runtime boundary
 
 The live runtime location was not accessed in this implementation run because
-the approved execution boundary excluded `C:\Users\darbo\Desktop\HS`.
+the approved execution boundary excluded the external HearthRanger root.
 Consequently, the plan's before/after runtime hash gate remains deliberately
 unexecuted:
 

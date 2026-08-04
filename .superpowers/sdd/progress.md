@@ -741,7 +741,7 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-canonical-source-contract-stro
 ## 2026-07-21 HSConfig Mulligan Semantic Dedupe
 
 Plan: docs/superpowers/plans/2026-07-21-hsconfig-mulligan-semantic-dedupe.md
-Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+Controller: main Codex session in the repository checkout
 
 - [x] Preflight/currentness: dirty=false, behind_origin_main=0, ahead_origin_main=1 (plan commit only)
 - [x] Task 1 tests (worker added tests; expected red confirmed: 2 failed before implementation)

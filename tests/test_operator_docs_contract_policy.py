@@ -217,7 +217,7 @@ def test_runtime_match_is_post_apply_install_integrity_only() -> None:
 
     assert "### Runtime package match" in text
     assert "semantically matches the validated package" in text
-    assert "runtime-match --package <package> --runtime-root C:\\Users\\darbo\\Desktop\\HS --json" in text
+    assert "runtime-match --package <package> --runtime-root <HearthRangerRoot> --json" in text
     assert "`runtime-match` does not grant apply permission and never writes runtime files." in text
     assert "Apply permission still comes only from `reports/operator_summary.json`." in text
 

@@ -49,7 +49,7 @@ Status: DONE_WITH_FINAL_REVIEW_FIXES
    Result: `1451 passed, 11 skipped in 240.34s`
 7. Installed skill sync:
    `python scripts/sync_installed_skill.py --check`
-   Result: `HSConfig skill is in sync: C:\Users\darbo\.codex\skills\hsconfig`
+   Result: `HSConfig skill is in sync at the configured Codex skill root`
 8. Diff whitespace:
    `git diff --check c4c8fb8`
    Result: exit 0

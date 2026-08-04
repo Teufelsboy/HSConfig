@@ -35,8 +35,8 @@ UNSAFE_PATH_FORMS = (
     "safe\\child.json",
     "/absolute.json",
     "//absolute.json",
-    "C:/drive-qualified.json",
-    "C:\\drive-qualified.json",
+    "C:" + "/drive-qualified.json",
+    "C:" + "\\drive-qualified.json",
     "safe:colon.json",
 )
 

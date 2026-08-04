@@ -52,11 +52,12 @@ def test_slugify_deck_name_normalizes_names():
     assert slugify_deck_name("!!!") == "deck"
 
 
-def test_input_manifest_serializes_to_plain_dict():
+def test_input_manifest_serializes_to_plain_dict(tmp_path: Path):
+    runtime_root = str(tmp_path / "HearthRanger")
     manifest = InputManifest(
         deck_name="ShadowPriest",
         deck_code="AAEBA...",
-        runtime_root="C:\\Users\\darbo\\Desktop\\HS",
+        runtime_root=runtime_root,
         target_config_mode="preview",
         format="wild",
     )
@@ -64,7 +65,7 @@ def test_input_manifest_serializes_to_plain_dict():
     assert manifest.to_dict() == {
         "deck_name": "ShadowPriest",
         "deck_code": "AAEBA...",
-        "runtime_root": "C:\\Users\\darbo\\Desktop\\HS",
+        "runtime_root": runtime_root,
         "target_config_mode": "preview",
         "format": "wild",
     }

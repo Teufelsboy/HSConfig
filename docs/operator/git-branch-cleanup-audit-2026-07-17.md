@@ -1,6 +1,6 @@
 # HSConfig Git Branch Cleanup Audit - 2026-07-17
 
-Repository: `C:\Users\darbo\Documents\HSConfig`
+Repository: the local `Teufelsboy/HSConfig` checkout
 Remote: `https://github.com/Teufelsboy/HSConfig.git`
 Target branch: `main`
 

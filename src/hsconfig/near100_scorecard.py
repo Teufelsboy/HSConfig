@@ -2,19 +2,36 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
+import re
 import stat
 import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from hsconfig.version import __version__
+from hsconfig.semantic_inventory import (
+    canonical_semantic_claim,
+    validate_semantic_inventory,
+)
 
 
 MetricStatus = Literal["pass", "fail", "pending_remote", "not_applicable"]
 ScorecardMode = Literal["pre_cutover", "final"]
+
+_RECEIPT_BINDING_FIELDS = (
+    "repository_identity",
+    "commit_oid",
+    "tree_oid",
+    "tree_state",
+    "dirty_tree_fingerprint",
+    "generation_mode",
+)
+_FINAL_RECEIPT_TRANSACTION_FIELDS = ("transaction_id", "observed_at")
+_FINAL_EVIDENCE_MAX_AGE_SECONDS = 300
 
 HARD_METRIC_IDS = (
     "static_contract_safety",
@@ -365,7 +382,8 @@ def _validate_repository_binding(
     *,
     root: Path,
     mode: ScorecardMode,
-) -> None:
+    embedded_receipts: bool,
+) -> Mapping[str, Any]:
     meta = _mapping(evidence.get("_meta"), "evidence._meta")
     allowed_meta_fields = {
         "producer",
@@ -378,6 +396,8 @@ def _validate_repository_binding(
         "dirty_tree_fingerprint",
         "generation_mode",
     }
+    if embedded_receipts and mode == "final":
+        allowed_meta_fields.update(_FINAL_RECEIPT_TRANSACTION_FIELDS)
     unknown_meta_fields = sorted(set(meta) - allowed_meta_fields)
     if unknown_meta_fields:
         raise Near100EvidenceError(
@@ -404,6 +424,36 @@ def _validate_repository_binding(
         raise Near100EvidenceError("tree state mismatch")
     if meta.get("dirty_tree_fingerprint") != fingerprint:
         raise Near100EvidenceError("dirty-tree fingerprint mismatch")
+    if embedded_receipts and mode == "final":
+        transaction_id = meta.get("transaction_id")
+        if (
+            not isinstance(transaction_id, str)
+            or re.fullmatch(r"[0-9a-f]{32}", transaction_id) is None
+        ):
+            raise Near100EvidenceError("evidence transaction identity mismatch")
+        observed_at = meta.get("observed_at")
+        if not isinstance(observed_at, str):
+            raise Near100EvidenceError("evidence transaction observation time invalid")
+        try:
+            observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise Near100EvidenceError(
+                "evidence transaction observation time invalid"
+            ) from exc
+        age = abs((datetime.now(timezone.utc) - observed).total_seconds())
+        if observed.tzinfo is None or age > _FINAL_EVIDENCE_MAX_AGE_SECONDS:
+            raise Near100EvidenceError("evidence transaction observation is stale")
+    return meta
+
+
+def _receipt_binding(
+    meta: Mapping[str, Any], *, include_final_transaction: bool
+) -> dict[str, Any]:
+    fields = (
+        *_RECEIPT_BINDING_FIELDS,
+        *(_FINAL_RECEIPT_TRANSACTION_FIELDS if include_final_transaction else ()),
+    )
+    return {field: meta[field] for field in fields}
 
 
 def _is_reparse(path_stat: Any) -> bool:
@@ -525,31 +575,42 @@ def _contains_scorecard(
 
 
 def _validate_receipt(
-    path: Path,
+    document: object,
     *,
+    source: str,
     expected_check_id: str,
     expected_producer: str,
     expected_passed: bool | None,
+    expected_binding: Mapping[str, Any] | None,
 ) -> None:
-    document = _load_json_file(path, source=f"evidence receipt {path}")
     direct, embedded = _contains_scorecard(document)
     if direct:
         raise Near100EvidenceError("self-produced scorecard cannot be base evidence")
     if embedded:
         raise Near100EvidenceError("evidence receipt contains an embedded scorecard result")
-    receipt = _mapping(document, f"evidence receipt {path}")
+    receipt = _mapping(document, source)
     allowed_receipt_fields = {"schema_version", "producer", "check_id", "result"}
+    expected_schema_version = 1
+    if expected_binding is not None:
+        allowed_receipt_fields.add("binding")
+        expected_schema_version = 2
     unknown_receipt_fields = sorted(set(receipt) - allowed_receipt_fields)
     if unknown_receipt_fields:
         raise Near100EvidenceError(
             f"evidence receipt contains unknown fields: {unknown_receipt_fields}"
         )
-    if receipt.get("schema_version") != 1:
+    if receipt.get("schema_version") != expected_schema_version:
         raise Near100EvidenceError("evidence receipt schema_version mismatch")
     if receipt.get("producer") != expected_producer:
         raise Near100EvidenceError("evidence receipt producer mismatch")
     if receipt.get("check_id") != expected_check_id:
         raise Near100EvidenceError("receipt check_id mismatch")
+    if expected_binding is not None:
+        binding = _mapping(receipt.get("binding"), "evidence receipt binding")
+        if set(binding) != set(expected_binding) or dict(binding) != dict(
+            expected_binding
+        ):
+            raise Near100EvidenceError("receipt binding mismatch")
     result = _mapping(receipt.get("result"), "evidence receipt result")
     if set(result) != {"passed"}:
         raise Near100EvidenceError("evidence receipt result schema mismatch")
@@ -573,15 +634,42 @@ def _validate_evidence_paths(
     expected_check_id: str,
     expected_producer: str,
     expected_passed: bool | None = None,
+    receipt_documents: Mapping[str, Any] | None = None,
+    consumed_receipts: set[str] | None = None,
+    expected_binding: Mapping[str, Any] | None = None,
 ) -> tuple[str, ...]:
     paths = _string_tuple(value, name, allow_empty=False)
+    if receipt_documents is not None:
+        canonical_id = f"receipts/{expected_check_id}.json"
+        if paths != (canonical_id,):
+            raise Near100EvidenceError(
+                f"{name} must contain exactly canonical embedded receipt ID {canonical_id}"
+            )
     for path_text in paths:
-        resolved = _secure_evidence_path(repository_root, path_text)
+        if receipt_documents is None:
+            resolved = _secure_evidence_path(repository_root, path_text)
+            document = _load_json_file(
+                resolved, source=f"evidence receipt {path_text}"
+            )
+        else:
+            try:
+                document = receipt_documents[path_text]
+            except KeyError as exc:
+                raise Near100EvidenceError(
+                    f"embedded evidence receipt is missing: {path_text}"
+                ) from exc
+            if consumed_receipts is None:
+                raise Near100EvidenceError("embedded receipt resolver is unavailable")
+            consumed_receipts.add(path_text)
         _validate_receipt(
-            resolved,
+            document,
+            source=f"evidence receipt {path_text}",
             expected_check_id=expected_check_id,
             expected_producer=expected_producer,
             expected_passed=expected_passed,
+            expected_binding=(
+                expected_binding if receipt_documents is not None else None
+            ),
         )
     return paths
 
@@ -591,6 +679,9 @@ def _validate_checks(
     *,
     mode: ScorecardMode,
     repository_root: Path,
+    receipt_documents: Mapping[str, Any] | None,
+    consumed_receipts: set[str],
+    evidence_meta: Mapping[str, Any],
 ) -> dict[str, _CheckResult]:
     raw_checks = _mapping(evidence.get("checks"), "evidence.checks")
     supplied = set(raw_checks)
@@ -662,6 +753,16 @@ def _validate_checks(
             expected_check_id=check_id,
             expected_producer="hsconfig.release_gate.base_check",
             expected_passed=passed,
+            receipt_documents=receipt_documents,
+            consumed_receipts=consumed_receipts,
+            expected_binding=_receipt_binding(
+                evidence_meta,
+                include_final_transaction=(
+                    receipt_documents is not None
+                    and mode == "final"
+                    and check_id in github_checks
+                ),
+            ),
         )
         blocking = _string_tuple(
             payload.get("blocking_reasons", []),
@@ -698,6 +799,9 @@ def _semantic_rows(
     evidence: Mapping[str, Mapping[str, Any]],
     *,
     repository_root: Path,
+    receipt_documents: Mapping[str, Any] | None,
+    consumed_receipts: set[str],
+    evidence_meta: Mapping[str, Any],
 ) -> tuple[int, tuple[str, ...], tuple[str, ...], bool, bool]:
     obligations = _mapping(
         evidence.get("semantic_obligations"), "evidence.semantic_obligations"
@@ -780,6 +884,11 @@ def _semantic_rows(
                 expected_check_id="semantic_obligations",
                 expected_producer="hsconfig.semantic_inventory",
                 expected_passed=True,
+                receipt_documents=receipt_documents,
+                consumed_receipts=consumed_receipts,
+                expected_binding=_receipt_binding(
+                    evidence_meta, include_final_transaction=False
+                ),
             )
             evidence_paths.update(paths)
             if final_disposition and len(lanes) == 1:
@@ -816,6 +925,20 @@ def _canonical_semantic_identities(root: Path) -> tuple[set[str], set[str]]:
         _load_json_file(inventory_path, source="canonical semantic inventory"),
         "canonical semantic inventory",
     )
+    catalog_path = _secure_evidence_path(
+        root, "docs/operator/audited-deck-catalog.json"
+    )
+    catalog = _mapping(
+        _load_json_file(catalog_path, source="audited deck catalog"),
+        "audited deck catalog",
+    )
+    try:
+        validate_semantic_inventory(
+            inventory,
+            audited_catalog=_sequence(catalog.get("decks"), "audited deck catalog.decks"),
+        )
+    except ValueError as exc:
+        raise Near100EvidenceError("canonical semantic inventory is invalid") from exc
     decks = _sequence(inventory.get("decks"), "canonical semantic inventory.decks")
     cards: set[str] = set()
     claims: set[str] = set()
@@ -828,12 +951,17 @@ def _canonical_semantic_identities(root: Path) -> tuple[set[str], set[str]]:
                 if not isinstance(key, str) or not key:
                     raise Near100EvidenceError("canonical semantic inventory is malformed")
                 cards.add(key)
-        for row_value in _sequence(deck.get("claims"), "canonical deck.claims"):
-            row = _mapping(row_value, "canonical deck.claim row")
-            key = row.get("claim_key")
-            if not isinstance(key, str) or not key:
-                raise Near100EvidenceError("canonical semantic inventory is malformed")
-            claims.add(key)
+    for row_value in _sequence(
+        inventory.get("semantic_claims"), "canonical semantic inventory.semantic_claims"
+    ):
+        row = _mapping(row_value, "canonical semantic claim row")
+        try:
+            canonical = canonical_semantic_claim(row)
+        except ValueError as exc:
+            raise Near100EvidenceError("canonical semantic inventory is malformed") from exc
+        if dict(row) != canonical:
+            raise Near100EvidenceError("canonical semantic inventory is malformed")
+        claims.add(canonical["claim_key"])
     if len(cards) != SEMANTIC_CARD_MODULE_COUNT or len(claims) != SEMANTIC_CLAIM_COUNT:
         raise Near100EvidenceError("canonical semantic inventory counts are invalid")
     return cards, claims
@@ -938,6 +1066,7 @@ def build_near100_scorecard(
     *,
     evidence: Mapping[str, Mapping[str, Any]],
     mode: ScorecardMode,
+    receipt_documents: Mapping[str, Any] | None = None,
 ) -> Near100Scorecard:
     if mode not in ("pre_cutover", "final"):
         raise Near100EvidenceError(f"unsupported scorecard mode: {mode}")
@@ -966,16 +1095,47 @@ def build_near100_scorecard(
             "base evidence contains an embedded scorecard result"
         )
     root = _repository_root(evidence)
-    _validate_repository_binding(evidence, root=root, mode=mode)
+    evidence_meta = _validate_repository_binding(
+        evidence,
+        root=root,
+        mode=mode,
+        embedded_receipts=receipt_documents is not None,
+    )
     _validate_score_metric_contract(root)
-    checks = _validate_checks(evidence, mode=mode, repository_root=root)
+    if receipt_documents is not None and not isinstance(receipt_documents, Mapping):
+        raise Near100EvidenceError("embedded receipts must be an object")
+    if receipt_documents is not None and any(
+        not isinstance(receipt_id, str) for receipt_id in receipt_documents
+    ):
+        raise Near100EvidenceError("embedded receipt IDs must be strings")
+    consumed_receipts: set[str] = set()
+    checks = _validate_checks(
+        evidence,
+        mode=mode,
+        repository_root=root,
+        receipt_documents=receipt_documents,
+        consumed_receipts=consumed_receipts,
+        evidence_meta=evidence_meta,
+    )
     (
         semantic_numerator,
         semantic_paths,
         semantic_incomplete,
         card_modules_complete,
         claims_complete,
-    ) = _semantic_rows(evidence, repository_root=root)
+    ) = _semantic_rows(
+        evidence,
+        repository_root=root,
+        receipt_documents=receipt_documents,
+        consumed_receipts=consumed_receipts,
+        evidence_meta=evidence_meta,
+    )
+    if receipt_documents is not None:
+        unexpected_receipts = sorted(set(receipt_documents) - consumed_receipts)
+        if unexpected_receipts:
+            raise Near100EvidenceError(
+                f"unexpected embedded receipt IDs: {unexpected_receipts}"
+            )
     open_p0, open_p1 = _findings(evidence)
 
     metrics: list[ScoreMetric] = []

@@ -4,7 +4,7 @@
 user's explicit request to create the implementation plan from its
 recommendations.
 
-**Scope:** `C:\Users\darbo\Documents\HSConfig` only. This design changes
+**Scope:** this repository checkout only. This design changes
 source authorization, linked runtime-entity ownership, package derivation
 integrity, expert input handling, exact-evidence bounds, deterministic date
 propagation, tests, and operator documentation. It does not apply a package,
@@ -237,7 +237,7 @@ Implementation must prove:
 
 ## Out Of Scope
 
-- Applying any package or changing `C:\Users\darbo\Desktop\HS`.
+- Applying any package or changing `<HearthRangerRoot>`.
 - HSTuner, replay analysis, win-rate measurement, or matchup tuning.
 - New VisionAI condition atoms.
 - Empirical calibration of the numeric values `12`, `10`, `8`, or the

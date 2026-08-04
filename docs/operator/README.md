@@ -27,6 +27,51 @@ inventory are never apply authority.
   from live-verified source.
 - Warnings are follow-up work, not a second apply path. HSTuner owns post-run evaluation and tuning.
 
+### Canonical local release gate
+
+Release preparation uses one local orchestration entry point:
+
+```powershell
+python scripts/check_release_gate.py --repo . --outputs outputs --tree-mode working-pre-cutover --json
+```
+
+The command must start from a clean committed OID. It runs all behavioral,
+coverage, contract, dependency, distribution, determinism, output, hygiene,
+version, publishability, and near-100 scorecard checks in a fixed order. It
+prints only short progress lines to stderr and exactly one JSON document to
+stdout. The provisional `working-pre-cutover` mode permits only the enumerated
+historical plan, research, and history directories during the publishability
+scan; it never marks `final_release_ready=true`. Candidate mode requires a
+detached candidate tree and an explicitly verified outputs root. Final mode is
+the default and permits no historical exception.
+
+The release gate is the only canonical producer/verifier. It requires
+`outputs/` to contain exactly the twelve catalog deck directories, binds the
+complete output tree by entry type, name, size, and digest, and derives semantic
+dispositions from the current package disposition ledgers and source-contract
+audits. Open P0/P1 counts are derived from the completed checks; operators do not
+prepare authority JSON by hand. Working-pre-cutover omits GitHub checks, keeps
+GitHub polish pending, and can never set `final_release_ready=true`. Candidate
+mode requires detached HEAD and the same exact twelve-directory output inventory.
+
+Final mode performs one fresh live GitHub API transaction. Repository settings,
+the concrete active ruleset, version tag, release, and empty asset inventory must all
+bind to the current repository, OID, tree, version, observation time, and
+transaction identity. Scorecard evidence and receipts are assembled only in memory and
+sent to the Near-100 subprocess as one closed JSON stdin envelope. Embedded receipt
+schema v2 binds repository identity, commit OID, tree OID, tree state, dirty-tree
+fingerprint, and generation mode; final GitHub receipts additionally bind the validated
+transaction identity and observation time. The gate creates no evidence files and owns
+no named evidence workspace. The legacy schema-v1 `--evidence <file>` scorecard mode is
+diagnostic compatibility only and cannot replace canonical gate-produced stdin evidence.
+The canonical outputs root never contains release-evidence sidecars.
+
+All gate subprocesses run with a controlled Python/pip/Git environment and bounded
+capture. The in-memory envelope rejects duplicate JSON keys, schema drift, receipt
+swaps, and repository/tree/mode binding drift; inspected files and archives reject
+links, reparse points, hardlinks, unsafe members, and repository/output changes during
+the run. No evidence-file cleanup phase exists because the gate never writes evidence.
+
 ## Preferred Normal Path
 
 Preferred normal path: `hsconfig configure`.
@@ -136,7 +181,7 @@ INI selection back to the old config.
 For read-only audits, run:
 
 ```powershell
-python -m hsconfig.cli runtime-match --package <package> --runtime-root C:\Users\darbo\Desktop\HS --json
+python -m hsconfig.cli runtime-match --package <package> --runtime-root <HearthRangerRoot> --json
 ```
 
 `runtime-match` does not grant apply permission and never writes runtime files.
@@ -287,6 +332,7 @@ Semantic handoff safety:
 - `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_or_policy_backed_mulligan_keeps` tells the operator that more exact keep/discard evidence or an explicit versioned policy claim would improve the package.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
 - A thin Mulligan means no physical row has exact Lane-B guide authority or explicit Lane-D `versioned_internal_policy` authority. It is a source-quality signal, not a HearthRanger load error. HSConfig never invents a low-curve keep set: Lane E records `bot_delegated` dispositions and leaves those decisions to HearthRanger's native pre-run bot with zero generated runtime rows. Non-hand start-of-game enablers such as Darkbishop Benedictus still require explicit opening-hand authority.
+- The frozen twelve-package release projection groups all 426 report occurrences into exactly 316 canonical claim identities: `A:267`, `B:0`, `C:49`, `D:0`, `E:0`. The 49 guide-context claims include deck-matched and low-confidence source rows that lack live-verified, same-fingerprint Lane-B authority. Suppression and low confidence never mint Lane E; only an explicit `bot_delegated` disposition plus a matching zero-emission lifecycle row can do so.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
 ## Runtime Apply Authority

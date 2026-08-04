@@ -37,7 +37,7 @@ Output:
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\darbo\Documents\HSConfig
+rootdir: repository checkout
 configfile: pyproject.toml
 plugins: anyio-4.14.1, base-url-2.1.0, playwright-0.8.0, xdist-3.8.0
 collected 2 items
@@ -157,7 +157,7 @@ Output:
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\darbo\Documents\HSConfig
+rootdir: repository checkout
 configfile: pyproject.toml
 plugins: anyio-4.14.1, base-url-2.1.0, playwright-0.8.0, xdist-3.8.0
 collected 2 items
@@ -181,7 +181,7 @@ Output:
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\darbo\Documents\HSConfig
+rootdir: repository checkout
 configfile: pyproject.toml
 plugins: anyio-4.14.1, base-url-2.1.0, playwright-0.8.0, xdist-3.8.0
 collected 53 items
@@ -208,7 +208,7 @@ Output:
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\darbo\Documents\HSConfig
+rootdir: repository checkout
 configfile: pyproject.toml
 plugins: anyio-4.14.1, base-url-2.1.0, playwright-0.8.0, xdist-3.8.0
 collected 72 items

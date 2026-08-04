@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import os
@@ -19,6 +20,7 @@ from hsconfig.near100_scorecard import (
     build_near100_scorecard,
     load_json_strict,
 )
+from hsconfig.semantic_inventory import canonical_semantic_claim
 
 
 EXPECTED_HARD_METRICS = (
@@ -170,15 +172,15 @@ def _complete_evidence(
                     "evidence_paths": ["receipts/semantic_obligations.json"],
                 }
             )
-        for row in deck["claims"]:
-            claim_rows.append(
-                {
-                    "obligation_id": row["claim_key"],
-                    "authority_lanes": ["E"],
-                    "final_disposition": True,
-                    "evidence_paths": ["receipts/semantic_obligations.json"],
-                }
-            )
+    for row in inventory["semantic_claims"]:
+        claim_rows.append(
+            {
+                "obligation_id": row["claim_key"],
+                "authority_lanes": ["E"],
+                "final_disposition": True,
+                "evidence_paths": ["receipts/semantic_obligations.json"],
+            }
+        )
     status = _git(
         tmp_path,
         "status",
@@ -208,6 +210,63 @@ def _complete_evidence(
     }
 
 
+def _embedded_bundle(tmp_path: Path, *, mode: str = "final") -> dict[str, Any]:
+    evidence = _complete_evidence(tmp_path, mode=mode)
+    if mode == "final":
+        evidence["_meta"].update(
+            {
+                "transaction_id": "a" * 32,
+                "observed_at": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            }
+        )
+    receipt_ids = {
+        path
+        for payload in evidence["checks"].values()
+        for path in payload["evidence_paths"]
+    }
+    receipt_ids.update(
+        path
+        for field in ("card_module_rows", "claim_rows")
+        for row in evidence["semantic_obligations"][field]
+        for path in row["evidence_paths"]
+    )
+    base_binding_fields = (
+        "repository_identity",
+        "commit_oid",
+        "tree_oid",
+        "tree_state",
+        "dirty_tree_fingerprint",
+        "generation_mode",
+    )
+    receipts = {
+        receipt_id: json.loads((tmp_path / receipt_id).read_text(encoding="utf-8"))
+        for receipt_id in sorted(receipt_ids)
+    }
+    for receipt_id, receipt in receipts.items():
+        receipt["schema_version"] = 2
+        receipt["binding"] = {
+            field: evidence["_meta"][field] for field in base_binding_fields
+        }
+        check_id = receipt_id.removeprefix("receipts/").removesuffix(".json")
+        if (
+            mode == "final"
+            and ATOMIC_CHECK_OWNERS.get(check_id) == "github_repository_polish"
+        ):
+            receipt["binding"].update(
+                {
+                    "transaction_id": evidence["_meta"]["transaction_id"],
+                    "observed_at": evidence["_meta"]["observed_at"],
+                }
+            )
+    return {
+        "schema_version": 1,
+        "evidence": evidence,
+        "receipts": receipts,
+    }
+
+
 def _refresh_repository_state(evidence: dict[str, Any], root: Path) -> None:
     status = _git(
         root,
@@ -225,6 +284,28 @@ def _refresh_repository_state(evidence: dict[str, Any], root: Path) -> None:
             "dirty_tree_fingerprint": _dirty_tree_fingerprint(root),
         }
     )
+
+
+def _refresh_embedded_receipt_bindings(bundle: dict[str, Any]) -> None:
+    meta = bundle["evidence"]["_meta"]
+    base_fields = (
+        "repository_identity",
+        "commit_oid",
+        "tree_oid",
+        "tree_state",
+        "dirty_tree_fingerprint",
+        "generation_mode",
+    )
+    for receipt_id, receipt in bundle["receipts"].items():
+        receipt["binding"] = {field: meta[field] for field in base_fields}
+        check_id = receipt_id.removeprefix("receipts/").removesuffix(".json")
+        if ATOMIC_CHECK_OWNERS.get(check_id) == "github_repository_polish":
+            receipt["binding"].update(
+                {
+                    "transaction_id": meta["transaction_id"],
+                    "observed_at": meta["observed_at"],
+                }
+            )
 
 
 def _set_check_result(
@@ -634,6 +715,38 @@ def test_semantic_identity_sets_must_match_the_canonical_inventory_exactly(
         )
 
     with pytest.raises(Near100EvidenceError, match="canonical semantic identity set"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_scorecard_rejects_rehashed_semantic_inventory_substitution(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    inventory_path = (
+        tmp_path / "tests" / "fixtures" / "near100" / "current_semantic_inventory.json"
+    )
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    claim = inventory["semantic_claims"][0]
+    previous = claim["claim_key"]
+    claim["evidence_text_short"] += " changed"
+    claim.pop("claim_key")
+    inventory["semantic_claims"][0] = canonical_semantic_claim(claim)
+    replacement = inventory["semantic_claims"][0]["claim_key"]
+    content = {
+        key: value
+        for key, value in inventory.items()
+        if key != "canonical_content_sha256"
+    }
+    inventory["canonical_content_sha256"] = hashlib.sha256(
+        json.dumps(content, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+    claim_rows = evidence["semantic_obligations"]["claim_rows"]
+    matching = next(row for row in claim_rows if row["obligation_id"] == previous)
+    matching["obligation_id"] = replacement
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="canonical semantic inventory is invalid"):
         build_near100_scorecard(evidence=evidence, mode="final")
 
 
@@ -1173,3 +1286,358 @@ def test_cli_binds_evidence_to_the_requested_repository(tmp_path: Path) -> None:
     assert json.loads(completed.stdout)["errors"] == [
         "base evidence repository_root does not match --repo"
     ]
+
+
+def test_embedded_receipts_are_resolved_without_named_evidence_files(
+    tmp_path: Path,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    shutil.rmtree(tmp_path / "receipts")
+    _refresh_repository_state(bundle["evidence"], tmp_path)
+    _refresh_embedded_receipt_bindings(bundle)
+
+    scorecard = build_near100_scorecard(
+        evidence=bundle["evidence"],
+        mode="final",
+        receipt_documents=bundle["receipts"],
+    )
+
+    assert scorecard.passed is True
+
+
+@pytest.mark.parametrize(
+    "field,replacement",
+    (
+        ("repository_identity", "SomeoneElse/HSConfig"),
+        ("commit_oid", "0" * 40),
+        ("tree_oid", "f" * 40),
+        ("tree_state", "dirty"),
+        ("dirty_tree_fingerprint", "a" * 64),
+        ("generation_mode", "pre_cutover"),
+    ),
+)
+def test_embedded_receipt_binding_matches_validated_evidence_meta_exactly(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    bundle["receipts"]["receipts/contract_spine.json"]["binding"][field] = (
+        replacement
+    )
+
+    with pytest.raises(Near100EvidenceError, match="receipt binding mismatch"):
+        build_near100_scorecard(
+            evidence=bundle["evidence"],
+            mode="final",
+            receipt_documents=bundle["receipts"],
+        )
+
+
+def test_embedded_receipt_cannot_be_swapped_across_repository_envelopes(
+    tmp_path: Path,
+) -> None:
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    first = _embedded_bundle(first_root)
+    _initialize_repository(second_root)
+    (second_root / "second-state.txt").write_text("distinct", encoding="utf-8")
+    _git(second_root, "add", "second-state.txt")
+    _git(second_root, "commit", "-q", "-m", "distinct second state")
+    second = _embedded_bundle(second_root)
+    first["receipts"]["receipts/contract_spine.json"] = second["receipts"][
+        "receipts/contract_spine.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="receipt binding mismatch"):
+        build_near100_scorecard(
+            evidence=first["evidence"],
+            mode="final",
+            receipt_documents=first["receipts"],
+        )
+
+
+@pytest.mark.parametrize("field", ("transaction_id", "observed_at"))
+def test_final_github_receipts_bind_the_validated_live_transaction(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    receipt = bundle["receipts"]["receipts/github_release.json"]
+    receipt["binding"][field] = "b" * 32 if field == "transaction_id" else "2000-01-01T00:00:00Z"
+
+    with pytest.raises(Near100EvidenceError, match="receipt binding mismatch"):
+        build_near100_scorecard(
+            evidence=bundle["evidence"],
+            mode="final",
+            receipt_documents=bundle["receipts"],
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation,match",
+    (
+        ("producer", "producer mismatch"),
+        ("check_id", "receipt check_id mismatch"),
+        ("passed", "receipt result mismatch"),
+        ("schema", "unknown fields"),
+        ("self_score", "embedded scorecard"),
+        ("extra_receipt", "unexpected embedded receipt"),
+    ),
+)
+def test_embedded_receipts_fail_closed_on_tampering_and_unconsumed_entries(
+    tmp_path: Path,
+    mutation: str,
+    match: str,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    receipt_id = "receipts/contract_spine.json"
+    receipt = bundle["receipts"][receipt_id]
+    if mutation == "producer":
+        receipt["producer"] = "untrusted.producer"
+    elif mutation == "check_id":
+        receipt["check_id"] = "owner_policy"
+    elif mutation == "passed":
+        receipt["result"]["passed"] = False
+    elif mutation == "schema":
+        receipt["unexpected"] = True
+    elif mutation == "self_score":
+        receipt["nested"] = {
+            "schema_version": 1,
+            "version": "1.0.0",
+            "metrics": [],
+            "overall_score": "100",
+            "passed": True,
+        }
+    else:
+        bundle["receipts"]["receipts/unconsumed.json"] = {
+            "schema_version": 1,
+            "producer": "hsconfig.release_gate.base_check",
+            "check_id": "contract_spine",
+            "result": {"passed": True},
+        }
+
+    with pytest.raises(Near100EvidenceError, match=match):
+        build_near100_scorecard(
+            evidence=bundle["evidence"],
+            mode="final",
+            receipt_documents=bundle["receipts"],
+        )
+
+
+def test_cli_reads_one_closed_stdin_envelope_without_receipt_files(
+    tmp_path: Path,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    shutil.rmtree(tmp_path / "receipts")
+    _refresh_repository_state(bundle["evidence"], tmp_path)
+    _refresh_embedded_receipt_bindings(bundle)
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence-stdin",
+            "--mode",
+            "final",
+            "--json",
+        ],
+        input=json.dumps(bundle, separators=(",", ":")),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert payload["passed"] is True
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "raw_mutation",
+    ("second_document", "duplicate_receipt_id", "unknown_envelope_field"),
+)
+def test_cli_stdin_rejects_noncanonical_or_nonexclusive_documents_with_one_json_error(
+    tmp_path: Path,
+    raw_mutation: str,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    raw = json.dumps(bundle, separators=(",", ":"))
+    if raw_mutation == "second_document":
+        raw += "\n{}"
+    elif raw_mutation == "duplicate_receipt_id":
+        marker = '"receipts":{'
+        receipt_id = "receipts/contract_spine.json"
+        duplicate = json.dumps(bundle["receipts"][receipt_id], separators=(",", ":"))
+        raw = raw.replace(marker, marker + json.dumps(receipt_id) + ":" + duplicate + ",", 1)
+    else:
+        raw = '{"unexpected":true,' + raw[1:]
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence-stdin",
+            "--mode",
+            "final",
+            "--json",
+        ],
+        input=raw,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 2
+    assert payload["passed"] is False
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""
+    assert "Traceback" not in completed.stdout
+
+
+@pytest.mark.parametrize("duplicate_kind", ("github", "sensitive", "local_path"))
+def test_cli_invalid_stdin_failure_never_echoes_sensitive_duplicate_keys_or_values(
+    tmp_path: Path,
+    duplicate_kind: str,
+) -> None:
+    (tmp_path / "outputs").mkdir()
+    github = "ghp_" + "A" * 36
+    local_path = "C:" + chr(92) + chr(92).join(("Users", "operator", "private"))
+    if duplicate_kind == "github":
+        duplicate_key = github
+        duplicate_value = "ordinary"
+    elif duplicate_kind == "sensitive":
+        duplicate_key = "service.auth.token"
+        duplicate_value = github
+    else:
+        duplicate_key = local_path
+        duplicate_value = local_path
+    raw = (
+        "{"
+        + json.dumps(duplicate_key)
+        + ":"
+        + json.dumps(duplicate_value)
+        + ","
+        + json.dumps(duplicate_key)
+        + ":0}"
+    )
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence-stdin",
+            "--mode",
+            "final",
+            "--json",
+        ],
+        input=raw,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    encoded = completed.stdout
+    assert completed.returncode == 2
+    assert payload["passed"] is False
+    assert payload["errors"] == ["stdin evidence envelope rejected: invalid_envelope"]
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""
+    assert github not in encoded
+    assert "service.auth.token" not in encoded
+    assert local_path not in encoded
+    assert "Traceback" not in encoded
+
+
+def test_cli_rejects_simultaneous_file_and_stdin_evidence_with_one_json_error(
+    tmp_path: Path,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(bundle["evidence"]), encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence",
+            str(evidence_path),
+            "--evidence-stdin",
+            "--mode",
+            "final",
+            "--json",
+        ],
+        input=json.dumps(bundle),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert json.loads(completed.stdout)["passed"] is False
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""
+
+
+@pytest.mark.parametrize("invalid_kind", ("excessive_nesting", "oversized"))
+def test_cli_stdin_bounds_evidence_nesting_and_size_with_one_json_error(
+    tmp_path: Path,
+    invalid_kind: str,
+) -> None:
+    (tmp_path / "outputs").mkdir()
+    raw = (
+        "[" * 65 + "0" + "]" * 65
+        if invalid_kind == "excessive_nesting"
+        else "x" * (8 * 1024 * 1024 + 1)
+    )
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence-stdin",
+            "--mode",
+            "final",
+            "--json",
+        ],
+        input=raw,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert json.loads(completed.stdout)["passed"] is False
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""

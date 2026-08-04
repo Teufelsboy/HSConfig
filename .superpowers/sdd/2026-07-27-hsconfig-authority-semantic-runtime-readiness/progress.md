@@ -2,7 +2,7 @@
 
 Execution baseline: 7d6313b48bc771bb1f58f74e0cc556b46a53d1bb
 Workspace policy: direct sole main by explicit user instruction; no branch or git worktree.
-Runtime policy: no apply and no writes under C:\Users\darbo\Desktop\HS.
+Runtime policy: no apply and no writes under the external HearthRanger root.
 
 Task 1: fix round 1/5 (spec Important empty rows with physical linked owner addressed by ac41fe5b115e5fe0b9842a060ca7cb3a5504a1e1)
 Task 1: minor (deferred): curated linked relation knowledge is duplicated across runtime_entity_owner and strict_package_validation.
@@ -52,4 +52,4 @@ Task 10: fix round 2/5 (direct source-acquisition alias network canary; Hearthst
 Task 11: reconciliation round 1/5 (runtime surface ledger classified as a blocking physical integrity receipt; current live-verified positive fixtures rebuilt; captured fixtures aligned with diagnostic-only authority; skill thin-router restored; commits db5bcf7 and 90fe276)
 Task 11: repository/package verification complete before final report commit (full repository 2763 passed/11 skipped; contract guardrail 949 passed and all three sentinels OK; skill sync and git diff checks passed; twelve temporary diagnostic packages inspected and validated, then removed)
 Task 11: package-only operator handoff complete (all twelve packages 30/0 identity, valid/receipt-verified/load-safe, GlobalValues authority matched with zero overlays, apply blocked by captured diagnostic provenance)
-Task 11: live-runtime hash gate not executed because the approved boundary excluded C:\Users\darbo\Desktop\HS; LIVE_RUNTIME_NOT_ACCESSED, external runtime unchanged NOT_PROVEN, runtime sampling NOT_PROVEN, and gameplay optimality NOT_PROVEN
+Task 11: live-runtime hash gate not executed because the approved boundary excluded the external HearthRanger root; LIVE_RUNTIME_NOT_ACCESSED, external runtime unchanged NOT_PROVEN, runtime sampling NOT_PROVEN, and gameplay optimality NOT_PROVEN

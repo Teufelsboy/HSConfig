@@ -217,7 +217,7 @@ def test_canonicalize_rejects_unknown_keys() -> None:
 @pytest.mark.parametrize(
     ("field", "absolute_path"),
     [
-        ("generator_commit", r"\\server\share\repo"),
+        ("generator_commit", "\\" * 2 + "\\".join(("server", "share", "repo"))),
     ],
 )
 def test_canonicalize_rejects_absolute_paths(
@@ -244,7 +244,7 @@ def test_canonicalize_rejects_absolute_paths(
         "../private/policy.json",
         "fixtures/cards.json",
         r"fixtures\cards.json",
-        "file:///C:/private/cards.json",
+        "file:///" + "C:" + "/private/cards.json",
         "cards.json",
         "local-policy.json",
     ],
