@@ -1,0 +1,1175 @@
+from __future__ import annotations
+
+import json
+from decimal import Decimal
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+from typing import Any
+
+import pytest
+
+from hsconfig.near100_scorecard import (
+    ATOMIC_CHECK_OWNERS,
+    HARD_METRIC_IDS,
+    Near100EvidenceError,
+    build_near100_scorecard,
+    load_json_strict,
+)
+
+
+EXPECTED_HARD_METRICS = (
+    "static_contract_safety",
+    "safe_visionai_lowering",
+    "testability_and_assurance",
+    "semantic_disposition_closure",
+    "layered_pre_run_source_coverage",
+    "architecture_and_maintainability",
+    "slimness_and_coherence",
+    "github_repository_polish",
+    "workspace_hygiene",
+)
+
+
+def _git(root: Path, *args: str, text: bool = True) -> str | bytes:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=text,
+    )
+    return completed.stdout
+
+
+def _dirty_tree_fingerprint(root: Path) -> str:
+    status = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        text=False,
+    )
+    diff = _git(root, "diff", "--binary", "HEAD", "--", text=False)
+    untracked = _git(
+        root,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        text=False,
+    )
+    digest = hashlib.sha256()
+    digest.update(b"status\0" + status)
+    digest.update(b"diff\0" + diff)
+    for encoded_path in sorted(path for path in untracked.split(b"\0") if path):
+        path = root / encoded_path.decode("utf-8")
+        digest.update(b"untracked\0" + encoded_path + b"\0" + path.read_bytes())
+    return digest.hexdigest()
+
+
+def _initialize_repository(root: Path) -> None:
+    if (root / ".git").is_dir():
+        return
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "tests@example.invalid")
+    _git(root, "config", "user.name", "HSConfig Tests")
+    _git(root, "remote", "add", "origin", "https://github.com/Teufelsboy/HSConfig.git")
+    (root / ".gitignore").write_text(".near100/\n", encoding="utf-8")
+    (root / "outputs").mkdir()
+    (root / "outputs" / ".gitkeep").write_text("", encoding="utf-8")
+    fixture_root = Path(__file__).parent / "fixtures" / "near100"
+    destination = root / "tests" / "fixtures" / "near100"
+    destination.mkdir(parents=True)
+    shutil.copyfile(
+        fixture_root / "current_semantic_inventory.json",
+        destination / "current_semantic_inventory.json",
+    )
+    shutil.copyfile(
+        fixture_root / "score_metric_contract.json",
+        destination / "score_metric_contract.json",
+    )
+    catalog = root / "docs" / "operator" / "audited-deck-catalog.json"
+    catalog.parent.mkdir(parents=True)
+    shutil.copyfile(
+        Path(__file__).parents[1] / "docs" / "operator" / "audited-deck-catalog.json",
+        catalog,
+    )
+    receipt_root = root / "receipts"
+    receipt_root.mkdir()
+    for check_id in ATOMIC_CHECK_OWNERS:
+        (receipt_root / f"{check_id}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "producer": "hsconfig.release_gate.base_check",
+                    "check_id": check_id,
+                    "result": {"passed": True},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    (receipt_root / "semantic_obligations.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "producer": "hsconfig.semantic_inventory",
+                "check_id": "semantic_obligations",
+                "result": {"passed": True},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "fixture")
+
+
+def _complete_evidence(
+    tmp_path: Path, *, mode: str = "final"
+) -> dict[str, Any]:
+    _initialize_repository(tmp_path)
+    inventory = json.loads(
+        (
+            tmp_path
+            / "tests"
+            / "fixtures"
+            / "near100"
+            / "current_semantic_inventory.json"
+        ).read_text(encoding="utf-8")
+    )
+    checks: dict[str, Any] = {}
+    for check_id, owner in ATOMIC_CHECK_OWNERS.items():
+        checks[check_id] = {
+            "passed": True,
+            "kind": (
+                "coverage_json"
+                if check_id in {"branch_coverage", "critical_coverage"}
+                else "completed_base_check"
+            ),
+            "evidence_paths": [f"receipts/{check_id}.json"],
+            "blocking_reasons": [],
+            "non_blocking_reasons": [],
+            "scope": "PRE_RUN_CONTRACT",
+            "owner": owner,
+        }
+    card_rows = []
+    claim_rows = []
+    for deck in inventory["decks"]:
+        for row in (*deck["main_cards"], *deck["sideboard_modules"]):
+            card_rows.append(
+                {
+                    "obligation_id": row["composite_card_key"],
+                    "authority_lanes": ["A"],
+                    "final_disposition": True,
+                    "evidence_paths": ["receipts/semantic_obligations.json"],
+                }
+            )
+        for row in deck["claims"]:
+            claim_rows.append(
+                {
+                    "obligation_id": row["claim_key"],
+                    "authority_lanes": ["E"],
+                    "final_disposition": True,
+                    "evidence_paths": ["receipts/semantic_obligations.json"],
+                }
+            )
+    status = _git(
+        tmp_path,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        text=False,
+    )
+    return {
+        "_meta": {
+            "producer": "hsconfig.release_gate.base_evidence",
+            "repository_root": str(tmp_path),
+            "repository_identity": "Teufelsboy/HSConfig",
+            "version": "1.0.0",
+            "commit_oid": _git(tmp_path, "rev-parse", "HEAD").strip(),
+            "tree_oid": _git(tmp_path, "rev-parse", "HEAD^{tree}").strip(),
+            "tree_state": "dirty" if status else "clean",
+            "dirty_tree_fingerprint": _dirty_tree_fingerprint(tmp_path),
+            "generation_mode": mode,
+        },
+        "checks": checks,
+        "semantic_obligations": {
+            "card_module_rows": card_rows,
+            "claim_rows": claim_rows,
+        },
+        "findings": {"open_p0": 0, "open_p1": 0},
+    }
+
+
+def _refresh_repository_state(evidence: dict[str, Any], root: Path) -> None:
+    status = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        text=False,
+    )
+    evidence["_meta"].update(
+        {
+            "commit_oid": _git(root, "rev-parse", "HEAD").strip(),
+            "tree_oid": _git(root, "rev-parse", "HEAD^{tree}").strip(),
+            "tree_state": "dirty" if status else "clean",
+            "dirty_tree_fingerprint": _dirty_tree_fingerprint(root),
+        }
+    )
+
+
+def _set_check_result(
+    evidence: dict[str, Any], root: Path, check_id: str, *, passed: bool
+) -> None:
+    evidence["checks"][check_id]["passed"] = passed
+    receipt_path = root / evidence["checks"][check_id]["evidence_paths"][0]
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["result"]["passed"] = passed
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+    _refresh_repository_state(evidence, root)
+
+
+def _metric(scorecard: object, metric_id: str) -> object:
+    return next(metric for metric in scorecard.metrics if metric.metric_id == metric_id)
+
+
+def test_final_truth_table_uses_exact_ids_minimums_and_decimal_scores(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+
+    assert HARD_METRIC_IDS == EXPECTED_HARD_METRICS
+    assert tuple(metric.metric_id for metric in scorecard.metrics) == (
+        *EXPECTED_HARD_METRICS,
+        "overall_pre_run",
+        "gameplay_quality",
+    )
+    assert tuple(metric.minimum for metric in scorecard.metrics[:-2]) == (
+        Decimal("99"),
+        Decimal("99"),
+        Decimal("98"),
+        Decimal("100"),
+        Decimal("98"),
+        Decimal("96"),
+        Decimal("98"),
+        Decimal("98"),
+        Decimal("100"),
+    )
+    assert all(metric.status == "pass" for metric in scorecard.metrics[:-1])
+    assert scorecard.overall_score == Decimal("100")
+    assert scorecard.passed is True
+
+
+def test_metric_score_is_computed_from_owned_checks_with_decimal_not_float(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    _set_check_result(evidence, tmp_path, "version_consistency", passed=False)
+    evidence["checks"]["version_consistency"]["blocking_reasons"] = [
+        "version mismatch"
+    ]
+
+    metric = _metric(
+        build_near100_scorecard(evidence=evidence, mode="final"),
+        "static_contract_safety",
+    )
+
+    assert metric.numerator == 2
+    assert metric.denominator == 3
+    assert metric.score == Decimal(200) / Decimal(3)
+    assert isinstance(metric.score, Decimal)
+    assert metric.status == "fail"
+    assert metric.blocking_reasons == ("version mismatch",)
+
+
+def test_layered_source_metric_has_fixed_208_plus_316_denominator(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["semantic_obligations"]["card_module_rows"][0][
+        "final_disposition"
+    ] = False
+    evidence["semantic_obligations"]["claim_rows"][0]["authority_lanes"] = [
+        "A",
+        "B",
+    ]
+
+    metric = _metric(
+        build_near100_scorecard(evidence=evidence, mode="final"),
+        "layered_pre_run_source_coverage",
+    )
+
+    assert metric.numerator == 522
+    assert metric.denominator == 524
+    assert metric.score == Decimal(52200) / Decimal(524)
+    assert metric.status == "pass"
+    assert metric.scope == "PRE_RUN_CONTRACT"
+    assert metric.blocking_reasons == ()
+    assert len(metric.non_blocking_reasons) == 2
+
+
+def test_semantic_closure_cannot_be_gamed_by_contradictory_passing_checks(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["semantic_obligations"]["card_module_rows"][0][
+        "final_disposition"
+    ] = False
+    evidence["semantic_obligations"]["claim_rows"][0]["authority_lanes"] = []
+
+    metric = _metric(
+        build_near100_scorecard(evidence=evidence, mode="final"),
+        "semantic_disposition_closure",
+    )
+
+    assert metric.numerator == 3
+    assert metric.denominator == 5
+    assert metric.score == Decimal("60")
+    assert metric.status == "fail"
+    assert len(metric.blocking_reasons) == 2
+
+
+def test_pre_cutover_excludes_github_checks_and_can_never_be_final_passed(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path, mode="pre_cutover")
+    for check_id, owner in tuple(ATOMIC_CHECK_OWNERS.items()):
+        if owner == "github_repository_polish":
+            del evidence["checks"][check_id]
+
+    scorecard = build_near100_scorecard(evidence=evidence, mode="pre_cutover")
+
+    github = _metric(scorecard, "github_repository_polish")
+    overall = _metric(scorecard, "overall_pre_run")
+    assert github.status == "pending_remote"
+    assert github.score is None
+    assert github.numerator == 0
+    assert github.denominator == 4
+    assert "excluded_from_pre_cutover_overall" in github.non_blocking_reasons
+    assert overall.status == "pass"
+    assert overall.score == Decimal("100")
+    assert scorecard.passed is False
+
+
+def test_gameplay_is_explicitly_not_applicable_and_never_scored(tmp_path: Path) -> None:
+    gameplay = _metric(
+        build_near100_scorecard(evidence=_complete_evidence(tmp_path), mode="final"),
+        "gameplay_quality",
+    )
+
+    assert gameplay.numerator == 0
+    assert gameplay.denominator == 0
+    assert gameplay.score is None
+    assert gameplay.minimum is None
+    assert gameplay.status == "not_applicable"
+    assert gameplay.scope == "OUT_OF_SCOPE_ASSUMED_EXTERNAL"
+
+
+@pytest.mark.parametrize("finding", ["open_p0", "open_p1"])
+def test_open_p0_or_p1_finding_blocks_an_otherwise_passing_card(
+    tmp_path: Path, finding: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["findings"][finding] = 1
+
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+
+    assert scorecard.overall_score == Decimal("100")
+    assert scorecard.passed is False
+    assert getattr(scorecard, f"{finding}_findings") == 1
+
+
+def test_failed_hard_metric_blocks_even_when_overall_exceeds_minimum(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    _set_check_result(evidence, tmp_path, "package_immutability", passed=False)
+    evidence["checks"]["package_immutability"]["blocking_reasons"] = [
+        "immutability check failed"
+    ]
+
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+
+    assert scorecard.overall_score >= Decimal("98")
+    assert _metric(scorecard, "architecture_and_maintainability").status == "fail"
+    overall = _metric(scorecard, "overall_pre_run")
+    assert overall.status == "fail"
+    assert overall.blocking_reasons == ("immutability check failed",)
+    assert scorecard.passed is False
+
+
+@pytest.mark.parametrize(
+    ("unsafe_path", "expected"),
+    [
+        ("../outside.json", "repo-relative canonical path"),
+        ("receipts\\contract_spine.json", "repo-relative canonical path"),
+    ],
+)
+def test_evidence_paths_reject_traversal_and_alternative_separators(
+    tmp_path: Path, unsafe_path: str, expected: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    (tmp_path.parent / "outside.json").write_text("{}", encoding="utf-8")
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [unsafe_path]
+
+    with pytest.raises(Near100EvidenceError, match=expected):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_evidence_paths_reject_absolute_paths_even_inside_repository(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [
+        str(tmp_path / "receipts" / "contract_spine.json")
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="repo-relative canonical path"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_evidence_paths_reject_symlink_aliases(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    alias = tmp_path / ".near100" / "alias.json"
+    alias.parent.mkdir(exist_ok=True)
+    try:
+        alias.symlink_to(tmp_path / "receipts" / "contract_spine.json")
+    except OSError as exc:
+        pytest.skip(f"platform does not permit test symlink: {exc}")
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [
+        ".near100/alias.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="link or reparse point"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_evidence_paths_reject_hardlink_aliases(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    external = tmp_path.parent / "external-receipt.json"
+    external.write_text(
+        (tmp_path / "receipts" / "contract_spine.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    alias = tmp_path / ".near100" / "hardlinked-receipt.json"
+    alias.parent.mkdir(exist_ok=True)
+    try:
+        os.link(external, alias)
+    except OSError as exc:
+        pytest.skip(f"platform does not permit test hardlink: {exc}")
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [
+        ".near100/hardlinked-receipt.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="hardlink"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_renamed_scorecard_payload_cannot_be_reused_as_base_evidence(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    disguised = tmp_path / ".near100" / "ordinary-receipt.json"
+    disguised.parent.mkdir(exist_ok=True)
+    disguised.write_text(scorecard.to_json(), encoding="utf-8")
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [
+        ".near100/ordinary-receipt.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="self-produced scorecard"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_release_gate_receipt_cannot_embed_a_scorecard_result(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    disguised = tmp_path / ".near100" / "release-check.json"
+    disguised.parent.mkdir(exist_ok=True)
+    disguised.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "producer": "hsconfig.release_gate.base_check",
+                "check_id": "contract_spine",
+                "result": {"passed": True},
+                "details": {"renamed_result": scorecard.to_document()},
+            }
+        ),
+        encoding="utf-8",
+    )
+    evidence["checks"]["contract_spine"]["evidence_paths"] = [
+        ".near100/release-check.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_atomic_check_payload_cannot_embed_a_scorecard_result(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    evidence["checks"]["contract_spine"]["details"] = scorecard.to_document()
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_receipt_cannot_embed_a_json_serialized_scorecard_result(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    receipt_path = tmp_path / "receipts" / "contract_spine.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["details"] = {"captured_stdout": scorecard.to_json()}
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_receipt_provenance_must_match_the_consuming_atomic_check(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["checks"]["version_consistency"]["evidence_paths"] = [
+        "receipts/contract_spine.json"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="receipt check_id mismatch"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize(("check_passed", "receipt_passed"), [(False, True), (True, False)])
+def test_receipt_result_must_match_consumed_atomic_check_status(
+    tmp_path: Path, check_passed: bool, receipt_passed: bool
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    check = evidence["checks"]["contract_spine"]
+    check["passed"] = check_passed
+    check["blocking_reasons"] = [] if check_passed else ["contract failure"]
+    receipt_path = tmp_path / "receipts" / "contract_spine.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["result"]["passed"] = receipt_passed
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="receipt result mismatch") as caught:
+        build_near100_scorecard(evidence=evidence, mode="final")
+    assert "atomic check contract_spine" in str(caught.value)
+
+
+def test_multiple_receipts_must_each_match_consumed_atomic_check_status(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    second = tmp_path / "receipts" / "contract_spine-second.json"
+    second.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "producer": "hsconfig.release_gate.base_check",
+                "check_id": "contract_spine",
+                "result": {"passed": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    _git(tmp_path, "add", str(second.relative_to(tmp_path)))
+    _git(tmp_path, "commit", "-q", "-m", "second receipt")
+    evidence["checks"]["contract_spine"]["evidence_paths"].append(
+        "receipts/contract_spine-second.json"
+    )
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="receipt result mismatch") as caught:
+        build_near100_scorecard(evidence=evidence, mode="final")
+    assert "atomic check contract_spine" in str(caught.value)
+
+
+def test_pre_cutover_rejects_supplied_github_checks_instead_of_ignoring_them(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path, mode="pre_cutover")
+
+    with pytest.raises(Near100EvidenceError, match="must omit all GitHub checks"):
+        build_near100_scorecard(evidence=evidence, mode="pre_cutover")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "fabricated",
+        "whitespace",
+        "swapped_classes",
+    ],
+)
+def test_semantic_identity_sets_must_match_the_canonical_inventory_exactly(
+    tmp_path: Path, mutation: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    card_rows = evidence["semantic_obligations"]["card_module_rows"]
+    claim_rows = evidence["semantic_obligations"]["claim_rows"]
+    if mutation == "fabricated":
+        card_rows[0]["obligation_id"] = "fabricated-card-identity"
+    elif mutation == "whitespace":
+        card_rows[0]["obligation_id"] = f" {card_rows[0]['obligation_id']} "
+    else:
+        card_rows[0]["obligation_id"], claim_rows[0]["obligation_id"] = (
+            claim_rows[0]["obligation_id"],
+            card_rows[0]["obligation_id"],
+        )
+
+    with pytest.raises(Near100EvidenceError, match="canonical semantic identity set"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_semantic_receipt_must_record_a_successful_result(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    receipt_path = tmp_path / "receipts" / "semantic_obligations.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["result"]["passed"] = False
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="receipt result mismatch") as caught:
+        build_near100_scorecard(evidence=evidence, mode="final")
+    assert "semantic obligations" in str(caught.value)
+
+
+def test_every_semantic_receipt_must_record_a_successful_result(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    extra_path = tmp_path / ".near100" / "semantic-second.json"
+    extra_path.parent.mkdir(exist_ok=True)
+    extra_receipt = {
+        "schema_version": 1,
+        "producer": "hsconfig.semantic_inventory",
+        "check_id": "semantic_obligations",
+        "result": {"passed": True},
+    }
+    extra_path.write_text(json.dumps(extra_receipt), encoding="utf-8")
+    evidence["semantic_obligations"]["card_module_rows"][0][
+        "evidence_paths"
+    ].append(".near100/semantic-second.json")
+
+    assert build_near100_scorecard(evidence=evidence, mode="final").passed is True
+
+    extra_receipt["result"]["passed"] = False
+    extra_path.write_text(json.dumps(extra_receipt), encoding="utf-8")
+    with pytest.raises(Near100EvidenceError, match="receipt result mismatch"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["meta_mapping", "meta_string", "semantic_wrapper", "card_row", "claim_row"],
+)
+def test_complete_evidence_bundle_rejects_embedded_scorecards_everywhere(
+    tmp_path: Path, location: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    if location == "meta_mapping":
+        evidence["_meta"]["details"] = scorecard.to_document()
+    elif location == "meta_string":
+        evidence["_meta"]["captured_stdout"] = scorecard.to_json()
+    elif location == "semantic_wrapper":
+        evidence["semantic_obligations"]["details"] = [
+            {"wrapper": [scorecard.to_document()]}
+        ]
+    elif location == "card_row":
+        evidence["semantic_obligations"]["card_module_rows"][0]["details"] = {
+            "result": scorecard.to_document()
+        }
+    else:
+        evidence["semantic_obligations"]["claim_rows"][0]["details"] = [
+            {"captured_stdout": scorecard.to_json()}
+        ]
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize("reason_field", ["blocking_reasons", "non_blocking_reasons"])
+def test_reason_text_cannot_contain_a_prefixed_serialized_scorecard(
+    tmp_path: Path, reason_field: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    if reason_field == "blocking_reasons":
+        _set_check_result(evidence, tmp_path, "contract_spine", passed=False)
+    evidence["checks"]["contract_spine"][reason_field] = [
+        f"captured release output: {scorecard.to_json()}"
+    ]
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_reason_text_cannot_contain_a_multiply_json_encoded_scorecard(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    encoded = build_near100_scorecard(evidence=evidence, mode="final").to_json()
+    for _ in range(3):
+        encoded = json.dumps(encoded)
+    evidence["checks"]["contract_spine"]["non_blocking_reasons"] = [encoded]
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_unknown_top_level_text_cannot_hide_a_prefixed_scorecard(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    scorecard = build_near100_scorecard(evidence=evidence, mode="final")
+    evidence["diagnostic_capture"] = f"tool output follows: {scorecard.to_json()}"
+
+    with pytest.raises(Near100EvidenceError, match="embedded scorecard result"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "[" * 1200 + "0" + "]" * 1200,
+        '{"nested":' * 1200 + "0" + "}" * 1200,
+    ],
+    ids=["deep_arrays", "deep_objects"],
+)
+def test_strict_json_loader_translates_excessive_nesting_to_evidence_error(
+    document: str,
+) -> None:
+    with pytest.raises(Near100EvidenceError, match="nesting exceeds safe limit"):
+        load_json_strict(document, source="deep evidence")
+
+
+def test_builder_translates_deep_json_fragment_to_evidence_error(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["checks"]["contract_spine"]["non_blocking_reasons"] = ["[" * 2000]
+
+    with pytest.raises(Near100EvidenceError, match="nesting exceeds safe limit"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_builder_rejects_deep_python_object_with_public_evidence_error(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    nested: dict[str, Any] = {"leaf": "plain"}
+    for _ in range(200):
+        nested = {"nested": nested}
+    evidence["diagnostic_capture"] = nested
+
+    with pytest.raises(Near100EvidenceError, match="safe inspection depth"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "[" * 1200 + "0" + "]" * 1200,
+        '{"nested":' * 1200 + "0" + "}" * 1200,
+    ],
+    ids=["deep_arrays", "deep_objects"],
+)
+def test_cli_emits_one_machine_readable_failure_for_excessive_json_nesting(
+    tmp_path: Path, document: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence_path = tmp_path / ".near100" / "deep-evidence.json"
+    evidence_path.parent.mkdir(exist_ok=True)
+    evidence_path.write_text(document, encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            evidence["_meta"]["repository_root"],
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence",
+            str(evidence_path),
+            "--mode",
+            "final",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    lines = completed.stdout.splitlines()
+    assert completed.returncode == 2
+    assert len(lines) == 1
+    assert json.loads(lines[0])["passed"] is False
+    assert "nesting exceeds safe limit" in lines[0]
+    assert "Traceback" not in completed.stderr
+
+
+@pytest.mark.parametrize("location", ["meta", "semantic_wrapper", "card_row", "claim_row"])
+def test_meta_and_semantic_schemas_reject_unknown_fields(
+    tmp_path: Path, location: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    if location == "meta":
+        evidence["_meta"]["unexpected"] = "plain"
+    elif location == "semantic_wrapper":
+        evidence["semantic_obligations"]["unexpected"] = "plain"
+    elif location == "card_row":
+        evidence["semantic_obligations"]["card_module_rows"][0][
+            "unexpected"
+        ] = "plain"
+    else:
+        evidence["semantic_obligations"]["claim_rows"][0]["unexpected"] = "plain"
+
+    with pytest.raises(Near100EvidenceError, match="unknown fields"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("version", "0.0.0", "version mismatch"),
+        ("commit_oid", "0" * 40, "commit OID mismatch"),
+        ("tree_oid", "f" * 40, "tree OID mismatch"),
+        ("repository_identity", "SomeoneElse/HSConfig", "repository identity mismatch"),
+        ("dirty_tree_fingerprint", "a" * 64, "dirty-tree fingerprint mismatch"),
+    ],
+)
+def test_stale_or_replayed_evidence_metadata_is_rejected(
+    tmp_path: Path, field: str, value: str, expected: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["_meta"][field] = value
+
+    with pytest.raises(Near100EvidenceError, match=expected):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_evidence_generation_mode_must_match_requested_mode(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path, mode="pre_cutover")
+
+    with pytest.raises(Near100EvidenceError, match="generation mode mismatch"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_repository_change_after_evidence_generation_is_rejected(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    (tmp_path / "outputs" / ".gitkeep").write_text("changed", encoding="utf-8")
+
+    with pytest.raises(Near100EvidenceError, match="tree state mismatch"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_score_metric_contract_drift_is_rejected(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    contract_path = (
+        tmp_path / "tests" / "fixtures" / "near100" / "score_metric_contract.json"
+    )
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["minimums"][0] = 1
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    _refresh_repository_state(evidence, tmp_path)
+
+    with pytest.raises(Near100EvidenceError, match="score metric contract drift"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_missing_or_extra_atomic_check_is_rejected(tmp_path: Path) -> None:
+    missing = _complete_evidence(tmp_path)
+    del missing["checks"]["contract_spine"]
+    with pytest.raises(Near100EvidenceError, match="missing atomic checks"):
+        build_near100_scorecard(evidence=missing, mode="final")
+
+    extra = _complete_evidence(tmp_path)
+    extra["checks"]["scorecard_says_pass"] = dict(
+        extra["checks"]["contract_spine"]
+    )
+    with pytest.raises(Near100EvidenceError, match="unknown atomic checks"):
+        build_near100_scorecard(evidence=extra, mode="final")
+
+
+def test_atomic_owner_is_fixed_and_cannot_be_reassigned(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["checks"]["contract_spine"]["owner"] = "workspace_hygiene"
+
+    with pytest.raises(Near100EvidenceError, match="atomic check owner mismatch"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize("reserved", ["score", "status", "numerator", "denominator"])
+def test_metric_cannot_consume_or_assert_its_own_result(
+    tmp_path: Path, reserved: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence["checks"]["contract_spine"][reserved] = 100
+
+    with pytest.raises(Near100EvidenceError, match="self-scoring field"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+@pytest.mark.parametrize("reserved", ["overall_score", "metrics", "passed", "status"])
+def test_top_level_evidence_cannot_embed_a_prior_scorecard_result(
+    tmp_path: Path, reserved: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    evidence[reserved] = 100
+
+    with pytest.raises(Near100EvidenceError, match="scorecard result fields"):
+        build_near100_scorecard(evidence=evidence, mode="final")
+
+
+def test_missing_evidence_path_is_rejected(tmp_path: Path) -> None:
+    missing = _complete_evidence(tmp_path)
+    missing["checks"]["contract_spine"]["evidence_paths"] = ["missing.json"]
+    with pytest.raises(Near100EvidenceError, match="evidence path does not exist"):
+        build_near100_scorecard(evidence=missing, mode="final")
+
+
+def test_semantic_denominators_and_duplicate_ids_are_fail_closed(tmp_path: Path) -> None:
+    wrong_count = _complete_evidence(tmp_path)
+    wrong_count["semantic_obligations"]["claim_rows"].pop()
+    with pytest.raises(Near100EvidenceError, match="exactly 316 claim rows"):
+        build_near100_scorecard(evidence=wrong_count, mode="final")
+
+    duplicate = _complete_evidence(tmp_path)
+    duplicate["semantic_obligations"]["card_module_rows"][1]["obligation_id"] = (
+        duplicate["semantic_obligations"]["card_module_rows"][0]["obligation_id"]
+    )
+    with pytest.raises(Near100EvidenceError, match="duplicate obligation IDs"):
+        build_near100_scorecard(evidence=duplicate, mode="final")
+
+
+def test_scorecard_document_uses_decimal_strings_and_stable_json(tmp_path: Path) -> None:
+    scorecard = build_near100_scorecard(
+        evidence=_complete_evidence(tmp_path), mode="final"
+    )
+
+    document = scorecard.to_document()
+    encoded = scorecard.to_json()
+
+    assert document["overall_score"] == "100"
+    assert document["metrics"][0]["score"] == "100"
+    assert document["metrics"][-1]["score"] is None
+    assert encoded == json.dumps(
+        document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+
+def test_cli_fails_closed_when_base_evidence_bundle_is_absent(tmp_path: Path) -> None:
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--mode",
+            "pre_cutover",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 2
+    assert payload["passed"] is False
+    assert payload["errors"] == [
+        f"base evidence bundle does not exist: {tmp_path / '.near100' / 'base-evidence.json'}"
+    ]
+
+
+def test_cli_reads_explicit_evidence_and_emits_one_json_document(tmp_path: Path) -> None:
+    evidence_path = tmp_path / ".near100" / "evidence.json"
+    evidence_path.parent.mkdir(exist_ok=True)
+    evidence_path.write_text(
+        json.dumps(_complete_evidence(tmp_path)), encoding="utf-8"
+    )
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence",
+            str(evidence_path),
+            "--mode",
+            "final",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert payload["passed"] is True
+    assert payload["version"] == "1.0.0"
+    assert payload["overall_score"] == "100"
+    assert completed.stdout.count("\n") == 1
+    assert completed.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "duplicate_scope",
+    ["top", "meta", "check_id", "check_field", "finding", "semantic_row"],
+)
+def test_cli_rejects_duplicate_json_keys_at_every_object_level(
+    tmp_path: Path, duplicate_scope: str
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+    raw = json.dumps(evidence, separators=(",", ":"))
+    if duplicate_scope == "top":
+        raw = '{"findings":{},' + raw[1:]
+    elif duplicate_scope == "meta":
+        raw = raw.replace(
+            '"producer":"hsconfig.release_gate.base_evidence"',
+            '"producer":"duplicate","producer":"hsconfig.release_gate.base_evidence"',
+            1,
+        )
+    elif duplicate_scope == "check_id":
+        raw = raw.replace(
+            '"checks":{', '"checks":{"contract_spine":{},', 1
+        )
+    elif duplicate_scope == "check_field":
+        raw = raw.replace('"passed":true', '"passed":false,"passed":true', 1)
+    elif duplicate_scope == "finding":
+        raw = raw.replace('"open_p0":0', '"open_p0":1,"open_p0":0', 1)
+    else:
+        raw = raw.replace(
+            '"obligation_id":"',
+            '"obligation_id":"duplicate","obligation_id":"',
+            1,
+        )
+    evidence_path = tmp_path / ".near100" / "duplicate.json"
+    evidence_path.parent.mkdir(exist_ok=True)
+    evidence_path.write_text(raw, encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(tmp_path),
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--evidence",
+            str(evidence_path),
+            "--mode",
+            "final",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "duplicate JSON key" in json.loads(completed.stdout)["errors"][0]
+
+
+def test_cli_pre_cutover_exits_zero_only_when_every_local_gate_passes(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path, mode="pre_cutover")
+    for check_id, owner in tuple(ATOMIC_CHECK_OWNERS.items()):
+        if owner == "github_repository_polish":
+            del evidence["checks"][check_id]
+    evidence_path = tmp_path / ".near100" / "evidence.json"
+    evidence_path.parent.mkdir(exist_ok=True)
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+    command = [
+        sys.executable,
+        str(script),
+        "--repo",
+        str(tmp_path),
+        "--outputs",
+        str(tmp_path / "outputs"),
+        "--evidence",
+        str(evidence_path),
+        "--mode",
+        "pre_cutover",
+        "--json",
+    ]
+
+    green = subprocess.run(command, check=False, capture_output=True, text=True)
+    _set_check_result(evidence, tmp_path, "version_consistency", passed=False)
+    evidence["checks"]["version_consistency"]["blocking_reasons"] = [
+        "version mismatch"
+    ]
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    red = subprocess.run(command, check=False, capture_output=True, text=True)
+
+    assert green.returncode == 0
+    assert json.loads(green.stdout)["passed"] is False
+    assert red.returncode == 1
+    assert json.loads(red.stdout)["passed"] is False
+
+
+def test_cli_binds_evidence_to_the_requested_repository(tmp_path: Path) -> None:
+    requested_repo = tmp_path / "requested"
+    other_repo = tmp_path / "other"
+    requested_repo.mkdir()
+    (requested_repo / "outputs").mkdir()
+    other_repo.mkdir()
+    evidence = _complete_evidence(other_repo)
+    evidence_path = requested_repo / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "check_near100_scorecard.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--repo",
+            str(requested_repo),
+            "--outputs",
+            str(requested_repo / "outputs"),
+            "--evidence",
+            str(evidence_path),
+            "--mode",
+            "final",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert json.loads(completed.stdout)["errors"] == [
+        "base evidence repository_root does not match --repo"
+    ]
