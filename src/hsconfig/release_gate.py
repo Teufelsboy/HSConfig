@@ -22,6 +22,8 @@ import sys
 import tarfile
 from tempfile import TemporaryDirectory
 import threading
+import time
+import tomllib
 from typing import Any, Literal
 import uuid
 import zipfile
@@ -188,9 +190,9 @@ _EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
                 "42ee3ed08885fb611c48c08e2c79a729ba7ede87449890d22b248998d7256c26",
             227:
                 "b09e213b1b3c5de6a10c926a918910c16492926bc537286f1149ab79cf95a0b0",
-        },
+    },
     "docs/operator/README.md": {
-        606: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
+        623: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
     },
     "src/hsconfig/cli_parser.py": {
         61: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
@@ -1083,7 +1085,20 @@ def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_Com
         _CommandSpec("contract_spine", (python, "-m", "hsconfig.cli", "contract-spine-sentinel", "--json"), 600),
         _CommandSpec("twelve_deck_acceptance", (python, "-m", "pytest", "tests/test_audited_deck_set_acceptance.py", "-q", "-p", "no:cacheprovider"), 1_800),
         _CommandSpec("contract_mutations", (python, str(root / "scripts" / "run_contract_mutations.py"), "--json"), 1_200),
-        _CommandSpec("dependency_audit", (python, "-m", "pip_audit"), 1_200),
+        _CommandSpec(
+            "dependency_audit",
+            (
+                python,
+                "-m",
+                "pip_audit",
+                "-r",
+                str(root / "constraints-ci.txt"),
+                "--strict",
+                "--progress-spinner",
+                "off",
+            ),
+            1_200,
+        ),
         _CommandSpec("distribution", (python, str(root / "scripts" / "verify_distribution.py"), "--json"), 1_200),
         _CommandSpec("twelve_deck_determinism", (python, str(root / "scripts" / "verify_twelve_decks.py"), "--build-inputs", str(build_inputs), "--json"), 1_800),
         _CommandSpec("publishable_path_scan", (*common_internal, "publishable_path_scan"), 1_800),
@@ -1197,6 +1212,8 @@ def _safe_detail(
 ) -> dict[str, Any]:
     details: dict[str, Any] = {"returncode": returncode}
     stripped = stdout.strip()
+    if stripped.startswith("[truncated sha256="):
+        raise ReleaseGateError("subprocess stdout exceeded bounded capture")
     if stripped:
         try:
             parsed = _load_json_bytes(stripped.encode("utf-8"), source="subprocess stdout")
@@ -1216,6 +1233,16 @@ def _safe_detail(
                 if not isinstance(reported, bool) or reported is not (returncode == 0):
                     raise ReleaseGateError(
                         "subprocess JSON passed value contradicts process return code"
+                    )
+            if isinstance(parsed, Mapping) and "returncode" in parsed:
+                nested_returncode = parsed.get("returncode")
+                if (
+                    isinstance(nested_returncode, bool)
+                    or not isinstance(nested_returncode, int)
+                    or nested_returncode != returncode
+                ):
+                    raise ReleaseGateError(
+                        "subprocess JSON returncode contradicts process return code"
                     )
             details["result"] = _portable_value(parsed)
     if stderr.strip():
@@ -1279,30 +1306,152 @@ class _BoundedCapture:
         return decoded
 
 
-def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    try:
+_GATED_LAUNCHER = (
+    "import json,os,subprocess,sys; header=bytearray(); "
+    "[(header.extend(chunk),None)[1] for chunk in iter(lambda:os.read(0,1),b'\\n')]; "
+    "argv=json.loads(header); "
+    "assert isinstance(argv,list) and argv and all(isinstance(x,str) for x in argv); "
+    "raise SystemExit(subprocess.run(argv,stdin=sys.stdin.buffer).returncode)"
+)
+
+
+def _linux_direct_children() -> set[int]:
+    if sys.platform != "linux":
+        return set()
+    children: set[int] = set()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text(encoding="ascii").split()
+            if len(fields) > 4 and int(fields[3]) == os.getpid():
+                children.add(int(entry.name))
+        except (OSError, UnicodeError, ValueError):
+            continue
+    return children
+
+
+class _ProcessTreeLease:
+    def __init__(self, process: subprocess.Popen[bytes], baseline: set[int]) -> None:
+        self.process = process
+        self.baseline = baseline
+        self.job_handle: int | None = None
         if os.name == "nt":
-            terminated = subprocess.run(
-                ("taskkill", "/PID", str(process.pid), "/T", "/F"),
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                shell=False,
-                timeout=30,
+            self._assign_windows_job()
+
+    def _assign_windows_job(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_uint64) for name in (
+                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
+            )]
+
+        class ExtendedLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BasicLimitInformation),
+                ("IoInfo", IoCounters),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.SetInformationJobObject.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        )
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        job = kernel32.CreateJobObjectW(None, None)
+        information = ExtendedLimitInformation()
+        information.BasicLimitInformation.LimitFlags = 0x00002000
+        if (
+            not job
+            or not kernel32.SetInformationJobObject(
+                job, 9, ctypes.byref(information), ctypes.sizeof(information)
             )
-            if terminated.returncode != 0 and process.poll() is None:
-                process.kill()
+            or not kernel32.AssignProcessToJobObject(
+                job, wintypes.HANDLE(int(self.process._handle))  # noqa: SLF001
+            )
+        ):
+            if job:
+                kernel32.CloseHandle(job)
+            raise OSError("subprocess job assignment failed")
+        self.job_handle = int(job)
+
+    def terminate_remaining(self) -> None:
+        if os.name == "nt":
+            if self.job_handle is not None:
+                import ctypes
+                from ctypes import wintypes
+
+                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+                kernel32.CloseHandle.restype = wintypes.BOOL
+                kernel32.CloseHandle(wintypes.HANDLE(self.job_handle))
+                self.job_handle = None
+            elif self.process.poll() is None:
+                self.process.kill()
         else:
-            os.killpg(process.pid, signal.SIGKILL)
-    except (OSError, subprocess.SubprocessError):
-        process.kill()
-    try:
-        process.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=30)
+            try:
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            if sys.platform == "linux":
+                for _ in range(4):
+                    escaped = _linux_direct_children() - self.baseline
+                    if not escaped:
+                        break
+                    for pid in escaped:
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    for pid in escaped:
+                        try:
+                            os.waitpid(pid, 0)
+                        except ChildProcessError:
+                            pass
+        if self.process.poll() is None:
+            self.process.kill()
+        try:
+            self.process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=30)
+
+
+def _enable_posix_subreaper() -> None:
+    if sys.platform != "linux":
+        return
+    import ctypes
+
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise OSError("subprocess subreaper setup failed")
 
 
 def _execute_bounded(
@@ -1390,11 +1539,11 @@ def _execute_bounded_process(
     timeout: int,
     stdin_data: bytes | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    platform_options: dict[str, Any]
-    if os.name == "nt":
-        platform_options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    else:
-        platform_options = {"start_new_session": True}
+    platform_options: dict[str, Any] = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
     stdout_capture: _BoundedCapture | None = None
     stderr_capture: _BoundedCapture | None = None
     capture_threads: tuple[threading.Thread, ...] = ()
@@ -1402,17 +1551,24 @@ def _execute_bounded_process(
     writer_errors: list[BaseException] = []
     writer: threading.Thread | None = None
     writer_started = False
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=dict(env),
-        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        shell=False,
-        **platform_options,
-    )
+    process: subprocess.Popen[bytes] | None = None
+    lease: _ProcessTreeLease | None = None
+    returncode = 2
+    if os.name != "nt":
+        _enable_posix_subreaper()
+    baseline = _linux_direct_children()
     try:
+        process = subprocess.Popen(
+            (sys.executable, "-c", _GATED_LAUNCHER),
+            cwd=cwd,
+            env=dict(env),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            **platform_options,
+        )
+        lease = _ProcessTreeLease(process, baseline)
         stdout_capture = _BoundedCapture()
         stderr_capture = _BoundedCapture()
         capture_threads = (
@@ -1420,11 +1576,17 @@ def _execute_bounded_process(
             threading.Thread(target=stderr_capture.drain, args=(process.stderr,), daemon=True),
         )
 
+        launch_payload = (
+            json.dumps(list(command), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            + b"\n"
+            + (stdin_data or b"")
+        )
+
         def write_stdin() -> None:
-            if process.stdin is None or stdin_data is None:
+            if process is None or process.stdin is None:
                 return
             try:
-                process.stdin.write(stdin_data)
+                process.stdin.write(launch_payload)
                 process.stdin.flush()
             except BrokenPipeError:
                 pass
@@ -1433,11 +1595,7 @@ def _execute_bounded_process(
             finally:
                 process.stdin.close()
 
-        writer = (
-            threading.Thread(target=write_stdin, daemon=True)
-            if stdin_data is not None
-            else None
-        )
+        writer = threading.Thread(target=write_stdin, daemon=True)
         if process.stdout is None or process.stderr is None:
             raise OSError("subprocess pipes unavailable")
         for thread in capture_threads:
@@ -1448,48 +1606,39 @@ def _execute_bounded_process(
                     started_capture_threads.append(thread)
                 raise
             started_capture_threads.append(thread)
-        if writer is not None:
-            try:
-                writer.start()
-            except BaseException:
-                writer_started = writer.is_alive()
-                raise
-            writer_started = True
+        try:
+            writer.start()
+        except BaseException:
+            writer_started = writer.is_alive()
+            raise
+        writer_started = True
         returncode = process.wait(timeout=timeout)
+        lease.terminate_remaining()
     except BaseException:
         try:
-            _terminate_process_tree(process)
+            if lease is not None:
+                lease.terminate_remaining()
+            elif process is not None and process.poll() is None:
+                process.kill()
+                process.wait(timeout=30)
         except BaseException:
             pass
         raise
     finally:
-        if writer is not None and writer_started:
-            try:
-                writer.join(timeout=30)
-            except BaseException:
-                pass
-        for thread in started_capture_threads:
-            try:
-                thread.join(timeout=30)
-            except BaseException:
-                pass
-        for stream in (process.stdin, process.stdout, process.stderr):
-            if stream is not None:
-                try:
-                    stream.close()
-                except BaseException:
-                    pass
-        try:
-            if writer is not None and writer_started and writer.is_alive():
-                writer.join(timeout=1)
-        except BaseException:
-            pass
-        for thread in started_capture_threads:
-            try:
-                if thread.is_alive():
-                    thread.join(timeout=1)
-            except BaseException:
-                pass
+        deadline = time.monotonic() + 30.0
+        joiners = ([writer] if writer is not None and writer_started else []) + started_capture_threads
+        for thread in joiners:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        alive = [thread for thread in joiners if thread.is_alive()]
+        if process is not None:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except BaseException:
+                        pass
+        if alive:
+            raise OSError("subprocess transport did not terminate before hard deadline")
     if writer_errors:
         raise OSError("subprocess stdin transport failed") from writer_errors[0]
     if stdout_capture is None or stderr_capture is None:
@@ -1511,12 +1660,22 @@ def _run_one(
     print(f"[release-gate] {spec.name}", file=sys.stderr, flush=True)
     environment = _controlled_environment(repository)
     try:
+        if spec.name == "dependency_audit":
+            _validate_selected_audit_projection(repository)
+        effective_stdin = stdin_data
+        if any(
+            Path(argument).name == "check_release_gate.py" for argument in spec.command
+        ) and "--internal-check" in spec.command:
+            sentinel = environment.get("HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL", "")
+            if re.fullmatch(r"[0-9a-f]{64}", sentinel) is None:
+                raise ReleaseGateError("internal release check channel is unavailable")
+            effective_stdin = sentinel.encode("ascii") + b"\n"
         completed = _execute_bounded(
             spec.command,
             cwd=repository,
             env=environment,
             timeout=spec.timeout,
-            stdin_data=stdin_data,
+            stdin_data=effective_stdin,
         )
     except subprocess.TimeoutExpired:
         return ReleaseCheck(
@@ -1566,6 +1725,56 @@ def _run_one(
         command=spec.command,
         details=details,
     )
+
+
+def _validate_selected_audit_projection(repository: Path) -> None:
+    minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    lock_path = repository / f"pylock.{minor}.toml"
+    constraints_path = repository / "constraints-ci.txt"
+    try:
+        lock_document = tomllib.loads(
+            _secure_read_bytes(
+                repository,
+                PurePosixPath(lock_path.name),
+                context="selected audit lock",
+            ).decode("utf-8")
+        )
+        constraints_source = _secure_read_bytes(
+            repository,
+            PurePosixPath(constraints_path.name),
+            context="selected audit projection",
+        ).decode("utf-8")
+    except (UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ReleaseGateError("selected audit graph cannot be parsed") from exc
+    packages = lock_document.get("packages")
+    if not isinstance(packages, list) or len(packages) != 43:
+        raise ReleaseGateError("selected audit lock must contain exactly 43 packages")
+    locked: dict[str, str] = {}
+    for row in packages:
+        if not isinstance(row, Mapping):
+            raise ReleaseGateError("selected audit lock package row is invalid")
+        name = row.get("name")
+        version = row.get("version")
+        if not isinstance(name, str) or not isinstance(version, str):
+            raise ReleaseGateError("selected audit lock package row is invalid")
+        identity = re.sub(r"[-_.]+", "-", name).casefold()
+        if identity in locked:
+            raise ReleaseGateError("selected audit lock contains duplicate package")
+        locked[identity] = version
+    projected: dict[str, str] = {}
+    for raw_line in constraints_source.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.fullmatch(r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;]+)", line)
+        if match is None:
+            raise ReleaseGateError("selected audit projection row is invalid")
+        identity = re.sub(r"[-_.]+", "-", match.group(1)).casefold()
+        if identity in projected:
+            raise ReleaseGateError("selected audit projection contains duplicate package")
+        projected[identity] = match.group(2)
+    if projected != locked:
+        raise ReleaseGateError("selected audit projection differs from selected lock")
 
 
 def _repository_identity(root: Path) -> str:

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import importlib
+import base64
+import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import sysconfig
+import time
 import tomllib
+import zipfile
 
+import pytest
 from pytest import MonkeyPatch
 
 
@@ -83,6 +91,83 @@ def _coverage_payload(
     }
 
 
+def _checker_document(*, passed: bool = True) -> dict[str, object]:
+    percent = 96.0 if passed else 89.0
+    return {
+        "passed": passed,
+        "global_branch_percent": percent,
+        "global_covered_branches": 96 if passed else 89,
+        "global_num_branches": 100,
+        "global_minimum": 90.0,
+        "target_met": passed,
+        "critical_modules": [
+            {
+                "module": module,
+                "statement_percent": 100.0,
+                "branch_percent": 100.0,
+                "missing_lines": [],
+                "missing_branches": [],
+            }
+            for module in CRITICAL_MODULES
+        ],
+        "errors": [] if passed else ["coverage below contract"],
+    }
+
+
+def _checker_document_at(percent: float) -> dict[str, object]:
+    passed = percent >= 90.0
+    document = _checker_document(passed=passed)
+    document["global_branch_percent"] = percent
+    document["global_covered_branches"] = round(percent * 100)
+    document["global_num_branches"] = 10_000
+    document["target_met"] = percent >= 95.0
+    return document
+
+
+@pytest.mark.parametrize(
+    ("covered", "total", "returncode", "passed", "target_met"),
+    ((17999, 20000, 1, False, False), (18999, 20000, 0, True, False)),
+)
+def test_forwarder_uses_exact_counts_at_rounded_contract_boundaries(
+    covered: int,
+    total: int,
+    returncode: int,
+    passed: bool,
+    target_met: bool,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    document = _checker_document(passed=passed)
+    document.update(
+        {
+            "global_branch_percent": round(covered * 100 / total, 2),
+            "global_covered_branches": covered,
+            "global_num_branches": total,
+            "target_met": target_met,
+            "errors": [] if passed else ["coverage below contract"],
+        }
+    )
+    result = subprocess.CompletedProcess(
+        ["checker"], returncode, stdout=json.dumps(document), stderr=""
+    )
+
+    assert runner._forward_checker_result(result) == returncode
+    assert json.loads(capsys.readouterr().out)["passed"] is passed
+
+
+def _lock_text(name: str = "locked-pkg", version: str = "1.0") -> str:
+    return (
+        'lock-version = "1.0"\n'
+        "[[packages]]\n"
+        f'name = "{name}"\n'
+        f'version = "{version}"\n'
+        "[[packages.wheels]]\n"
+        f'url = "https://example.invalid/{name}-{version}-py3-none-any.whl"\n'
+        "[packages.wheels.hashes]\n"
+        f'sha256 = "{"0" * 64}"\n'
+    )
+
+
 def _run_checker(path: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CHECKER), str(path)],
@@ -127,74 +212,70 @@ def test_pyproject_enforces_explicit_branch_coverage_policy() -> None:
 
 def test_coverage_runner_uses_unique_temp_directories_and_exact_gate(
     monkeypatch: MonkeyPatch,
+    capsys,
 ) -> None:
     runner = importlib.import_module("scripts.run_coverage_gate")
     calls: list[dict[str, object]] = []
-    checker_commands: list[list[str]] = []
-    coverage_json = ROOT / "coverage.json"
+    checker_commands: list[tuple[str, ...]] = []
     monkeypatch.setenv(
         "PYTEST_ADDOPTS",
         "--no-cov --cov-fail-under=0 --cov-config=other.toml",
     )
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if command[1:3] != ["-m", "pytest"]:
-            checker_commands.append(command)
-            return subprocess.CompletedProcess(command, 0)
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command[1:3] == ("-m", "pytest")
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         coverage_file = Path(str(environment["COVERAGE_FILE"]))
-        assert not coverage_json.exists()
-        coverage_json.write_text("fresh", encoding="utf-8")
+        report_argument = next(
+            argument for argument in command if argument.startswith("--cov-report=json:")
+        )
+        coverage_json = Path(report_argument.removeprefix("--cov-report=json:"))
+        coverage_json.write_text("{}", encoding="utf-8")
         calls.append(
             {
                 "command": command,
                 "cwd": kwargs["cwd"],
                 "coverage_file": coverage_file,
+                "coverage_json": coverage_json,
                 "directory_existed": coverage_file.parent.is_dir(),
                 "pytest_addopts_present": "PYTEST_ADDOPTS" in environment,
             }
         )
-        return subprocess.CompletedProcess(command, 0)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    def fake_checker(
+        command: tuple[str, ...], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        checker_commands.append(command)
+        assert kwargs["input_bytes"] == b"{}"
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(_checker_document()), stderr="")
 
-    try:
-        for _ in range(2):
-            coverage_json.write_text("stale", encoding="utf-8")
-            assert runner.main() == 0
-            assert not coverage_json.exists()
-    finally:
-        coverage_json.unlink(missing_ok=True)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+    monkeypatch.setattr(runner, "_run_checker_bounded", fake_checker)
 
-    expected_command = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "--cov=src/hsconfig",
-        "--cov-branch",
-        "--cov-config=pyproject.toml",
-        "--cov-fail-under=90",
-        "--cov-report=json:coverage.json",
-        "--cov-report=term-missing",
-        "-p",
-        "no:cacheprovider",
-    ]
-    assert [call["command"] for call in calls] == [expected_command, expected_command]
-    expected_checker = [
-        sys.executable,
-        str(ROOT / "scripts" / "check_coverage_contract.py"),
-        str(coverage_json),
-    ]
-    assert checker_commands == [expected_checker, expected_checker]
+    for _ in range(2):
+        assert runner.main() == 0
+    capsys.readouterr()
+
+    assert len(checker_commands) == 2
     assert all(call["cwd"] == ROOT for call in calls)
     coverage_files = [call["coverage_file"] for call in calls]
+    coverage_jsons = [call["coverage_json"] for call in calls]
     assert coverage_files[0] != coverage_files[1]
+    assert coverage_jsons[0] != coverage_jsons[1]
     assert all(path.is_absolute() for path in coverage_files)
     assert all(ROOT not in path.parents for path in coverage_files)
+    assert all(ROOT not in path.parents for path in coverage_jsons)
+    assert all(data.parent == report.parent for data, report in zip(
+        coverage_files, coverage_jsons, strict=True
+    ))
     assert all(call["directory_existed"] is True for call in calls)
     assert all(call["pytest_addopts_present"] is False for call in calls)
     assert all(not path.parent.exists() for path in coverage_files)
+    assert all(command[1:3] == ("-c", runner.CHECKER_BRIDGE) for command in checker_commands)
+    assert not (ROOT / "coverage.json").exists()
 
 
 def test_coverage_runner_propagates_failure_and_cleans_temp_directory(
@@ -202,32 +283,1039 @@ def test_coverage_runner_propagates_failure_and_cleans_temp_directory(
 ) -> None:
     runner = importlib.import_module("scripts.run_coverage_gate")
     captured: dict[str, object] = {}
-    coverage_json = ROOT / "coverage.json"
     calls = 0
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal calls
         calls += 1
-        assert command[1:3] == ["-m", "pytest"]
-        assert not coverage_json.exists()
+        assert command[1:3] == ("-m", "pytest")
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         captured["coverage_file"] = Path(str(environment["COVERAGE_FILE"]))
-        coverage_json.write_text("failed-run-report", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 7)
+        captured["coverage_json"] = Path(
+            next(
+                argument for argument in command if argument.startswith("--cov-report=json:")
+            ).removeprefix("--cov-report=json:")
+        )
+        captured["coverage_json"].write_text("failed-run-report", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 7, stdout="", stderr="")
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
 
-    try:
-        coverage_json.write_text("stale", encoding="utf-8")
-        assert runner.main() == 7
-        assert not coverage_json.exists()
-    finally:
-        coverage_json.unlink(missing_ok=True)
+    assert runner.main() == 2
     assert calls == 1
     coverage_file = captured["coverage_file"]
     assert isinstance(coverage_file, Path)
     assert not coverage_file.parent.exists()
+    assert not (ROOT / "coverage.json").exists()
+
+
+def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command[1:3] == ("-m", "pytest")
+        return subprocess.CompletedProcess(command, 7, stdout="", stderr="")
+
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+
+    assert runner.main() == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    assert json.loads(captured.out) == {
+        "critical_modules": [],
+            "errors": ["pytest coverage execution failed"],
+            "global_branch_percent": None,
+            "global_covered_branches": None,
+            "global_num_branches": None,
+        "global_minimum": 90.0,
+        "passed": False,
+        "returncode": 2,
+        "target_met": False,
+    }
+    assert captured.err == ""
+
+
+def test_coverage_runner_forwards_checker_failure_as_one_contradiction_free_json(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    checker_document = _checker_document(passed=False)
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command[1:3] == ("-m", "pytest")
+        report = Path(
+            next(
+                argument for argument in command if argument.startswith("--cov-report=json:")
+            ).removeprefix("--cov-report=json:")
+        )
+        report.write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    def fake_checker(
+        command: tuple[str, ...], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout=json.dumps(checker_document, sort_keys=True, separators=(",", ":")) + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+    monkeypatch.setattr(runner, "_run_checker_bounded", fake_checker)
+
+    assert runner.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    expected = dict(checker_document)
+    expected["returncode"] = 1
+    assert json.loads(captured.out) == expected
+    assert captured.err == ""
+
+
+def test_coverage_runner_emits_one_failure_json_when_a_subprocess_cannot_start(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del command, kwargs
+        raise OSError("local path must not leak")
+
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+
+    assert runner.main() == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    document = json.loads(captured.out)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["coverage subprocess execution failed"]
+    assert "local path must not leak" not in captured.out
+
+
+def test_coverage_runner_rejects_duplicate_checker_json_keys(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        0,
+        stdout='{"passed":false,"passed":true}\n',
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    document = json.loads(captured.out)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["coverage checker emitted invalid JSON"]
+
+
+def test_forwarded_checker_diagnostic_is_digest_only(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    local_path = str(ROOT / "private-checker-detail")
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        0,
+        stdout=json.dumps(_checker_document()) + "\n",
+        stderr=local_path,
+    )
+
+    assert runner._forward_checker_result(result) == 0
+    captured = capsys.readouterr()
+    assert local_path not in captured.err
+    assert "sha256=" in captured.err
+
+
+@pytest.mark.parametrize("constant", ("NaN", "Infinity", "-Infinity"))
+def test_coverage_runner_rejects_nonfinite_checker_json(
+    constant: str, capsys
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        0,
+        stdout=f'{{"passed":true,"value":{constant}}}\n',
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document["returncode"] == 2
+    assert document["errors"] == ["coverage checker emitted invalid JSON"]
+
+
+def test_coverage_runner_rejects_runtime_lock_mismatch_before_pytest(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / f"pylock.{sys.version_info.major}.{sys.version_info.minor}.toml"
+    lock.write_text(_lock_text("pytest", "0.0"), encoding="utf-8")
+    subprocess_called = False
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal subprocess_called
+        del args, kwargs
+        subprocess_called = True
+        raise AssertionError("pytest must not start after a runtime/lock mismatch")
+
+    monkeypatch.setattr(runner, "LOCK_FILE", lock, raising=False)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+
+    assert runner.main() == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["coverage runtime does not match project lock"]
+    assert subprocess_called is False
+
+
+def test_runtime_lock_rejects_a_second_visible_distribution_of_a_locked_package(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "pylock.toml"
+    lock.write_text(_lock_text(), encoding="utf-8")
+
+    class Distribution:
+        def __init__(self, version: str) -> None:
+            self.metadata = {"Name": "locked-pkg"}
+            self.version = version
+
+    monkeypatch.setattr(
+        runner.importlib_metadata,
+        "distributions",
+        lambda: (
+            Distribution("1.0"),
+            Distribution("1.0"),
+            type(
+                "LocalDistribution",
+                (),
+                {"metadata": {"Name": "hsconfig"}, "version": "1.0.0"},
+            )(),
+        ),
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="duplicate"):
+        runner._assert_runtime_matches_lock(lock)
+
+
+@pytest.mark.parametrize("kind", ("symlink", "hardlink"))
+def test_runtime_lock_rejects_linked_lock_files(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    target = tmp_path / "target.toml"
+    target.write_text(_lock_text("pytest"), encoding="utf-8")
+    lock = tmp_path / "pylock.toml"
+    if kind == "symlink":
+        try:
+            lock.symlink_to(target)
+        except OSError:
+            pytest.skip("symlinks unavailable")
+    else:
+        os.link(target, lock)
+
+    with pytest.raises(runner.RuntimeLockError, match="unsafe"):
+        runner._locked_versions(lock)
+
+
+def test_runtime_lock_preserves_exact_selected_wheel_url_and_sha256(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "pylock.toml"
+    lock.write_text(_lock_text("locked-pkg", "1.0"), encoding="utf-8")
+
+    assert runner._locked_wheels(lock) == {
+        "locked-pkg": {
+            ("https://example.invalid/locked-pkg-1.0-py3-none-any.whl", "0" * 64)
+        }
+    }
+
+
+def test_runtime_wheel_inventory_rejects_link_members(tmp_path: Path) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    wheel = tmp_path / "linked.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        info = zipfile.ZipInfo("package/link")
+        info.create_system = 3
+        info.external_attr = (0o120777 << 16)
+        archive.writestr(info, "outside")
+
+    with pytest.raises(runner.RuntimeLockError, match="inventory"):
+        runner._wheel_inventory(wheel.read_bytes())
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ("Lib/site-packages/extra.py", "Scripts/extra.exe", "Include/extra.h", "share/extra.dat"),
+)
+def test_runtime_tree_closure_rejects_unrecorded_payload_in_every_install_scheme(
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    environment = tmp_path / "environment"
+    payload = environment / Path(*relative.split("/"))
+    payload.parent.mkdir(parents=True)
+    payload.write_text("unrecorded", encoding="utf-8")
+
+    with pytest.raises(runner.RuntimeLockError, match="unrecorded"):
+        runner._assert_runtime_tree_closed(set(), environment)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or sys.maxsize <= 2**32,
+    reason="canonical lib64 venv link is Linux 64-bit infrastructure",
+)
+def test_runtime_tree_closure_allows_only_exact_linux_lib64_to_lib_link(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    environment = tmp_path / "environment"
+    library = environment / "lib"
+    library.mkdir(parents=True)
+    payload = library / "claimed.py"
+    payload.write_text("claimed", encoding="utf-8")
+    (environment / "lib64").symlink_to("lib", target_is_directory=True)
+
+    runner._assert_runtime_tree_closed({payload.resolve()}, environment)
+
+    (environment / "lib64").unlink()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (environment / "lib64").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(runner.RuntimeLockError, match="linked"):
+        runner._assert_runtime_tree_closed({payload.resolve()}, environment)
+
+
+def test_distribution_record_rejects_original_symlink_before_resolution(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    environment = tmp_path / "environment"
+    root = environment / "Lib" / "site-packages"
+    dist_info = root / "example-1.0.dist-info"
+    dist_info.mkdir(parents=True)
+    target = environment / "target.py"
+    target.write_text("payload", encoding="utf-8")
+    linked = root / "example.py"
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    digest = hashlib.sha256(target.read_bytes()).digest()
+    encoded = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+    record = f"example.py,sha256={encoded},{target.stat().st_size}\nexample-1.0.dist-info/RECORD,,\n"
+
+    class Distribution:
+        def read_text(self, filename: str) -> str | None:
+            return {
+                "INSTALLER": "pip\n",
+                "WHEEL": "Wheel-Version: 1.0\n",
+                "RECORD": record,
+                "direct_url.json": None,
+            }.get(filename)
+
+        def locate_file(self, filename: str) -> Path:
+            del filename
+            return root
+
+    monkeypatch.setattr(
+        runner.sysconfig,
+        "get_paths",
+        lambda: {"purelib": str(root), "platlib": str(root), "scripts": str(environment / "Scripts")},
+    )
+    monkeypatch.setattr(runner.sys, "prefix", str(environment))
+
+    with pytest.raises(runner.RuntimeLockError, match="unverifiable"):
+        runner._assert_distribution_origin(Distribution(), local_project=False)
+
+
+def test_runtime_lock_detects_replacement_during_read(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "pylock.toml"
+    lock.write_text(_lock_text("pytest"), encoding="utf-8")
+    original_read = runner.os.read
+    swapped = False
+
+    def replacing_read(descriptor: int, size: int) -> bytes:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            original = tmp_path / "original.toml"
+            lock.rename(original)
+            lock.write_text(_lock_text("pytest", "2.0"), encoding="utf-8")
+            lock.unlink()
+            original.rename(lock)
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(runner.os, "read", replacing_read)
+
+    with pytest.raises(runner.RuntimeLockError, match="project lock"):
+        runner._locked_versions(lock)
+
+
+def test_coverage_run_uses_unique_external_paths_and_isolates_plugins() -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+
+    with runner.isolated_coverage_environment() as first:
+        with runner.isolated_coverage_environment() as second:
+            assert first.run_root != second.run_root
+            assert first.coverage_data == first.run_root / ".coverage"
+            assert first.coverage_json == first.run_root / "coverage.json"
+            assert second.coverage_data == second.run_root / ".coverage"
+            assert second.coverage_json == second.run_root / "coverage.json"
+            assert ROOT not in first.run_root.parents
+            assert ROOT not in second.run_root.parents
+            assert first.environment["PYTHONNOUSERSITE"] == "1"
+            assert first.environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+            assert first.environment["PYTEST_PLUGINS"] == (
+                "pytest_cov.plugin,_hypothesis_pytestplugin"
+            )
+        assert not second.run_root.exists()
+    assert not first.run_root.exists()
+
+
+@pytest.mark.parametrize("kind", ("directory", "symlink", "hardlink"))
+def test_coverage_report_validation_rejects_unsafe_file_types(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    report = run_root / "coverage.json"
+    if kind == "directory":
+        report.mkdir()
+    elif kind == "symlink":
+        target = run_root / "target.json"
+        target.write_text("{}", encoding="utf-8")
+        try:
+            report.symlink_to(target)
+        except OSError:
+            pytest.skip("symlinks unavailable")
+    else:
+        target = run_root / "target.json"
+        target.write_text("{}", encoding="utf-8")
+        os.link(target, report)
+
+    with pytest.raises(runner.CoverageGateError, match="coverage report"):
+        runner._coverage_report_identity(run_root, report)
+
+
+def test_coverage_report_identity_detects_replacement_race(tmp_path: Path) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    report = run_root / "coverage.json"
+    report.write_text("{}", encoding="utf-8")
+    identity = runner._coverage_report_identity(run_root, report)
+    report.unlink()
+    report.write_text('{"changed":true}', encoding="utf-8")
+
+    with pytest.raises(runner.CoverageGateError, match="changed"):
+        runner._assert_coverage_report_unchanged(run_root, report, identity)
+
+
+def test_coverage_report_validation_rejects_run_directory_replacement(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    root_identity = runner._coverage_directory_identity(run_root)
+    original = tmp_path / "original"
+    run_root.rename(original)
+    run_root.mkdir()
+    report = run_root / "coverage.json"
+    report.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(runner.CoverageGateError, match="directory changed"):
+        runner._coverage_report_identity(run_root, report, root_identity)
+
+
+def test_checker_timeout_is_bounded_redacted_and_normalized(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    local_path = str(ROOT / "private-diagnostic")
+    command = (
+        sys.executable,
+        "-c",
+        "import sys,time; "
+        f"sys.stderr.write({local_path!r}); sys.stderr.flush(); time.sleep(30)",
+    )
+
+    result = runner._run_checker_bounded(
+        command,
+        cwd=ROOT,
+        env=os.environ,
+        timeout=1,
+    )
+
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["returncode"] == 2
+    diagnostic = capsys.readouterr().err
+    assert local_path not in diagnostic
+    assert "sha256=" in diagnostic
+
+    assert runner._forward_checker_result(result) == 2
+    forwarded = json.loads(capsys.readouterr().out)
+    assert forwarded["errors"] == ["coverage checker timed out"]
+    assert forwarded["returncode"] == 2
+
+
+def test_checker_large_diagnostics_are_bounded_and_redacted(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    result = runner._run_checker_bounded(
+        (
+            sys.executable,
+            "-c",
+            "import json,sys; sys.stderr.write('x'*200000); "
+            "print(json.dumps({'passed': True}))",
+        ),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=30,
+    )
+
+    assert result.returncode == 0
+    assert len(result.stdout) < 70_000
+    diagnostic = capsys.readouterr().err
+    assert "sha256=" in diagnostic
+    assert len(diagnostic) < 500
+
+
+def test_checker_oversized_stdout_becomes_one_portable_failure_json(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    result = runner._run_checker_bounded(
+        (
+            sys.executable,
+            "-c",
+            "import json; print('x'*200000, end=''); "
+            "print(json.dumps({'passed': True}))",
+        ),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=30,
+    )
+
+    assert result.returncode == 2
+    assert runner._forward_checker_result(result) == 2
+    output = capsys.readouterr().out
+    assert output.count("\n") == 1
+    document = json.loads(output)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["coverage checker stdout exceeded limit"]
+
+
+def test_checker_valid_success_followed_by_read_error_fails_closed(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+
+    class Stream:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def read(self, _size: int = -1) -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                return (json.dumps(_checker_document(passed=True)) + "\n").encode()
+            raise OSError("injected read failure")
+
+    stdout = runner._BoundedCapture()
+    stdout.drain(Stream())
+    stderr = runner._BoundedCapture()
+    bounded = runner._BoundedResult(
+        completed=subprocess.CompletedProcess(
+            (sys.executable,), 0, stdout=stdout.text(), stderr=""
+        ),
+        timed_out=False,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    monkeypatch.setattr(runner, "_run_bounded_process", lambda *_a, **_k: bounded)
+
+    result = runner._run_checker_bounded(
+        (sys.executable,), cwd=ROOT, env=os.environ, timeout=30
+    )
+
+    assert stdout.error is not None
+    assert result.returncode == 2
+    assert runner._forward_checker_result(result) == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document["errors"] == ["coverage checker stdout read failed"]
+    assert document["returncode"] == 2
+
+
+def test_pytest_capture_read_error_cannot_preserve_success_exit(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    stdout = runner._BoundedCapture()
+    stdout.error = OSError("injected read failure")
+    stderr = runner._BoundedCapture()
+    bounded = runner._BoundedResult(
+        completed=subprocess.CompletedProcess(
+            (sys.executable,), 0, stdout="valid-looking success", stderr=""
+        ),
+        timed_out=False,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    monkeypatch.setattr(runner, "_run_bounded_process", lambda *_a, **_k: bounded)
+
+    result = runner._run_pytest_bounded(
+        (sys.executable,), cwd=ROOT, env=os.environ
+    )
+
+    assert result.returncode == 2
+
+
+@pytest.mark.parametrize(
+    ("child_returncode", "child_passed", "wrapper_returncode"),
+    [(0, True, 0), (1, False, 1), (9, False, 2), (-9, False, 2)],
+)
+def test_checker_exit_codes_are_normalized_with_matching_nested_returncode(
+    child_returncode: int,
+    child_passed: bool,
+    wrapper_returncode: int,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    checker_payload = (
+        _checker_document(passed=child_passed)
+        if child_returncode in {0, 1}
+        else {
+            "passed": False,
+            "global_branch_percent": None,
+            "global_minimum": 90.0,
+            "target_met": False,
+            "critical_modules": [],
+            "errors": ["execution failed"],
+        }
+    )
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        child_returncode,
+        stdout=json.dumps(checker_payload) + "\n",
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == wrapper_returncode
+    output = capsys.readouterr().out
+    assert output.count("\n") == 1
+    document = json.loads(output)
+    assert document["passed"] is (wrapper_returncode == 0)
+    assert document["returncode"] == wrapper_returncode
+
+
+def test_checker_capture_thread_baseexception_is_reraised_after_child_cleanup(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    real_thread = runner.threading.Thread
+    created = 0
+
+    def thread_factory(*args: object, **kwargs: object):
+        nonlocal created
+        created += 1
+        thread = real_thread(*args, **kwargs)
+        if created == 2:
+            def interrupt() -> None:
+                raise KeyboardInterrupt
+
+            thread.start = interrupt
+        return thread
+
+    monkeypatch.setattr(runner.threading, "Thread", thread_factory)
+
+    with pytest.raises(KeyboardInterrupt):
+        runner._run_checker_bounded(
+            (sys.executable, "-c", "import time; time.sleep(30)"),
+            cwd=ROOT,
+            env=os.environ,
+            timeout=30,
+        )
+
+
+def test_checker_capture_is_read_only_after_drain_threads_finish(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    original_drain = runner._BoundedCapture.drain
+
+    def delayed_drain(capture, stream) -> None:
+        time.sleep(0.2)
+        original_drain(capture, stream)
+
+    monkeypatch.setattr(runner._BoundedCapture, "drain", delayed_drain)
+
+    result = runner._run_checker_bounded(
+        (
+            sys.executable,
+            "-c",
+            "import json; print(json.dumps({'passed': True}))",
+        ),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=30,
+    )
+
+    assert json.loads(result.stdout) == {"passed": True}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing_key", "extra_key", "wrong_module", "wrong_threshold", "wrong_type"),
+)
+def test_forwarder_requires_the_closed_coverage_checker_schema(
+    mutation: str,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    document = _checker_document()
+    if mutation == "missing_key":
+        document.pop("errors")
+    elif mutation == "extra_key":
+        document["unexpected"] = True
+    elif mutation == "wrong_module":
+        document["critical_modules"][0]["module"] = "src/hsconfig/not-critical.py"
+    elif mutation == "wrong_threshold":
+        document["global_minimum"] = 0.0
+    else:
+        document["critical_modules"][0]["statement_percent"] = "100"
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        0,
+        stdout=json.dumps(document) + "\n",
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == 2
+    assert json.loads(capsys.readouterr().out)["returncode"] == 2
+
+
+@pytest.mark.parametrize(
+    ("percent", "returncode", "target_met"),
+    (
+        (89.99, 1, False),
+        (90.0, 0, False),
+        (94.99, 0, False),
+        (95.0, 0, True),
+        (100.0, 0, True),
+    ),
+)
+def test_forwarder_enforces_coverage_threshold_boundaries(
+    percent: float,
+    returncode: int,
+    target_met: bool,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    document = _checker_document_at(percent)
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        returncode,
+        stdout=json.dumps(document) + "\n",
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == returncode
+    emitted = json.loads(capsys.readouterr().out)
+    assert emitted["global_branch_percent"] == percent
+    assert emitted["target_met"] is target_met
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("target", "passed", "errors", "row_percent", "null_row"),
+)
+def test_forwarder_rejects_semantically_contradictory_checker_documents(
+    mutation: str,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    document = _checker_document_at(95.0)
+    returncode = 0
+    if mutation == "target":
+        document["target_met"] = False
+    elif mutation == "passed":
+        document["passed"] = False
+        returncode = 1
+    elif mutation == "errors":
+        document["errors"] = ["invented failure"]
+    elif mutation == "row_percent":
+        document["critical_modules"][0]["statement_percent"] = 99.0
+    else:
+        document["critical_modules"][0]["statement_percent"] = None
+    result = subprocess.CompletedProcess(
+        ["checker"],
+        returncode,
+        stdout=json.dumps(document) + "\n",
+        stderr="",
+    )
+
+    assert runner._forward_checker_result(result) == 2
+    assert json.loads(capsys.readouterr().out)["returncode"] == 2
+
+
+def test_runtime_lock_rejects_every_unlocked_visible_distribution(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "pylock.toml"
+    lock.write_text(_lock_text(), encoding="utf-8")
+
+    class Distribution:
+        def __init__(self, name: str) -> None:
+            self.metadata = {"Name": name}
+            self.version = "1.0"
+
+    monkeypatch.setattr(
+        runner.importlib_metadata,
+        "distributions",
+        lambda: (
+            Distribution("locked-pkg"),
+            Distribution("hsconfig"),
+            Distribution("unlocked-extra"),
+        ),
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="package set"):
+        runner._assert_runtime_matches_lock(lock)
+
+
+def test_runtime_lock_rejects_same_version_distribution_with_wrong_origin(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "pylock.toml"
+    lock.write_text(_lock_text(), encoding="utf-8")
+
+    class Distribution:
+        version = "1.0"
+
+        def __init__(self, name: str, direct_url: str | None = None) -> None:
+            self.metadata = {"Name": name}
+            self.direct_url = direct_url
+
+        def read_text(self, filename: str) -> str | None:
+            if filename == "INSTALLER":
+                return "pip\n"
+            if filename == "WHEEL":
+                return "Wheel-Version: 1.0\n"
+            if filename == "RECORD":
+                return "package.py,,\n"
+            if filename == "direct_url.json":
+                return self.direct_url
+            return None
+
+        def locate_file(self, filename: str) -> Path:
+            del filename
+            return Path(sysconfig.get_paths()["purelib"])
+
+    monkeypatch.setattr(
+        runner.importlib_metadata,
+        "distributions",
+        lambda: (
+            Distribution("locked-pkg", '{"url":"https://wrong.invalid/pkg.whl"}'),
+            Distribution("hsconfig", json.dumps({"dir_info": {}, "url": ROOT.as_uri()})),
+        ),
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="origin"):
+        runner._assert_runtime_matches_lock(lock)
+
+
+def test_checker_consumes_bound_coverage_bytes_and_detects_swap_restore(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    report = _write_coverage(run_root, _coverage_payload())
+    run_identity = runner._coverage_directory_identity(run_root)
+    identity = runner._coverage_report_identity(run_root, report, run_identity)
+    original = run_root / "original.json"
+    report.rename(original)
+    report.write_text(json.dumps({"forged": True}), encoding="utf-8")
+    report.unlink()
+    original.rename(report)
+
+    result = runner._run_checker_bounded(
+        runner._checker_command(),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=30,
+        input_bytes=identity.content,
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["passed"] is True
+    with pytest.raises(runner.CoverageGateError, match="changed"):
+        runner._assert_coverage_report_unchanged(
+            run_root,
+            report,
+            identity,
+            run_identity,
+        )
+
+
+@pytest.mark.parametrize("parent_returncode", (0, 1))
+def test_checker_kills_descendants_even_after_parent_exits(
+    tmp_path: Path,
+    parent_returncode: int,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    marker = tmp_path / f"descendant-{parent_returncode}.txt"
+    child = (
+        "import pathlib,time; time.sleep(2); "
+        f"pathlib.Path({str(marker)!r}).write_text('escaped', encoding='utf-8')"
+    )
+    parent = (
+        "import subprocess,sys; "
+        f"subprocess.Popen([sys.executable,'-c',{child!r}]); "
+        f"raise SystemExit({parent_returncode})"
+    )
+
+    result = runner._run_checker_bounded(
+        (sys.executable, "-c", parent),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=10,
+    )
+
+    assert result.returncode == parent_returncode
+    time.sleep(3)
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal return codes only")
+def test_checker_kills_descendants_after_parent_signal(tmp_path: Path) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    marker = tmp_path / "signal-descendant.txt"
+    child = (
+        "import pathlib,time; time.sleep(2); "
+        f"pathlib.Path({str(marker)!r}).write_text('escaped', encoding='utf-8')"
+    )
+    parent = (
+        "import os,signal,subprocess,sys; "
+        f"subprocess.Popen([sys.executable,'-c',{child!r}]); "
+        "os.kill(os.getpid(), signal.SIGTERM)"
+    )
+
+    result = runner._run_checker_bounded(
+        (sys.executable, "-c", parent),
+        cwd=ROOT,
+        env=os.environ,
+        timeout=10,
+    )
+
+    assert result.returncode < 0
+    time.sleep(3)
+    assert not marker.exists()
+
+
+def test_coverage_cleanup_preserves_replacement_and_removes_owned_root(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    replacement: Path | None = None
+    stolen: Path | None = None
+
+    with pytest.raises(runner.CoverageGateError, match="replaced"):
+        with runner.isolated_coverage_environment() as run:
+            stolen = tmp_path / "stolen-owned-root"
+            run.run_root.rename(stolen)
+            run.run_root.mkdir()
+            replacement = run.run_root / "external-marker.txt"
+            replacement.write_text("do not delete", encoding="utf-8")
+
+    assert stolen is not None and not stolen.exists()
+    assert replacement is not None and replacement.read_text(encoding="utf-8") == "do not delete"
+    shutil.rmtree(replacement.parent)
+
+
+def test_coverage_environment_setup_is_failure_atomic_for_baseexception(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    real_mkdtemp = runner.tempfile.mkdtemp
+    real_mkdir = Path.mkdir
+    created: Path | None = None
+
+    def recording_mkdtemp(*args: object, **kwargs: object) -> str:
+        nonlocal created
+        created = Path(real_mkdtemp(*args, **kwargs))
+        return str(created)
+
+    def interrupting_mkdir(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name == "pytest-temp":
+            raise KeyboardInterrupt
+        real_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", recording_mkdtemp)
+    monkeypatch.setattr(Path, "mkdir", interrupting_mkdir)
+
+    with pytest.raises(KeyboardInterrupt):
+        with runner.isolated_coverage_environment():
+            raise AssertionError("setup must not yield")
+
+    assert created is not None and not created.exists()
+
+
+def test_pytest_transport_redacts_and_bounds_all_output(capsys) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    local_path = str(ROOT / "private-pytest-diagnostic")
+
+    result = runner._run_pytest_bounded(
+        (
+            sys.executable,
+            "-c",
+            "import sys; "
+            f"sys.stdout.write({local_path!r} + 'x'*200000); "
+            f"sys.stderr.write({local_path!r} + 'y'*200000)",
+        ),
+        cwd=ROOT,
+        env=os.environ,
+    )
+
+    assert result.returncode == 0
+    captured = capsys.readouterr()
+    assert local_path not in captured.err
+    assert captured.out == ""
+    assert captured.err.count("sha256=") == 2
+    assert len(captured.err) < 600
 
 
 def test_coverage_runner_cleans_temp_directory_when_interrupted(
@@ -235,17 +1323,16 @@ def test_coverage_runner_cleans_temp_directory_when_interrupted(
 ) -> None:
     runner = importlib.import_module("scripts.run_coverage_gate")
     captured: dict[str, Path] = {}
-    coverage_json = ROOT / "coverage.json"
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         del command
         environment = kwargs["env"]
         assert isinstance(environment, dict)
         captured["coverage_file"] = Path(str(environment["COVERAGE_FILE"]))
-        coverage_json.write_text("partial-report", encoding="utf-8")
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
 
     try:
         try:
@@ -254,9 +1341,8 @@ def test_coverage_runner_cleans_temp_directory_when_interrupted(
             pass
         else:
             raise AssertionError("KeyboardInterrupt was not propagated")
-        assert not coverage_json.exists()
     finally:
-        coverage_json.unlink(missing_ok=True)
+        pass
     assert not captured["coverage_file"].parent.exists()
 
 
@@ -264,57 +1350,64 @@ def test_coverage_runner_propagates_checker_failure_and_cleans_report(
     monkeypatch: MonkeyPatch,
 ) -> None:
     runner = importlib.import_module("scripts.run_coverage_gate")
-    coverage_json = ROOT / "coverage.json"
-    commands: list[list[str]] = []
     coverage_file: Path | None = None
+    coverage_json: Path | None = None
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal coverage_file
-        commands.append(command)
-        if command[1:3] == ["-m", "pytest"]:
-            environment = kwargs["env"]
-            assert isinstance(environment, dict)
-            coverage_file = Path(str(environment["COVERAGE_FILE"]))
-            coverage_json.write_text("fresh", encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0)
-        assert coverage_json.is_file()
-        return subprocess.CompletedProcess(command, 9)
+        nonlocal coverage_json
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        coverage_file = Path(str(environment["COVERAGE_FILE"]))
+        coverage_json = Path(
+            next(
+                argument for argument in command if argument.startswith("--cov-report=json:")
+            ).removeprefix("--cov-report=json:")
+        )
+        coverage_json.write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    def fake_checker(
+        command: tuple[str, ...], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            command,
+            9,
+            stdout='{"passed":false}\n',
+            stderr="",
+        )
 
-    try:
-        assert runner.main() == 9
-        assert not coverage_json.exists()
-    finally:
-        coverage_json.unlink(missing_ok=True)
-    assert len(commands) == 2
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
+    monkeypatch.setattr(runner, "_run_checker_bounded", fake_checker)
+
+    assert runner.main() == 2
     assert coverage_file is not None
     assert not coverage_file.parent.exists()
+    assert coverage_json is not None
+    assert not coverage_json.parent.exists()
 
 
 def test_coverage_runner_rejects_temp_root_inside_repository_before_subprocess(
     monkeypatch: MonkeyPatch,
 ) -> None:
     runner = importlib.import_module("scripts.run_coverage_gate")
-    coverage_json = ROOT / "coverage.json"
     subprocess_called = False
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal subprocess_called
         del command, kwargs
         subprocess_called = True
         raise AssertionError("subprocess must not run for an unsafe temp root")
 
     monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(ROOT / "temp"))
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
 
-    try:
-        coverage_json.write_text("stale", encoding="utf-8")
-        assert runner.main() == 2
-        assert not coverage_json.exists()
-    finally:
-        coverage_json.unlink(missing_ok=True)
+    assert runner.main() == 2
     assert subprocess_called is False
+    assert not (ROOT / "coverage.json").exists()
 
 
 def test_coverage_runner_environment_is_inherited_and_writable_without_temp_vars(
@@ -355,12 +1448,12 @@ evidence["actual_exists_after_erase"] = actual.exists()
 print(json.dumps(evidence, sort_keys=True))
 """
 
-    with runner.isolated_coverage_environment() as environment:
-        coverage_file = Path(environment["COVERAGE_FILE"])
+    with runner.isolated_coverage_environment() as run:
+        coverage_file = Path(run.environment["COVERAGE_FILE"])
         result = subprocess.run(
             [sys.executable, "-c", script],
             cwd=ROOT,
-            env=environment,
+            env=run.environment,
             check=False,
             capture_output=True,
             text=True,

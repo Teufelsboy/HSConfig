@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import hashlib
+import importlib.util
 from itertools import product
 import json
 import os
@@ -22,6 +23,7 @@ import yaml
 
 from hsconfig.release_gate import (
     CHECK_NAMES,
+    _CommandSpec,
     ReleaseCheck,
     ReleaseGateError,
     ReleaseGateResult,
@@ -45,6 +47,7 @@ from hsconfig.release_gate import (
     _shannon_entropy,
     _stage_tracked_source,
     _text_violations,
+    _validate_selected_audit_projection,
     _validate_repository,
     check_repository_hygiene,
     run_release_gate,
@@ -56,6 +59,10 @@ from hsconfig.semantic_inventory import canonical_semantic_claim
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_release_gate.py"
+_BOOTSTRAP_SPEC = importlib.util.spec_from_file_location("hsconfig_release_bootstrap", SCRIPT)
+assert _BOOTSTRAP_SPEC is not None and _BOOTSTRAP_SPEC.loader is not None
+BOOTSTRAP = importlib.util.module_from_spec(_BOOTSTRAP_SPEC)
+_BOOTSTRAP_SPEC.loader.exec_module(BOOTSTRAP)
 EXPECTED_CHECKS = (
     "ruff",
     "full_tests_and_coverage",
@@ -539,6 +546,842 @@ def test_bounded_subprocess_capture_digests_oversized_output(tmp_path: Path) -> 
     assert "truncated sha256=" in completed.stdout
 
 
+@pytest.mark.parametrize("returncode", (0, 7))
+def test_run_one_preserves_single_json_stdout_with_oversized_stderr(
+    tmp_path: Path, returncode: int
+) -> None:
+    child = (
+        "import json,sys; "
+        "sys.stderr.write('diagnostic-' + 'x' * 70000); "
+        f"print(json.dumps({{'passed': {returncode == 0!r}, 'probe': 'bounded'}})); "
+        f"raise SystemExit({returncode})"
+    )
+
+    result = _run_one(
+        _CommandSpec("bounded_json_probe", (sys.executable, "-c", child), 30),
+        repository=tmp_path,
+    )
+
+    assert result.passed is (returncode == 0)
+    assert result.details["returncode"] == returncode
+    assert result.details["result"] == {
+        "passed": returncode == 0,
+        "probe": "bounded",
+    }
+    assert len(result.details["stderr_sha256"]) == 64
+
+
+def test_run_one_rejects_truncated_stdout_before_it_can_masquerade_as_json(
+    tmp_path: Path,
+) -> None:
+    child = (
+        "import json; "
+        "print('x' * 70000, end=''); "
+        "print(json.dumps({'passed': True}))"
+    )
+
+    result = _run_one(
+        _CommandSpec("truncated_stdout_probe", (sys.executable, "-c", child), 30),
+        repository=tmp_path,
+    )
+
+    assert result.passed is False
+    assert result.details == {
+        "returncode": 0,
+        "error": "subprocess stdout exceeded bounded capture",
+    }
+
+
+def test_dependency_audit_command_uses_the_exact_project_lock() -> None:
+    command = next(
+        spec.command
+        for spec in _command_specs(ROOT, ROOT / "outputs", "working-pre-cutover")
+        if spec.name == "dependency_audit"
+    )
+
+    assert command == (
+        sys.executable,
+        "-m",
+        "pip_audit",
+        "-r",
+        str(ROOT / "constraints-ci.txt"),
+        "--strict",
+        "--progress-spinner",
+        "off",
+    )
+
+
+def test_selected_audit_projection_is_exactly_the_43_package_minor_lock() -> None:
+    _validate_selected_audit_projection(ROOT)
+
+
+def test_selected_audit_projection_rejects_a_combined_86_package_graph(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    shutil.copy2(ROOT / "pylock.3.11.toml", repository / "pylock.3.11.toml")
+    constraints = (ROOT / "constraints-ci.txt").read_text(encoding="utf-8")
+    (repository / "constraints-ci.txt").write_text(
+        constraints + constraints,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReleaseGateError, match="duplicate|differs"):
+        _validate_selected_audit_projection(repository)
+
+
+def test_bootstrap_pip_uses_the_exact_locked_wheel_before_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    python = tmp_path / "environment" / "Scripts" / "python.exe"
+    calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
+    downloads: list[tuple[str, Path, str]] = []
+    wheel = {
+        "name": "pip-99-py3-none-any.whl",
+        "url": "https://example.invalid/pip-99.whl",
+        "sha256": "a" * 64,
+    }
+    rows = {("pip", "99"): {"name": "pip", "version": "99", "wheels": [wheel]}}
+
+    def download(url: str, destination: Path, digest: str) -> None:
+        downloads.append((url, destination, digest))
+        with zipfile.ZipFile(destination, "w") as archive:
+            archive.writestr("pip/__init__.py", "")
+
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_download",
+        download,
+    )
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_run",
+        lambda command, *, cwd, env: calls.append((command, cwd, dict(env))),
+    )
+
+    BOOTSTRAP._bootstrap_pip(python, rows, tmp_path, {"SAFE": "1"})
+
+    destination = tmp_path / wheel["name"]
+    assert downloads == [(wheel["url"], destination, wheel["sha256"])]
+    assert calls == [
+        (
+            (
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--no-index",
+                "--no-deps",
+                "--force-reinstall",
+                str(destination),
+            ),
+            tmp_path,
+            {"SAFE": "1"},
+        )
+    ]
+
+
+def test_bootstrap_cleanup_retries_interruption_without_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bootstrap"
+    root.mkdir()
+    (root / "payload.txt").write_text("owned", encoding="utf-8")
+    metadata = root.lstat()
+    identity = (metadata.st_dev, metadata.st_ino)
+    real_delete = BOOTSTRAP._delete_owned_bootstrap_tree
+    attempts = 0
+    interruption = KeyboardInterrupt("cleanup interrupted")
+
+    def interrupt_once(path: Path, expected: tuple[int, int]) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise interruption
+        real_delete(path, expected)
+
+    monkeypatch.setattr(BOOTSTRAP, "_delete_owned_bootstrap_tree", interrupt_once)
+
+    with pytest.raises(KeyboardInterrupt) as captured:
+        BOOTSTRAP._cleanup_bootstrap_root(root, identity)
+
+    assert captured.value is interruption
+    assert attempts == 2
+    assert not root.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction semantics")
+def test_bootstrap_cleanup_deletes_junction_not_external_target(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "marker.txt"
+    marker.write_text("preserve", encoding="utf-8")
+    root = tmp_path / "bootstrap"
+    root.mkdir()
+    junction = root / "junction"
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip("junction creation unavailable")
+    metadata = root.lstat()
+
+    BOOTSTRAP._cleanup_bootstrap_root(root, (metadata.st_dev, metadata.st_ino))
+
+    assert marker.read_text(encoding="utf-8") == "preserve"
+    assert not root.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction semantics")
+def test_bootstrap_bound_read_rejects_junction_parent(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "manifest.json").write_text("{}", encoding="utf-8")
+    junction = tmp_path / "junction"
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip("junction creation unavailable")
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="unsafe"):
+        BOOTSTRAP._read_bound(junction / "manifest.json")
+
+
+def test_second_pip_report_may_omit_the_separately_bootstrapped_pip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pip_wheel = tmp_path / "pip.whl"
+    with zipfile.ZipFile(pip_wheel, "w") as archive:
+        archive.writestr("pip/__init__.py", "")
+    pip_artifact = {
+        "name": "pip",
+        "version": "99",
+        "url": "https://example.invalid/pip.whl",
+        "sha256": "a" * 64,
+        "wheel_path": str(pip_wheel),
+        "files": BOOTSTRAP._wheel_inventory(pip_wheel),
+    }
+    rows = {
+        ("pip", "99"): {
+            "name": "pip",
+            "version": "99",
+            "wheels": [{"name": "pip.whl", "url": pip_artifact["url"], "sha256": "a" * 64}],
+        },
+        ("example", "1"): {
+            "name": "example",
+            "version": "1",
+            "wheels": [
+                {
+                    "name": "example.whl",
+                    "url": "https://example.invalid/example.whl",
+                    "sha256": "b" * 64,
+                }
+            ],
+        },
+    }
+    report = {
+        "install": [
+            {
+                "metadata": {"name": "example", "version": "1"},
+                "download_info": {
+                    "url": "https://example.invalid/example.whl",
+                    "archive_info": {"hashes": {"sha256": "b" * 64}},
+                },
+            }
+        ]
+    }
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    def download(_url: str, destination: Path, _digest: str) -> None:
+        with zipfile.ZipFile(destination, "w") as archive:
+            archive.writestr("example/__init__.py", "")
+
+    monkeypatch.setattr(BOOTSTRAP, "_download", download)
+
+    artifacts = BOOTSTRAP._report_artifacts(
+        report_path,
+        rows,
+        tmp_path,
+        seeded=(pip_artifact,),
+    )
+
+    assert [(row["name"], row["version"]) for row in artifacts] == [
+        ("example", "1"),
+        ("pip", "99"),
+    ]
+
+
+def test_child_binding_rejects_caller_authored_minimal_manifest_before_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = "c" * 64
+    manifest = tmp_path / "manifest.json"
+    source = json.dumps(
+        {
+            "environment_root": str(Path(sys.executable).resolve().parent.parent),
+            "python_minor": f"{sys.version_info.major}.{sys.version_info.minor}",
+            "sentinel_sha256": hashlib.sha256(sentinel.encode("ascii")).hexdigest(),
+        }
+    ).encode("utf-8")
+    manifest.write_bytes(source)
+    monkeypatch.setenv("HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL", sentinel)
+    monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST", str(manifest))
+    monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST_SHA256", hashlib.sha256(source).hexdigest())
+
+    class Input:
+        buffer = io.BytesIO(sentinel.encode("ascii") + b"\n")
+
+    monkeypatch.setattr(BOOTSTRAP.sys, "stdin", Input())
+    args = BOOTSTRAP._parser().parse_args(
+        ["--repo", str(ROOT), "--outputs", str(ROOT / "outputs"), "--json"]
+    )
+
+    assert BOOTSTRAP._child_binding(args) is False
+
+
+def test_unsupported_python_minor_fails_before_lock_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    version = type("Version", (), {"major": 3, "minor": 13})()
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "sys",
+        type("Sys", (), {"version_info": version})(),
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="3.11 or 3.12"):
+        BOOTSTRAP._selected_lock(ROOT)
+
+
+def test_unsupported_python_minor_emits_one_failure_json_exit_two(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_bootstrap_and_reexec",
+        lambda *_args: (_ for _ in ()).throw(
+            BOOTSTRAP._BootstrapError(
+                "canonical release gate supports Python 3.11 or 3.12"
+            )
+        ),
+    )
+
+    returncode = BOOTSTRAP.main(
+        ["--repo", str(ROOT), "--outputs", str(ROOT / "outputs"), "--json"]
+    )
+    lines = capsys.readouterr().out.splitlines()
+
+    assert returncode == 2
+    assert len(lines) == 1
+    assert json.loads(lines[0])["passed"] is False
+    assert json.loads(lines[0])["errors"] == ["release gate bootstrap failed"]
+
+
+def test_bootstrap_archives_stored_commit_not_moving_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commit_oid = "1" * 40
+    tree_oid = "2" * 40
+    lock_path = tmp_path / "requirements.lock"
+    lock_path.write_text("locked", encoding="utf-8")
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.mkdir()
+    commands: list[tuple[str, ...]] = []
+
+    class Builder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def create(self, environment_root: Path) -> None:
+            python = BOOTSTRAP._venv_python(environment_root)
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b"python")
+
+    def git(_repository: Path, *args: str) -> str:
+        if args == ("rev-parse", "HEAD"):
+            return commit_oid
+        if args in {
+            ("rev-parse", "HEAD^{tree}"),
+            ("rev-parse", f"{commit_oid}^{{tree}}"),
+        }:
+            return tree_oid
+        if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+            return ""
+        raise AssertionError(args)
+
+    def run(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        timeout: int = 900,
+    ) -> None:
+        del cwd, env, timeout
+        commands.append(command)
+        if "archive" in command:
+            Path(command[command.index("-o") + 1]).write_bytes(b"archive")
+        if "build" in command:
+            output = Path(command[command.index("--outdir") + 1])
+            output.mkdir(exist_ok=True)
+            with zipfile.ZipFile(output / "hsconfig.whl", "w") as wheel:
+                wheel.writestr("hsconfig/__init__.py", "")
+
+    monkeypatch.setattr(BOOTSTRAP.venv, "EnvBuilder", Builder)
+    monkeypatch.setattr(BOOTSTRAP, "_git", git)
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_selected_lock",
+        lambda _repository: (lock_path, {"packages": []}, b"locked"),
+    )
+    monkeypatch.setattr(BOOTSTRAP, "_lock_rows", lambda _document: {})
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_bootstrap_pip",
+        lambda *_args: {
+            "name": "pip",
+            "version": "1",
+            "url": "https://example.invalid/pip.whl",
+            "sha256": "a" * 64,
+            "wheel_path": str(bootstrap / "pip.whl"),
+            "files": [],
+        },
+    )
+    monkeypatch.setattr(BOOTSTRAP, "_report_artifacts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(BOOTSTRAP, "_run", run)
+    monkeypatch.setattr(BOOTSTRAP, "_safe_extract_archive", lambda _a, _out: None)
+    monkeypatch.setattr(BOOTSTRAP, "_purge_runtime_bytecode", lambda _root: None)
+    monkeypatch.setattr(BOOTSTRAP, "_project_version", lambda _root: "1.0.0")
+    monkeypatch.setattr(BOOTSTRAP, "_wheel_inventory", lambda _wheel: [])
+
+    BOOTSTRAP._bootstrap_environment(ROOT, bootstrap)
+
+    archive_commands = [command for command in commands if "archive" in command]
+    assert len(archive_commands) == 1
+    assert archive_commands[0][-1] == commit_oid
+    assert "HEAD" not in archive_commands[0]
+
+
+@pytest.mark.parametrize(
+    ("payload", "returncode", "error"),
+    (
+        (b'{"passed":true}\n', 0, None),
+        (b'{"passed":true}\n{"passed":true}\n', 0, "invalid JSON"),
+        (b"x" * (1024 * 1024 + 1), 0, "size limit"),
+    ),
+    ids=("single-json", "multiple-json", "oversized"),
+)
+def test_parent_bounds_and_validates_child_stdout_before_forwarding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    returncode: int,
+    error: str | None,
+) -> None:
+    class Process:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO(payload)
+            self.killed = False
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return returncode
+
+        def kill(self) -> None:
+            self.killed = True
+
+    process = Process()
+    monkeypatch.setattr(BOOTSTRAP.subprocess, "Popen", lambda *_args, **_kwargs: process)
+
+    class Lease:
+        def __init__(self, _process: Process, _baseline: set[int]) -> None:
+            pass
+
+        def terminate_remaining(self) -> None:
+            return None
+
+    monkeypatch.setattr(BOOTSTRAP, "_BootstrapProcessTreeLease", Lease)
+
+    if error is None:
+        assert BOOTSTRAP._run_bound_child(
+            Path(sys.executable), tmp_path, {}, [], "d" * 64
+        ) == (0, {"passed": True})
+    else:
+        with pytest.raises(BOOTSTRAP._BootstrapError, match=error):
+            BOOTSTRAP._run_bound_child(
+                Path(sys.executable), tmp_path, {}, [], "d" * 64
+            )
+
+
+@pytest.mark.parametrize("injection", ("construct", "start"))
+def test_bootstrap_thread_setup_failure_closes_tree_pipes_and_reaps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    injection: str,
+) -> None:
+    events: list[str] = []
+
+    class Process:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO(b'{"passed":true}\n')
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append("kill")
+            self.returncode = -9
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            events.append("wait")
+            return self.returncode or 0
+
+    process = Process()
+
+    class Lease:
+        def __init__(self, leased: Process, _baseline: set[int]) -> None:
+            self.process = leased
+
+        def terminate_remaining(self) -> None:
+            events.append("lease")
+            self.process.kill()
+            self.process.wait(timeout=30)
+
+    class StartFailure:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def start(self) -> None:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(BOOTSTRAP.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(BOOTSTRAP, "_BootstrapProcessTreeLease", Lease)
+    if injection == "construct":
+        monkeypatch.setattr(
+            BOOTSTRAP.threading,
+            "Thread",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("thread construct")),
+        )
+        expected: type[BaseException] = RuntimeError
+    else:
+        monkeypatch.setattr(BOOTSTRAP.threading, "Thread", StartFailure)
+        expected = KeyboardInterrupt
+
+    with pytest.raises(expected):
+        BOOTSTRAP._run_bound_child(
+            Path(sys.executable), tmp_path, {}, [], "a" * 64
+        )
+
+    assert events == ["lease", "kill", "wait"]
+    assert process.stdin.closed is True
+    assert process.stdout.closed is True
+    assert not (tmp_path / "descendant-survived.txt").exists()
+
+
+@pytest.mark.parametrize("injection", ("bytearray", "event"))
+def test_bootstrap_state_setup_baseexception_after_popen_closes_tree_and_pipes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    injection: str,
+) -> None:
+    events: list[str] = []
+
+    class Process:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO()
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append("kill")
+            self.returncode = -9
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            events.append("wait")
+            return self.returncode or 0
+
+    process = Process()
+
+    class Lease:
+        def __init__(self, leased: Process, _baseline: set[int]) -> None:
+            events.append("lease_init")
+            self.process = leased
+
+        def terminate_remaining(self) -> None:
+            events.append("lease")
+            self.process.kill()
+            self.process.wait(timeout=30)
+
+    monkeypatch.setattr(BOOTSTRAP.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(BOOTSTRAP, "_BootstrapProcessTreeLease", Lease)
+    if injection == "bytearray":
+        monkeypatch.setattr(
+            BOOTSTRAP,
+            "bytearray",
+            lambda: (_ for _ in ()).throw(MemoryError("state allocation")),
+            raising=False,
+        )
+        expected: type[BaseException] = MemoryError
+    else:
+        monkeypatch.setattr(
+            BOOTSTRAP,
+            "threading",
+            type(
+                "Threading",
+                (),
+                {
+                    "Event": staticmethod(
+                        lambda: (_ for _ in ()).throw(
+                            KeyboardInterrupt("event allocation")
+                        )
+                    )
+                },
+            )(),
+        )
+        expected = KeyboardInterrupt
+
+    with pytest.raises(expected):
+        BOOTSTRAP._run_bound_child(
+            Path(sys.executable), tmp_path, {}, [], "c" * 64
+        )
+
+    assert events == ["lease_init", "lease", "kill", "wait"]
+    assert process.stdin.closed is True
+    assert process.stdout.closed is True
+    assert not (tmp_path / "state-descendant-survived.txt").exists()
+
+
+def test_bootstrap_reader_error_after_valid_json_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingReader(io.BytesIO):
+        def __init__(self) -> None:
+            super().__init__(b"")
+            self.calls = 0
+
+        def read(self, _size: int = -1) -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                return b'{"passed":true}\n'
+            raise OSError("injected read failure")
+
+    class Process:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = FailingReader()
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0 if self.returncode is None else self.returncode
+
+    class Lease:
+        def __init__(self, process: Process, _baseline: set[int]) -> None:
+            self.process = process
+
+        def terminate_remaining(self) -> None:
+            self.process.kill()
+            self.process.wait(timeout=30)
+
+    process = Process()
+    monkeypatch.setattr(BOOTSTRAP.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(BOOTSTRAP, "_BootstrapProcessTreeLease", Lease)
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="stdout read failed"):
+        BOOTSTRAP._run_bound_child(
+            Path(sys.executable), tmp_path, {}, [], "b" * 64
+        )
+
+    assert process.stdin.closed is True
+    assert process.stdout.closed is True
+
+
+def test_bootstrap_reader_error_emits_cause_faithful_failure_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_bootstrap_and_reexec",
+        lambda *_args: (_ for _ in ()).throw(
+            BOOTSTRAP._BootstrapError("release gate child stdout read failed")
+        ),
+    )
+
+    assert BOOTSTRAP.main(
+        ["--repo", str(ROOT), "--outputs", str(ROOT / "outputs"), "--json"]
+    ) == 2
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["errors"] == [
+        "release gate child stdout read failed"
+    ]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows job creation semantics")
+def test_windows_job_creation_failure_kills_waits_and_closes_launcher_pipes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ctypes
+
+    events: list[str] = []
+
+    class Function:
+        def __init__(self, result: int) -> None:
+            self.result = result
+            self.argtypes: object = None
+            self.restype: object = None
+
+        def __call__(self, *_args: object) -> int:
+            return self.result
+
+    class Kernel:
+        CreateJobObjectW = Function(0)
+        SetInformationJobObject = Function(0)
+        AssignProcessToJobObject = Function(0)
+        CloseHandle = Function(1)
+
+    class Process:
+        _handle = 123
+
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO()
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append("kill")
+            self.returncode = -9
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            events.append("wait")
+            return self.returncode or 0
+
+    process = Process()
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: Kernel())
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="isolation"):
+        BOOTSTRAP._BootstrapProcessTreeLease(process, set())
+
+    assert events == ["kill", "wait"]
+    assert process.stdin.closed is True
+    assert process.stdout.closed is True
+
+
+@pytest.mark.parametrize("failure_mode", ("timeout", "oversize"))
+def test_bootstrap_parent_failure_terminates_stubborn_descendant_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_mode: str,
+) -> None:
+    marker = tmp_path / f"{failure_mode}-descendant-survived.txt"
+    child_script = tmp_path / "bound-child.py"
+    descendant = (
+        "import time; from pathlib import Path; time.sleep(2); "
+        f"Path({str(marker)!r}).write_text('survived', encoding='utf-8')"
+    )
+    child_script.write_text(
+        "import os,subprocess,sys,time\n"
+        f"descendant = {descendant!r}\n"
+        "options = ({'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} "
+        "if os.name == 'nt' else {'start_new_session': True})\n"
+        "subprocess.Popen([sys.executable, '-c', descendant], **options)\n"
+        "if os.environ['FAILURE_MODE'] == 'oversize':\n"
+        "    os.write(1, b'x' * (1024 * 1024 + 1))\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(BOOTSTRAP, "__file__", str(child_script))
+    environment = os.environ.copy()
+    environment["FAILURE_MODE"] = failure_mode
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="timed out|size limit"):
+        BOOTSTRAP._run_bound_child(
+            Path(sys.executable),
+            tmp_path,
+            environment,
+            [],
+            "f" * 64,
+            timeout=1,
+        )
+    time.sleep(3)
+
+    assert not marker.exists()
+
+
+def test_parent_completes_bootstrap_cleanup_before_returning_child_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    root = tmp_path / "bootstrap"
+    root.mkdir()
+    manifest = root / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    python = root / "environment" / "Scripts" / "python.exe"
+    args = BOOTSTRAP._parser().parse_args(
+        ["--repo", str(ROOT), "--outputs", str(ROOT / "outputs"), "--json"]
+    )
+    monkeypatch.setattr(BOOTSTRAP.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(BOOTSTRAP.tempfile, "mkdtemp", lambda **_kwargs: str(root))
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_bootstrap_environment",
+        lambda repository, bootstrap: (python, manifest, "e" * 64),
+    )
+    monkeypatch.setattr(BOOTSTRAP, "_read_bound", lambda *_args, **_kwargs: b"{}")
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_run_bound_child",
+        lambda *_args, **_kwargs: (events.append("child") or (0, {"passed": True})),
+    )
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_cleanup_bootstrap_root",
+        lambda *_args: events.append("cleanup"),
+    )
+
+    result = BOOTSTRAP._bootstrap_and_reexec(args, [])
+    events.append("returned")
+
+    assert result == (0, {"passed": True})
+    assert events == ["child", "cleanup", "returned"]
+
+
 @pytest.mark.parametrize(
     "stdout,returncode",
     [
@@ -551,6 +1394,22 @@ def test_safe_detail_rejects_duplicate_or_exit_contradicting_json(
     stdout: str, returncode: int
 ) -> None:
     with pytest.raises(ReleaseGateError, match="JSON|passed|return"):
+        _safe_detail(stdout, "", returncode)
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode"),
+    [
+        ('{"passed":true,"returncode":1}', 0),
+        ('{"passed":false,"returncode":2}', 1),
+        ('{"passed":false,"returncode":true}', 1),
+        ('{"returncode":1}', 0),
+    ],
+)
+def test_safe_detail_rejects_nested_returncode_contradictions(
+    stdout: str, returncode: int
+) -> None:
+    with pytest.raises(ReleaseGateError, match="returncode"):
         _safe_detail(stdout, "", returncode)
 
 
@@ -709,6 +1568,7 @@ def test_baseexception_terminates_real_descendant_closes_pipes_and_reraises_exac
     class InterruptingProcess:
         def __init__(self, process: Any) -> None:
             self._process = process
+            self._handle = process._handle
             self.pid = process.pid
             self.stdin = process.stdin
             self.stdout = process.stdout
@@ -785,11 +1645,15 @@ def test_baseexception_during_pipe_setup_terminates_and_closes_deterministic_pro
     process = DeterministicProcess()
     monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
 
-    def terminate(candidate: Any) -> None:
-        assert candidate is process
-        candidate.kill()
+    class FakeLease:
+        def __init__(self, candidate: Any, baseline: set[int]) -> None:
+            assert candidate is process
+            del baseline
 
-    monkeypatch.setattr("hsconfig.release_gate._terminate_process_tree", terminate)
+        def terminate_remaining(self) -> None:
+            process.kill()
+
+    monkeypatch.setattr("hsconfig.release_gate._ProcessTreeLease", FakeLease)
     original_start = threading.Thread.start
     attempts = 0
 
@@ -2016,11 +2880,11 @@ def test_publishable_scan_and_cli_report_invalid_tagged_yaml_key_without_traceba
         check=False,
     )
 
-    assert completed.returncode == 1
+    assert completed.returncode == 2
     assert completed.stdout.count("\n") == 1
     document = json.loads(completed.stdout)
     assert document["passed"] is False
-    assert "invalid_yaml_content:config/invalid.yaml" in document["violations"]
+    assert document["errors"] == ["release gate bootstrap failed"]
     assert "Traceback" not in completed.stderr
 
 

@@ -86,6 +86,22 @@ claims final release readiness. `candidate` requires a detached tree and binds
 the complete canonical outputs inventory. `final` is fail-closed with no
 historical publishability exceptions.
 
+The command itself is the stdlib-only bootstrap parent for the local Clean-OID
+producer/verifier. The legacy `full-test-suite` CI workflow does not invoke this
+command or depend on the ignored local `outputs/` tree: it still installs the
+development package, runs Ruff, runs the full pytest suite, and audits
+dependencies. Task 8 owns the later locked-CI consolidation. The local command
+selects the lock for the running Python minor. It supports Python 3.11 and 3.12,
+matching the two committed release locks; Python 3.13 or newer fails with one
+JSON document and exit code 2 before environment creation. It
+downloads and verifies the exact locked
+pip wheel even when `ensurepip` is older, creates a fresh disposable environment
+outside the checkout, installs the 43-package locked graph, builds `hsconfig`
+from `git archive HEAD`, and binds every installed artifact and RECORD entry to
+the selected wheel URL, SHA-256, inventory, commit, and tree before any gate
+check runs. Ambient packages, plugins, bytecode, and poisoned virtual
+environments are not trusted or reused.
+
 The gate is the only canonical producer/verifier. It requires `outputs/` to
 contain exactly the twelve catalog deck directories, snapshots every directory
 and file by type, size, and digest, and derives semantic closure from the current

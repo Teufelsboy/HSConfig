@@ -45,6 +45,23 @@ scan; it never marks `final_release_ready=true`. Candidate mode requires a
 detached candidate tree and an explicitly verified outputs root. Final mode is
 the default and permits no historical exception.
 
+This command is the local Clean-OID producer/verifier, not the current legacy CI
+producer. The legacy `full-test-suite` workflow does not invoke it and does not
+depend on the ignored local `outputs/` tree; that workflow still installs the
+development package, runs Ruff, runs the full pytest suite, and audits
+dependencies. Task 8 owns the later locked-CI consolidation. The command's
+stdlib-only parent selects the current Python-minor lock. Only Python 3.11 and
+3.12 are canonical because those are the committed release locks; Python 3.13
+or newer produces exactly one failure JSON document with exit code 2. The
+parent upgrades the fresh
+environment from the exact locked
+pip wheel by URL and SHA-256, installs the exact 43-package graph, and builds the
+local package from `git archive HEAD` in external disposable storage. The child
+starts only after the manifest binds the interpreter, repository, commit, tree,
+lock, selected wheel inventories, and installed RECORD payloads. No ambient
+environment, plugin, cached bytecode, or pre-existing virtual environment is an
+authority input.
+
 The release gate is the only canonical producer/verifier. It requires
 `outputs/` to contain exactly the twelve catalog deck directories, binds the
 complete output tree by entry type, name, size, and digest, and derives semantic

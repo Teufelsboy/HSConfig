@@ -228,20 +228,38 @@ def test_ruff_uses_the_declared_baseline_rules():
     assert project["tool"]["ruff"]["lint"]["select"] == ["E4", "E7", "E9", "F"]
 
 
-def test_full_suite_updates_audited_packaging_tools():
+def test_legacy_full_suite_is_fresh_checkout_safe_without_local_outputs():
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "full-test-suite.yml").read_text(
             encoding="utf-8"
         )
     )
-    commands = "\n".join(
-        step["run"]
+    commands = [
+        step["run"].strip()
         for job in workflow["jobs"].values()
         for step in job["steps"]
         if isinstance(step, dict) and isinstance(step.get("run"), str)
-    ).lower()
+    ]
 
-    assert "python -m pip install --upgrade pip setuptools" in commands
+    assert commands == [
+        'python -m pip install --upgrade pip setuptools\npython -m pip install -e ".[dev]"',
+        "python -m ruff check --no-cache src tests scripts",
+        "python -m pytest -p no:cacheprovider",
+        "python -m pip_audit",
+    ]
+    assert not any("check_release_gate.py" in command for command in commands)
+    assert not any("--outputs outputs" in command for command in commands)
+
+
+def test_docs_distinguish_local_clean_oid_producer_from_legacy_ci():
+    for relative in ("README.md", "docs/operator/README.md"):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        normalized = " ".join(source.split())
+        assert "local Clean-OID producer/verifier" in normalized
+        assert "legacy `full-test-suite`" in normalized
+        assert "Task 8 owns the later locked-CI consolidation" in normalized
+        assert "also the CI producer" not in normalized
+        assert "bootstrap parent used by CI" not in normalized
 
 
 def test_python_workflow_jobs_disable_bytecode_cache():
