@@ -46,6 +46,7 @@ _MANIFEST = "HSCONFIG_RUNTIME_MANIFEST"
 _MANIFEST_DIGEST = "HSCONFIG_RUNTIME_MANIFEST_SHA256"
 _MAX_BOOTSTRAP_FILE = 512 * 1024 * 1024
 _MAX_CHILD_STDOUT = 1024 * 1024
+_BOOTSTRAP_CHILD_TIMEOUT_SECONDS = 21_600
 _SUPPORTED_PYTHON_MINORS = {"3.11", "3.12"}
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _GATED_CHILD_LAUNCHER = (
@@ -1489,7 +1490,7 @@ def _run_bound_child(
     argv: list[str],
     sentinel: str,
     *,
-    timeout: int = 7200,
+    timeout: int = _BOOTSTRAP_CHILD_TIMEOUT_SECONDS,
 ) -> tuple[int, dict[str, object]]:
     if os.name != "nt":
         _enable_posix_subreaper()

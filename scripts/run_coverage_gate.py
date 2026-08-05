@@ -30,7 +30,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_FILE = ROOT / f"pylock.{sys.version_info.major}.{sys.version_info.minor}.toml"
 CHECKER_TIMEOUT_SECONDS = 120
-PYTEST_TIMEOUT_SECONDS = 1800
+PYTEST_TIMEOUT_SECONDS = 14_400
 CAPTURE_LIMIT = 64 * 1024
 MAX_COVERAGE_JSON_BYTES = 256 * 1024 * 1024
 MAX_LOCK_BYTES = 4 * 1024 * 1024
@@ -158,6 +158,12 @@ class _BoundedResult:
     timed_out: bool
     stdout: _BoundedCapture
     stderr: _BoundedCapture
+
+
+@dataclass(frozen=True)
+class _PytestResult:
+    returncode: int
+    timed_out: bool
 
 
 class _BoundedCapture:
@@ -2546,7 +2552,7 @@ def _run_pytest_bounded(
     *,
     cwd: Path,
     env: Mapping[str, str],
-) -> subprocess.CompletedProcess[str]:
+) -> _PytestResult:
     bounded = _run_bounded_process(
         command,
         cwd=cwd,
@@ -2558,18 +2564,16 @@ def _run_pytest_bounded(
     transport_failed = (
         bounded.stdout.error is not None or bounded.stderr.error is not None
     )
-    return subprocess.CompletedProcess(
-        command,
-        2 if bounded.timed_out or transport_failed else bounded.completed.returncode,
-        stdout="",
-        stderr="",
+    return _PytestResult(
+        returncode=2 if transport_failed else bounded.completed.returncode,
+        timed_out=bounded.timed_out,
     )
 
 
 def main() -> int:
     try:
         _assert_runtime_matches_lock(LOCK_FILE)
-        pytest_failure: int | None = None
+        pytest_failure: tuple[str, int] | None = None
         checker_result: subprocess.CompletedProcess[str] | None = None
         with isolated_coverage_environment() as run:
             pytest_result = _run_pytest_bounded(
@@ -2577,8 +2581,13 @@ def main() -> int:
                 cwd=ROOT,
                 env=run.environment,
             )
-            if pytest_result.returncode != 0:
-                pytest_failure = _portable_child_returncode(pytest_result.returncode)
+            if pytest_result.timed_out:
+                pytest_failure = ("pytest coverage execution timed out", 2)
+            elif pytest_result.returncode != 0:
+                pytest_failure = (
+                    "pytest coverage execution failed",
+                    _portable_child_returncode(pytest_result.returncode),
+                )
             else:
                 identity = _coverage_report_identity(
                     run.run_root,
@@ -2599,8 +2608,9 @@ def main() -> int:
                     run.run_identity,
                 )
         if pytest_failure is not None:
-            _emit_failure("pytest coverage execution failed", pytest_failure)
-            return pytest_failure
+            message, returncode = pytest_failure
+            _emit_failure(message, returncode)
+            return returncode
         if checker_result is None:
             raise CoverageGateError("coverage checker did not run")
         return _forward_checker_result(checker_result)

@@ -5,6 +5,7 @@ import base64
 import ctypes
 from ctypes import wintypes
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -226,7 +227,7 @@ def test_coverage_runner_uses_unique_temp_directories_and_exact_gate(
     )
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         assert command[1:3] == ("-m", "pytest")
         environment = kwargs["env"]
         assert isinstance(environment, dict)
@@ -246,7 +247,7 @@ def test_coverage_runner_uses_unique_temp_directories_and_exact_gate(
                 "pytest_addopts_present": "PYTEST_ADDOPTS" in environment,
             }
         )
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return runner._PytestResult(returncode=0, timed_out=False)
 
     def fake_checker(
         command: tuple[str, ...], **kwargs: object
@@ -289,7 +290,7 @@ def test_coverage_runner_propagates_failure_and_cleans_temp_directory(
     calls = 0
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         nonlocal calls
         calls += 1
         assert command[1:3] == ("-m", "pytest")
@@ -302,7 +303,7 @@ def test_coverage_runner_propagates_failure_and_cleans_temp_directory(
             ).removeprefix("--cov-report=json:")
         )
         captured["coverage_json"].write_text("failed-run-report", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 7, stdout="", stderr="")
+        return runner._PytestResult(returncode=7, timed_out=False)
 
     monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
 
@@ -321,9 +322,9 @@ def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
     runner = importlib.import_module("scripts.run_coverage_gate")
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         assert command[1:3] == ("-m", "pytest")
-        return subprocess.CompletedProcess(command, 7, stdout="", stderr="")
+        return runner._PytestResult(returncode=7, timed_out=False)
 
     monkeypatch.setattr(runner, "_run_pytest_bounded", fake_run)
 
@@ -344,6 +345,80 @@ def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
     assert captured.err == ""
 
 
+def test_coverage_runner_emits_distinct_portable_failure_json_for_pytest_timeout(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+    stdout = runner._BoundedCapture()
+    stderr = runner._BoundedCapture()
+
+    def fake_bounded_process(
+        command: tuple[str, ...], **kwargs: object
+    ) -> runner._BoundedResult:
+        del kwargs
+        return runner._BoundedResult(
+            completed=subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="",
+                stderr="",
+            ),
+            timed_out=True,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(runner, "_run_bounded_process", fake_bounded_process)
+
+    assert runner.main() == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    document = json.loads(captured.out)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["pytest coverage execution timed out"]
+    assert captured.err == ""
+
+
+def test_real_child_returncode_124_is_not_misclassified_as_pytest_timeout(
+    monkeypatch: MonkeyPatch,
+    capsys,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+    stdout = runner._BoundedCapture()
+    stderr = runner._BoundedCapture()
+
+    def fake_bounded_process(
+        command: tuple[str, ...], **kwargs: object
+    ) -> runner._BoundedResult:
+        del kwargs
+        return runner._BoundedResult(
+            completed=subprocess.CompletedProcess(
+                command,
+                124,
+                stdout="",
+                stderr="",
+            ),
+            timed_out=False,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(runner, "_run_bounded_process", fake_bounded_process)
+
+    assert runner.main() == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    document = json.loads(captured.out)
+    assert document["passed"] is False
+    assert document["returncode"] == 2
+    assert document["errors"] == ["pytest coverage execution failed"]
+    assert captured.err == ""
+
+
 def test_coverage_runner_forwards_checker_failure_as_one_contradiction_free_json(
     monkeypatch: MonkeyPatch,
     capsys,
@@ -352,7 +427,7 @@ def test_coverage_runner_forwards_checker_failure_as_one_contradiction_free_json
     checker_document = _checker_document(passed=False)
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         assert command[1:3] == ("-m", "pytest")
         report = Path(
             next(
@@ -360,7 +435,7 @@ def test_coverage_runner_forwards_checker_failure_as_one_contradiction_free_json
             ).removeprefix("--cov-report=json:")
         )
         report.write_text("{}", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return runner._PytestResult(returncode=0, timed_out=False)
 
     def fake_checker(
         command: tuple[str, ...], **kwargs: object
@@ -392,7 +467,7 @@ def test_coverage_runner_emits_one_failure_json_when_a_subprocess_cannot_start(
     runner = importlib.import_module("scripts.run_coverage_gate")
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         del command, kwargs
         raise OSError("local path must not leak")
 
@@ -2216,6 +2291,72 @@ def test_pytest_capture_read_error_cannot_preserve_success_exit(
     assert result.returncode == 2
 
 
+def test_pytest_coverage_uses_realistic_strictly_bounded_timeout(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    observed_timeouts: list[int] = []
+    stdout = runner._BoundedCapture()
+    stderr = runner._BoundedCapture()
+
+    def fake_bounded_process(
+        command: tuple[str, ...], **kwargs: object
+    ) -> runner._BoundedResult:
+        timeout = kwargs["timeout"]
+        assert isinstance(timeout, int)
+        observed_timeouts.append(timeout)
+        return runner._BoundedResult(
+            completed=subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="",
+                stderr="",
+            ),
+            timed_out=False,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(runner, "_run_bounded_process", fake_bounded_process)
+
+    result = runner._run_pytest_bounded(
+        (sys.executable,),
+        cwd=ROOT,
+        env=os.environ,
+    )
+
+    assert result.returncode == 0
+    assert len(observed_timeouts) == 1
+    assert 14_400 <= observed_timeouts[0] < 18_000
+
+
+def test_canonical_coverage_timeout_hierarchy_preserves_cleanup_reserves() -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    bootstrap = importlib.import_module("scripts.check_release_gate")
+    release_gate = importlib.import_module("hsconfig.release_gate")
+    coverage_spec = next(
+        spec
+        for spec in release_gate._command_specs(
+            ROOT,
+            ROOT / "outputs",
+            "working-pre-cutover",
+        )
+        if spec.name == "full_tests_and_coverage"
+    )
+    bootstrap_timeout = inspect.signature(bootstrap._run_bound_child).parameters[
+        "timeout"
+    ].default
+
+    assert isinstance(bootstrap_timeout, int)
+    assert bootstrap_timeout == getattr(
+        bootstrap,
+        "_BOOTSTRAP_CHILD_TIMEOUT_SECONDS",
+        None,
+    )
+    assert coverage_spec.timeout - runner.PYTEST_TIMEOUT_SECONDS >= 3_600
+    assert bootstrap_timeout - coverage_spec.timeout >= 3_600
+
+
 @pytest.mark.parametrize(
     ("child_returncode", "child_passed", "wrapper_returncode"),
     [(0, True, 0), (1, False, 1), (9, False, 2), (-9, False, 2)],
@@ -3369,7 +3510,7 @@ def test_coverage_runner_propagates_checker_failure_and_cleans_report(
     coverage_json: Path | None = None
     monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
 
-    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> runner._PytestResult:
         nonlocal coverage_file
         nonlocal coverage_json
         environment = kwargs["env"]
@@ -3381,7 +3522,7 @@ def test_coverage_runner_propagates_checker_failure_and_cleans_report(
             ).removeprefix("--cov-report=json:")
         )
         coverage_json.write_text("{}", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return runner._PytestResult(returncode=0, timed_out=False)
 
     def fake_checker(
         command: tuple[str, ...], **kwargs: object
