@@ -650,6 +650,321 @@ def test_distribution_record_rejects_original_symlink_before_resolution(
         runner._assert_distribution_origin(Distribution(), local_project=False)
 
 
+def _bound_nonlocal_distribution(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    *,
+    include_direct_url: bool = True,
+) -> tuple[object, dict[str, object], str]:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    bootstrap = tmp_path / "bootstrap"
+    environment = bootstrap / "environment"
+    root = environment / "Lib" / "site-packages"
+    dist_info = root / "pip-26.1.2.dist-info"
+    dist_info.mkdir(parents=True)
+    package_path = root / "pip.py"
+    package_payload = b"VERSION = '26.1.2'\n"
+    package_path.write_bytes(package_payload)
+    wheel_payload = b"Wheel-Version: 1.0\n"
+    (dist_info / "WHEEL").write_bytes(wheel_payload)
+    (dist_info / "INSTALLER").write_bytes(b"pip\n")
+
+    wheel_path = bootstrap / "artifacts" / "pip-26.1.2-py3-none-any.whl"
+    wheel_path.parent.mkdir()
+    with zipfile.ZipFile(wheel_path, "w") as archive:
+        archive.writestr("pip.py", package_payload)
+        archive.writestr("pip-26.1.2.dist-info/WHEEL", wheel_payload)
+        archive.writestr("pip-26.1.2.dist-info/RECORD", b"")
+    wheel_source = wheel_path.read_bytes()
+    digest = hashlib.sha256(wheel_source).hexdigest()
+    direct_url = json.dumps(
+        {
+            "archive_info": {
+                "hash": f"sha256={digest}",
+                "hashes": {"sha256": digest},
+            },
+            "url": wheel_path.resolve(strict=True).as_uri(),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if include_direct_url:
+        (dist_info / "direct_url.json").write_text(direct_url, encoding="utf-8")
+
+    rows = [
+        _runtime_record_row("pip.py", package_payload),
+        _runtime_record_row("pip-26.1.2.dist-info/WHEEL", wheel_payload),
+        _runtime_record_row("pip-26.1.2.dist-info/INSTALLER", b"pip\n"),
+    ]
+    if include_direct_url:
+        rows.append(
+            _runtime_record_row(
+                "pip-26.1.2.dist-info/direct_url.json",
+                direct_url.encode("utf-8"),
+            )
+        )
+    rows.append("pip-26.1.2.dist-info/RECORD,,")
+    record = "\n".join(rows) + "\n"
+    (dist_info / "RECORD").write_text(record, encoding="utf-8")
+
+    class Distribution:
+        def __init__(self) -> None:
+            self.current_direct_url = direct_url if include_direct_url else None
+            self.current_record = record
+            self.root = root
+            self.dist_info = dist_info
+            self.on_direct_url_read = None
+
+        def read_text(self, filename: str) -> str | None:
+            value = {
+                "INSTALLER": "pip\n",
+                "WHEEL": wheel_payload.decode("utf-8"),
+                "RECORD": self.current_record,
+                "direct_url.json": self.current_direct_url,
+            }.get(filename)
+            if filename == "direct_url.json" and self.on_direct_url_read is not None:
+                callback = self.on_direct_url_read
+                self.on_direct_url_read = None
+                callback()
+            return value
+
+        def locate_file(self, filename: str) -> Path:
+            del filename
+            return root
+
+    monkeypatch.setattr(
+        runner.sysconfig,
+        "get_paths",
+        lambda: {
+            "purelib": str(root),
+            "platlib": str(root),
+            "scripts": str(environment / "Scripts"),
+        },
+    )
+    monkeypatch.setattr(runner.sys, "prefix", str(environment))
+    artifact: dict[str, object] = {
+        "name": "pip",
+        "version": "26.1.2",
+        "url": "https://example.invalid/pip.whl",
+        "wheel_path": str(wheel_path),
+        "sha256": digest,
+        "files": runner._wheel_inventory(wheel_source),
+        "_wheel_source": wheel_source,
+    }
+    return Distribution(), artifact, direct_url
+
+
+def _runtime_record_row(relative: str, payload: bytes) -> str:
+    encoded = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("=")
+    return f"{relative},sha256={encoded},{len(payload)}"
+
+
+def _set_runtime_direct_url_payload(
+    distribution: object,
+    payload: str,
+    *,
+    write_payload: bool,
+) -> None:
+    relative = "pip-26.1.2.dist-info/direct_url.json"
+    record = str(getattr(distribution, "current_record"))
+    rows = [row for row in record.splitlines() if not row.startswith(relative + ",")]
+    rows.insert(-1, _runtime_record_row(relative, payload.encode("utf-8")))
+    updated = "\n".join(rows) + "\n"
+    setattr(distribution, "current_record", updated)
+    dist_info = Path(getattr(distribution, "dist_info"))
+    (dist_info / "RECORD").write_text(updated, encoding="utf-8")
+    if write_payload:
+        (dist_info / "direct_url.json").write_bytes(payload.encode("utf-8"))
+
+
+def test_distribution_origin_accepts_manifest_bound_pip_direct_url(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+
+    runner._assert_distribution_origin(
+        distribution,
+        local_project=False,
+        artifact=artifact,
+    )
+
+
+def test_distribution_origin_preserves_index_install_without_direct_url(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+        include_direct_url=False,
+    )
+
+    runner._assert_distribution_origin(
+        distribution,
+        local_project=False,
+        artifact=artifact,
+    )
+
+
+def test_distribution_origin_rejects_bound_direct_url_for_non_pip_artifact(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    artifact["name"] = "setuptools"
+
+    with pytest.raises(runner.RuntimeLockError, match="origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=artifact,
+        )
+
+
+def test_distribution_origin_rejects_foreign_direct_url_record_path(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    root = Path(getattr(distribution, "root"))
+    source = root / "pip-26.1.2.dist-info" / "direct_url.json"
+    foreign = root / "evil-1.0.dist-info" / "direct_url.json"
+    foreign.parent.mkdir()
+    source.replace(foreign)
+    record = str(getattr(distribution, "current_record")).replace(
+        "pip-26.1.2.dist-info/direct_url.json",
+        "evil-1.0.dist-info/direct_url.json",
+    )
+    setattr(distribution, "current_record", record)
+    (root / "pip-26.1.2.dist-info" / "RECORD").write_text(record, encoding="utf-8")
+
+    with pytest.raises(runner.RuntimeLockError, match="RECORD|origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=artifact,
+        )
+
+
+def test_distribution_origin_rejects_read_text_disk_byte_mismatch(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    reserialized = json.dumps(json.loads(direct_url), indent=2)
+    assert reserialized != direct_url
+    _set_runtime_direct_url_payload(distribution, reserialized, write_payload=True)
+
+    with pytest.raises(runner.RuntimeLockError, match="origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=artifact,
+        )
+
+
+def test_distribution_origin_rejects_direct_url_metadata_to_record_toctou(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    reserialized = json.dumps(json.loads(direct_url), indent=2)
+    _set_runtime_direct_url_payload(distribution, reserialized, write_payload=False)
+    direct_path = Path(getattr(distribution, "dist_info")) / "direct_url.json"
+    distribution.on_direct_url_read = lambda: direct_path.write_bytes(
+        reserialized.encode("utf-8")
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=artifact,
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "missing-artifact",
+        "wrong-hash",
+        "wrong-url",
+        "extra-key",
+        "missing-key",
+        "duplicate-key",
+        "invalid-json",
+        "outside-artifact",
+        "unbound-artifact",
+    ),
+)
+def test_distribution_origin_rejects_unbound_or_malformed_direct_url(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    document = json.loads(direct_url)
+    selected: dict[str, object] | None = artifact
+    if case == "missing-artifact":
+        selected = None
+    elif case == "wrong-hash":
+        document["archive_info"]["hash"] = "sha256=" + "0" * 64
+    elif case == "wrong-url":
+        document["url"] = "https://example.invalid/pip.whl"
+    elif case == "extra-key":
+        document["extra"] = True
+    elif case == "missing-key":
+        del document["archive_info"]["hashes"]
+    elif case == "duplicate-key":
+        distribution.current_direct_url = direct_url[:-1] + f',"url":{json.dumps(document["url"])}}}'
+    elif case == "invalid-json":
+        distribution.current_direct_url = "{"
+    elif case == "outside-artifact":
+        outside = tmp_path / "outside.whl"
+        outside.write_bytes(artifact["_wheel_source"])
+        selected = dict(artifact)
+        selected["wheel_path"] = str(outside)
+        document["url"] = outside.as_uri()
+    elif case == "unbound-artifact":
+        selected = dict(artifact)
+        del selected["_wheel_source"]
+    if case not in {"duplicate-key", "invalid-json"}:
+        distribution.current_direct_url = json.dumps(document, separators=(",", ":"))
+
+    with pytest.raises(runner.RuntimeLockError, match="origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=selected,
+        )
+
+
 def test_runtime_lock_detects_replacement_during_read(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

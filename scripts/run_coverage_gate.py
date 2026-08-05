@@ -974,6 +974,78 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
     }
 
 
+def _assert_bound_nonlocal_direct_url(
+    direct_url: str,
+    artifact: Mapping[str, object] | None,
+) -> tuple[str, bytes]:
+    if artifact is None:
+        raise RuntimeLockError("installed package origin is unverifiable")
+    try:
+        payload = json.loads(direct_url, object_pairs_hook=_closed_object)
+        artifact_name = artifact["name"]
+        artifact_version = artifact["version"]
+        wheel_path = Path(str(artifact["wheel_path"])).resolve(strict=True)
+        digest = str(artifact["sha256"])
+        wheel_source = artifact["_wheel_source"]
+        bootstrap_root = Path(sys.prefix).resolve(strict=True).parent
+        disk_source, _identity = _read_bound_regular_file(
+            wheel_path,
+            maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+            error_type=RuntimeLockError,
+            label="runtime bootstrap wheel",
+        )
+        inventory = _wheel_inventory(wheel_source)
+        inventory_paths = {
+            row["path"]
+            for row in inventory
+            if isinstance(row, dict) and isinstance(row.get("path"), str)
+        }
+        dist_info_roots = {
+            path.split("/", 1)[0]
+            for path in inventory_paths
+            if path.split("/", 1)[0].endswith(".dist-info")
+        }
+        normalized_version = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_version)
+        expected_dist_info = f"pip-{normalized_version}.dist-info"
+        expected_direct_url_path = f"{expected_dist_info}/direct_url.json"
+        direct_url_source = direct_url.encode("utf-8")
+    except (
+        json.JSONDecodeError,
+        OSError,
+        UnicodeError,
+        TypeError,
+        ValueError,
+        KeyError,
+        RuntimeLockError,
+    ) as exc:
+        raise RuntimeLockError("installed package origin is unverifiable") from exc
+    if (
+        not isinstance(wheel_source, bytes)
+        or not isinstance(artifact_name, str)
+        or _normalized_name(artifact_name) != "pip"
+        or not isinstance(artifact_version, str)
+        or not normalized_version
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or bootstrap_root not in wheel_path.parents
+        or ROOT in wheel_path.parents
+        or disk_source != wheel_source
+        or hashlib.sha256(wheel_source).hexdigest() != digest
+        or artifact.get("files") != inventory
+        or dist_info_roots != {expected_dist_info}
+        or f"{expected_dist_info}/RECORD" not in inventory_paths
+        or payload
+        != {
+            "archive_info": {
+                "hash": f"sha256={digest}",
+                "hashes": {"sha256": digest},
+            },
+            "url": wheel_path.as_uri(),
+        }
+    ):
+        raise RuntimeLockError("installed package origin differs from bound artifact")
+    return expected_direct_url_path, direct_url_source
+
+
 def _assert_distribution_origin(
     distribution: Any,
     *,
@@ -997,6 +1069,7 @@ def _assert_distribution_origin(
         raise RuntimeLockError("installed package origin is unverifiable") from exc
     if root not in allowed:
         raise RuntimeLockError("installed package origin differs from project lock")
+    bound_nonlocal_direct_url: tuple[str, bytes] | None = None
     if local_project and artifact is None:
         try:
             payload = json.loads(direct_url or "", object_pairs_hook=_closed_object)
@@ -1005,7 +1078,10 @@ def _assert_distribution_origin(
         if payload != {"dir_info": {}, "url": ROOT.as_uri()}:
             raise RuntimeLockError("local project origin differs from repository")
     elif not local_project and direct_url is not None:
-        raise RuntimeLockError("installed package origin differs from project lock")
+        bound_nonlocal_direct_url = _assert_bound_nonlocal_direct_url(
+            direct_url,
+            artifact,
+        )
     elif local_project:
         try:
             payload = json.loads(direct_url or "", object_pairs_hook=_closed_object)
@@ -1029,6 +1105,7 @@ def _assert_distribution_origin(
     verified_paths: set[Path] = set()
     installed_package_paths: set[str] = set()
     verified_hashes = 0
+    bound_direct_url_payload_seen = False
     for relative_name, encoded_hash, encoded_size in rows:
         normalized_path = relative_name.replace("\\", "/")
         if normalized_path in seen_paths:
@@ -1105,6 +1182,15 @@ def _assert_distribution_origin(
             ) from exc
         if hashlib.sha256(payload).digest() != expected_digest:
             raise RuntimeLockError("installed package artifact identity differs from metadata")
+        if (
+            bound_nonlocal_direct_url is not None
+            and normalized_path == bound_nonlocal_direct_url[0]
+        ):
+            if payload != bound_nonlocal_direct_url[1]:
+                raise RuntimeLockError(
+                    "installed package origin differs from bound artifact"
+                )
+            bound_direct_url_payload_seen = True
         verified_paths.add(installed_path)
         if local_project and normalized_path.startswith("hsconfig/"):
             repository_path = ROOT / "src" / Path(*normalized_path.split("/"))
@@ -1132,6 +1218,8 @@ def _assert_distribution_origin(
         verified_hashes += 1
     if verified_hashes == 0:
         raise RuntimeLockError("installed package artifact identity is unverifiable")
+    if bound_nonlocal_direct_url is not None and not bound_direct_url_payload_seen:
+        raise RuntimeLockError("installed package origin differs from bound artifact")
     if artifact is not None:
         expected_paths = _wheel_installed_paths(artifact, root)
         record_paths = {
@@ -1142,7 +1230,14 @@ def _assert_distribution_origin(
             for path in record_paths - expected_paths
             if path.endswith(".dist-info/INSTALLER")
             or path.endswith(".dist-info/REQUESTED")
-            or (local_project and path.endswith(".dist-info/direct_url.json"))
+            or (
+                local_project
+                and path.endswith(".dist-info/direct_url.json")
+            )
+            or (
+                bound_nonlocal_direct_url is not None
+                and path == bound_nonlocal_direct_url[0]
+            )
         }
         scripts = _entry_point_script_paths(artifact, root)
         if record_paths != expected_paths | additions | (record_paths & scripts):
