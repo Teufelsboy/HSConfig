@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import contextmanager
+import ctypes
+from ctypes import wintypes
 import hashlib
 import io
 import json
@@ -22,6 +25,15 @@ from urllib.request import Request, urlopen
 import uuid
 import venv
 import zipfile
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - Windows has the native handle lease below.
+    _fcntl = None
+try:
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - POSIX has the descriptor lease below.
+    _msvcrt = None
 
 
 # The documented parent remains stdlib-only and must not create checkout
@@ -148,6 +160,326 @@ def _read_bound(path: Path, maximum: int = _MAX_BOOTSTRAP_FILE) -> bytes:
     ):
         raise _BootstrapError("bootstrap input changed")
     return b"".join(chunks)
+
+
+def _bootstrap_lock_binding(
+    path: Path,
+    expected_source: bytes,
+) -> tuple[int, int, int, int, int, int, str]:
+    source = _read_bound(path, 8 * 1024 * 1024)
+    if source != expected_source:
+        raise _BootstrapError("bootstrap lock content changed")
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock identity cannot be read") from exc
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_mode,
+        hashlib.sha256(source).hexdigest(),
+    )
+
+
+def _verify_bootstrap_lock_binding(
+    path: Path,
+    expected_source: bytes,
+    expected_binding: tuple[int, int, int, int, int, int, str],
+) -> None:
+    if _bootstrap_lock_binding(path, expected_source) != expected_binding:
+        raise _BootstrapError("bootstrap lock identity changed")
+
+
+def _materialize_bootstrap_lock(
+    bootstrap_root: Path,
+    source: bytes,
+) -> tuple[Path, tuple[int, int, int, int, int, int, str]]:
+    path = bootstrap_root / "pylock.toml"
+    try:
+        with path.open("xb") as handle:
+            handle.write(source)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise _BootstrapError("canonical bootstrap lock cannot be materialized") from exc
+    return path, _bootstrap_lock_binding(path, source)
+
+
+def _windows_open_bound_descriptor(path: Path, *, directory: bool) -> int:
+    if _msvcrt is None:
+        raise _BootstrapError("bootstrap lock lease is unavailable")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(path),
+        0x00000080 if directory else 0x80000000,  # FILE_READ_ATTRIBUTES / GENERIC_READ
+        0x00000003 if directory else 0x00000001,  # deny delete; file also denies write
+        None,
+        3,  # OPEN_EXISTING
+        (0x02000000 if directory else 0x08000000) | 0x00200000,
+        None,
+    )
+    if handle in {None, ctypes.c_void_p(-1).value}:
+        raise _BootstrapError("bootstrap lock lease cannot be acquired")
+    try:
+        return _msvcrt.open_osfhandle(
+            int(handle),
+            os.O_RDONLY | getattr(os, "O_BINARY", 0),
+        )
+    except BaseException:
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        close_handle(handle)
+        raise
+
+
+def _windows_descriptor_path(descriptor: int) -> str:
+    if _msvcrt is None:
+        raise _BootstrapError("bootstrap lock lease is unavailable")
+    handle = _msvcrt.get_osfhandle(descriptor)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_path = kernel32.GetFinalPathNameByHandleW
+    get_path.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    get_path.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(32_768)
+    length = get_path(handle, buffer, len(buffer), 0)
+    if not length or length >= len(buffer):
+        raise _BootstrapError("bootstrap lock lease path cannot be read")
+    value = buffer.value
+    if value.startswith("\\\\?\\UNC\\"):
+        value = "\\\\" + value[8:]
+    elif value.startswith("\\\\?\\"):
+        value = value[4:]
+    return os.path.normcase(os.path.abspath(value))
+
+
+def _verify_windows_lock_lease(
+    path: Path,
+    expected_source: bytes,
+    expected_binding: tuple[int, int, int, int, int, int, str],
+    parent_descriptor: int,
+    file_descriptor: int,
+    parent_identity: tuple[int, int, int, int, int, int],
+    file_identity: tuple[int, int, int, int, int, int],
+) -> None:
+    try:
+        parent_metadata = os.fstat(parent_descriptor)
+        file_metadata = os.fstat(file_descriptor)
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock lease identity cannot be read") from exc
+    current_parent = _descriptor_stat_identity(parent_metadata)
+    current_file = _descriptor_stat_identity(file_metadata)
+    if (
+        current_parent != parent_identity
+        or current_file != file_identity
+        or not stat.S_ISDIR(parent_metadata.st_mode)
+        or _is_reparse(parent_metadata)
+        or not stat.S_ISREG(file_metadata.st_mode)
+        or _is_reparse(file_metadata)
+        or getattr(file_metadata, "st_nlink", 1) not in {0, 1}
+        or _windows_descriptor_path(parent_descriptor)
+        != os.path.normcase(os.path.abspath(path.parent.resolve(strict=True)))
+        or _windows_descriptor_path(file_descriptor)
+        != os.path.normcase(os.path.abspath(path.resolve(strict=True)))
+    ):
+        raise _BootstrapError("bootstrap lock lease identity changed")
+    source = _descriptor_source(file_descriptor)
+    if (
+        source != expected_source
+        or hashlib.sha256(source).hexdigest() != expected_binding[-1]
+    ):
+        raise _BootstrapError("bootstrap lock lease content changed")
+    _verify_bootstrap_lock_binding(path, expected_source, expected_binding)
+
+
+def _descriptor_stat_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+        metadata.st_mode,
+    )
+
+
+def _descriptor_source(descriptor: int, maximum: int = 8 * 1024 * 1024) -> bytes:
+    try:
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, maximum - total + 1))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > maximum:
+                raise _BootstrapError("bootstrap lock exceeds size limit")
+    except _BootstrapError:
+        raise
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock lease cannot be read") from exc
+    return b"".join(chunks)
+
+
+def _verify_posix_lock_lease(
+    path: Path,
+    expected_source: bytes,
+    expected_binding: tuple[int, int, int, int, int, int, str],
+    parent_descriptor: int,
+    file_descriptor: int,
+    parent_identity: tuple[int, int, int, int, int, int],
+    file_identity: tuple[int, int, int, int, int, int],
+) -> None:
+    try:
+        current_parent = _descriptor_stat_identity(os.fstat(parent_descriptor))
+        current_file = _descriptor_stat_identity(os.fstat(file_descriptor))
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock lease identity cannot be read") from exc
+    if current_parent != parent_identity or current_file != file_identity:
+        raise _BootstrapError("bootstrap lock lease identity changed")
+    source = _descriptor_source(file_descriptor)
+    if (
+        source != expected_source
+        or hashlib.sha256(source).hexdigest() != expected_binding[-1]
+    ):
+        raise _BootstrapError("bootstrap lock lease content changed")
+    _verify_bootstrap_lock_binding(path, expected_source, expected_binding)
+
+
+@contextmanager
+def _bootstrap_lock_execution_lease(
+    path: Path,
+    expected_source: bytes,
+    expected_binding: tuple[int, int, int, int, int, int, str],
+):
+    if os.name == "nt":
+        parent_descriptor = _windows_open_bound_descriptor(path.parent, directory=True)
+        try:
+            file_descriptor = _windows_open_bound_descriptor(path, directory=False)
+        except BaseException:
+            os.close(parent_descriptor)
+            raise
+        try:
+            parent_metadata = os.fstat(parent_descriptor)
+            file_metadata = os.fstat(file_descriptor)
+            parent_identity = _descriptor_stat_identity(parent_metadata)
+            file_identity = _descriptor_stat_identity(file_metadata)
+            if (
+                not stat.S_ISDIR(parent_metadata.st_mode)
+                or _is_reparse(parent_metadata)
+                or not stat.S_ISREG(file_metadata.st_mode)
+                or _is_reparse(file_metadata)
+                or file_identity != expected_binding[:6]
+            ):
+                raise _BootstrapError("bootstrap lock lease identity changed")
+
+            def verify() -> None:
+                _verify_windows_lock_lease(
+                    path,
+                    expected_source,
+                    expected_binding,
+                    parent_descriptor,
+                    file_descriptor,
+                    parent_identity,
+                    file_identity,
+                )
+            verify()
+            try:
+                yield
+            except BaseException:
+                try:
+                    verify()
+                except BaseException:
+                    pass
+                raise
+            else:
+                verify()
+        finally:
+            try:
+                os.close(file_descriptor)
+            finally:
+                os.close(parent_descriptor)
+        return
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        parent_descriptor = os.open(path.parent, flags)
+        try:
+            file_descriptor = os.open(
+                path.name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=parent_descriptor,
+            )
+        except BaseException:
+            os.close(parent_descriptor)
+            raise
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock lease cannot be acquired") from exc
+    try:
+        if _fcntl is None:
+            raise _BootstrapError("bootstrap lock lease is unavailable")
+        _fcntl.flock(parent_descriptor, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        _fcntl.flock(file_descriptor, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        parent_identity = _descriptor_stat_identity(os.fstat(parent_descriptor))
+        file_identity = _descriptor_stat_identity(os.fstat(file_descriptor))
+        if (
+            not stat.S_ISDIR(parent_identity[-1])
+            or not stat.S_ISREG(file_identity[-1])
+            or file_identity != expected_binding[:6]
+        ):
+            raise _BootstrapError("bootstrap lock lease identity changed")
+
+        def verify() -> None:
+            _verify_posix_lock_lease(
+                path,
+                expected_source,
+                expected_binding,
+                parent_descriptor,
+                file_descriptor,
+                parent_identity,
+                file_identity,
+            )
+        verify()
+        try:
+            yield
+        except BaseException:
+            try:
+                verify()
+            except BaseException:
+                pass
+            raise
+        else:
+            verify()
+    except OSError as exc:
+        raise _BootstrapError("bootstrap lock lease cannot be acquired") from exc
+    finally:
+        try:
+            os.close(file_descriptor)
+        finally:
+            os.close(parent_descriptor)
 
 
 def _project_version(repository: Path) -> str:
@@ -559,6 +891,11 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
     ) is None:
         raise _BootstrapError("release gate bootstrap repository identity is invalid")
     lock_path, lock_document, lock_source = _selected_lock(repository)
+    repository_lock_binding = _bootstrap_lock_binding(lock_path, lock_source)
+    canonical_lock, canonical_lock_binding = _materialize_bootstrap_lock(
+        bootstrap_root,
+        lock_source,
+    )
     lock_rows = _lock_rows(lock_document)
     environment_root = bootstrap_root / "environment"
     venv.EnvBuilder(with_pip=True, clear=False, symlinks=False).create(environment_root)
@@ -578,23 +915,37 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
     for name in ("pip-cache", "temp"):
         (bootstrap_root / name).mkdir()
     pip_artifact = _bootstrap_pip(python, lock_rows, bootstrap_root, environment)
-    report_path = bootstrap_root / "pip-report.json"
-    _run(
-        (
-            str(python),
-            "-m",
-            "pip",
-            "install",
-            "--require-virtualenv",
-            "--no-deps",
-            "-r",
-            str(lock_path),
-            "--report",
-            str(report_path),
+    report_root = bootstrap_root / "report"
+    report_root.mkdir()
+    report_path = report_root / "pip-report.json"
+    with (
+        _bootstrap_lock_execution_lease(
+            lock_path,
+            lock_source,
+            repository_lock_binding,
         ),
-        cwd=bootstrap_root,
-        env=environment,
-    )
+        _bootstrap_lock_execution_lease(
+            canonical_lock,
+            lock_source,
+            canonical_lock_binding,
+        ),
+    ):
+        _run(
+            (
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--require-virtualenv",
+                "--no-deps",
+                "-r",
+                str(canonical_lock),
+                "--report",
+                str(report_path),
+            ),
+            cwd=report_root,
+            env=environment,
+        )
     artifacts = _report_artifacts(
         report_path,
         lock_rows,

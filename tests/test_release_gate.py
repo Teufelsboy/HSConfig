@@ -972,9 +972,128 @@ def test_bootstrap_archives_stored_commit_not_moving_head(
     BOOTSTRAP._bootstrap_environment(ROOT, bootstrap)
 
     archive_commands = [command for command in commands if "archive" in command]
+    locked_install_commands = [
+        command
+        for command in commands
+        if "pip" in command and "install" in command and "-r" in command
+    ]
     assert len(archive_commands) == 1
     assert archive_commands[0][-1] == commit_oid
     assert "HEAD" not in archive_commands[0]
+    assert len(locked_install_commands) == 1
+    canonical_lock = Path(
+        locked_install_commands[0][locked_install_commands[0].index("-r") + 1]
+    )
+    assert canonical_lock == bootstrap / "pylock.toml"
+    assert canonical_lock.read_bytes() == lock_path.read_bytes() == b"locked"
+    assert canonical_lock != lock_path
+
+
+@pytest.mark.parametrize("mutation", ("content", "replacement"))
+def test_bootstrap_lock_binding_rejects_mutation(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    source = b"lock-version = \"1.0\"\n"
+    path, binding = BOOTSTRAP._materialize_bootstrap_lock(tmp_path, source)
+    if mutation == "content":
+        path.write_bytes(b"lock-version = \"1.1\"\n")
+    else:
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(source)
+        os.replace(replacement, path)
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="bootstrap lock"):
+        BOOTSTRAP._verify_bootstrap_lock_binding(path, source, binding)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows sharing-mode contract")
+def test_windows_bootstrap_lock_lease_blocks_swap_restore_during_run(
+    tmp_path: Path,
+) -> None:
+    source = b"lock-version = \"1.0\"\n"
+    path, binding = BOOTSTRAP._materialize_bootstrap_lock(tmp_path, source)
+    displaced = tmp_path / "displaced-lock"
+    swap = (
+        "import os,sys; path,displaced=sys.argv[1:3]; "
+        "\ntry: os.replace(path,displaced)"
+        "\nexcept OSError: raise SystemExit(0)"
+        "\nopen(path,'wb').write(b'malicious')"
+        "\nos.replace(displaced,path)"
+        "\nraise SystemExit(9)"
+    )
+    read_original = (
+        "import pathlib,sys; "
+        "raise SystemExit(0 if pathlib.Path(sys.argv[1]).read_bytes().hex() == "
+        "sys.argv[2] else 9)"
+    )
+
+    with BOOTSTRAP._bootstrap_lock_execution_lease(path, source, binding):
+        BOOTSTRAP._run(
+            (sys.executable, "-c", swap, str(path), str(displaced)),
+            cwd=tmp_path,
+            env=BOOTSTRAP._base_environment(),
+        )
+        BOOTSTRAP._run(
+            (sys.executable, "-c", read_original, str(path), source.hex()),
+            cwd=tmp_path,
+            env=BOOTSTRAP._base_environment(),
+        )
+
+    assert path.read_bytes() == source
+    assert not displaced.exists()
+
+
+def test_bootstrap_lock_lease_detects_mutation_during_run(tmp_path: Path) -> None:
+    source = b"lock-version = \"1.0\"\n"
+    path, binding = BOOTSTRAP._materialize_bootstrap_lock(tmp_path, source)
+    mutate_and_restore = (
+        "import os,sys; path=sys.argv[1]; source=bytes.fromhex(sys.argv[2]); "
+        "\ntry: handle=open(path,'r+b')"
+        "\nexcept OSError: raise SystemExit(0)"
+        "\nwith handle:"
+        "\n handle.write(b'malicious'); handle.flush(); os.fsync(handle.fileno())"
+        "\n handle.seek(0); handle.write(source); handle.truncate(); handle.flush(); "
+        "os.fsync(handle.fileno())"
+    )
+
+    def run_mutation() -> None:
+        with BOOTSTRAP._bootstrap_lock_execution_lease(path, source, binding):
+            BOOTSTRAP._run(
+                (sys.executable, "-c", mutate_and_restore, str(path), source.hex()),
+                cwd=tmp_path,
+                env=BOOTSTRAP._base_environment(),
+            )
+
+    if os.name == "nt":
+        run_mutation()
+    else:
+        with pytest.raises(BOOTSTRAP._BootstrapError, match="bootstrap lock"):
+            run_mutation()
+
+    assert path.read_bytes() == source
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    (KeyboardInterrupt(), SystemExit(7)),
+    ids=("keyboard-interrupt", "system-exit"),
+)
+def test_bootstrap_lock_lease_releases_handles_after_base_exception(
+    tmp_path: Path,
+    interruption: BaseException,
+) -> None:
+    source = b"lock-version = \"1.0\"\n"
+    path, binding = BOOTSTRAP._materialize_bootstrap_lock(tmp_path, source)
+
+    with pytest.raises(type(interruption)):
+        with BOOTSTRAP._bootstrap_lock_execution_lease(path, source, binding):
+            raise interruption
+
+    displaced = tmp_path / "released-lock"
+    os.replace(path, displaced)
+    os.replace(displaced, path)
+    assert path.read_bytes() == source
 
 
 @pytest.mark.parametrize(
