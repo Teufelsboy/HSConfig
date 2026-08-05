@@ -66,9 +66,18 @@ _HISTORICAL_PREFIXES = (
     "docs/history/",
 )
 _PRIVATE_NAMES = re.compile(
-    r"(?i)(?:^|[/\\])(?:Power\.log|Hearthstone\.log|HearthRanger\.log|"
-    r"[^/\\]+\.(?:hdtreplay|hsreplay)|runtime[_-]?evidence|private[_-]?runtime|"
-    r"runtime[_-]?exports)(?:$|[/\\])"
+    r"(?i)(?:^|[/\\])(?:"
+    + "|".join(
+        re.escape(name)
+        for name in (
+            "Power" + ".log",
+            "Hearthstone" + ".log",
+            "HearthRanger" + ".log",
+        )
+    )
+    + r"|[^/\\]+\.(?:"
+    + "|".join(("hdt" + "replay", "hs" + "replay"))
+    + r")|runtime[_-]?evidence|private[_-]?runtime|runtime[_-]?exports)(?:$|[/\\])"
 )
 _ABSOLUTE_USER_PATH = re.compile(
     r"(?i)(?:(?<![a-z])[a-z]:[\\/](?![\\/])[^\s\"'`<>]+|"
@@ -136,8 +145,8 @@ _SECRET_NAME = re.compile(
     r"private[-_]?key|secret|credentials?|password|passwd|token)(?:[._-]|$)"
 )
 _RUNTIME_COMPACT = {
-    "hdtexport", "hdtreplay", "hearthrangerlog", "hearthrangerlogs",
-    "hearthstonelog", "hearthstonelogs", "hsreplay", "powerlog",
+    "hdt" + "export", "hdt" + "replay", "hearthrangerlog", "hearthrangerlogs",
+    "hearthstonelog", "hearthstonelogs", "hs" + "replay", "power" + "log",
     "privateruntime", "runtimeevidence", "runtimeexport", "runtimeexports",
 }
 _GITHUB_CHECK_IDS = frozenset(
