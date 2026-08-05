@@ -818,29 +818,17 @@ def _load_runtime_manifest(
         environment_root = Path(document["environment_root"]).resolve(strict=True)
     except (OSError, TypeError) as exc:
         raise RuntimeLockError("runtime bootstrap manifest is invalid") from exc
-    git_environment = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.upper().startswith("GIT_")
-    }
     try:
-        git_values = []
-        for arguments in (("rev-parse", "HEAD"), ("rev-parse", "HEAD^{tree}"), ("status", "--porcelain=v1", "--untracked-files=all")):
-            completed = subprocess.run(
-                ("git", "-C", str(ROOT), *arguments),
-                cwd=ROOT,
-                env=git_environment,
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=30,
-                shell=False,
-            )
-            if completed.returncode != 0 or len(completed.stdout) > 1024 * 1024:
-                raise RuntimeLockError("runtime repository binding is unavailable")
-            git_values.append(completed.stdout.strip())
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        head = _bound_git_oid("HEAD")
+        tree = _bound_git_oid("HEAD^{tree}")
+        status = _bound_git_output(
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            maximum_bytes=1024 * 1024,
+        )
+        _assert_default_git_index()
+    except (CoverageGateError, UnicodeError) as exc:
         raise RuntimeLockError("runtime repository binding is unavailable") from exc
     if (
         document["schema_version"] != 1
@@ -851,9 +839,9 @@ def _load_runtime_manifest(
         or document["sentinel_sha256"] != hashlib.sha256(sentinel.encode("ascii")).hexdigest()
         or re.fullmatch(r"[0-9a-f]{40}", str(document["commit_oid"])) is None
         or re.fullmatch(r"[0-9a-f]{40}", str(document["tree_oid"])) is None
-        or document["commit_oid"] != git_values[0]
-        or document["tree_oid"] != git_values[1]
-        or git_values[2] != ""
+        or document["commit_oid"] != head
+        or document["tree_oid"] != tree
+        or status != b""
     ):
         raise RuntimeLockError("runtime bootstrap manifest binding differs")
     candidates = _locked_wheels(lock_file)
@@ -902,6 +890,9 @@ def _load_runtime_manifest(
             raise RuntimeLockError("runtime bootstrap wheel inventory differs")
         copied = dict(row)
         copied["_wheel_source"] = wheel_source
+        if normalized == "hsconfig":
+            copied["_commit_oid"] = str(document["commit_oid"])
+            copied["_tree_oid"] = str(document["tree_oid"])
         bound[normalized] = copied
     if set(bound) != set(locked) | {"hsconfig"}:
         raise RuntimeLockError("runtime bootstrap artifact set differs")
@@ -1013,6 +1004,413 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
     return result
 
 
+def _bound_git_output(
+    *arguments: str,
+    maximum_bytes: int,
+) -> bytes:
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("GIT_")
+    }
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    platform_options: dict[str, Any] = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    process: subprocess.Popen[bytes] | None = None
+    lease: _ProcessTreeLease | None = None
+    stdout = bytearray()
+    stderr = bytearray()
+    overflow = threading.Event()
+    errors: list[BaseException] = []
+
+    def drain(stream: Any, target: bytearray, limit: int) -> None:
+        try:
+            while not overflow.is_set():
+                remaining = limit - len(target)
+                chunk = stream.read(min(8192, remaining + 1))
+                if not chunk:
+                    return
+                if len(chunk) > remaining:
+                    overflow.set()
+                    return
+                target.extend(chunk)
+        except (OSError, ValueError) as exc:
+            errors.append(exc)
+
+    if os.name != "nt":
+        _enable_posix_subreaper()
+    baseline = _linux_direct_children()
+    threads: list[threading.Thread] = []
+    try:
+        process = subprocess.Popen(
+            ("git", "--no-replace-objects", "-C", str(ROOT), *arguments),
+            cwd=ROOT,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            **platform_options,
+        )
+        lease = _ProcessTreeLease(process, baseline)
+        if process.stdout is None or process.stderr is None:
+            raise RuntimeLockError("local project repository pipes are unavailable")
+        threads = [
+            threading.Thread(
+                target=drain,
+                args=(process.stdout, stdout, maximum_bytes),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain,
+                args=(process.stderr, stderr, CAPTURE_LIMIT),
+                daemon=True,
+            ),
+        ]
+        for thread in threads:
+            thread.start()
+        deadline = time.monotonic() + 30.0
+        while process.poll() is None and not overflow.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                overflow.set()
+                break
+            try:
+                process.wait(timeout=min(0.05, remaining))
+            except subprocess.TimeoutExpired:
+                continue
+        lease.terminate_remaining()
+        for thread in threads:
+            thread.join(timeout=30)
+        if any(thread.is_alive() for thread in threads):
+            raise RuntimeLockError("local project repository transport did not close")
+    except (CoverageGateError, OSError, subprocess.TimeoutExpired) as exc:
+        if lease is not None:
+            lease.terminate_remaining()
+        elif process is not None and process.poll() is None:
+            process.kill()
+            process.wait(timeout=30)
+        raise RuntimeLockError("local project repository binding is unavailable") from exc
+    finally:
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except (OSError, ValueError):
+                        pass
+    if process is None or process.returncode != 0 or overflow.is_set() or errors:
+        raise RuntimeLockError("local project repository binding is unavailable")
+    return bytes(stdout)
+
+
+_WINDOWS_RESERVED_COMPONENTS = {
+    "aux",
+    "con",
+    "nul",
+    "prn",
+    *(f"com{index}" for index in range(1, 10)),
+    *(f"lpt{index}" for index in range(1, 10)),
+    *(f"com{index}" for index in "¹²³"),
+    *(f"lpt{index}" for index in "¹²³"),
+}
+
+
+def _is_canonical_repository_component(component: str) -> bool:
+    device_stem = component.split(".", 1)[0].casefold()
+    return (
+        component not in {"", ".", ".."}
+        and not component.endswith((" ", "."))
+        and not any(character in '<>:"/\\|?*' for character in component)
+        and not any(ord(character) < 32 or ord(character) == 127 for character in component)
+        and device_stem not in _WINDOWS_RESERVED_COMPONENTS
+    )
+
+
+def _bound_git_oid(revision: str) -> str:
+    source = _bound_git_output(
+        "rev-parse",
+        revision,
+        maximum_bytes=64,
+    )
+    if re.fullmatch(rb"[0-9a-f]{40}\n", source) is None:
+        raise RuntimeLockError("local project repository identity is invalid")
+    return source[:-1].decode("ascii")
+
+
+def _assert_default_git_index() -> None:
+    source = _bound_git_output(
+        "ls-files",
+        "-v",
+        "-z",
+        "--full-name",
+        maximum_bytes=64 * 1024 * 1024,
+    )
+    if not source or not source.endswith(b"\0"):
+        raise RuntimeLockError("local project repository index is invalid")
+    seen: set[str] = set()
+    folded: set[str] = set()
+    for raw in source[:-1].split(b"\0"):
+        if not raw.startswith(b"H "):
+            raise RuntimeLockError("local project repository index has non-default flags")
+        try:
+            repository_path = raw[2:].decode("utf-8")
+        except UnicodeError as exc:
+            raise RuntimeLockError("local project repository index is invalid") from exc
+        parts = repository_path.split("/")
+        folded_path = repository_path.casefold()
+        if (
+            not all(_is_canonical_repository_component(part) for part in parts)
+            or repository_path in seen
+            or folded_path in folded
+        ):
+            raise RuntimeLockError("local project repository index is invalid")
+        seen.add(repository_path)
+        folded.add(folded_path)
+
+
+def _local_repository_oids(artifact: Mapping[str, object] | None) -> tuple[str, str]:
+    if artifact is None:
+        raise RuntimeLockError("local project repository binding is missing")
+    commit_oid = artifact.get("_commit_oid")
+    tree_oid = artifact.get("_tree_oid")
+    if (
+        not isinstance(commit_oid, str)
+        or re.fullmatch(r"[0-9a-f]{40}", commit_oid) is None
+        or not isinstance(tree_oid, str)
+        or re.fullmatch(r"[0-9a-f]{40}", tree_oid) is None
+    ):
+        raise RuntimeLockError("local project repository binding is invalid")
+    return commit_oid, tree_oid
+
+
+def _committed_local_tree(
+    artifact: Mapping[str, object] | None,
+) -> dict[str, str]:
+    _commit_oid, tree_oid = _local_repository_oids(artifact)
+    source = _bound_git_output(
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        tree_oid,
+        "--",
+        "src/hsconfig",
+        maximum_bytes=64 * 1024 * 1024,
+    )
+    if not source or not source.endswith(b"\0"):
+        raise RuntimeLockError("local project committed tree is invalid")
+    result: dict[str, str] = {}
+    folded: set[str] = set()
+    for raw in source[:-1].split(b"\0"):
+        try:
+            metadata, raw_path = raw.split(b"\t", 1)
+            mode, object_type, raw_oid = metadata.split(b" ")
+            repository_path = raw_path.decode("utf-8")
+            oid = raw_oid.decode("ascii")
+        except (UnicodeError, ValueError) as exc:
+            raise RuntimeLockError("local project committed tree is invalid") from exc
+        prefix = "src/hsconfig/"
+        if not repository_path.startswith(prefix):
+            raise RuntimeLockError("local project committed tree path is invalid")
+        relative = repository_path[len("src/") :]
+        parts = relative.split("/")
+        folded_path = relative.casefold()
+        if (
+            mode not in {b"100644", b"100755"}
+            or object_type != b"blob"
+            or re.fullmatch(r"[0-9a-f]{40}", oid) is None
+            or len(parts) < 2
+            or parts[0] != "hsconfig"
+            or not all(_is_canonical_repository_component(part) for part in parts)
+            or relative in result
+            or folded_path in folded
+        ):
+            raise RuntimeLockError("local project committed tree is invalid")
+        result[relative] = oid
+        folded.add(folded_path)
+    if not result:
+        raise RuntimeLockError("local project committed tree is empty")
+    return result
+
+
+def _committed_local_payload(
+    artifact: Mapping[str, object] | None,
+    normalized_path: str,
+    expected_oid: str,
+) -> bytes:
+    _local_repository_oids(artifact)
+    parts = normalized_path.split("/")
+    if (
+        len(parts) < 2
+        or parts[0] != "hsconfig"
+        or any(part in {"", ".", ".."} for part in parts)
+        or re.fullmatch(r"[0-9a-f]{40}", expected_oid) is None
+    ):
+        raise RuntimeLockError("local project committed source path is invalid")
+    return _bound_git_output(
+        "cat-file",
+        "blob",
+        expected_oid,
+        maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+    )
+
+
+def _matches_committed_local_payload(
+    installed: bytes,
+    committed: bytes,
+    normalized_path: str,
+) -> bool:
+    if installed == committed:
+        return True
+    if Path(normalized_path).suffix not in {".json", ".py"}:
+        return False
+    if b"\r" in committed or b"\x00" in committed:
+        return False
+    try:
+        committed.decode("utf-8")
+        installed.decode("utf-8")
+    except UnicodeError:
+        return False
+    return installed == committed.replace(b"\n", b"\r\n")
+
+
+def _assert_materialized_repository_source(path: Path) -> bytes:
+    try:
+        relative = path.relative_to(ROOT)
+        current = ROOT
+        directories: list[tuple[Path, _PathIdentity]] = []
+        for part in relative.parts[:-1]:
+            metadata = current.lstat()
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or _is_reparse(metadata)
+            ):
+                raise RuntimeLockError("local project repository path is unsafe")
+            directories.append((current, _identity(metadata)))
+            current /= part
+        source, _metadata = _read_bound_regular_file(
+            path,
+            maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+            error_type=RuntimeLockError,
+            label="local project repository source",
+        )
+        for directory, expected in directories:
+            if _identity(directory.lstat()) != expected:
+                raise RuntimeLockError("local project repository path changed")
+        return source
+    except ValueError as exc:
+        raise RuntimeLockError("local project repository path is invalid") from exc
+
+
+def _assert_local_repository_binding(
+    artifact: Mapping[str, object] | None,
+) -> None:
+    commit_oid, tree_oid = _local_repository_oids(artifact)
+    try:
+        head = _bound_git_oid("HEAD")
+        head_tree = _bound_git_oid("HEAD^{tree}")
+        committed_tree = _bound_git_oid(f"{commit_oid}^{{tree}}")
+        status = _bound_git_output(
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            maximum_bytes=1024 * 1024,
+        )
+        _assert_default_git_index()
+    except UnicodeError as exc:
+        raise RuntimeLockError("local project repository binding is invalid") from exc
+    if (
+        head != commit_oid
+        or head_tree != tree_oid
+        or committed_tree != tree_oid
+        or status != b""
+    ):
+        raise RuntimeLockError("local project repository binding differs")
+
+
+def _assert_bound_local_artifact(
+    artifact: Mapping[str, object] | None,
+) -> str:
+    if artifact is None:
+        raise RuntimeLockError("local project artifact binding is missing")
+    try:
+        artifact_name = artifact["name"]
+        artifact_version = artifact["version"]
+        wheel_path = Path(str(artifact["wheel_path"]))
+        digest = artifact["sha256"]
+        wheel_source = artifact["_wheel_source"]
+        disk_source, _metadata = _read_bound_regular_file(
+            wheel_path,
+            maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+            error_type=RuntimeLockError,
+            label="local project wheel",
+        )
+        inventory = _wheel_inventory(wheel_source)
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise RuntimeLockError("local project artifact binding is invalid") from exc
+    if (
+        not isinstance(artifact_name, str)
+        or _normalized_name(artifact_name) != "hsconfig"
+        or not isinstance(artifact_version, str)
+        or not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or not isinstance(wheel_source, bytes)
+        or disk_source != wheel_source
+        or hashlib.sha256(wheel_source).hexdigest() != digest
+        or artifact.get("files") != inventory
+    ):
+        raise RuntimeLockError("local project artifact binding differs")
+    normalized_name = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_name)
+    normalized_version = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_version)
+    expected_dist_info = f"{normalized_name}-{normalized_version}.dist-info"
+    inventory_paths = {
+        str(row["path"])
+        for row in inventory
+        if isinstance(row, dict) and isinstance(row.get("path"), str)
+    }
+    top_level_dist_info = {
+        path.split("/", 1)[0]
+        for path in inventory_paths
+        if path.split("/", 1)[0].endswith(".dist-info")
+    }
+    if (
+        top_level_dist_info != {expected_dist_info}
+        or f"{expected_dist_info}/RECORD" not in inventory_paths
+    ):
+        raise RuntimeLockError("local project artifact inventory is invalid")
+    return expected_dist_info
+
+
+def _assert_bound_local_direct_url(
+    direct_url: str,
+    artifact: Mapping[str, object] | None,
+    dist_info_root: str,
+) -> tuple[str, bytes]:
+    if artifact is None:
+        raise RuntimeLockError("local project origin is unverifiable")
+    try:
+        payload = json.loads(direct_url, object_pairs_hook=_closed_object)
+        wheel_path = Path(str(artifact["wheel_path"])).resolve(strict=True)
+        digest = str(artifact["sha256"])
+        direct_url_source = direct_url.encode("utf-8")
+    except (json.JSONDecodeError, OSError, TypeError, UnicodeError, ValueError, KeyError) as exc:
+        raise RuntimeLockError("local project origin is unverifiable") from exc
+    if payload != {
+        "archive_info": {
+            "hash": f"sha256={digest}",
+            "hashes": {"sha256": digest},
+        },
+        "url": wheel_path.as_uri(),
+    }:
+        raise RuntimeLockError("local project origin differs from committed wheel")
+    return f"{dist_info_root}/direct_url.json", direct_url_source
+
+
 def _assert_bound_nonlocal_direct_url(
     direct_url: str,
     artifact: Mapping[str, object] | None,
@@ -1109,6 +1507,11 @@ def _assert_distribution_origin(
     if root not in allowed:
         raise RuntimeLockError("installed package origin differs from project lock")
     bound_nonlocal_direct_url: tuple[str, bytes] | None = None
+    bound_local_direct_url: tuple[str, bytes] | None = None
+    committed_package_tree: dict[str, str] | None = None
+    if local_project and artifact is not None:
+        dist_info_root = _assert_bound_local_artifact(artifact)
+        committed_package_tree = _committed_local_tree(artifact)
     if local_project and artifact is None:
         try:
             payload = json.loads(direct_url or "", object_pairs_hook=_closed_object)
@@ -1122,17 +1525,11 @@ def _assert_distribution_origin(
             artifact,
         )
     elif local_project:
-        try:
-            payload = json.loads(direct_url or "", object_pairs_hook=_closed_object)
-            wheel_path = Path(str(artifact["wheel_path"])).resolve(strict=True)
-            digest = str(artifact["sha256"])
-        except (json.JSONDecodeError, OSError, TypeError, ValueError, KeyError) as exc:
-            raise RuntimeLockError("local project origin is unverifiable") from exc
-        if payload != {
-            "archive_info": {"hash": f"sha256={digest}", "hashes": {"sha256": digest}},
-            "url": wheel_path.as_uri(),
-        }:
-            raise RuntimeLockError("local project origin differs from committed wheel")
+        bound_local_direct_url = _assert_bound_local_direct_url(
+            direct_url or "",
+            artifact,
+            dist_info_root,
+        )
     try:
         rows = list(csv.reader(io.StringIO(record)))
     except csv.Error as exc:
@@ -1145,6 +1542,7 @@ def _assert_distribution_origin(
     installed_package_paths: set[str] = set()
     verified_hashes = 0
     bound_direct_url_payload_seen = False
+    bound_local_direct_url_payload_seen = False
     for relative_name, encoded_hash, encoded_size in rows:
         normalized_path = relative_name.replace("\\", "/")
         if normalized_path in seen_paths:
@@ -1230,21 +1628,45 @@ def _assert_distribution_origin(
                     "installed package origin differs from bound artifact"
                 )
             bound_direct_url_payload_seen = True
+        if (
+            bound_local_direct_url is not None
+            and normalized_path == bound_local_direct_url[0]
+        ):
+            if payload != bound_local_direct_url[1]:
+                raise RuntimeLockError(
+                    "local project origin differs from committed wheel"
+                )
+            bound_local_direct_url_payload_seen = True
         verified_paths.add(installed_path)
         if local_project and normalized_path.startswith("hsconfig/"):
             repository_path = ROOT / "src" / Path(*normalized_path.split("/"))
             try:
-                repository_metadata = repository_path.lstat()
-                if (
-                    not stat.S_ISREG(repository_metadata.st_mode)
-                    or stat.S_ISLNK(repository_metadata.st_mode)
-                    or _is_reparse(repository_metadata)
-                    or _read_bound_regular_file(
-                        repository_path,
-                        maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
-                        error_type=RuntimeLockError,
-                        label="repository package payload",
-                    )[0] != payload
+                if committed_package_tree is None:
+                    raise RuntimeLockError("local project committed tree is missing")
+                committed_oid = committed_package_tree.get(normalized_path)
+                if committed_oid is None:
+                    raise RuntimeLockError(
+                        "local project installation differs from committed tree"
+                    )
+                materialized_payload = _assert_materialized_repository_source(
+                    repository_path
+                )
+                committed_payload = _committed_local_payload(
+                    artifact,
+                    normalized_path,
+                    committed_oid,
+                )
+                if not (
+                    _matches_committed_local_payload(
+                        materialized_payload,
+                        committed_payload,
+                        normalized_path,
+                    )
+                    and _matches_committed_local_payload(
+                        payload,
+                        committed_payload,
+                        normalized_path,
+                    )
                 ):
                     raise RuntimeLockError(
                         "local project installation differs from repository"
@@ -1259,6 +1681,8 @@ def _assert_distribution_origin(
         raise RuntimeLockError("installed package artifact identity is unverifiable")
     if bound_nonlocal_direct_url is not None and not bound_direct_url_payload_seen:
         raise RuntimeLockError("installed package origin differs from bound artifact")
+    if bound_local_direct_url is not None and not bound_local_direct_url_payload_seen:
+        raise RuntimeLockError("local project origin differs from committed wheel")
     if artifact is not None:
         expected_paths = _wheel_installed_paths(artifact, root)
         record_paths = {
@@ -1270,8 +1694,8 @@ def _assert_distribution_origin(
             if path.endswith(".dist-info/INSTALLER")
             or path.endswith(".dist-info/REQUESTED")
             or (
-                local_project
-                and path.endswith(".dist-info/direct_url.json")
+                bound_local_direct_url is not None
+                and path == bound_local_direct_url[0]
             )
             or (
                 bound_nonlocal_direct_url is not None
@@ -1282,15 +1706,11 @@ def _assert_distribution_origin(
         if record_paths != expected_paths | additions | (record_paths & scripts):
             raise RuntimeLockError("installed RECORD differs from selected wheel inventory")
     if local_project:
-        repository_package_paths = {
-            path.relative_to(ROOT / "src").as_posix()
-            for path in (ROOT / "src" / "hsconfig").rglob("*")
-            if path.is_file()
-            and "__pycache__" not in path.parts
-            and path.suffix != ".pyc"
-        }
-        if installed_package_paths != repository_package_paths:
+        if committed_package_tree is None:
+            raise RuntimeLockError("local project committed tree is missing")
+        if installed_package_paths != set(committed_package_tree):
             raise RuntimeLockError("local project installation differs from repository")
+        _assert_local_repository_binding(artifact)
     return verified_paths
 
 

@@ -1120,6 +1120,749 @@ def test_distribution_origin_rejects_direct_url_metadata_to_record_toctou(
         )
 
 
+def _bound_local_distribution(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    *,
+    committed_payload: bytes = b"VALUE = 1\n",
+    installed_payload: bytes = b"VALUE = 1\r\n",
+    installed_relative: str = "hsconfig/module.py",
+    include_installed_package: bool = True,
+    include_extra_committed_path: bool = False,
+) -> tuple[object, dict[str, object], Path]:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    repository = tmp_path / "repository"
+    source = repository / "src" / "hsconfig" / "module.py"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(committed_payload)
+    if include_extra_committed_path:
+        (source.parent / "extra.py").write_bytes(b"EXTRA = True\n")
+    subprocess.run(("git", "init", "-q", str(repository)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "config", "user.name", "Coverage Contract"),
+        check=True,
+    )
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "config",
+            "user.email",
+            "coverage-contract@example.invalid",
+        ),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repository), "config", "core.autocrlf", "false"),
+        check=True,
+    )
+    subprocess.run(("git", "-C", str(repository), "add", "."), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-q", "-m", "fixture"),
+        check=True,
+    )
+    commit_oid = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+    tree_oid = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD^{tree}"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+
+    environment = tmp_path / "bootstrap" / "environment"
+    root = environment / "Lib" / "site-packages"
+    dist_info = root / "hsconfig-1.0.0.dist-info"
+    package = root / Path(*installed_relative.split("/"))
+    package.parent.mkdir(parents=True)
+    dist_info.mkdir(parents=True)
+    if include_installed_package:
+        package.write_bytes(installed_payload)
+    wheel_payload = b"Wheel-Version: 1.0\n"
+    (dist_info / "WHEEL").write_bytes(wheel_payload)
+    (dist_info / "INSTALLER").write_bytes(b"pip\n")
+
+    wheel_path = tmp_path / "bootstrap" / "local-wheel" / "hsconfig.whl"
+    wheel_path.parent.mkdir()
+    with zipfile.ZipFile(wheel_path, "w") as archive:
+        if include_installed_package:
+            archive.writestr(installed_relative, installed_payload)
+        archive.writestr("hsconfig-1.0.0.dist-info/WHEEL", wheel_payload)
+        archive.writestr("hsconfig-1.0.0.dist-info/RECORD", b"")
+    wheel_source = wheel_path.read_bytes()
+    digest = hashlib.sha256(wheel_source).hexdigest()
+    direct_url = json.dumps(
+        {
+            "archive_info": {
+                "hash": f"sha256={digest}",
+                "hashes": {"sha256": digest},
+            },
+            "url": wheel_path.resolve(strict=True).as_uri(),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    (dist_info / "direct_url.json").write_bytes(direct_url.encode("utf-8"))
+    rows = []
+    if include_installed_package:
+        rows.append(_runtime_record_row(installed_relative, installed_payload))
+    rows.extend([
+        _runtime_record_row("hsconfig-1.0.0.dist-info/WHEEL", wheel_payload),
+        _runtime_record_row("hsconfig-1.0.0.dist-info/INSTALLER", b"pip\n"),
+        _runtime_record_row(
+            "hsconfig-1.0.0.dist-info/direct_url.json",
+            direct_url.encode("utf-8"),
+        ),
+        "hsconfig-1.0.0.dist-info/RECORD,,",
+    ])
+    record = "\n".join(rows) + "\n"
+    (dist_info / "RECORD").write_text(record, encoding="utf-8")
+
+    class Distribution:
+        def __init__(self) -> None:
+            self.current_direct_url = direct_url
+            self.current_record = record
+            self.dist_info = dist_info
+            self.on_direct_url_read = None
+
+        def read_text(self, filename: str) -> str | None:
+            value = {
+                "INSTALLER": "pip\n",
+                "WHEEL": wheel_payload.decode("utf-8"),
+                "RECORD": self.current_record,
+                "direct_url.json": self.current_direct_url,
+            }.get(filename)
+            if filename == "direct_url.json" and self.on_direct_url_read is not None:
+                callback = self.on_direct_url_read
+                self.on_direct_url_read = None
+                callback()
+            return value
+
+        def locate_file(self, filename: str) -> Path:
+            del filename
+            return root
+
+    monkeypatch.setattr(runner, "ROOT", repository)
+    monkeypatch.setattr(
+        runner.sysconfig,
+        "get_paths",
+        lambda: {
+            "purelib": str(root),
+            "platlib": str(root),
+            "scripts": str(environment / "Scripts"),
+        },
+    )
+    monkeypatch.setattr(runner.sys, "prefix", str(environment))
+    artifact: dict[str, object] = {
+        "name": "hsconfig",
+        "version": "1.0.0",
+        "wheel_path": str(wheel_path),
+        "sha256": digest,
+        "files": runner._wheel_inventory(wheel_source),
+        "_wheel_source": wheel_source,
+        "_commit_oid": commit_oid,
+        "_tree_oid": tree_oid,
+    }
+    return Distribution(), artifact, repository
+
+
+def _set_local_direct_url_payload(
+    distribution: object,
+    payload: str,
+    *,
+    write_payload: bool,
+) -> None:
+    relative = "hsconfig-1.0.0.dist-info/direct_url.json"
+    record = str(getattr(distribution, "current_record"))
+    rows = [row for row in record.splitlines() if not row.startswith(relative + ",")]
+    rows.insert(-1, _runtime_record_row(relative, payload.encode("utf-8")))
+    updated = "\n".join(rows) + "\n"
+    setattr(distribution, "current_record", updated)
+    dist_info = Path(getattr(distribution, "dist_info"))
+    (dist_info / "RECORD").write_text(updated, encoding="utf-8")
+    if write_payload:
+        (dist_info / "direct_url.json").write_bytes(payload.encode("utf-8"))
+
+
+def _write_local_runtime_manifest(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    artifact: dict[str, object],
+    repository: Path,
+) -> Path:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    lock = tmp_path / "runtime-lock.toml"
+    lock.write_text("packages = []\n", encoding="utf-8")
+    monkeypatch.setattr(runner, "LOCK_FILE", lock)
+    sentinel = "c" * 64
+    manifest = tmp_path / "bootstrap" / "manifest.json"
+    document = {
+        "schema_version": 1,
+        "python_minor": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "repository": str(repository.resolve(strict=True)),
+        "commit_oid": artifact["_commit_oid"],
+        "tree_oid": artifact["_tree_oid"],
+        "environment_root": str(Path(sys.prefix).resolve(strict=True)),
+        "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+        "sentinel_sha256": hashlib.sha256(sentinel.encode("ascii")).hexdigest(),
+        "artifacts": [],
+        "local_project": {
+            key: artifact[key]
+            for key in ("name", "version", "wheel_path", "sha256", "files")
+        },
+    }
+    source = json.dumps(document, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    manifest.write_bytes(source)
+    monkeypatch.setenv("HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL", sentinel)
+    monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST", str(manifest))
+    monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST_SHA256", hashlib.sha256(source).hexdigest())
+    return lock
+
+
+def _commit_repository_path(
+    repository: Path,
+    artifact: dict[str, object],
+    relative: str,
+) -> None:
+    path = repository / Path(*relative.split("/"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("tracked authority\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(repository), "add", relative), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-q", "-m", "add authority"),
+        check=True,
+    )
+    artifact["_commit_oid"] = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="ascii",
+    ).stdout.strip()
+    artifact["_tree_oid"] = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD^{tree}"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="ascii",
+    ).stdout.strip()
+
+
+def _set_index_flag(repository: Path, relative: str, flag: str) -> None:
+    subprocess.run(
+        ("git", "-C", str(repository), "update-index", f"--{flag}", relative),
+        check=True,
+    )
+
+
+def test_local_distribution_accepts_only_bound_git_eol_materialization(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+
+    runner._assert_distribution_origin(
+        distribution,
+        local_project=True,
+        artifact=artifact,
+    )
+
+
+def test_runtime_manifest_git_authority_uses_bound_transport(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    _distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    lock = _write_local_runtime_manifest(tmp_path, monkeypatch, artifact, repository)
+    original_bound_git_output = runner._bound_git_output
+    calls: list[tuple[str, ...]] = []
+
+    def record_bound_git_output(*arguments: str, maximum_bytes: int) -> bytes:
+        calls.append(arguments)
+        return original_bound_git_output(*arguments, maximum_bytes=maximum_bytes)
+
+    def reject_legacy_git_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("legacy subprocess.run Git authority was used")
+
+    monkeypatch.setattr(runner, "_bound_git_output", record_bound_git_output)
+    monkeypatch.setattr(runner.subprocess, "run", reject_legacy_git_run)
+
+    assert runner._load_runtime_manifest(lock, {}) is not None
+    assert ("rev-parse", "HEAD") in calls
+    assert ("rev-parse", "HEAD^{tree}") in calls
+    assert (
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ) in calls
+    assert ("ls-files", "-v", "-z", "--full-name") in calls
+
+
+@pytest.mark.parametrize("flag", ("assume-unchanged", "skip-worktree"))
+def test_runtime_manifest_rejects_nondefault_index_flags_outside_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    flag: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    _distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    relative = "docs/runtime-authority.txt"
+    _commit_repository_path(repository, artifact, relative)
+    lock = _write_local_runtime_manifest(tmp_path, monkeypatch, artifact, repository)
+    _set_index_flag(repository, relative, flag)
+
+    with pytest.raises(runner.RuntimeLockError, match="repository|index"):
+        runner._load_runtime_manifest(lock, {})
+
+
+@pytest.mark.parametrize("flag", ("assume-unchanged", "skip-worktree"))
+def test_local_distribution_rejects_modified_flagged_materialized_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    flag: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        committed_payload=b"VALUE = 1\n",
+        installed_payload=b"VALUE = 1\n",
+    )
+    relative = "src/hsconfig/module.py"
+    _set_index_flag(repository, relative, flag)
+    (repository / relative).write_bytes(b"VALUE = 2\n")
+    assert (
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repository),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ),
+            check=True,
+            capture_output=True,
+        ).stdout
+        == b""
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository|index"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+@pytest.mark.parametrize("flag", ("assume-unchanged", "skip-worktree"))
+def test_terminal_repository_binding_rejects_nondefault_index_flags_outside_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    flag: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    _distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    relative = "tests/runtime-authority.txt"
+    _commit_repository_path(repository, artifact, relative)
+    _set_index_flag(repository, relative, flag)
+
+    with pytest.raises(runner.RuntimeLockError, match="repository|index"):
+        runner._assert_local_repository_binding(artifact)
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "content-change",
+        "mixed-line-endings",
+        "missing-commit-binding",
+        "missing-blob",
+        "repository-drift",
+    ),
+)
+def test_local_distribution_rejects_unbound_committed_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    committed = b"FIRST = 1\nSECOND = 2\n"
+    installed = {
+        "content-change": b"FIRST = 1\r\nSECOND = 3\r\n",
+        "mixed-line-endings": b"FIRST = 1\r\nSECOND = 2\n",
+    }.get(case, committed)
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        committed_payload=committed,
+        installed_payload=installed,
+    )
+    if case == "missing-commit-binding":
+        del artifact["_commit_oid"]
+    elif case == "missing-blob":
+        artifact["_commit_oid"] = "0" * 40
+    elif case == "repository-drift":
+        (repository / "untracked.txt").write_text("drift\n", encoding="utf-8")
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "path-mismatch",
+        "missing-installed-path",
+        "extra-committed-path",
+        "tree-drift",
+        "wheel-source-tamper",
+        "wheel-inventory-tamper",
+    ),
+)
+def test_local_distribution_rejects_path_or_artifact_authority_drift(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        committed_payload=b"VALUE = 1\n",
+        installed_payload=b"VALUE = 1\n",
+        installed_relative=(
+            "hsconfig/other.py" if case == "path-mismatch" else "hsconfig/module.py"
+        ),
+        include_installed_package=case != "missing-installed-path",
+        include_extra_committed_path=case == "extra-committed-path",
+    )
+    if case == "tree-drift":
+        artifact["_tree_oid"] = "0" * 40
+    elif case == "wheel-source-tamper":
+        artifact["_wheel_source"] = b"not a bound wheel"
+    elif case == "wheel-inventory-tamper":
+        artifact["files"] = []
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository|wheel"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+def test_local_distribution_rejects_git_replace_object_authority(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    original = b"VALUE = 'original'\n"
+    replacement = b"VALUE = 'replacement'\n"
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        committed_payload=original,
+        installed_payload=replacement,
+    )
+    original_oid = subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "rev-parse",
+            "HEAD:src/hsconfig/module.py",
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="ascii",
+    ).stdout.strip()
+    replacement_oid = subprocess.run(
+        ("git", "-C", str(repository), "hash-object", "-w", "--stdin"),
+        input=replacement,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("ascii").strip()
+    subprocess.run(
+        ("git", "-C", str(repository), "replace", original_oid, replacement_oid),
+        check=True,
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+def test_bound_git_output_rejects_limit_plus_one_without_full_capture(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    _distribution, _artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    payload = b"x" * 65
+    blob_oid = subprocess.run(
+        ("git", "-C", str(repository), "hash-object", "-w", "--stdin"),
+        input=payload,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("ascii").strip()
+
+    with pytest.raises(runner.RuntimeLockError, match="repository binding"):
+        runner._bound_git_output(
+            "cat-file",
+            "blob",
+            blob_oid,
+            maximum_bytes=64,
+        )
+
+
+def test_local_distribution_rejects_swapped_bound_wheel_on_disk(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    Path(str(artifact["wheel_path"])).write_bytes(b"swapped wheel")
+
+    with pytest.raises(runner.RuntimeLockError, match="wheel|artifact"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+@pytest.mark.parametrize("case", ("disk-mismatch", "metadata-to-record-toctou"))
+def test_local_distribution_rejects_unbound_direct_url_bytes(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    direct_url = str(getattr(distribution, "current_direct_url"))
+    reserialized = json.dumps(json.loads(direct_url), indent=2)
+    _set_local_direct_url_payload(
+        distribution,
+        reserialized,
+        write_payload=case == "disk-mismatch",
+    )
+    if case == "metadata-to-record-toctou":
+        direct_path = Path(getattr(distribution, "dist_info")) / "direct_url.json"
+        distribution.on_direct_url_read = lambda: direct_path.write_bytes(
+            reserialized.encode("utf-8")
+        )
+
+    with pytest.raises(runner.RuntimeLockError, match="origin|artifact"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+def test_local_distribution_rejects_hardlinked_materialized_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    source = repository / "src" / "hsconfig" / "module.py"
+    external = tmp_path / "external-source.py"
+    external.write_bytes(source.read_bytes())
+    source.unlink()
+    os.link(external, source)
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+def test_local_distribution_rejects_linked_materialized_source_parent(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    source_parent = repository / "src" / "hsconfig"
+    backing = tmp_path / "source-backing"
+    source_parent.replace(backing)
+    try:
+        source_parent.symlink_to(backing, target_is_directory=True)
+    except OSError as exc:
+        backing.replace(source_parent)
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+def test_local_distribution_rejects_missing_skip_worktree_source(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    relative = "src/hsconfig/module.py"
+    subprocess.run(
+        ("git", "-C", str(repository), "update-index", "--skip-worktree", relative),
+        check=True,
+    )
+    (repository / relative).unlink()
+    assert (
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repository),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ),
+            check=True,
+            capture_output=True,
+        ).stdout
+        == b""
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="local project|repository"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=True,
+            artifact=artifact,
+        )
+
+
+@pytest.mark.parametrize(
+    "tree_output",
+    (
+        b"120000 blob " + b"1" * 40 + b"\tsrc/hsconfig/link.py\0",
+        b"040000 tree " + b"1" * 40 + b"\tsrc/hsconfig/nested\0",
+        b"100644 blob invalid\tsrc/hsconfig/module.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/../evil.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tforeign/module.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/trailing./module.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/trailing /module.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/stream:name.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/control\x01.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/CON.py\0",
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/Lpt9.json\0",
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/CoM¹.Py\0".encode(),
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/cOm².json\0".encode(),
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/COM³.txt\0".encode(),
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/LpT¹.Py\0".encode(),
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/lPt².json\0".encode(),
+        b"100644 blob " + b"1" * 40 + "\tsrc/hsconfig/LPT³.txt\0".encode(),
+        (
+            b"100644 blob "
+            + b"1" * 40
+            + b"\tsrc/hsconfig/Module.py\0"
+            + b"100644 blob "
+            + b"2" * 40
+            + b"\tsrc/hsconfig/module.py\0"
+        ),
+        b"100644 blob " + b"1" * 40 + b"\tsrc/hsconfig/module.py",
+    ),
+)
+def test_committed_local_tree_rejects_unclosed_git_inventory(
+    monkeypatch: MonkeyPatch,
+    tree_output: bytes,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_bound_git_output", lambda *args, **kwargs: tree_output)
+    artifact = {"_commit_oid": "a" * 40, "_tree_oid": "b" * 40}
+
+    with pytest.raises(runner.RuntimeLockError, match="committed tree"):
+        runner._committed_local_tree(artifact)
+
+
+@pytest.mark.parametrize(
+    "repository_path",
+    (
+        "src/hsconfig/CoM¹.Py",
+        "src/hsconfig/cOm².json",
+        "src/hsconfig/COM³.txt",
+        "docs/LpT¹.Py",
+        "tests/lPt².json",
+        "scripts/LPT³.txt",
+    ),
+)
+def test_default_git_index_rejects_superscript_windows_device_stems(
+    monkeypatch: MonkeyPatch,
+    repository_path: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    source = f"H {repository_path}\0".encode()
+    monkeypatch.setattr(runner, "_bound_git_output", lambda *args, **kwargs: source)
+
+    with pytest.raises(runner.RuntimeLockError, match="repository index"):
+        runner._assert_default_git_index()
+
+
 @pytest.mark.parametrize(
     "case",
     (
