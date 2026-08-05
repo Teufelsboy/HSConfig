@@ -1096,6 +1096,115 @@ def test_bootstrap_lock_lease_releases_handles_after_base_exception(
     assert path.read_bytes() == source
 
 
+def _module_binding_paths(
+    tmp_path: Path,
+    source: bytes,
+    loaded: bytes,
+) -> tuple[Path, Path]:
+    repository = tmp_path / "repository"
+    expected = repository / "src" / "hsconfig" / "release_gate.py"
+    expected.parent.mkdir(parents=True)
+    expected.write_bytes(source)
+    installed = tmp_path / "installed" / "release_gate.py"
+    installed.parent.mkdir()
+    installed.write_bytes(loaded)
+    return repository, installed
+
+
+@pytest.mark.parametrize(
+    ("repository_newline", "installed_newline"),
+    ((b"\n", b"\r\n"), (b"\r\n", b"\n")),
+    ids=("repository-lf-wheel-crlf", "repository-crlf-wheel-lf"),
+)
+def test_module_binding_accepts_only_global_lf_crlf_transformation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_newline: bytes,
+    installed_newline: bytes,
+) -> None:
+    logical_lines = (b"from __future__ import annotations", b"VALUE = 'same'")
+    repository, installed = _module_binding_paths(
+        tmp_path,
+        repository_newline.join(logical_lines) + repository_newline,
+        installed_newline.join(logical_lines) + installed_newline,
+    )
+    from hsconfig import release_gate as module
+
+    monkeypatch.setattr(module, "__file__", str(installed))
+    module._verify_module_binding(repository)
+
+
+@pytest.mark.parametrize(
+    ("source", "loaded"),
+    (
+        (b"VALUE = 1\n", b"VALUE = 2\r\n"),
+        (b"VALUE = 1\nOTHER = 2\n", b"VALUE = 1\r\nOTHER = 2\n"),
+        (b"VALUE = 1\n", b"VALUE = 1\r"),
+        (b"VALUE = 1\n", b"VALUE = b'\xff'\n"),
+        (b"VALUE = 1\r\nOTHER = 2\n", b"VALUE = 1\nOTHER = 2\n"),
+        (b"VALUE = 1\r\nOTHER = 2\n", b"VALUE = 1\r\nOTHER = 2\n"),
+        (b"VALUE = 1\r", b"VALUE = 1\r"),
+        (b"VALUE = b'\xff'\n", b"VALUE = b'\xff'\n"),
+    ),
+    ids=(
+        "content-change",
+        "mixed-installed-newlines",
+        "bare-carriage-return",
+        "invalid-utf8",
+        "mixed-repository-newlines",
+        "identical-mixed-newlines",
+        "identical-bare-carriage-return",
+        "identical-invalid-utf8",
+    ),
+)
+def test_module_binding_rejects_noncanonical_or_changed_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: bytes,
+    loaded: bytes,
+) -> None:
+    repository, installed = _module_binding_paths(tmp_path, source, loaded)
+    from hsconfig import release_gate as module
+
+    monkeypatch.setattr(module, "__file__", str(installed))
+    with pytest.raises(ReleaseGateError, match="module is not bound"):
+        module._verify_module_binding(repository)
+
+
+@pytest.mark.parametrize("side", ("repository", "installed"))
+@pytest.mark.parametrize("kind", ("directory", "hardlink", "symlink"))
+def test_module_binding_rejects_unsafe_file_types(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    side: str,
+    kind: str,
+) -> None:
+    source = b"VALUE = 1\n"
+    repository, installed = _module_binding_paths(tmp_path, source, source)
+    from hsconfig import release_gate as module
+
+    target = repository / "src" / "hsconfig" / "release_gate.py"
+    if side == "installed":
+        target = installed
+    target.unlink()
+    if kind == "directory":
+        target.mkdir()
+    else:
+        backing = tmp_path / f"{side}-{kind}-backing.py"
+        backing.write_bytes(source)
+        try:
+            if kind == "hardlink":
+                os.link(backing, target)
+            else:
+                target.symlink_to(backing)
+        except OSError as exc:
+            pytest.skip(f"{kind} creation is unavailable: {exc}")
+
+    monkeypatch.setattr(module, "__file__", str(installed))
+    with pytest.raises(ReleaseGateError):
+        module._verify_module_binding(repository)
+
+
 @pytest.mark.parametrize(
     ("payload", "returncode", "error"),
     (

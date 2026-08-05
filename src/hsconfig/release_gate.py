@@ -1126,24 +1126,39 @@ def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_Com
     )
 
 
+def _canonical_module_text(source: bytes) -> str:
+    try:
+        text = source.decode("utf-8")
+    except UnicodeError as exc:
+        raise ReleaseGateError("release gate module is not bound to the requested repository") from exc
+    if "\r" not in text:
+        return text
+    without_crlf = text.replace("\r\n", "")
+    if "\r" in without_crlf or "\n" in without_crlf:
+        raise ReleaseGateError("release gate module is not bound to the requested repository")
+    return text.replace("\r\n", "\n")
+
+
 def _verify_module_binding(repository: Path) -> None:
     expected = repository / "src" / "hsconfig" / "release_gate.py"
     try:
         metadata = expected.lstat()
+        repository_source = _secure_read_bytes(
+            repository,
+            PurePosixPath("src", "hsconfig", "release_gate.py"),
+            context="repository module binding",
+        )
+        loaded_source = _secure_read_bytes(
+            Path(__file__).parent,
+            PurePosixPath(Path(__file__).name),
+            context="loaded module binding",
+        )
         if (
             not stat.S_ISREG(metadata.st_mode)
             or stat.S_ISLNK(metadata.st_mode)
             or _is_reparse(metadata)
-            or _secure_read_bytes(
-                repository,
-                PurePosixPath("src", "hsconfig", "release_gate.py"),
-                context="repository module binding",
-            )
-            != _secure_read_bytes(
-                Path(__file__).parent,
-                PurePosixPath(Path(__file__).name),
-                context="loaded module binding",
-            )
+            or _canonical_module_text(repository_source)
+            != _canonical_module_text(loaded_source)
         ):
             raise ReleaseGateError("release gate module is not bound to the requested repository")
     except OSError as exc:
