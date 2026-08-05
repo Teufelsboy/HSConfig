@@ -919,6 +919,114 @@ def test_distribution_origin_rejects_unbound_versioned_pip_launcher(
         )
 
 
+def _setuptools_entry_point_artifact(
+    tmp_path: Path,
+    *,
+    include_own_root: bool = True,
+    foreign_root: bool = False,
+    case_alias: bool = False,
+    traversal: bool = False,
+    artifact_name: str = "setuptools",
+    artifact_version: str = "83.0.0",
+) -> dict[str, object]:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    wheel = tmp_path / "setuptools-83.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("setuptools/__init__.py", b"__version__ = '83.0.0'\n")
+        if include_own_root:
+            archive.writestr(
+                "setuptools-83.0.0.dist-info/WHEEL",
+                b"Wheel-Version: 1.0\n",
+            )
+            archive.writestr(
+                "setuptools-83.0.0.dist-info/entry_points.txt",
+                b"[console_scripts]\neasy_install=setuptools.command.easy_install:main\n",
+            )
+            archive.writestr("setuptools-83.0.0.dist-info/RECORD", b"")
+        archive.writestr(
+            "setuptools/_vendor/wheel-0.46.3.dist-info/entry_points.txt",
+            b"[console_scripts]\nwheel=wheel.cli:main\n",
+        )
+        if foreign_root:
+            archive.writestr(
+                "foreign-1.0.dist-info/entry_points.txt",
+                b"[console_scripts]\nforeign=foreign:main\n",
+            )
+        if case_alias:
+            archive.writestr(
+                "setuptools-83.0.0.dist-info/ENTRY_POINTS.TXT",
+                b"[console_scripts]\ncase_alias=foreign:main\n",
+            )
+        if traversal:
+            archive.writestr(
+                "setuptools-83.0.0.dist-info/../foreign.py",
+                b"raise SystemExit\n",
+            )
+    source = wheel.read_bytes()
+    files: list[dict[str, object]] = []
+    if not traversal:
+        files = runner._wheel_inventory(source)
+    return {
+        "name": artifact_name,
+        "version": artifact_version,
+        "files": files,
+        "_wheel_source": source,
+    }
+
+
+def test_entry_point_scripts_ignore_vendored_setuptools_metadata(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    root = tmp_path / "environment" / "Lib" / "site-packages"
+    scripts = tmp_path / "environment" / "Scripts"
+    monkeypatch.setattr(
+        runner.sysconfig,
+        "get_paths",
+        lambda: {"scripts": str(scripts)},
+    )
+    artifact = _setuptools_entry_point_artifact(tmp_path)
+    suffixes = (".exe", "-script.py") if os.name == "nt" else ("",)
+    expected = {
+        os.path.relpath(scripts / f"easy_install{suffix}", root).replace("\\", "/")
+        for suffix in suffixes
+    }
+
+    assert runner._entry_point_script_paths(artifact, root) == expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "foreign-authority",
+        "multiple-top-level-roots",
+        "missing-top-level-root",
+        "name-mismatch",
+        "version-mismatch",
+        "case-ambiguity",
+        "traversal",
+    ),
+)
+def test_entry_point_scripts_reject_unbound_top_level_authority(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    artifact = _setuptools_entry_point_artifact(
+        tmp_path,
+        include_own_root=case not in {"foreign-authority", "missing-top-level-root"},
+        foreign_root=case in {"foreign-authority", "multiple-top-level-roots"},
+        case_alias=case == "case-ambiguity",
+        traversal=case == "traversal",
+        artifact_name="other" if case == "name-mismatch" else "setuptools",
+        artifact_version="82.0.0" if case == "version-mismatch" else "83.0.0",
+    )
+
+    with pytest.raises(runner.RuntimeLockError, match="entry point|inventory"):
+        runner._entry_point_script_paths(artifact, tmp_path / "site-packages")
+
+
 def test_distribution_origin_rejects_bound_direct_url_for_non_pip_artifact(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

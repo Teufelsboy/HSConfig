@@ -949,13 +949,36 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
     names: set[str] = set()
     console_names: set[str] = set()
     try:
+        artifact_name = artifact["name"]
+        artifact_version = artifact["version"]
+        if not isinstance(artifact_name, str) or not isinstance(artifact_version, str):
+            raise RuntimeLockError("runtime wheel entry point authority is invalid")
+        inventory = _wheel_inventory(source)
+        if artifact.get("files") != inventory:
+            raise RuntimeLockError("runtime wheel entry point inventory is unbound")
+        inventory_paths = [str(row["path"]) for row in inventory]
+        if len(inventory_paths) != len({path.casefold() for path in inventory_paths}):
+            raise RuntimeLockError("runtime wheel entry point inventory is ambiguous")
+        normalized_name = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_name)
+        normalized_version = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_version)
+        if not normalized_name or not normalized_version:
+            raise RuntimeLockError("runtime wheel entry point authority is invalid")
+        expected_dist_info = f"{normalized_name}-{normalized_version}.dist-info"
+        top_level_dist_info = {
+            path.split("/", 1)[0]
+            for path in inventory_paths
+            if path.split("/", 1)[0].endswith(".dist-info")
+        }
+        if (
+            top_level_dist_info != {expected_dist_info}
+            or f"{expected_dist_info}/RECORD" not in inventory_paths
+        ):
+            raise RuntimeLockError("runtime wheel entry point authority is invalid")
+        entry_points_path = f"{expected_dist_info}/entry_points.txt"
         with zipfile.ZipFile(io.BytesIO(source)) as archive:
-            candidates = [name for name in archive.namelist() if name.endswith(".dist-info/entry_points.txt")]
-            if len(candidates) > 1:
-                raise RuntimeLockError("runtime wheel entry points are ambiguous")
-            if candidates:
+            if entry_points_path in inventory_paths:
                 section = ""
-                for raw in archive.read(candidates[0]).decode("utf-8").splitlines():
+                for raw in archive.read(entry_points_path).decode("utf-8").splitlines():
                     line = raw.strip()
                     if line.startswith("[") and line.endswith("]"):
                         section = line[1:-1].strip()
@@ -966,7 +989,7 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
                         names.add(name)
                         if section == "console_scripts":
                             console_names.add(name)
-    except (UnicodeError, zipfile.BadZipFile) as exc:
+    except (KeyError, TypeError, UnicodeError, zipfile.BadZipFile) as exc:
         raise RuntimeLockError("runtime wheel entry points are invalid") from exc
     scripts = Path(sysconfig.get_paths()["scripts"])
     suffixes = (".exe", "-script.py") if os.name == "nt" else ("",)
@@ -975,7 +998,6 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
         for name in names
         for suffix in suffixes
     }
-    artifact_name = artifact.get("name")
     if (
         os.name == "nt"
         and isinstance(artifact_name, str)
