@@ -1379,6 +1379,51 @@ def test_local_distribution_accepts_only_bound_git_eol_materialization(
     )
 
 
+def test_materialized_git_payload_accepts_only_exact_crlf_normalization() -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    matcher = getattr(runner, "_matches_materialized_git_payload", None)
+    committed = b"FIRST = 1\nSECOND = 2\nTHIRD = 3\n"
+    materialized = b"FIRST = 1\r\nSECOND = 2\nTHIRD = 3\r\n"
+
+    assert matcher is not None
+    assert matcher(materialized, committed, "hsconfig/module.py") is True
+    assert (
+        runner._matches_committed_local_payload(
+            materialized,
+            committed,
+            "hsconfig/module.py",
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "materialized",
+    (
+        b"FIRST = 1\r\nSECOND = 9\n",
+        b"FIRST = 1\rSECOND = 2\n",
+        b"FIRST = 1\r\nSECOND = 2\x00\n",
+        b"FIRST = 1\r\nSECOND = \xff\n",
+    ),
+    ids=("content-drift", "bare-cr", "nul", "invalid-utf8"),
+)
+def test_materialized_git_payload_rejects_noncanonical_content(
+    materialized: bytes,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    matcher = getattr(runner, "_matches_materialized_git_payload", None)
+
+    assert matcher is not None
+    assert (
+        matcher(
+            materialized,
+            b"FIRST = 1\nSECOND = 2\n",
+            "hsconfig/module.py",
+        )
+        is False
+    )
+
+
 def test_runtime_manifest_git_authority_uses_bound_transport(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

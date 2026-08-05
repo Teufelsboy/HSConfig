@@ -1278,6 +1278,25 @@ def _matches_committed_local_payload(
     return installed == committed.replace(b"\n", b"\r\n")
 
 
+def _matches_materialized_git_payload(
+    materialized: bytes,
+    committed: bytes,
+    normalized_path: str,
+) -> bool:
+    if materialized == committed:
+        return True
+    if Path(normalized_path).suffix not in {".json", ".py"}:
+        return False
+    if b"\x00" in materialized or b"\r" in materialized.replace(b"\r\n", b""):
+        return False
+    try:
+        materialized.decode("utf-8")
+        committed.decode("utf-8")
+    except UnicodeError:
+        return False
+    return materialized.replace(b"\r\n", b"\n") == committed
+
+
 def _assert_materialized_repository_source(path: Path) -> bytes:
     try:
         relative = path.relative_to(ROOT)
@@ -1657,7 +1676,7 @@ def _assert_distribution_origin(
                     committed_oid,
                 )
                 if not (
-                    _matches_committed_local_payload(
+                    _matches_materialized_git_payload(
                         materialized_payload,
                         committed_payload,
                         normalized_path,
