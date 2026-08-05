@@ -2028,6 +2028,36 @@ def _delete_windows_entry(
     import ctypes
     from ctypes import wintypes
 
+    class _FileId128(ctypes.Structure):
+        _fields_ = (
+            ("identifier", ctypes.c_ubyte * 16),
+        )
+
+    class _FileIdInfo(ctypes.Structure):
+        _fields_ = (
+            ("volume_serial_number", ctypes.c_ulonglong),
+            ("file_id", _FileId128),
+        )
+
+    class _ByHandleFileInformation(ctypes.Structure):
+        _fields_ = (
+            ("file_attributes", wintypes.DWORD),
+            ("creation_time", wintypes.FILETIME),
+            ("last_access_time", wintypes.FILETIME),
+            ("last_write_time", wintypes.FILETIME),
+            ("volume_serial_number", wintypes.DWORD),
+            ("file_size_high", wintypes.DWORD),
+            ("file_size_low", wintypes.DWORD),
+            ("number_of_links", wintypes.DWORD),
+            ("file_index_high", wintypes.DWORD),
+            ("file_index_low", wintypes.DWORD),
+        )
+
+    class _FileDispositionInformationEx(ctypes.Structure):
+        _fields_ = (
+            ("flags", wintypes.DWORD),
+        )
+
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateFileW.argtypes = (
         wintypes.LPCWSTR,
@@ -2046,11 +2076,23 @@ def _delete_windows_entry(
         wintypes.DWORD,
     )
     kernel32.SetFileInformationByHandle.restype = wintypes.BOOL
+    kernel32.GetFileInformationByHandleEx.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    kernel32.GetFileInformationByHandleEx.restype = wintypes.BOOL
+    kernel32.GetFileInformationByHandle.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_ByHandleFileInformation),
+    )
+    kernel32.GetFileInformationByHandle.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
     kernel32.CloseHandle.restype = wintypes.BOOL
     handle = kernel32.CreateFileW(
         str(path),
-        0x00010000 | 0x00000080 | 0x00000001,
+        0x00010000 | 0x00000100 | 0x00000080 | 0x00000001,
         0x00000001 | 0x00000002,
         None,
         3,
@@ -2061,9 +2103,73 @@ def _delete_windows_entry(
         raise CoverageGateError("coverage quarantine handle cannot be opened")
     delete_marked = False
     try:
+        def handle_information() -> _FileIdInfo:
+            information = _FileIdInfo()
+            if not kernel32.GetFileInformationByHandleEx(
+                handle,
+                18,
+                ctypes.byref(information),
+                ctypes.sizeof(information),
+            ):
+                raise CoverageGateError("coverage quarantine handle identity cannot be read")
+            return information
+
+        def full_information_identity(
+            information: _FileIdInfo,
+        ) -> tuple[int, int]:
+            return (
+                information.volume_serial_number,
+                int.from_bytes(bytes(information.file_id.identifier), "little"),
+            )
+
+        def legacy_path_identity() -> tuple[int, int]:
+            information = _ByHandleFileInformation()
+            if not kernel32.GetFileInformationByHandle(
+                handle,
+                ctypes.byref(information),
+            ):
+                raise CoverageGateError(
+                    "coverage quarantine legacy handle identity cannot be read"
+                )
+            return (
+                information.volume_serial_number,
+                (information.file_index_high << 32) | information.file_index_low,
+            )
+
+        def path_compatible_handle_identity(
+            full_identity: tuple[int, int],
+        ) -> tuple[int, int]:
+            if sys.version_info < (3, 12):
+                return legacy_path_identity()
+            return full_identity
+
+        baseline_handle_identity = full_information_identity(handle_information())
+        baseline_path_handle_identity = path_compatible_handle_identity(
+            baseline_handle_identity
+        )
         before = path.lstat()
-        if expected_identity is not None and (before.st_dev, before.st_ino) != expected_identity:
+        before_identity = (before.st_dev, before.st_ino)
+        if (
+            baseline_path_handle_identity != before_identity
+            or (expected_identity is not None and before_identity != expected_identity)
+        ):
             raise CoverageGateError("coverage quarantine identity changed")
+
+        def assert_bound_identity() -> os.stat_result:
+            current_handle_identity = full_information_identity(handle_information())
+            current_path_handle_identity = path_compatible_handle_identity(
+                current_handle_identity
+            )
+            current_path = path.lstat()
+            current_path_identity = (current_path.st_dev, current_path.st_ino)
+            if (
+                current_handle_identity != baseline_handle_identity
+                or current_path_handle_identity != current_path_identity
+                or current_path_identity != before_identity
+            ):
+                raise CoverageGateError("coverage quarantine identity changed")
+            return current_path
+
         if stat.S_ISDIR(before.st_mode) and not stat.S_ISLNK(before.st_mode) and not _is_reparse(before):
             for entry in list(os.scandir(path)):
                 child_path = Path(entry.path)
@@ -2072,18 +2178,33 @@ def _delete_windows_entry(
                     child_path,
                     (child_metadata.st_dev, child_metadata.st_ino),
                 )
-        current = path.lstat()
-        if (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino):
-            raise CoverageGateError("coverage quarantine identity changed")
-        disposition = wintypes.BOOL(True)
-        if not kernel32.SetFileInformationByHandle(
-            handle,
-            4,
-            ctypes.byref(disposition),
-            ctypes.sizeof(disposition),
-        ):
-            raise CoverageGateError("coverage quarantine delete disposition failed")
-        delete_marked = True
+        current_metadata = assert_bound_identity()
+        if getattr(current_metadata, "st_file_attributes", 0) & 0x00000001:
+            if current_metadata.st_nlink != 1:
+                raise CoverageGateError(
+                    "coverage quarantine readonly payload has external hardlinks"
+                )
+            disposition_ex = _FileDispositionInformationEx(flags=0x00000001 | 0x00000010)
+            if not kernel32.SetFileInformationByHandle(
+                handle,
+                21,
+                ctypes.byref(disposition_ex),
+                ctypes.sizeof(disposition_ex),
+            ):
+                raise CoverageGateError(
+                    "coverage quarantine readonly delete disposition failed"
+                )
+            delete_marked = True
+        else:
+            disposition = wintypes.BOOL(True)
+            if not kernel32.SetFileInformationByHandle(
+                handle,
+                4,
+                ctypes.byref(disposition),
+                ctypes.sizeof(disposition),
+            ):
+                raise CoverageGateError("coverage quarantine delete disposition failed")
+            delete_marked = True
     except OSError as exc:
         raise CoverageGateError("coverage quarantine cleanup failed") from exc
     finally:

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import importlib
 import base64
+import ctypes
+from ctypes import wintypes
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import sysconfig
@@ -2580,6 +2583,700 @@ def test_coverage_cleanup_preserves_replacement_and_removes_owned_root(
     assert stolen is not None and not stolen.exists()
     assert replacement is not None and replacement.read_text(encoding="utf-8") == "do not delete"
     shutil.rmtree(replacement.parent)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows readonly deletion semantics")
+def test_coverage_cleanup_removes_nested_readonly_file_without_residue(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    run_root: Path | None = None
+    try:
+        with runner.isolated_coverage_environment() as run:
+            run_root = run.run_root
+            readonly = run.run_root / "pytest-temp" / "git-repo" / ".git" / "objects" / "ab" / "object"
+            readonly.parent.mkdir(parents=True)
+            readonly.write_bytes(b"git loose object")
+            os.chmod(readonly, stat.S_IREAD)
+            assert (
+                getattr(readonly.lstat(), "st_file_attributes", 0)
+                & getattr(stat, "FILE_ATTRIBUTE_READONLY", 0x1)
+            )
+
+        assert run_root is not None and not run_root.exists()
+        assert not list(tmp_path.glob(".hsconfig-coverage-quarantine-*"))
+    finally:
+        for quarantine in tmp_path.glob(".hsconfig-coverage-quarantine-*"):
+            for path in quarantine.rglob("*"):
+                if path.is_file():
+                    os.chmod(path, stat.S_IWRITE)
+            shutil.rmtree(quarantine, ignore_errors=True)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows readonly hardlink semantics")
+def test_coverage_cleanup_rejects_readonly_hardlink_without_external_mutation(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    external = tmp_path / "external-readonly.txt"
+    external.write_bytes(b"external authority")
+    os.chmod(external, stat.S_IREAD)
+    try:
+        with pytest.raises(runner.CoverageGateError, match="readonly|link"):
+            with runner.isolated_coverage_environment() as run:
+                linked = run.run_root / "pytest-temp" / "nested" / "linked.txt"
+                linked.parent.mkdir(parents=True)
+                os.link(external, linked)
+
+        quarantines = list(tmp_path.glob(".hsconfig-coverage-quarantine-*"))
+        assert len(quarantines) == 1
+        quarantined_link = quarantines[0] / "pytest-temp" / "nested" / "linked.txt"
+        assert quarantined_link.read_bytes() == b"external authority"
+        assert external.read_bytes() == b"external authority"
+        assert external.lstat().st_nlink == 2
+        assert (
+            getattr(external.lstat(), "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_READONLY", 0x1)
+        )
+    finally:
+        os.chmod(external, stat.S_IWRITE)
+        for quarantine in tmp_path.glob(".hsconfig-coverage-quarantine-*"):
+            shutil.rmtree(quarantine, ignore_errors=True)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows readonly hardlink race semantics")
+def test_coverage_cleanup_disposes_readonly_link_without_mutating_raced_hardlink(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    real_windll = ctypes.WinDLL
+    real_kernel32 = real_windll("kernel32", use_last_error=True)
+    get_final_path = real_kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    get_final_path.restype = wintypes.DWORD
+    external = tmp_path / "external-raced-readonly.txt"
+    disposition_classes: list[int] = []
+
+    class CallProxy:
+        def __init__(self, function, callback=None) -> None:
+            self.function = function
+            self.callback = callback
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            if self.callback is not None:
+                selected = self.callback(*args)
+                if selected is not None:
+                    return selected
+            return self.function(*args)
+
+    class Kernel32Proxy:
+        def __init__(self) -> None:
+            self.CreateFileW = CallProxy(real_kernel32.CreateFileW)
+            self.GetFileInformationByHandle = CallProxy(
+                real_kernel32.GetFileInformationByHandle
+            )
+            self.GetFileInformationByHandleEx = CallProxy(
+                real_kernel32.GetFileInformationByHandleEx
+            )
+            self.CloseHandle = CallProxy(real_kernel32.CloseHandle)
+            self.SetFileInformationByHandle = CallProxy(
+                real_kernel32.SetFileInformationByHandle,
+                self.intercept_set_information,
+            )
+
+        def intercept_set_information(
+            self,
+            handle,
+            information_class: int,
+            information,
+            size: int,
+        ):
+            del information, size
+            if information_class in {4, 21}:
+                candidates = list(
+                    tmp_path.glob(
+                        ".hsconfig-coverage-quarantine-*/pytest-temp/readonly-race.txt"
+                    )
+                )
+                buffer = ctypes.create_unicode_buffer(32768)
+                path_length = get_final_path(handle, buffer, len(buffer), 0)
+                handle_path = Path(buffer.value.removeprefix("\\\\?\\"))
+                if (
+                    candidates
+                    and path_length
+                    and handle_path == candidates[0]
+                    and not external.exists()
+                ):
+                    os.link(candidates[0], external)
+                    disposition_classes.append(information_class)
+            return None
+
+    monkeypatch.setattr(
+        ctypes,
+        "WinDLL",
+        lambda name, **kwargs: (
+            Kernel32Proxy()
+            if name == "kernel32"
+            else real_windll(name, **kwargs)
+        ),
+    )
+    try:
+        with runner.isolated_coverage_environment() as run:
+            readonly = run.run_root / "pytest-temp" / "readonly-race.txt"
+            readonly.write_bytes(b"raced payload")
+            os.chmod(readonly, stat.S_IREAD)
+
+        assert disposition_classes == [21]
+        assert not list(tmp_path.glob(".hsconfig-coverage-quarantine-*"))
+        assert external.read_bytes() == b"raced payload"
+        assert external.lstat().st_nlink == 1
+        assert (
+            getattr(external.lstat(), "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_READONLY", 0x1)
+        )
+    finally:
+        monkeypatch.setattr(ctypes, "WinDLL", real_windll)
+        if external.exists():
+            os.chmod(external, stat.S_IWRITE)
+        for quarantine in tmp_path.glob(".hsconfig-coverage-quarantine-*"):
+            for path in quarantine.rglob("*"):
+                if path.is_file():
+                    os.chmod(path, stat.S_IWRITE)
+            shutil.rmtree(quarantine, ignore_errors=True)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows handle-bound disposition semantics")
+def test_coverage_cleanup_ex_failure_leaves_readonly_attribute_untouched(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    real_windll = ctypes.WinDLL
+    real_kernel32 = real_windll("kernel32", use_last_error=True)
+    get_final_path = real_kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    get_final_path.restype = wintypes.DWORD
+    information_classes: list[int] = []
+    desired_accesses: list[int] = []
+
+    class CallProxy:
+        def __init__(self, function, callback=None) -> None:
+            self.function = function
+            self.callback = callback
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            if self.callback is not None:
+                selected = self.callback(*args)
+                if selected is not None:
+                    return selected
+            return self.function(*args)
+
+    class Kernel32Proxy:
+        def __init__(self) -> None:
+            self.CreateFileW = CallProxy(
+                real_kernel32.CreateFileW,
+                self.intercept_create_file,
+            )
+            self.GetFileInformationByHandle = CallProxy(
+                real_kernel32.GetFileInformationByHandle
+            )
+            self.GetFileInformationByHandleEx = CallProxy(
+                real_kernel32.GetFileInformationByHandleEx
+            )
+            self.CloseHandle = CallProxy(real_kernel32.CloseHandle)
+            self.SetFileInformationByHandle = CallProxy(
+                real_kernel32.SetFileInformationByHandle,
+                self.intercept_set_information,
+            )
+
+        def intercept_create_file(
+            self,
+            file_name,
+            desired_access: int,
+            share_mode,
+            security_attributes,
+            creation_disposition,
+            flags_and_attributes,
+            template_file,
+        ):
+            del (
+                share_mode,
+                security_attributes,
+                creation_disposition,
+                flags_and_attributes,
+                template_file,
+            )
+            if Path(file_name).name == "readonly.txt":
+                desired_accesses.append(desired_access)
+            return None
+
+        def intercept_set_information(
+            self,
+            handle,
+            information_class: int,
+            information,
+            size: int,
+        ):
+            del information, size
+            buffer = ctypes.create_unicode_buffer(32768)
+            path_length = get_final_path(handle, buffer, len(buffer), 0)
+            handle_path = Path(buffer.value.removeprefix("\\\\?\\"))
+            candidates = list(
+                tmp_path.glob(
+                    ".hsconfig-coverage-quarantine-*/pytest-temp/readonly.txt"
+                )
+            )
+            if (
+                information_class in {4, 21}
+                and candidates
+                and path_length
+                and handle_path == candidates[0]
+            ):
+                information_classes.append(information_class)
+                ctypes.set_last_error(5)
+                return 0
+            return None
+
+    monkeypatch.setattr(
+        ctypes,
+        "WinDLL",
+        lambda name, **kwargs: (
+            Kernel32Proxy()
+            if name == "kernel32"
+            else real_windll(name, **kwargs)
+        ),
+    )
+    try:
+        with pytest.raises(runner.CoverageGateError, match="delete disposition"):
+            with runner.isolated_coverage_environment() as run:
+                readonly = run.run_root / "pytest-temp" / "readonly.txt"
+                readonly.write_bytes(b"payload")
+                os.chmod(readonly, stat.S_IREAD)
+
+        quarantines = list(tmp_path.glob(".hsconfig-coverage-quarantine-*"))
+        assert len(quarantines) == 1
+        preserved = quarantines[0] / "pytest-temp" / "readonly.txt"
+        assert preserved.read_bytes() == b"payload"
+        assert (
+            getattr(preserved.lstat(), "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_READONLY", 0x1)
+        )
+        assert information_classes == [21]
+        assert desired_accesses == [
+            0x00010000 | 0x00000100 | 0x00000080 | 0x00000001
+        ]
+    finally:
+        monkeypatch.setattr(ctypes, "WinDLL", real_windll)
+        for quarantine in tmp_path.glob(".hsconfig-coverage-quarantine-*"):
+            preserved = quarantine / "pytest-temp" / "readonly.txt"
+            if preserved.exists():
+                os.chmod(preserved, stat.S_IWRITE)
+            shutil.rmtree(quarantine, ignore_errors=True)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows FILE_ID_INFO ABI")
+@pytest.mark.parametrize(
+    (
+        "python_version",
+        "path_identity",
+        "handle_file_ids",
+        "legacy_identities",
+        "should_delete",
+    ),
+    (
+        pytest.param(
+            (3, 11),
+            (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+            (
+                0xA1B2C3D4E5F607181122334455667788,
+                0xA1B2C3D4E5F607181122334455667788,
+            ),
+            (
+                (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+                (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+            ),
+            True,
+            id="py311-refs-legacy-view-differs-from-full-low64",
+        ),
+        pytest.param(
+            (3, 11),
+            (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+            (
+                0xA1B2C3D4E5F607181122334455667788,
+                0xB1B2C3D4E5F607181122334455667788,
+            ),
+            (
+                (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+                (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+            ),
+            False,
+            id="py311-upper64-handle-change",
+        ),
+        pytest.param(
+            (3, 11),
+            (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+            (
+                0xA1B2C3D4E5F607181122334455667788,
+                0xA1B2C3D4E5F607181122334455667788,
+            ),
+            (
+                (0xDEADBEEF, 0xFFFFFFFFFFFFFFFF),
+                (0xDEADBEEF, 0xEEEEEEEEEEEEEEEE),
+            ),
+            False,
+            id="py311-legacy-handle-change",
+        ),
+        pytest.param(
+            (3, 12),
+            (
+                0x12566FD7566FB9DD,
+                0xA1B2C3D4E5F607181122334455667788,
+            ),
+            (
+                0xA1B2C3D4E5F607181122334455667788,
+                0xA1B2C3D4E5F607188877665544332211,
+            ),
+            (),
+            False,
+            id="py312-full128-handle-change",
+        ),
+        pytest.param(
+            (3, 12),
+            (
+                0x12566FD7566FB9DD,
+                0xA1B2C3D4E5F607181122334455667788,
+            ),
+            (
+                0xA1B2C3D4E5F607181122334455667788,
+                0xA1B2C3D4E5F607181122334455667788,
+            ),
+            (),
+            True,
+            id="py312-full128-stable",
+        ),
+    ),
+)
+def test_coverage_cleanup_uses_full_handle_and_compatible_path_identities(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    python_version: tuple[int, int],
+    path_identity: tuple[int, int],
+    handle_file_ids: tuple[int, int],
+    legacy_identities: tuple[tuple[int, int], ...],
+    should_delete: bool,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+
+    class VersionedSys:
+        version_info = python_version
+
+    monkeypatch.setattr(runner, "sys", VersionedSys())
+    target = tmp_path / "upper-file-id.txt"
+    target.write_bytes(b"upper identity")
+    volume_serial = 0x12566FD7566FB9DD
+    real_lstat = type(target).lstat
+    real_windll = ctypes.WinDLL
+    real_kernel32 = real_windll("kernel32", use_last_error=True)
+    get_final_path = real_kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    get_final_path.restype = wintypes.DWORD
+    observed_abi: list[tuple[int, int]] = []
+    observed_legacy_abi: list[tuple[int, int]] = []
+
+    class SyntheticStat:
+        def __init__(self, metadata) -> None:
+            self._metadata = metadata
+            self.st_dev, self.st_ino = path_identity
+
+        def __getattr__(self, name: str):
+            return getattr(self._metadata, name)
+
+    def synthetic_lstat(path, *args, **kwargs):
+        metadata = real_lstat(path, *args, **kwargs)
+        if path == target:
+            return SyntheticStat(metadata)
+        return metadata
+
+    class CallProxy:
+        def __init__(self, function, callback=None) -> None:
+            self.function = function
+            self.callback = callback
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            if self.callback is not None:
+                selected = self.callback(*args)
+                if selected is not None:
+                    return selected
+            return self.function(*args)
+
+    class Kernel32Proxy:
+        def __init__(self) -> None:
+            self.CreateFileW = CallProxy(real_kernel32.CreateFileW)
+            self.GetFileInformationByHandle = CallProxy(
+                real_kernel32.GetFileInformationByHandle,
+                self.intercept_legacy_file_id,
+            )
+            self.GetFileInformationByHandleEx = CallProxy(
+                real_kernel32.GetFileInformationByHandleEx,
+                self.intercept_file_id,
+            )
+            self.SetFileInformationByHandle = CallProxy(
+                real_kernel32.SetFileInformationByHandle
+            )
+            self.CloseHandle = CallProxy(real_kernel32.CloseHandle)
+
+        def intercept_legacy_file_id(self, handle, information):
+            buffer = ctypes.create_unicode_buffer(32768)
+            path_length = get_final_path(handle, buffer, len(buffer), 0)
+            if not path_length or Path(buffer.value.removeprefix("\\\\?\\")) != target:
+                return None
+            if not legacy_identities:
+                raise AssertionError("legacy file identity queried on Python 3.12+")
+            address = ctypes.cast(information, ctypes.c_void_p).value
+            assert address is not None
+            size = ctypes.sizeof(information._obj)
+            observed_legacy_abi.append((size, address % 4))
+            volume_serial, file_index = legacy_identities[
+                min(len(observed_legacy_abi) - 1, 1)
+            ]
+            payload = bytearray(52)
+            payload[28:32] = volume_serial.to_bytes(4, "little")
+            payload[40:44] = (1).to_bytes(4, "little")
+            payload[44:48] = (file_index >> 32).to_bytes(4, "little")
+            payload[48:52] = (file_index & 0xFFFFFFFF).to_bytes(4, "little")
+            ctypes.memmove(information, bytes(payload), len(payload))
+            return 1
+
+        def intercept_file_id(
+            self,
+            handle,
+            information_class: int,
+            information,
+            size: int,
+        ):
+            if information_class != 18:
+                return None
+            buffer = ctypes.create_unicode_buffer(32768)
+            path_length = get_final_path(handle, buffer, len(buffer), 0)
+            if not path_length or Path(buffer.value.removeprefix("\\\\?\\")) != target:
+                return None
+            address = ctypes.cast(information, ctypes.c_void_p).value
+            assert address is not None
+            observed_abi.append((size, address % 8))
+            file_id = handle_file_ids[min(len(observed_abi) - 1, 1)]
+            payload = volume_serial.to_bytes(8, "little") + file_id.to_bytes(
+                16,
+                "little",
+            )
+            ctypes.memmove(information, payload, len(payload))
+            return 1
+
+    monkeypatch.setattr(type(target), "lstat", synthetic_lstat)
+    monkeypatch.setattr(
+        ctypes,
+        "WinDLL",
+        lambda name, **kwargs: (
+            Kernel32Proxy()
+            if name == "kernel32"
+            else real_windll(name, **kwargs)
+        ),
+    )
+    try:
+        if should_delete:
+            runner._delete_windows_entry(target, path_identity)
+            assert not target.exists()
+        else:
+            with pytest.raises(runner.CoverageGateError, match="identity changed"):
+                runner._delete_windows_entry(target, path_identity)
+            assert target.exists()
+        assert len(observed_abi) == 2
+        assert set(observed_abi) == {(24, 0)}
+        assert len(observed_legacy_abi) == (2 if python_version < (3, 12) else 0)
+        assert set(observed_legacy_abi) <= {(52, 0)}
+    finally:
+        monkeypatch.setattr(ctypes, "WinDLL", real_windll)
+        if target.exists():
+            target.unlink()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows FILE_ID_INFO identity")
+def test_coverage_cleanup_real_file_and_directory_ids_match_lstat(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    root = tmp_path / "real-file-id-root"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_bytes(b"identity")
+    real_windll = ctypes.WinDLL
+    real_kernel32 = real_windll("kernel32", use_last_error=True)
+    get_legacy_file_id = real_kernel32.GetFileInformationByHandle
+    get_legacy_file_id.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+    )
+    get_legacy_file_id.restype = wintypes.BOOL
+    get_file_id = real_kernel32.GetFileInformationByHandleEx
+    get_file_id.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    get_file_id.restype = wintypes.BOOL
+    get_final_path = real_kernel32.GetFinalPathNameByHandleW
+    get_final_path.argtypes = (
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    get_final_path.restype = wintypes.DWORD
+    observed_full: list[tuple[str, bool]] = []
+    observed_legacy: list[tuple[str, bool]] = []
+
+    class CallProxy:
+        def __init__(self, function, callback=None) -> None:
+            self.function = function
+            self.callback = callback
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            if self.callback is not None:
+                selected = self.callback(*args)
+                if selected is not None:
+                    return selected
+            return self.function(*args)
+
+    class Kernel32Proxy:
+        def __init__(self) -> None:
+            self.CreateFileW = CallProxy(real_kernel32.CreateFileW)
+            self.GetFileInformationByHandle = CallProxy(
+                get_legacy_file_id,
+                self.observe_legacy_file_id,
+            )
+            self.GetFileInformationByHandleEx = CallProxy(
+                get_file_id,
+                self.observe_file_id,
+            )
+            self.SetFileInformationByHandle = CallProxy(
+                real_kernel32.SetFileInformationByHandle
+            )
+            self.CloseHandle = CallProxy(real_kernel32.CloseHandle)
+
+        def observe_legacy_file_id(self, handle, information):
+            result = get_legacy_file_id(handle, information)
+            if not result:
+                return result
+            buffer = ctypes.create_unicode_buffer(32768)
+            path_length = get_final_path(handle, buffer, len(buffer), 0)
+            assert path_length
+            path = Path(buffer.value.removeprefix("\\\\?\\"))
+            metadata = path.lstat()
+            raw = ctypes.string_at(information, ctypes.sizeof(information._obj))
+            volume_serial = int.from_bytes(raw[28:32], "little")
+            file_index = (int.from_bytes(raw[44:48], "little") << 32) | int.from_bytes(
+                raw[48:52],
+                "little",
+            )
+            observed_legacy.append(
+                (
+                    "directory" if stat.S_ISDIR(metadata.st_mode) else "file",
+                    (volume_serial, file_index)
+                    == (metadata.st_dev, metadata.st_ino),
+                )
+            )
+            return result
+
+        def observe_file_id(
+            self,
+            handle,
+            information_class: int,
+            information,
+            size: int,
+        ):
+            if information_class != 18:
+                return None
+            result = get_file_id(handle, information_class, information, size)
+            if not result:
+                return result
+            buffer = ctypes.create_unicode_buffer(32768)
+            path_length = get_final_path(handle, buffer, len(buffer), 0)
+            assert path_length
+            path = Path(buffer.value.removeprefix("\\\\?\\"))
+            metadata = path.lstat()
+            raw = ctypes.string_at(information, size)
+            volume_serial = int.from_bytes(raw[:8], "little")
+            file_id = int.from_bytes(raw[8:24], "little")
+            observed_full.append(
+                (
+                    "directory" if stat.S_ISDIR(metadata.st_mode) else "file",
+                    sys.version_info < (3, 12)
+                    or (volume_serial, file_id)
+                    == (metadata.st_dev, metadata.st_ino),
+                )
+            )
+            return result
+
+    monkeypatch.setattr(
+        ctypes,
+        "WinDLL",
+        lambda name, **kwargs: (
+            Kernel32Proxy()
+            if name == "kernel32"
+            else real_windll(name, **kwargs)
+        ),
+    )
+    try:
+        runner._delete_windows_entry(root, (root.lstat().st_dev, root.lstat().st_ino))
+        assert not root.exists()
+        assert {kind for kind, matched in observed_full if matched} == {
+            "file",
+            "directory",
+        }
+        assert all(matched for _, matched in observed_full)
+        if sys.version_info < (3, 12):
+            assert {kind for kind, matched in observed_legacy if matched} == {
+                "file",
+                "directory",
+            }
+            assert all(matched for _, matched in observed_legacy)
+        else:
+            assert not observed_legacy
+    finally:
+        monkeypatch.setattr(ctypes, "WinDLL", real_windll)
+        if root.exists():
+            shutil.rmtree(root)
 
 
 def test_coverage_environment_setup_is_failure_atomic_for_baseexception(
