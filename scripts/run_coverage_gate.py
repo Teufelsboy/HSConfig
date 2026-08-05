@@ -947,6 +947,7 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
     if not isinstance(source, bytes):
         return set()
     names: set[str] = set()
+    console_names: set[str] = set()
     try:
         with zipfile.ZipFile(io.BytesIO(source)) as archive:
             candidates = [name for name in archive.namelist() if name.endswith(".dist-info/entry_points.txt")]
@@ -963,15 +964,31 @@ def _entry_point_script_paths(artifact: Mapping[str, object], root: Path) -> set
                         if re.fullmatch(r"[A-Za-z0-9_.-]+", name) is None:
                             raise RuntimeLockError("runtime wheel entry point is invalid")
                         names.add(name)
+                        if section == "console_scripts":
+                            console_names.add(name)
     except (UnicodeError, zipfile.BadZipFile) as exc:
         raise RuntimeLockError("runtime wheel entry points are invalid") from exc
     scripts = Path(sysconfig.get_paths()["scripts"])
     suffixes = (".exe", "-script.py") if os.name == "nt" else ("",)
-    return {
+    result = {
         os.path.relpath(scripts / f"{name}{suffix}", root).replace("\\", "/")
         for name in names
         for suffix in suffixes
     }
+    artifact_name = artifact.get("name")
+    if (
+        os.name == "nt"
+        and isinstance(artifact_name, str)
+        and _normalized_name(artifact_name) == "pip"
+        and "pip3" in console_names
+    ):
+        versioned_launcher = (
+            f"pip{sys.version_info.major}.{sys.version_info.minor}.exe"
+        )
+        result.add(
+            os.path.relpath(scripts / versioned_launcher, root).replace("\\", "/")
+        )
+    return result
 
 
 def _assert_bound_nonlocal_direct_url(

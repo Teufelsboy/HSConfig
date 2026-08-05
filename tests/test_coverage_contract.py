@@ -655,6 +655,8 @@ def _bound_nonlocal_distribution(
     monkeypatch: MonkeyPatch,
     *,
     include_direct_url: bool = True,
+    console_scripts: tuple[str, ...] = (),
+    runtime_scripts: tuple[str, ...] = (),
 ) -> tuple[object, dict[str, object], str]:
     runner = importlib.import_module("scripts.run_coverage_gate")
     bootstrap = tmp_path / "bootstrap"
@@ -668,12 +670,25 @@ def _bound_nonlocal_distribution(
     wheel_payload = b"Wheel-Version: 1.0\n"
     (dist_info / "WHEEL").write_bytes(wheel_payload)
     (dist_info / "INSTALLER").write_bytes(b"pip\n")
+    entry_points_payload = (
+        "[console_scripts]\n"
+        + "".join(
+            f"{name}=pip._internal.cli.main:main\n" for name in console_scripts
+        )
+    ).encode("utf-8")
+    if console_scripts:
+        (dist_info / "entry_points.txt").write_bytes(entry_points_payload)
 
     wheel_path = bootstrap / "artifacts" / "pip-26.1.2-py3-none-any.whl"
     wheel_path.parent.mkdir()
     with zipfile.ZipFile(wheel_path, "w") as archive:
         archive.writestr("pip.py", package_payload)
         archive.writestr("pip-26.1.2.dist-info/WHEEL", wheel_payload)
+        if console_scripts:
+            archive.writestr(
+                "pip-26.1.2.dist-info/entry_points.txt",
+                entry_points_payload,
+            )
         archive.writestr("pip-26.1.2.dist-info/RECORD", b"")
     wheel_source = wheel_path.read_bytes()
     digest = hashlib.sha256(wheel_source).hexdigest()
@@ -696,6 +711,21 @@ def _bound_nonlocal_distribution(
         _runtime_record_row("pip-26.1.2.dist-info/WHEEL", wheel_payload),
         _runtime_record_row("pip-26.1.2.dist-info/INSTALLER", b"pip\n"),
     ]
+    if console_scripts:
+        rows.append(
+            _runtime_record_row(
+                "pip-26.1.2.dist-info/entry_points.txt",
+                entry_points_payload,
+            )
+        )
+    scripts = environment / "Scripts"
+    for relative_script in runtime_scripts:
+        script_path = scripts / Path(*relative_script.split("/"))
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_payload = f"launcher:{relative_script}\n".encode("utf-8")
+        script_path.write_bytes(script_payload)
+        record_path = os.path.relpath(script_path, root).replace("\\", "/")
+        rows.append(_runtime_record_row(record_path, script_payload))
     if include_direct_url:
         rows.append(
             _runtime_record_row(
@@ -810,6 +840,83 @@ def test_distribution_origin_preserves_index_install_without_direct_url(
         local_project=False,
         artifact=artifact,
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows pip launcher contract")
+def test_distribution_origin_accepts_bound_pip_interpreter_versioned_launcher(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    versioned_launcher = (
+        f"pip{sys.version_info.major}.{sys.version_info.minor}.exe"
+    )
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+        console_scripts=("pip", "pip3"),
+        runtime_scripts=("pip.exe", "pip3.exe", versioned_launcher),
+    )
+
+    runner._assert_distribution_origin(
+        distribution,
+        local_project=False,
+        artifact=artifact,
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows pip launcher contract")
+@pytest.mark.parametrize(
+    "case",
+    (
+        "wrong-minor",
+        "wrong-major",
+        "pip3.10",
+        "pip4",
+        "foreign-name",
+        "foreign-path",
+        "missing-pip3-entry-point",
+        "non-pip-artifact",
+    ),
+)
+def test_distribution_origin_rejects_unbound_versioned_pip_launcher(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    case: str,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    major = sys.version_info.major
+    minor = sys.version_info.minor
+    launcher = {
+        "wrong-minor": f"pip{major}.{minor + 1}.exe",
+        "wrong-major": f"pip{major + 1}.{minor}.exe",
+        "pip3.10": "pip3.10.exe" if (major, minor) != (3, 10) else "pip3.9.exe",
+        "pip4": "pip4.exe",
+        "foreign-name": f"not-pip{major}.{minor}.exe",
+        "foreign-path": f"../Foreign/pip{major}.{minor}.exe",
+        "missing-pip3-entry-point": f"pip{major}.{minor}.exe",
+        "non-pip-artifact": f"pip{major}.{minor}.exe",
+    }[case]
+    console_scripts = (
+        ("pip",)
+        if case == "missing-pip3-entry-point"
+        else ("pip", "pip3")
+    )
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+        console_scripts=console_scripts,
+        runtime_scripts=("pip.exe", "pip3.exe", launcher),
+    )
+    if case == "non-pip-artifact":
+        artifact["name"] = "setuptools"
+
+    with pytest.raises(runner.RuntimeLockError, match="RECORD|origin"):
+        runner._assert_distribution_origin(
+            distribution,
+            local_project=False,
+            artifact=artifact,
+        )
 
 
 def test_distribution_origin_rejects_bound_direct_url_for_non_pip_artifact(
