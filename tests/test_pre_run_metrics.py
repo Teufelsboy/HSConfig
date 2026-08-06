@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -13,8 +14,14 @@ from hsconfig.package_domain import (
     ClaimDispositionRow,
     DispositionLedger,
     EvidenceLane,
+    GlobalValueDecision,
+    GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
     disposition_ledger_content_sha256,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
 )
+from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
 from hsconfig.pre_run_metrics import (
     MetricRatio,
     VerifiedEmissionInput,
@@ -138,6 +145,28 @@ def _card_ledger() -> DispositionLedger:
             cards=cards,
             claims=(),
         ),
+    )
+
+
+def _globalvalues_ledger() -> GlobalValuesDecisionLedger:
+    decisions = tuple(
+        GlobalValueDecision(
+            deck_fingerprint=_DECK_FINGERPRINT,
+            key=key,
+            kind=GlobalValueDecisionKind.COPY_BASELINE,
+            baseline_canonical_json=b"0",
+            emitted_canonical_json=b"0",
+            authority_id="baseline:canonical",
+            claim_ids=(),
+            reason="copied canonical baseline",
+        )
+        for key in GLOBALVALUES_BASELINE_DECISION_KEYS
+    )
+    return GlobalValuesDecisionLedger(
+        deck_fingerprint=_DECK_FINGERPRINT,
+        baseline_sha256=globalvalues_baseline_sha256(decisions),
+        decisions=decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(decisions),
     )
 
 
@@ -1216,4 +1245,259 @@ def test_authority_handoff_loader_rejects_noncanonical_envelopes() -> None:
             pre_run_metrics._load_pre_run_authority_handoff(
                 document,
                 disposition_ledger=ledger,
+            )
+
+
+def test_evidence_binding_rejects_duplicate_claims_before_classification() -> None:
+    ledger = _claim_ledger(
+        ("claim", "mulligan"),
+        ("claim", "mulligan"),
+    )
+
+    with pytest.raises(ValueError, match="layered_evidence_duplicate_claim"):
+        pre_run_metrics._bind_evidence_authorities(
+            disposition_ledger=ledger,
+            classified_authorities={"claim": _authority_projection()},
+        )
+
+
+def test_physical_observation_collections_must_be_mappings() -> None:
+    assert pre_run_metrics._physical_cardid_observations(
+        {
+            "cards": [],
+            "linked_runtime_entities": [],
+        }
+    ) == set()
+
+
+def test_disposition_loader_rejects_unstable_identity_and_projection_drift() -> None:
+    unstable = pre_run_metrics.disposition_ledger_document(
+        _claim_ledger(
+            ("z-claim", "mulligan"),
+            ("a-claim", "mulligan"),
+        )
+    )
+
+    wrong_identity = pre_run_metrics.disposition_ledger_document(
+        _claim_ledger(("claim", "mulligan"))
+    )
+    wrong_identity["claims"][0]["composite_claim_identity"] = (
+        f"{_DECK_FINGERPRINT}:other"
+    )
+
+    extra_projection = pre_run_metrics.disposition_ledger_document(
+        _claim_ledger(("claim", "mulligan"))
+    )
+    extra_projection["untrusted_extra"] = True
+
+    for document, reason in (
+        (unstable, "disposition_ledger_duplicate_or_unstable"),
+        (wrong_identity, "disposition_claim_identity_mismatch"),
+        (extra_projection, "disposition_ledger_report_malformed"),
+    ):
+        with pytest.raises(ValueError, match=reason):
+            pre_run_metrics.load_disposition_ledger_report(document)
+
+
+def test_globalvalues_loader_rejects_noncanonical_extra_projection() -> None:
+    document = pre_run_metrics.globalvalues_decision_report_document(
+        _globalvalues_ledger()
+    )
+    document["untrusted_extra"] = True
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_decision_ledger_report_malformed",
+    ):
+        pre_run_metrics.load_globalvalues_decision_ledger_report(document)
+
+
+class _EmissionPackage:
+    def __init__(self, documents: dict[str, Any]) -> None:
+        self.documents = documents
+
+    def file_names(self) -> tuple[str, ...]:
+        return tuple(sorted(self.documents))
+
+    def read_json(self, relative_path: str) -> Any:
+        return deepcopy(self.documents[relative_path])
+
+    def exists(self, relative_path: str) -> bool:
+        return relative_path in self.documents
+
+
+def test_package_emission_projection_rejects_malformed_ledger_and_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep the independent runtime-schema validator out of these framing and
+    # identity cases so each payload reaches the PackageView guard it targets.
+    monkeypatch.setattr(
+        pre_run_metrics,
+        "validate_card_runtime_payload",
+        lambda *_args, **_kwargs: (),
+    )
+    runtime_ledger = {
+        "schema_version": 2,
+        "cards": {
+            "CARD_001": {"runtime_surfaces": ["CARD_001.json"]},
+        },
+    }
+    cases = (
+        (
+            _EmissionPackage({"reports/runtime_surface_ledger.json": []}),
+            "ledger is not an object",
+        ),
+        (
+            _EmissionPackage(
+                {
+                    "reports/runtime_surface_ledger.json": runtime_ledger,
+                    "CustomConfig/CARD_001.json": [],
+                }
+            ),
+            "runtime payload is not an object",
+        ),
+        (
+            _EmissionPackage(
+                {
+                    "reports/runtime_surface_ledger.json": runtime_ledger,
+                    "CustomConfig/CARD_001.json": {
+                        "GameCardId": "",
+                        "BeforePlayCardBonus": {"values": []},
+                    },
+                }
+            ),
+            "runtime owner is empty",
+        ),
+        (
+            _EmissionPackage(
+                {
+                    "reports/runtime_surface_ledger.json": runtime_ledger,
+                    "CustomConfig/first/CARD_001.json": {
+                        "GameCardId": "CARD_001",
+                        "BeforePlayCardBonus": {"values": []},
+                    },
+                    "CustomConfig/second/CARD_001.json": {
+                        "GameCardId": "CARD_001",
+                        "BeforePlayCardBonus": {"values": []},
+                    },
+                }
+            ),
+            "duplicate physical owner and surface",
+        ),
+    )
+
+    for package, _case in cases:
+        with pytest.raises(
+            ValueError,
+            match="verified_emission_package_view_mismatch",
+        ):
+            pre_run_metrics._verified_emission_from_package_view(
+                package=package,
+                disposition_ledger=_claim_ledger(),
+                source_contract_audit={"claim_rows": {}},
+            )
+
+
+def test_authority_handoff_loader_requires_canonical_row_order() -> None:
+    ledger = _claim_ledger(
+        ("a-claim", "mulligan"),
+        ("b-claim", "mulligan"),
+    )
+    document = pre_run_metrics.build_pre_run_authority_handoff(
+        disposition_ledger=ledger,
+        classified_authorities={
+            "a-claim": _authority_projection(),
+            "b-claim": _authority_projection(authority_id="authority-2"),
+        },
+    )
+    document["authorities"].reverse()
+    document["content_sha256"] = pre_run_metrics._report_content_sha256(document)
+
+    with pytest.raises(ValueError, match="pre_run_authority_handoff_malformed"):
+        pre_run_metrics._load_pre_run_authority_handoff(
+            document,
+            disposition_ledger=ledger,
+        )
+
+
+def _layered_validation_fixture() -> tuple[
+    DispositionLedger,
+    dict[str, object],
+    dict[str, object],
+    dict[str, pre_run_metrics.EvidenceAuthority],
+]:
+    ledger = _claim_ledger(("claim", "mulligan"))
+    projection = _authority_projection()
+    authority = pre_run_metrics.evidence_authority_from_projection(projection)
+    report = pre_run_metrics.build_layered_evidence_contract_report(
+        disposition_ledger=ledger,
+        classified_authorities={"claim": authority},
+    )
+    source_audit: dict[str, object] = {
+        "claim_rows": {
+            "claim": {
+                "claim_id": "claim",
+                "evidence_authority": projection,
+            }
+        }
+    }
+    return ledger, report, source_audit, {"claim": authority}
+
+
+def test_layered_report_validator_rejects_each_integrity_boundary() -> None:
+    cases: list[
+        tuple[
+            dict[str, object],
+            dict[str, object] | None,
+            dict[str, pre_run_metrics.EvidenceAuthority],
+            str,
+        ]
+    ] = []
+
+    for mutation, reason in (
+        ("cross_deck", "layered_evidence_contract_cross_deck"),
+        ("authorities_not_list", "layered_evidence_contract_malformed"),
+        ("authority_not_mapping", "layered_evidence_contract_malformed"),
+        ("source_rows_not_mapping", "layered_evidence_contract_upstream_mismatch"),
+        ("source_row_without_authority", "layered_evidence_contract_upstream_mismatch"),
+        ("source_projection_not_mapping", "layered_evidence_contract_upstream_mismatch"),
+        ("source_claim_mismatch", "layered_evidence_contract_upstream_mismatch"),
+        ("source_projection_drift", "layered_evidence_contract_upstream_mismatch"),
+        ("ratio_drift", "layered_evidence_contract_totals_mismatch"),
+        ("exact_flag_drift", "layered_evidence_exact_guide_authority_mismatch"),
+    ):
+        _ledger, report, source_audit, handoff = _layered_validation_fixture()
+        if mutation == "cross_deck":
+            report["deck_fingerprint"] = "sha256:" + ("b" * 64)
+        elif mutation == "authorities_not_list":
+            report["authorities"] = {}
+        elif mutation == "authority_not_mapping":
+            report["authorities"] = [None]
+        elif mutation == "source_rows_not_mapping":
+            source_audit["claim_rows"] = []
+        elif mutation == "source_row_without_authority":
+            source_audit["claim_rows"] = {"claim": {"claim_id": "claim"}}
+        elif mutation == "source_projection_not_mapping":
+            source_audit["claim_rows"]["claim"]["evidence_authority"] = []
+        elif mutation == "source_claim_mismatch":
+            source_audit["claim_rows"]["claim"]["claim_id"] = "other"
+        elif mutation == "source_projection_drift":
+            source_audit["claim_rows"]["claim"]["evidence_authority"] = (
+                _authority_projection(reason="different verified reason")
+            )
+        elif mutation == "ratio_drift":
+            report["layered_coverage"] = MetricRatio(0, 1).to_document()
+        else:
+            report["exact_guide_authority"] = True
+        report["content_sha256"] = pre_run_metrics._report_content_sha256(report)
+        cases.append((report, source_audit, handoff, reason))
+
+    for report, source_audit, handoff, reason in cases:
+        ledger = _claim_ledger(("claim", "mulligan"))
+        with pytest.raises(ValueError, match=reason):
+            pre_run_metrics._validate_layered_evidence_report(
+                report,
+                disposition_ledger=ledger,
+                source_contract_audit=source_audit,
+                authority_handoff=handoff,
             )

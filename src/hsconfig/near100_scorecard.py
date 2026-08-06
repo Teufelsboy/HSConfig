@@ -440,8 +440,10 @@ def _validate_repository_binding(
             raise Near100EvidenceError(
                 "evidence transaction observation time invalid"
             ) from exc
+        if observed.tzinfo is None or observed.utcoffset() is None:
+            raise Near100EvidenceError("evidence transaction observation is stale")
         age = abs((datetime.now(timezone.utc) - observed).total_seconds())
-        if observed.tzinfo is None or age > _FINAL_EVIDENCE_MAX_AGE_SECONDS:
+        if age > _FINAL_EVIDENCE_MAX_AGE_SECONDS:
             raise Near100EvidenceError("evidence transaction observation is stale")
     return meta
 

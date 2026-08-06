@@ -7,8 +7,9 @@ from itertools import product
 import json
 import os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -38,17 +39,24 @@ from hsconfig.release_gate import (
     _dirty_tree_fingerprint,
     _execute_bounded,
     _execute_bounded_process,
+    _gh_json,
+    _load_json_file,
     _path_violations,
     _portable_value,
     _produce_semantic_rows,
+    _repository_identity,
     _run_one,
     _safe_detail,
+    _scan_distributions,
     _scan_current_packages,
     _shannon_entropy,
     _stage_tracked_source,
     _text_violations,
+    _validate_live_github_state,
+    _validate_git_binding,
     _validate_selected_audit_projection,
     _validate_repository,
+    _walk_regular_tree,
     check_repository_hygiene,
     run_release_gate,
     scan_publishable_content,
@@ -4138,8 +4146,11 @@ def test_secret_scan_does_not_flag_noncredential_camelcase_assignment() -> None:
 
 def test_prospective_task7_files_pass_the_production_publishability_scanner() -> None:
     prospective = (
+        "src/hsconfig/near100_scorecard.py",
         "src/hsconfig/release_gate.py",
-        "scripts/check_release_gate.py",
+        "tests/test_near100_scorecard.py",
+        "tests/test_pre_run_metrics.py",
+        "tests/test_pre_run_semantic_closure_e2e.py",
         "tests/test_release_gate.py",
     )
     violations: list[str] = []
@@ -4148,7 +4159,16 @@ def test_prospective_task7_files_pass_the_production_publishability_scanner() ->
         violations.extend(_path_violations(relative))
         violations.extend(_text_violations(relative, data, public_doc=False))
 
+    result = scan_publishable_content(
+        repository=ROOT,
+        outputs_root=ROOT / "outputs",
+        tree_mode="working-pre-cutover",
+        build_distributions=False,
+    )
+
     assert violations == []
+    assert result["passed"] is True
+    assert result["violations"] == []
 
 
 def test_real_working_pre_cutover_publishability_has_no_placeholder_violation() -> None:
@@ -4893,3 +4913,1267 @@ def test_secret_scan_rejects_prefixed_parenthesized_and_triple_python_literals(
     )
 
     assert any(row.startswith("secret:") for row in violations)
+
+
+def _valid_pre_cutover_document() -> dict[str, Any]:
+    metric_ids = (
+        "static_contract_safety",
+        "safe_visionai_lowering",
+        "testability_and_assurance",
+        "semantic_disposition_closure",
+        "layered_pre_run_source_coverage",
+        "architecture_and_maintainability",
+        "slimness_and_coherence",
+        "github_repository_polish",
+        "workspace_hygiene",
+        "overall_pre_run",
+        "gameplay_quality",
+    )
+    return {
+        "schema_version": 1,
+        "version": "1.0.0",
+        "metrics": [
+            {
+                "metric_id": metric_id,
+                "status": (
+                    "pending_remote"
+                    if metric_id == "github_repository_polish"
+                    else "not_applicable"
+                    if metric_id == "gameplay_quality"
+                    else "pass"
+                ),
+            }
+            for metric_id in metric_ids
+        ],
+        "open_p0_findings": 0,
+        "open_p1_findings": 0,
+        "overall_score": "100",
+        "passed": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "extra_field",
+        "wrong_schema",
+        "wrong_version",
+        "passed_true",
+        "boolean_findings",
+        "metrics_mapping",
+        "metric_non_mapping",
+        "score_non_string",
+        "score_invalid",
+        "score_non_finite",
+        "score_below_minimum",
+    ),
+)
+def test_pre_cutover_safe_detail_rejects_identity_schema_and_score_mutations(
+    mutation: str,
+) -> None:
+    document = _valid_pre_cutover_document()
+    if mutation == "extra_field":
+        document["unexpected"] = True
+    elif mutation == "wrong_schema":
+        document["schema_version"] = 2
+    elif mutation == "wrong_version":
+        document["version"] = "2.0.0"
+    elif mutation == "passed_true":
+        document["passed"] = True
+    elif mutation == "boolean_findings":
+        document["open_p1_findings"] = False
+    elif mutation == "metrics_mapping":
+        document["metrics"] = {}
+    elif mutation == "metric_non_mapping":
+        document["metrics"][0] = "not-a-metric"
+    elif mutation == "score_non_string":
+        document["overall_score"] = 100
+    elif mutation == "score_invalid":
+        document["overall_score"] = "not-a-number"
+    elif mutation == "score_non_finite":
+        document["overall_score"] = "NaN"
+    else:
+        document["overall_score"] = "97.999"
+
+    with pytest.raises(ReleaseGateError, match="pre-cutover"):
+        _safe_detail(
+            json.dumps(document),
+            "",
+            0,
+            allow_pre_cutover_local=True,
+        )
+
+
+def test_safe_detail_preserves_only_hashes_for_non_json_and_oversized_values() -> None:
+    detail = _safe_detail("plain diagnostic", "private stderr", 3)
+    rendered = ReleaseCheck(
+        "bounded",
+        False,
+        ("bounded",),
+        {"detail": "x" * 2_001},
+    ).to_document()
+
+    assert set(detail) == {"returncode", "stdout_sha256", "stderr_sha256"}
+    assert rendered["details"]["detail"] == {
+        "sha256": hashlib.sha256(("x" * 2_001).encode()).hexdigest(),
+        "redacted": "oversized-output",
+    }
+    with pytest.raises(ReleaseGateError, match="invalid JSON"):
+        _safe_detail("{not-json", "", 1)
+    with pytest.raises(ReleaseGateError, match="successful JSON"):
+        _safe_detail("[]", "", 0, allow_pre_cutover_local=True)
+
+
+def _valid_live_state(snapshot: Any) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "repository": snapshot.repository_identity,
+        "commit_oid": snapshot.commit_oid,
+        "tree_oid": snapshot.tree_oid,
+        "release_tag": "v1.0.0",
+        "settings": {
+            "full_name": snapshot.repository_identity,
+            "default_branch": "main",
+            "archived": False,
+            "disabled": False,
+            "visibility": "public",
+            "has_issues": True,
+            "has_projects": False,
+            "has_wiki": False,
+            "has_discussions": False,
+            "allow_squash_merge": True,
+            "allow_merge_commit": False,
+            "allow_rebase_merge": False,
+            "allow_auto_merge": False,
+            "delete_branch_on_merge": True,
+        },
+        "ruleset": {
+            "id": 17,
+            "name": "main-linear-signed",
+            "target": "branch",
+            "enforcement": "active",
+            "bypass_actors": [],
+            "conditions": {
+                "ref_name": {"include": ["refs/heads/main"], "exclude": []}
+            },
+            "rules": [
+                {"type": "deletion"},
+                {"type": "non_fast_forward"},
+                {"type": "required_linear_history"},
+                {"type": "required_signatures"},
+            ],
+        },
+        "tag": {
+            "ref_object_oid": snapshot.commit_oid,
+            "object_type": "commit",
+            "peeled_commit_oid": snapshot.commit_oid,
+        },
+        "release": {
+            "id": 23,
+            "html_url": "https://github.com/Teufelsboy/HSConfig/releases/tag/v1.0.0",
+            "tag_name": "v1.0.0",
+            "draft": False,
+            "prerelease": False,
+            "assets": [],
+        },
+        "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "transaction_id": "a" * 32,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "schema_version_bool",
+        "extra_field",
+        "repository",
+        "transaction_id",
+        "invalid_observed_at",
+        "naive_observed_at",
+        "settings_type",
+        "settings_policy",
+        "ruleset_extra",
+        "ruleset_identifier_bool",
+        "ruleset_conditions",
+        "ruleset_rule_shape",
+        "ruleset_rule_set",
+        "tag_commit",
+        "release_identifier_bool",
+        "release_assets",
+    ),
+)
+def test_live_github_state_rejects_transaction_and_policy_mutations(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    state = _valid_live_state(snapshot)
+    if mutation == "schema_version_bool":
+        state["schema_version"] = True
+    elif mutation == "extra_field":
+        state["unexpected"] = True
+    elif mutation == "repository":
+        state["repository"] = "other/repository"
+    elif mutation == "transaction_id":
+        state["transaction_id"] = "g" * 32
+    elif mutation == "invalid_observed_at":
+        state["observed_at"] = "not-a-date"
+    elif mutation == "naive_observed_at":
+        state["observed_at"] = datetime.now().isoformat()
+    elif mutation == "settings_type":
+        state["settings"] = []
+    elif mutation == "settings_policy":
+        state["settings"]["allow_auto_merge"] = True
+    elif mutation == "ruleset_extra":
+        state["ruleset"]["unexpected"] = True
+    elif mutation == "ruleset_identifier_bool":
+        state["ruleset"]["id"] = True
+    elif mutation == "ruleset_conditions":
+        state["ruleset"]["conditions"] = {"ref_name": {"include": [], "exclude": []}}
+    elif mutation == "ruleset_rule_shape":
+        state["ruleset"]["rules"][0]["parameters"] = {}
+    elif mutation == "ruleset_rule_set":
+        state["ruleset"]["rules"].pop()
+    elif mutation == "tag_commit":
+        state["tag"]["peeled_commit_oid"] = "0" * 40
+    elif mutation == "release_identifier_bool":
+        state["release"]["id"] = True
+    else:
+        state["release"]["assets"] = [{"id": 1}]
+
+    with pytest.raises(ReleaseGateError, match="live GitHub"):
+        _validate_live_github_state(state, snapshot)
+
+
+@pytest.mark.parametrize("bad_type", ([], {}, 1, None, True))
+def test_live_github_state_rejects_non_string_rule_types(
+    tmp_path: Path,
+    bad_type: Any,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    state = _valid_live_state(snapshot)
+    state["ruleset"]["rules"][0]["type"] = bad_type
+
+    with pytest.raises(ReleaseGateError, match="live GitHub branch ruleset"):
+        _validate_live_github_state(state, snapshot)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "pagination_type",
+        "page_type",
+        "summary_extra",
+        "identifier_bool",
+        "duplicate_identifier",
+        "no_active",
+        "tag_schema",
+        "annotated_schema",
+        "detail_schema",
+        "detail_identity",
+    ),
+)
+def test_live_github_collection_rejects_malformed_paginated_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    summary: dict[str, Any] = {
+        "id": 17,
+        "name": "main-linear-signed",
+        "target": "branch",
+        "enforcement": "active",
+    }
+    detail = dict(_valid_live_state(snapshot)["ruleset"])
+
+    def gh_json(_repository: Path, *arguments: str) -> Any:
+        endpoint = arguments[-1]
+        if endpoint.endswith("/rulesets"):
+            if mutation == "pagination_type":
+                return {}
+            if mutation == "page_type":
+                return [summary]
+            if mutation == "summary_extra":
+                return [[summary | {"unexpected": True}]]
+            if mutation == "identifier_bool":
+                return [[summary | {"id": True}]]
+            if mutation == "duplicate_identifier":
+                return [[summary], [dict(summary)]]
+            if mutation == "no_active":
+                return [[summary | {"enforcement": "disabled"}]]
+            return [[summary]]
+        if "/git/ref/tags/" in endpoint:
+            if mutation == "tag_schema":
+                return []
+            if mutation == "annotated_schema":
+                return {"object": {"type": "tag", "sha": "b" * 40}}
+            return {"object": {"type": "commit", "sha": snapshot.commit_oid}}
+        if "/git/tags/" in endpoint:
+            return []
+        if endpoint.endswith("/rulesets/17"):
+            if mutation == "detail_schema":
+                return []
+            if mutation == "detail_identity":
+                return detail | {"id": 18}
+            return detail
+        if "/releases/tags/" in endpoint:
+            return {"id": 23}
+        return {"full_name": snapshot.repository_identity}
+
+    monkeypatch.setattr("hsconfig.release_gate._gh_json", gh_json)
+    with pytest.raises(ReleaseGateError, match="live GitHub"):
+        _collect_live_github_state(repository, snapshot)
+
+
+def test_live_github_collection_peels_annotated_tag_to_release_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    state = _valid_live_state(snapshot)
+
+    def gh_json(_repository: Path, *arguments: str) -> Any:
+        endpoint = arguments[-1]
+        if endpoint.endswith("/rulesets"):
+            return [[{
+                "id": 17,
+                "name": "main-linear-signed",
+                "target": "branch",
+                "enforcement": "active",
+            }]]
+        if endpoint.endswith("/rulesets/17"):
+            return state["ruleset"]
+        if "/git/ref/tags/" in endpoint:
+            return {"object": {"type": "tag", "sha": "b" * 40}}
+        if "/git/tags/" in endpoint:
+            return {"object": {"sha": snapshot.commit_oid}}
+        if "/releases/tags/" in endpoint:
+            return state["release"]
+        return state["settings"]
+
+    monkeypatch.setattr("hsconfig.release_gate._gh_json", gh_json)
+
+    collected = _collect_live_github_state(repository, snapshot)
+
+    assert collected["tag"] == {
+        "ref_object_oid": "b" * 40,
+        "object_type": "tag",
+        "peeled_commit_oid": snapshot.commit_oid,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "catalog_non_mapping",
+        "catalog_missing_decks",
+        "catalog_duplicate",
+        "catalog_invalid_name",
+        "pointer_extra_field",
+        "pointer_identity",
+        "fingerprint_type",
+        "content_root_digest",
+        "revision_type",
+        "revision_absolute",
+        "revision_parent",
+        "revision_binding",
+        "revision_regular_file",
+    ),
+)
+def test_current_package_scan_rejects_catalog_and_pointer_contract_mutations(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    catalog_path = repository / "docs/operator/audited-deck-catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if mutation == "catalog_non_mapping":
+        catalog_path.write_text("[]", encoding="utf-8")
+    elif mutation == "catalog_missing_decks":
+        catalog_path.write_text("{}", encoding="utf-8")
+    elif mutation == "catalog_duplicate":
+        catalog["decks"][1]["deck_name"] = catalog["decks"][0]["deck_name"]
+        catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    elif mutation == "catalog_invalid_name":
+        catalog["decks"][0]["deck_name"] = "invalid/name"
+        catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    else:
+        deck_name = catalog["decks"][0]["deck_name"]
+        pointer_path = outputs / deck_name / "current.json"
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        if mutation == "pointer_extra_field":
+            pointer["unexpected"] = True
+        elif mutation == "pointer_identity":
+            pointer["deck_name"] = "other"
+        elif mutation == "fingerprint_type":
+            pointer["deck_fingerprint"] = 1
+        elif mutation == "content_root_digest":
+            pointer["content_root_sha256"] = "not-a-digest"
+        elif mutation == "revision_type":
+            pointer["revision"] = 1
+        elif mutation == "revision_absolute":
+            pointer["revision"] = "/outside"
+        elif mutation == "revision_parent":
+            pointer["revision"] = "revisions/../outside"
+        elif mutation == "revision_binding":
+            pointer["revision"] = "revisions/sha256-" + "b" * 64
+        else:
+            pointer["revision"] = "regular-file"
+            (outputs / deck_name / "regular-file").write_text("not a directory", encoding="utf-8")
+        pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
+
+    violations, scanned = _scan_current_packages(repository, outputs)
+
+    assert scanned < 12
+    assert violations
+
+
+@pytest.mark.parametrize(
+    "name,match",
+    (
+        ("/" + "absolute.py", "absolute"),
+        ("C:" + "/" + "absolute.py", "absolute"),
+        ("folder\\member.py", "absolute"),
+        ("folder/../member.py", "traversal"),
+        ("folder/trailing. ", "unsafe"),
+        ("folder/colon:name", "unsafe"),
+    ),
+)
+def test_archive_reader_rejects_nonportable_member_names(
+    tmp_path: Path,
+    name: str,
+    match: str,
+) -> None:
+    wheel = tmp_path / "names.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(name, b"payload")
+    if "\\" in name:
+        canonical_name = name.replace("\\", "/").encode()
+        wheel.write_bytes(wheel.read_bytes().replace(canonical_name, name.encode()))
+
+    with pytest.raises(ReleaseGateError, match=match):
+        _archive_rows(wheel)
+
+
+def test_archive_reader_accepts_real_directories_and_rejects_type_name_mismatch(
+    tmp_path: Path,
+) -> None:
+    wheel = tmp_path / "directory.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("hsconfig/", b"")
+        archive.writestr("hsconfig/module.py", b"VALUE = 1\n")
+
+    assert _archive_rows(wheel) == (("hsconfig/module.py", b"VALUE = 1\n"),)
+
+    mismatch = tmp_path / "mismatch.whl"
+    with zipfile.ZipFile(mismatch, "w") as archive:
+        member = zipfile.ZipInfo("hsconfig/module.py")
+        member.create_system = 3
+        member.external_attr = (stat.S_IFDIR | 0o755) << 16
+        archive.writestr(member, b"")
+    with pytest.raises(ReleaseGateError, match="type/name mismatch"):
+        _archive_rows(mismatch)
+
+
+def test_archive_reader_accepts_tar_directory_and_rejects_nonregular_member(
+    tmp_path: Path,
+) -> None:
+    safe = tmp_path / "safe.tar.gz"
+    with tarfile.open(safe, "w:gz") as archive:
+        directory = tarfile.TarInfo("hsconfig-1.0.0/")
+        directory.type = tarfile.DIRTYPE
+        archive.addfile(directory)
+        payload = b"VALUE = 1\n"
+        member = tarfile.TarInfo("hsconfig-1.0.0/module.py")
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+    assert _archive_rows(safe) == (("hsconfig-1.0.0/module.py", payload),)
+
+    unsafe = tmp_path / "device.tar.gz"
+    with tarfile.open(unsafe, "w:gz") as archive:
+        member = tarfile.TarInfo("hsconfig-1.0.0/device")
+        member.type = tarfile.CHRTYPE
+        archive.addfile(member)
+    with pytest.raises(ReleaseGateError, match="non-regular tar"):
+        _archive_rows(unsafe)
+
+
+def _credential_sample() -> str:
+    return "Aa1!Bb2@Cc3#" + "Dd4$Ee5%Ff6^" + "Gg7&Hh8*Ii9(" + "Jj0)Kk1_Ll2+"
+
+
+@pytest.mark.parametrize(
+    "relative,content,expected",
+    (
+        ("src/hsconfig/settings.py", "client_secret='CREDENTIAL_SAMPLE'", "secret"),
+        ("src/hsconfig/settings.py", "client.secret = b'CREDENTIAL_SAMPLE'", "secret"),
+        ("src/hsconfig/settings.py", "configure(accessToken='CREDENTIAL_SAMPLE')", "secret"),
+        ("src/hsconfig/settings.py", "settings['databasePassword'] = 'CREDENTIAL_SAMPLE'", "secret"),
+        ("src/hsconfig/settings.py", "(clientSecret := 'CREDENTIAL_SAMPLE')", "secret"),
+        (
+            "config/settings.json",
+            json.dumps({"outer": [{"clientSecret": "CREDENTIAL_SAMPLE"}]}),
+            "secret",
+        ),
+        (
+            "config/settings.yaml",
+            "outer:\n  - clientSecret: CREDENTIAL_SAMPLE\n",
+            "secret",
+        ),
+    ),
+)
+def test_publishability_credentials_cover_static_reachable_assignment_forms(
+    relative: str,
+    content: str,
+    expected: str,
+) -> None:
+    content = content.replace("CREDENTIAL_SAMPLE", _credential_sample())
+    violations = _text_violations(relative, content.encode(), public_doc=False)
+
+    assert any(row.startswith(expected + ":") for row in violations)
+
+
+@pytest.mark.parametrize(
+    "limit_name,limit,content",
+    (
+        ("_MAX_YAML_DOCUMENT_CHARACTERS", 5, "password: safe"),
+        ("_MAX_YAML_EVENTS", 1, "password: safe"),
+        ("_MAX_YAML_ANCHORS", 0, "value: &anchor safe"),
+        ("_MAX_YAML_NODES", 1, "outer:\n  inner: safe\n"),
+        ("_MAX_STRUCTURED_DEPTH", 1, "outer:\n  inner:\n    value: safe\n"),
+    ),
+)
+def test_publishability_yaml_resource_limits_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    limit: int,
+    content: str,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate." + limit_name, limit)
+
+    violations = _text_violations(
+        "config/settings.yaml",
+        content.encode(),
+        public_doc=False,
+    )
+
+    assert violations == ["invalid_yaml_content:config/settings.yaml"]
+
+
+def test_publishability_yaml_rejects_recursive_alias_and_float_key_duplicates() -> None:
+    recursive = _text_violations(
+        "config/settings.yaml",
+        b"outer: &loop [*loop]\n",
+        public_doc=False,
+    )
+    duplicate_float = _text_violations(
+        "config/settings.yaml",
+        b"1.0: first\n1.00: second\n",
+        public_doc=False,
+    )
+
+    assert recursive == ["invalid_yaml_content:config/settings.yaml"]
+    assert duplicate_float == ["invalid_yaml_content:config/settings.yaml"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "audit_schema",
+        "summary_schema",
+        "claim_schema",
+        "claim_cards_type",
+        "claim_action_type",
+        "claim_selector_type",
+        "claim_condition_type",
+        "authority_missing_error",
+        "authority_content_digest",
+        "authority_lane",
+        "card_claim_lanes",
+        "card_memberships",
+        "claim_key_binding",
+        "current_revision_type",
+        "current_revision_absolute",
+        "current_revision_file",
+        "catalog_decks_type",
+        "ledger_fingerprint",
+        "ledger_cards_type",
+        "ledger_card_identity",
+        "ledger_claim_identity",
+        "card_disposition",
+        "claim_disposition",
+    ),
+)
+def test_semantic_producer_rejects_reachable_contract_mutations(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+    catalog_path = repository / "docs/operator/audited-deck-catalog.json"
+    current_path = next(iter(outputs.iterdir())) / "current.json"
+    audit_path = _first_report(repository, outputs, "source_contract_audit.json")
+    ledger_path = _first_report(repository, outputs, "disposition_ledger.json")
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+
+    first_claim_key = next(iter(audit["claim_rows"]))
+    first_claim = audit["claim_rows"][first_claim_key]
+    first_card = next(iter(audit["card_rows"].values()))
+    if mutation == "audit_schema":
+        audit["unexpected"] = True
+    elif mutation == "summary_schema":
+        audit["summary"]["unexpected"] = True
+    elif mutation == "claim_schema":
+        first_claim["unexpected"] = True
+    elif mutation == "claim_cards_type":
+        first_claim["cards"] = "not-a-sequence"
+    elif mutation in {"claim_action_type", "claim_selector_type", "claim_condition_type"}:
+        field = mutation.removeprefix("claim_").removesuffix("_type")
+        target = next(row for row in audit["claim_rows"].values() if field in row)
+        target[field] = ["not-a-scalar"]
+    elif mutation == "authority_missing_error":
+        first_claim["evidence_lane_error"] = None
+    elif mutation in {"authority_content_digest", "authority_lane"}:
+        first_claim["evidence_lane_error"] = None
+        first_claim["evidence_authority"] = {
+            "as_of_date": "2026-07-07",
+            "authority_id": "C:" + first_claim["claim_id"],
+            "claim_kind": first_claim["claim_kind"],
+            "content_sha256": "sha256:" + "a" * 64,
+            "exact_deck_fingerprint": None,
+            "lane": "C",
+            "reason": "context_only_guide_authority",
+            "runtime_authorized": False,
+            "source_identity": "https://example.invalid/guide",
+        }
+        if mutation == "authority_content_digest":
+            first_claim["evidence_authority"]["content_sha256"] = "invalid"
+        else:
+            first_claim["evidence_authority"]["lane"] = "future"
+    elif mutation == "card_claim_lanes":
+        first_card["claim_lanes"] = {"runtime_lowered": -1}
+    elif mutation == "card_memberships":
+        first_card["sideboard_memberships"] = "not-a-sequence"
+    elif mutation == "claim_key_binding":
+        audit["claim_rows"]["claim_wrong"] = audit["claim_rows"].pop(first_claim_key)
+    elif mutation.startswith("current_revision_"):
+        current = json.loads(current_path.read_text(encoding="utf-8"))
+        if mutation == "current_revision_type":
+            current["revision"] = 1
+        elif mutation == "current_revision_absolute":
+            current["revision"] = "/" + "outside"
+        else:
+            current["revision"] = "unsafe"
+            (current_path.parent / "unsafe").write_text("not a directory", encoding="utf-8")
+        current_path.write_text(json.dumps(current), encoding="utf-8")
+    elif mutation == "catalog_decks_type":
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        catalog["decks"] = "not-a-list"
+        catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    elif mutation == "ledger_fingerprint":
+        ledger["deck_fingerprint"] = "0" * 64
+    elif mutation == "ledger_cards_type":
+        ledger["cards"] = {}
+    elif mutation == "ledger_card_identity":
+        ledger["cards"][0]["physical_owner"] = 1
+    elif mutation == "ledger_claim_identity":
+        ledger["claims"][0]["evidence_id"] = "unbound"
+    elif mutation == "card_disposition":
+        ledger["cards"][0]["disposition"] = "future"
+    else:
+        ledger["claims"][0]["disposition"] = "future"
+
+    audit_path.write_text(json.dumps(audit, sort_keys=True), encoding="utf-8")
+    ledger_path.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
+    with pytest.raises(ReleaseGateError, match="semantic|current|canonical"):
+        _produce_semantic_rows(repository, outputs, ".git/evidence.json")
+
+
+def test_publishability_credential_parsers_cover_bounded_static_forms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sample = _credential_sample()
+    assert _shannon_entropy("") == 0.0
+
+    accepted_forms = (
+        ("config/settings.txt", "clientSecret=" + sample),
+        ("config/settings.txt", 'clientSecret="' + sample + '\\"tail"'),
+        ("src/hsconfig/settings.py", "clientSecret: str = '" + sample + "'"),
+        ("src/hsconfig/settings.py", "settings = {'clientSecret': '" + sample + "'}"),
+        ("src/hsconfig/settings.py", "clientSecret = f'" + sample + "'"),
+    )
+    for relative, content in accepted_forms:
+        assert "secret:" + relative in _text_violations(
+            relative,
+            content.encode(),
+            public_doc=False,
+        )
+
+    monkeypatch.setattr("hsconfig.release_gate._MAX_STRUCTURED_DEPTH", 0)
+    assert _text_violations(
+        "config/settings.json",
+        json.dumps({"outer": {"value": "safe"}}).encode(),
+        public_doc=False,
+    ) == ["invalid_json_content:config/settings.json"]
+
+
+@pytest.mark.parametrize(
+    "limit_name,limit,content",
+    (
+        ("_MAX_YAML_DOCUMENTS", 0, "value: safe"),
+        ("_MAX_YAML_ALIASES", 0, "base: &anchor safe\nvalue: *anchor\n"),
+        ("_MAX_YAML_SCALAR_CHARACTERS", 3, "value: longer"),
+    ),
+)
+def test_publishability_yaml_parser_limits_cover_documents_aliases_and_scalars(
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    limit: int,
+    content: str,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate." + limit_name, limit)
+
+    assert _text_violations(
+        "config/settings.yaml",
+        content.encode(),
+        public_doc=False,
+    ) == ["invalid_yaml_content:config/settings.yaml"]
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "value: &" + "a" * 129 + " safe\n",
+        "[compound, key]: value\n",
+        "clientSecret:\n  nested: value\n",
+        "2026-08-06: value\n",
+    ),
+)
+def test_publishability_yaml_rejects_nonportable_key_and_value_shapes(content: str) -> None:
+    assert _text_violations(
+        "config/settings.yaml",
+        content.encode(),
+        public_doc=False,
+    ) == ["invalid_yaml_content:config/settings.yaml"]
+
+
+def test_distribution_scan_reports_build_failure_and_artifact_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate._stage_tracked_source", lambda *_: None)
+    monkeypatch.setattr(
+        "hsconfig.release_gate._execute_bounded",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 7, "", "failed"),
+    )
+    assert _scan_distributions(tmp_path) == (["distribution_build_failed:returncode=7"], 0)
+
+    monkeypatch.setattr(
+        "hsconfig.release_gate._execute_bounded",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    assert _scan_distributions(tmp_path) == (["distribution_artifact_count:0"], 0)
+
+
+def test_distribution_scan_inspects_both_built_archive_kinds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate._stage_tracked_source", lambda *_: None)
+
+    def execute(command: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        artifacts = Path(command[4])
+        artifacts.mkdir(parents=True)
+        (artifacts / "hsconfig-1.0.0-py3-none-any.whl").write_bytes(b"wheel")
+        (artifacts / "hsconfig-1.0.0.tar.gz").write_bytes(b"sdist")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("hsconfig.release_gate._execute_bounded", execute)
+    monkeypatch.setattr(
+        "hsconfig.release_gate._archive_rows",
+        lambda path: (("hsconfig/module.py", b"VALUE = 1\n"),),
+    )
+
+    assert _scan_distributions(tmp_path) == ([], 2)
+
+
+def test_github_json_is_bounded_and_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "hsconfig.release_gate._execute_bounded",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, "", "failed"),
+    )
+    with pytest.raises(ReleaseGateError, match="live GitHub verification"):
+        _gh_json(tmp_path, "api", "repos/example/project")
+
+    monkeypatch.setattr(
+        "hsconfig.release_gate._execute_bounded",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, '{"ok":true}', ""),
+    )
+    assert _gh_json(tmp_path, "api", "repos/example/project") == {"ok": True}
+
+
+def test_archive_reader_rejects_duplicate_casefold_and_resource_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duplicate = tmp_path / "duplicate.whl"
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with zipfile.ZipFile(duplicate, "w") as archive:
+            archive.writestr("hsconfig/module.py", b"one")
+            archive.writestr("hsconfig/module.py", b"two")
+    with pytest.raises(ReleaseGateError, match="duplicate"):
+        _archive_rows(duplicate)
+
+    collision = tmp_path / "collision.whl"
+    with zipfile.ZipFile(collision, "w") as archive:
+        archive.writestr("hsconfig/Module.py", b"one")
+        archive.writestr("hsconfig/module.py", b"two")
+    with pytest.raises(ReleaseGateError, match="casefold"):
+        _archive_rows(collision)
+
+    limited = tmp_path / "limited.whl"
+    with zipfile.ZipFile(limited, "w") as archive:
+        archive.writestr("hsconfig/module.py", b"payload")
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_MEMBER_BYTES", 0)
+    with pytest.raises(ReleaseGateError, match="size limit"):
+        _archive_rows(limited)
+
+
+def _binary_patched_zip(
+    path: Path,
+    names: tuple[str, ...],
+    replacements: tuple[tuple[bytes, bytes], ...],
+) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        for index, name in enumerate(names):
+            archive.writestr(name, f"payload-{index}".encode())
+    data = path.read_bytes()
+    for original, replacement in replacements:
+        assert len(original) == len(replacement)
+        assert data.count(original) == 2
+        data = data.replace(original, replacement)
+    path.write_bytes(data)
+
+
+@pytest.mark.parametrize("codepoint", (*range(32), 127))
+def test_archive_reader_rejects_every_ascii_control_character_in_raw_zip_name(
+    tmp_path: Path,
+    codepoint: int,
+) -> None:
+    archive_path = tmp_path / f"control-{codepoint}.whl"
+    original = b"hsconfig/control-X.py"
+    replacement = original.replace(b"X", bytes((codepoint,)))
+    _binary_patched_zip(
+        archive_path,
+        (original.decode("ascii"),),
+        ((original, replacement),),
+    )
+
+    with pytest.raises(ReleaseGateError, match="control character"):
+        _archive_rows(archive_path)
+
+
+def test_archive_reader_rejects_binary_nul_alias_before_duplicate_resolution(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "nul-alias.whl"
+    first = b"hsconfig/alias.py"
+    second = b"hsconfig/alias.pyXtail"
+    _binary_patched_zip(
+        archive_path,
+        (first.decode("ascii"), second.decode("ascii")),
+        ((second, second.replace(b"X", b"\0")),),
+    )
+
+    with pytest.raises(ReleaseGateError, match="control character"):
+        _archive_rows(archive_path)
+
+
+def test_tar_reader_rejects_member_count_links_size_and_ratio(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_path = tmp_path / "bounded.tar.gz"
+    payload = b"payload"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        member = tarfile.TarInfo("hsconfig-1.0.0/module.py")
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_MEMBERS", 0)
+    with pytest.raises(ReleaseGateError, match="member count"):
+        _archive_rows(archive_path)
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_MEMBERS", 10_000)
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_MEMBER_BYTES", 0)
+    with pytest.raises(ReleaseGateError, match="size limit"):
+        _archive_rows(archive_path)
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_MEMBER_BYTES", 64 * 1024 * 1024)
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_COMPRESSION_RATIO", 0)
+    with pytest.raises(ReleaseGateError, match="compression ratio"):
+        _archive_rows(archive_path)
+
+    linked = tmp_path / "linked.tar.gz"
+    with tarfile.open(linked, "w:gz") as archive:
+        member = tarfile.TarInfo("hsconfig-1.0.0/link")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "module.py"
+        archive.addfile(member)
+    with pytest.raises(ReleaseGateError, match="link member"):
+        _archive_rows(linked)
+
+
+def test_safe_detail_covers_empty_and_consistent_nested_returncodes() -> None:
+    assert _safe_detail("", "", 0) == {"returncode": 0}
+    assert _safe_detail('{"passed":true,"returncode":0}', "", 0) == {
+        "returncode": 0,
+        "result": {"passed": True, "returncode": 0},
+    }
+
+
+def test_live_github_state_rejects_stale_aware_observation(tmp_path: Path) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    state = _valid_live_state(snapshot)
+    state["observed_at"] = "2000-01-01T00:00:00Z"
+
+    with pytest.raises(ReleaseGateError, match="stale"):
+        _validate_live_github_state(state, snapshot)
+
+
+def test_publishability_text_scan_covers_opaque_and_archive_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opaque = (
+        b"\xff"
+        + ("C" + chr(58) + chr(47) + "Users/example/private/file.txt\n").encode()
+        + ("clientSecret=" + _credential_sample()).encode()
+    )
+    violations = _text_violations("opaque.bin", opaque, public_doc=False)
+    assert violations == [
+        "non_utf8_content:opaque.bin",
+        "absolute_path:opaque.bin",
+        "secret:opaque.bin",
+    ]
+    private_relative = "private/" + "Power" + ".log"
+    assert _text_violations(
+        private_relative,
+        b"safe",
+        public_doc=False,
+    ) == ["private_runtime_evidence:" + private_relative]
+
+    versioned = _text_violations(
+        "artifact.whl!hsconfig-1.0.0/module.py",
+        ("TO" + "DO remove before release").encode(),
+        public_doc=True,
+    )
+    package = _text_violations(
+        "artifact.whl!hsconfig/module.py",
+        ("TO" + "DO remove before release").encode(),
+        public_doc=True,
+    )
+    assert versioned == ["public_placeholder:artifact.whl!hsconfig-1.0.0/module.py:1"]
+    assert package == ["public_placeholder:artifact.whl!hsconfig/module.py:1"]
+
+    monkeypatch.setattr(
+        "hsconfig.release_gate._contains_secret",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ReleaseGateError("invalid")),
+    )
+    with pytest.raises(ReleaseGateError, match="invalid"):
+        _text_violations("config/settings.txt", b"safe", public_doc=False)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("unsupported_mode", "missing_repository", "missing_outputs", "noncanonical_outputs"),
+)
+def test_repository_validation_rejects_early_boundary_failures(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    repository = tmp_path / "repository"
+    outputs = repository / "outputs"
+    repository.mkdir()
+    (repository / ".git").mkdir()
+    if case != "missing_outputs":
+        outputs.mkdir()
+    if case == "unsupported_mode":
+        mode = "future"
+    else:
+        mode = "final"
+    if case == "missing_repository":
+        repository = tmp_path / "missing"
+        outputs = repository / "outputs"
+    elif case == "noncanonical_outputs":
+        outputs = tmp_path / "other-outputs"
+        outputs.mkdir()
+
+    with pytest.raises(ReleaseGateError):
+        _validate_repository(repository, outputs, mode)  # type: ignore[arg-type]
+
+
+def test_json_loader_and_regular_tree_reject_non_object_and_unsafe_roots(
+    tmp_path: Path,
+) -> None:
+    document = tmp_path / "document.json"
+    document.write_text("[]", encoding="utf-8")
+    with pytest.raises(ReleaseGateError, match="must be an object"):
+        _load_json_file(tmp_path, PurePosixPath("document.json"))
+
+    with pytest.raises(ReleaseGateError, match="root is link|non-directory"):
+        _walk_regular_tree(document, context="test tree")
+
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("safe", encoding="utf-8")
+    try:
+        (directory / "linked.txt").symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"platform does not permit test symlink: {exc}")
+    with pytest.raises(ReleaseGateError, match="link"):
+        _walk_regular_tree(directory, context="test tree")
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("binary_text", "invalid_utf8", "noncanonical", "symlink", "hardlink"),
+)
+def test_dirty_tree_fingerprint_rejects_untrusted_untracked_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    if case == "invalid_utf8":
+        untracked: str | bytes = b"\xff\0"
+    elif case == "noncanonical":
+        untracked = b"../escape\0"
+    elif case == "symlink":
+        outside = tmp_path / "outside.txt"
+        outside.write_text("safe", encoding="utf-8")
+        try:
+            (root / "linked.txt").symlink_to(outside)
+        except OSError as exc:
+            pytest.skip(f"platform does not permit test symlink: {exc}")
+        untracked = b"linked.txt\0"
+    elif case == "hardlink":
+        original = root / "original.txt"
+        original.write_text("safe", encoding="utf-8")
+        try:
+            os.link(original, root / "linked.txt")
+        except OSError as exc:
+            pytest.skip(f"platform does not permit test hardlink: {exc}")
+        untracked = b"linked.txt\0"
+    else:
+        untracked = "text"
+
+    def git(_root: Path, *arguments: str, text: bool = True) -> str | bytes:
+        if case == "binary_text":
+            return "text"
+        if arguments[0] == "status":
+            return b"dirty"
+        if arguments[0] == "diff":
+            return b""
+        return untracked
+
+    monkeypatch.setattr("hsconfig.release_gate._git", git)
+    with pytest.raises(ReleaseGateError, match="binary|UTF-8|canonical|link"):
+        _dirty_tree_fingerprint(root)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "package_count",
+        "package_row",
+        "package_name",
+        "package_version",
+        "duplicate_package",
+        "invalid_constraint",
+        "duplicate_constraint",
+        "projection_mismatch",
+    ),
+)
+def test_selected_audit_projection_rejects_closed_graph_mutations(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    lock_path = repository / f"pylock.{minor}.toml"
+    constraints_path = repository / "constraints-ci.txt"
+    package_rows: list[str] = []
+    constraints: list[str] = []
+    for index in range(43):
+        name: str | int = f"package-{index}"
+        version: str | int = "1.0"
+        if mutation == "package_name" and index == 0:
+            name = 1
+        if mutation == "package_version" and index == 0:
+            version = 1
+        if mutation == "duplicate_package" and index == 1:
+            name = "package-0"
+        package_rows.append("{name=" + json.dumps(name) + ",version=" + json.dumps(version) + "}")
+        constraints.append(f"package-{index}==1.0")
+    if mutation == "package_count":
+        package_rows.pop()
+    elif mutation == "package_row":
+        package_rows[0] = "1"
+    elif mutation == "invalid_constraint":
+        constraints[0] = "not a pinned constraint"
+    elif mutation == "duplicate_constraint":
+        constraints[1] = constraints[0]
+    elif mutation == "projection_mismatch":
+        constraints[0] = "package-0==2.0"
+    lock_path.write_text("packages = [" + ",".join(package_rows) + "]\n", encoding="utf-8")
+    constraints_path.write_text("\n".join(constraints) + "\n", encoding="utf-8")
+
+    with pytest.raises(ReleaseGateError, match="selected audit"):
+        _validate_selected_audit_projection(repository)
+
+
+@pytest.mark.parametrize(
+    "remote,expected",
+    (
+        ("git@github.com:owner/project.git", "owner/project"),
+        ("https://github.com/owner/project.git", "owner/project"),
+    ),
+)
+def test_repository_identity_accepts_canonical_github_remote_forms(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    remote: str,
+    expected: str,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate._git", lambda *args, **kwargs: remote)
+    assert _repository_identity(tmp_path) == expected
+
+
+def test_repository_identity_rejects_non_github_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("hsconfig.release_gate._git", lambda *args, **kwargs: "local")
+    with pytest.raises(ReleaseGateError, match="identity"):
+        _repository_identity(tmp_path)
+
+
+def test_base_evidence_rejects_failed_prerequisite_checks(tmp_path: Path) -> None:
+    repository, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(repository, outputs)
+    failed = ReleaseCheck("ruff", False, ("ruff",), {"returncode": 1})
+
+    with pytest.raises(ReleaseGateError, match="failed checks"):
+        _build_base_evidence(
+            repository=repository,
+            outputs_root=outputs,
+            checks=(failed,),
+            tree_mode="working-pre-cutover",
+            snapshot=snapshot,
+        )
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        "clientSecret=",
+        "clientSecret=   ",
+        "clientSecret='",
+        "settings[0] = 'safe'",
+    ),
+)
+def test_publishability_credential_parser_ignores_incomplete_or_nonsensitive_forms(
+    content: str,
+) -> None:
+    assert _text_violations(
+        "src/hsconfig/settings.py",
+        content.encode(),
+        public_doc=False,
+    ) == []
+
+
+def test_publishability_yaml_handles_empty_document_and_rejects_oversized_tag() -> None:
+    assert _text_violations(
+        "config/settings.yaml",
+        b"---\n...\n",
+        public_doc=False,
+    ) == []
+    oversized_tag = "value: !<tag:example.invalid,2026:" + "a" * 300 + "> safe\n"
+    assert _text_violations(
+        "config/settings.yaml",
+        oversized_tag.encode(),
+        public_doc=False,
+    ) == ["invalid_yaml_content:config/settings.yaml"]
+
+
+def test_publishability_scanner_covers_opaque_safe_and_non_source_placeholders() -> None:
+    assert _text_violations("opaque.bin", b"\xffsafe", public_doc=False) == [
+        "non_utf8_content:opaque.bin"
+    ]
+    marker = ("TO" + "DO remove before release").encode()
+    assert _text_violations(
+        "artifact.whl!other/module.py",
+        marker,
+        public_doc=True,
+    ) == ["public_placeholder:artifact.whl!other/module.py:1"]
+    assert _text_violations("notes.txt", marker, public_doc=False) == []
+
+
+def test_repository_validation_rejects_non_oid_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    outputs = repository / "outputs"
+    outputs.mkdir(parents=True)
+    (repository / ".git").mkdir()
+    monkeypatch.setattr("hsconfig.release_gate._validate_git_binding", lambda *_: None)
+
+    def git(_repository: Path, *arguments: str, **_kwargs: Any) -> str:
+        return "" if arguments[0] == "status" else "short"
+
+    monkeypatch.setattr("hsconfig.release_gate._git", git)
+    with pytest.raises(ReleaseGateError, match="full commit OID"):
+        _validate_repository(repository, outputs, "final")
+
+
+def test_archive_reader_rejects_archive_file_over_total_byte_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_path = tmp_path / "limited.whl"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("hsconfig/module.py", b"safe")
+    monkeypatch.setattr("hsconfig.release_gate._MAX_ARCHIVE_TOTAL_BYTES", 0)
+
+    with pytest.raises(ReleaseGateError, match="bounded size limit"):
+        _archive_rows(archive_path)
+
+
+def test_git_binding_rejects_mismatched_requested_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(_repository: Path, *arguments: str, **_kwargs: Any) -> str:
+        if arguments[-1] == "--show-toplevel":
+            return str(tmp_path / "other")
+        if arguments[-1] in {"--absolute-git-dir", "--git-common-dir"}:
+            return str(repository / ".git")
+        return "true"
+
+    monkeypatch.setattr("hsconfig.release_gate._git", git)
+    with pytest.raises(ReleaseGateError, match="binding"):
+        _validate_git_binding(repository)

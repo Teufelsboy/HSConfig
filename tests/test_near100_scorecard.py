@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +15,7 @@ from typing import Any
 
 import pytest
 
+import hsconfig.near100_scorecard as scorecard_module
 from hsconfig.near100_scorecard import (
     ATOMIC_CHECK_OWNERS,
     HARD_METRIC_IDS,
@@ -321,6 +324,21 @@ def _set_check_result(
 
 def _metric(scorecard: object, metric_id: str) -> object:
     return next(metric for metric in scorecard.metrics if metric.metric_id == metric_id)
+
+
+def _expect_evidence_error(
+    label: str,
+    pattern: str,
+    operation: Any,
+) -> None:
+    try:
+        operation()
+    except Near100EvidenceError as exc:
+        assert re.search(pattern, str(exc)), (
+            f"{label}: expected {pattern!r}, received {str(exc)!r}"
+        )
+    else:
+        pytest.fail(f"{label}: expected Near100EvidenceError")
 
 
 def test_final_truth_table_uses_exact_ids_minimums_and_decimal_scores(
@@ -1641,3 +1659,489 @@ def test_cli_stdin_bounds_evidence_nesting_and_size_with_one_json_error(
     assert json.loads(completed.stdout)["passed"] is False
     assert completed.stdout.count("\n") == 1
     assert completed.stderr == ""
+
+
+def test_builder_rejects_primitive_meta_and_reason_shape_boundaries(
+    tmp_path: Path,
+) -> None:
+    baseline = _complete_evidence(tmp_path)
+
+    _expect_evidence_error(
+        "unsupported mode",
+        "unsupported scorecard mode",
+        lambda: build_near100_scorecard(
+            evidence=copy.deepcopy(baseline),
+            mode="candidate",  # type: ignore[arg-type]
+        ),
+    )
+    _expect_evidence_error(
+        "non-object evidence",
+        "evidence must be an object",
+        lambda: build_near100_scorecard(
+            evidence=[],  # type: ignore[arg-type]
+            mode="final",
+        ),
+    )
+
+    cases: tuple[tuple[str, str, Any], ...] = (
+        (
+            "non-object metadata",
+            "evidence._meta must be an object",
+            lambda evidence: evidence.__setitem__("_meta", []),
+        ),
+        (
+            "non-string repository root",
+            "repository_root must be a path string",
+            lambda evidence: evidence["_meta"].__setitem__("repository_root", None),
+        ),
+        (
+            "missing repository root",
+            "repository root does not exist",
+            lambda evidence: evidence["_meta"].__setitem__(
+                "repository_root", str(tmp_path / "absent")
+            ),
+        ),
+        (
+            "missing metadata field",
+            "missing required fields",
+            lambda evidence: evidence["_meta"].pop("producer"),
+        ),
+        (
+            "boolean finding count",
+            "must be a non-negative integer",
+            lambda evidence: evidence["findings"].__setitem__("open_p0", True),
+        ),
+        (
+            "unknown finding field",
+            "unknown findings fields",
+            lambda evidence: evidence["findings"].__setitem__("open_p2", 0),
+        ),
+        (
+            "reason is not an array",
+            "blocking_reasons must be an array",
+            lambda evidence: evidence["checks"]["contract_spine"].__setitem__(
+                "blocking_reasons", "plain text"
+            ),
+        ),
+        (
+            "blank reason",
+            "must contain non-empty strings",
+            lambda evidence: evidence["checks"]["contract_spine"].__setitem__(
+                "non_blocking_reasons", [""]
+            ),
+        ),
+        (
+            "duplicate reasons",
+            "must not contain duplicates",
+            lambda evidence: evidence["checks"]["contract_spine"].__setitem__(
+                "non_blocking_reasons", ["same", "same"]
+            ),
+        ),
+        (
+            "empty evidence paths",
+            "must not be empty",
+            lambda evidence: evidence["checks"]["contract_spine"].__setitem__(
+                "evidence_paths", []
+            ),
+        ),
+    )
+    for label, pattern, mutate in cases:
+        evidence = copy.deepcopy(baseline)
+        mutate(evidence)
+        _expect_evidence_error(
+            label,
+            pattern,
+            lambda evidence=evidence: build_near100_scorecard(
+                evidence=evidence,
+                mode="final",
+            ),
+        )
+
+
+def test_builder_accepts_supported_origin_forms_and_rejects_ambiguous_identity(
+    tmp_path: Path,
+) -> None:
+    evidence = _complete_evidence(tmp_path)
+
+    _git(
+        tmp_path,
+        "remote",
+        "set-url",
+        "origin",
+        "git@github.com:Teufelsboy/HSConfig.git",
+    )
+    assert build_near100_scorecard(
+        evidence=copy.deepcopy(evidence), mode="final"
+    ).passed
+
+    _git(tmp_path, "remote", "set-url", "origin", "Teufelsboy/HSConfig")
+    assert build_near100_scorecard(
+        evidence=copy.deepcopy(evidence), mode="final"
+    ).passed
+
+    _git(tmp_path, "remote", "set-url", "origin", "not-a-repository")
+    _expect_evidence_error(
+        "ambiguous origin",
+        "repository identity cannot be derived",
+        lambda: build_near100_scorecard(
+            evidence=copy.deepcopy(evidence),
+            mode="final",
+        ),
+    )
+
+
+def test_final_embedded_envelope_rejects_transaction_receipt_and_check_boundaries(
+    tmp_path: Path,
+) -> None:
+    baseline = _embedded_bundle(tmp_path)
+
+    cases: tuple[tuple[str, str, Any], ...] = (
+        (
+            "transaction identity",
+            "transaction identity mismatch",
+            lambda bundle: bundle["evidence"]["_meta"].__setitem__(
+                "transaction_id", "not-a-transaction"
+            ),
+        ),
+        (
+            "transaction observation type",
+            "observation time invalid",
+            lambda bundle: bundle["evidence"]["_meta"].__setitem__(
+                "observed_at", 1
+            ),
+        ),
+        (
+            "transaction observation syntax",
+            "observation time invalid",
+            lambda bundle: bundle["evidence"]["_meta"].__setitem__(
+                "observed_at", "not-a-time"
+            ),
+        ),
+        (
+            "transaction observation timezone",
+            "observation is stale",
+            lambda bundle: bundle["evidence"]["_meta"].__setitem__(
+                "observed_at", "2026-08-06T12:00:00"
+            ),
+        ),
+        (
+            "transaction observation freshness",
+            "observation is stale",
+            lambda bundle: bundle["evidence"]["_meta"].__setitem__(
+                "observed_at", "2000-01-01T00:00:00Z"
+            ),
+        ),
+        (
+            "receipt schema version",
+            "schema_version mismatch",
+            lambda bundle: bundle["receipts"][
+                "receipts/contract_spine.json"
+            ].__setitem__("schema_version", 1),
+        ),
+        (
+            "receipt result schema",
+            "result schema mismatch",
+            lambda bundle: bundle["receipts"]["receipts/contract_spine.json"][
+                "result"
+            ].__setitem__("detail", "unbound"),
+        ),
+        (
+            "receipt result type",
+            "result.passed must be boolean",
+            lambda bundle: bundle["receipts"]["receipts/contract_spine.json"][
+                "result"
+            ].__setitem__("passed", "yes"),
+        ),
+        (
+            "noncanonical embedded receipt ID",
+            "exactly canonical embedded receipt ID",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("evidence_paths", ["receipts/version_consistency.json"]),
+        ),
+        (
+            "unknown atomic field",
+            "contains unknown fields",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("diagnostic", "unbound"),
+        ),
+        (
+            "atomic result type",
+            "passed must be boolean",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("passed", "yes"),
+        ),
+        (
+            "atomic evidence kind",
+            "not an allowed base evidence kind",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("kind", "scorecard"),
+        ),
+        (
+            "passing check with blocking reason",
+            "cannot have blocking reasons",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("blocking_reasons", ["contradiction"]),
+        ),
+        (
+            "failed check without blocking reason",
+            "must have a blocking reason",
+            lambda bundle: (
+                bundle["evidence"]["checks"]["contract_spine"].__setitem__(
+                    "passed", False
+                ),
+                bundle["receipts"]["receipts/contract_spine.json"][
+                    "result"
+                ].__setitem__("passed", False),
+            ),
+        ),
+        (
+            "atomic scope",
+            "scope must be PRE_RUN_CONTRACT",
+            lambda bundle: bundle["evidence"]["checks"][
+                "contract_spine"
+            ].__setitem__("scope", "POST_RUN"),
+        ),
+    )
+    for label, pattern, mutate in cases:
+        bundle = copy.deepcopy(baseline)
+        mutate(bundle)
+        _expect_evidence_error(
+            label,
+            pattern,
+            lambda bundle=bundle: build_near100_scorecard(
+                evidence=bundle["evidence"],
+                mode="final",
+                receipt_documents=bundle["receipts"],
+            ),
+        )
+
+    _expect_evidence_error(
+        "receipt collection type",
+        "embedded receipts must be an object",
+        lambda: build_near100_scorecard(
+            evidence=copy.deepcopy(baseline["evidence"]),
+            mode="final",
+            receipt_documents=[],  # type: ignore[arg-type]
+        ),
+    )
+    non_string_receipts = copy.deepcopy(baseline["receipts"])
+    non_string_receipts[1] = non_string_receipts["receipts/contract_spine.json"]
+    _expect_evidence_error(
+        "receipt identifier type",
+        "embedded receipt IDs must be strings",
+        lambda: build_near100_scorecard(
+            evidence=copy.deepcopy(baseline["evidence"]),
+            mode="final",
+            receipt_documents=non_string_receipts,
+        ),
+    )
+
+
+def test_builder_rejects_each_closed_semantic_row_boundary(tmp_path: Path) -> None:
+    baseline = _embedded_bundle(tmp_path)
+    cases: tuple[tuple[str, str, Any], ...] = (
+        (
+            "missing semantic collection",
+            "missing required fields",
+            lambda evidence: evidence["semantic_obligations"].pop("claim_rows"),
+        ),
+        (
+            "missing semantic row field",
+            "missing required fields",
+            lambda evidence: evidence["semantic_obligations"][
+                "card_module_rows"
+            ][0].pop("obligation_id"),
+        ),
+        (
+            "empty semantic identity",
+            "obligation_id must be non-empty",
+            lambda evidence: evidence["semantic_obligations"][
+                "card_module_rows"
+            ][0].__setitem__("obligation_id", ""),
+        ),
+        (
+            "unknown authority lane",
+            "invalid authority lane",
+            lambda evidence: evidence["semantic_obligations"][
+                "card_module_rows"
+            ][0].__setitem__("authority_lanes", ["Z"]),
+        ),
+        (
+            "semantic disposition type",
+            "final_disposition must be boolean",
+            lambda evidence: evidence["semantic_obligations"][
+                "card_module_rows"
+            ][0].__setitem__("final_disposition", "final"),
+        ),
+    )
+    for label, pattern, mutate in cases:
+        bundle = copy.deepcopy(baseline)
+        mutate(bundle["evidence"])
+        _expect_evidence_error(
+            label,
+            pattern,
+            lambda bundle=bundle: build_near100_scorecard(
+                evidence=bundle["evidence"],
+                mode="final",
+                receipt_documents=bundle["receipts"],
+            ),
+        )
+
+
+def test_builder_bounds_free_text_and_accepts_non_scorecard_json_fragment(
+    tmp_path: Path,
+) -> None:
+    baseline = _complete_evidence(tmp_path)
+
+    oversized = copy.deepcopy(baseline)
+    oversized["diagnostic"] = "x" * 1_000_001
+    _expect_evidence_error(
+        "oversized free text",
+        "free-text exceeds safe inspection length",
+        lambda: build_near100_scorecard(evidence=oversized, mode="final"),
+    )
+
+    excessive_fragments = copy.deepcopy(baseline)
+    excessive_fragments["diagnostic"] = '"x" ' * 257
+    _expect_evidence_error(
+        "excessive JSON fragments",
+        "safe JSON inspection complexity",
+        lambda: build_near100_scorecard(
+            evidence=excessive_fragments,
+            mode="final",
+        ),
+    )
+
+    ordinary_fragment = copy.deepcopy(baseline)
+    ordinary_fragment["checks"]["contract_spine"]["non_blocking_reasons"] = [
+        'diagnostic {"kind":"ordinary"}'
+    ]
+    assert build_near100_scorecard(
+        evidence=ordinary_fragment,
+        mode="final",
+    ).passed
+
+
+def test_builder_rejects_real_directory_and_intermediate_file_evidence_paths(
+    tmp_path: Path,
+) -> None:
+    baseline = _complete_evidence(tmp_path)
+    cases = (
+        ("receipts", "not a regular file"),
+        (".gitignore/receipt.json", "component is not a directory"),
+    )
+    for path_text, pattern in cases:
+        evidence = copy.deepcopy(baseline)
+        evidence["checks"]["contract_spine"]["evidence_paths"] = [path_text]
+        _expect_evidence_error(
+            path_text,
+            pattern,
+            lambda evidence=evidence: build_near100_scorecard(
+                evidence=evidence,
+                mode="final",
+            ),
+        )
+
+
+def test_dirty_tree_fingerprint_fails_closed_on_command_types_and_real_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _initialize_repository(tmp_path)
+    original_git = scorecard_module._git
+    command_cases = (
+        ("status", "repository status inspection returned text"),
+        ("diff", "repository diff inspection returned text"),
+        ("ls-files", "repository untracked inspection returned text"),
+    )
+    for command, pattern in command_cases:
+        def wrong_type(
+            root: Path,
+            *args: str,
+            text: bool = True,
+            command: str = command,
+        ) -> str | bytes:
+            if args and args[0] == command:
+                return "not bytes"
+            return original_git(root, *args, text=text)
+
+        monkeypatch.setattr(scorecard_module, "_git", wrong_type)
+        _expect_evidence_error(
+            command,
+            pattern,
+            lambda: scorecard_module._dirty_tree_fingerprint(tmp_path),
+        )
+
+    def untracked_directory(
+        root: Path,
+        *args: str,
+        text: bool = True,
+    ) -> str | bytes:
+        if args and args[0] == "ls-files":
+            return b"outputs\0"
+        return original_git(root, *args, text=text)
+
+    monkeypatch.setattr(scorecard_module, "_git", untracked_directory)
+    _expect_evidence_error(
+        "untracked directory",
+        "untracked repository path is not a regular file",
+        lambda: scorecard_module._dirty_tree_fingerprint(tmp_path),
+    )
+
+
+def test_builder_hashes_a_real_untracked_regular_file(tmp_path: Path) -> None:
+    evidence = _complete_evidence(tmp_path)
+    (tmp_path / "untracked.txt").write_text("bound bytes", encoding="utf-8")
+    _refresh_repository_state(evidence, tmp_path)
+
+    assert build_near100_scorecard(evidence=evidence, mode="final").passed
+
+
+def test_internal_defense_layers_reject_embedded_check_and_missing_resolver(
+    tmp_path: Path,
+) -> None:
+    bundle = _embedded_bundle(tmp_path)
+    evidence = bundle["evidence"]
+    evidence["checks"]["contract_spine"]["diagnostic"] = {
+        "schema_version": 1,
+        "version": "1.0.0",
+        "metrics": [],
+        "overall_score": "100",
+        "passed": True,
+    }
+    _expect_evidence_error(
+        "embedded scorecard at atomic validation layer",
+        "atomic check contract_spine contains an embedded scorecard result",
+        lambda: scorecard_module._validate_checks(
+            evidence,
+            mode="final",
+            repository_root=tmp_path,
+            receipt_documents=bundle["receipts"],
+            consumed_receipts=set(),
+            evidence_meta=evidence["_meta"],
+        ),
+    )
+
+    _expect_evidence_error(
+        "missing embedded receipt resolver",
+        "embedded receipt resolver is unavailable",
+        lambda: scorecard_module._validate_evidence_paths(
+            ["receipts/contract_spine.json"],
+            "contract spine evidence paths",
+            repository_root=tmp_path,
+            expected_check_id="contract_spine",
+            expected_producer="hsconfig.release_gate.base_check",
+            expected_passed=True,
+            receipt_documents=bundle["receipts"],
+            consumed_receipts=None,
+            expected_binding=scorecard_module._receipt_binding(
+                evidence["_meta"],
+                include_final_transaction=False,
+            ),
+        ),
+    )

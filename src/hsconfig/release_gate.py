@@ -2999,7 +2999,12 @@ def _validate_live_github_state(state: Mapping[str, Any], snapshot: _GateSnapsho
         "schema_version", "repository", "commit_oid", "tree_oid", "release_tag",
         "settings", "ruleset", "tag", "release", "observed_at", "transaction_id",
     }
-    if set(state) != expected_fields or state.get("schema_version") != 1:
+    schema_version = state.get("schema_version")
+    if (
+        set(state) != expected_fields
+        or type(schema_version) is not int
+        or schema_version != 1
+    ):
         raise ReleaseGateError("live GitHub transaction schema mismatch")
     if (
         state.get("repository") != snapshot.repository_identity
@@ -3015,8 +3020,10 @@ def _validate_live_github_state(state: Mapping[str, Any], snapshot: _GateSnapsho
         observed = datetime.fromisoformat(str(state.get("observed_at")).replace("Z", "+00:00"))
     except ValueError as exc:
         raise ReleaseGateError("live GitHub observation time invalid") from exc
+    if observed.tzinfo is None:
+        raise ReleaseGateError("live GitHub observation time invalid")
     age = abs((datetime.now(timezone.utc) - observed).total_seconds())
-    if observed.tzinfo is None or age > _FINAL_EVIDENCE_MAX_AGE_SECONDS:
+    if age > _FINAL_EVIDENCE_MAX_AGE_SECONDS:
         raise ReleaseGateError("live GitHub observation is stale")
     settings, ruleset, tag, release = (
         state.get("settings"), state.get("ruleset"), state.get("tag"), state.get("release")
@@ -3047,9 +3054,13 @@ def _validate_live_github_state(state: Mapping[str, Any], snapshot: _GateSnapsho
         else None
     )
     rules = ruleset.get("rules")
-    rule_types = {
-        row.get("type") for row in rules if isinstance(row, Mapping)
-    } if isinstance(rules, list) else set()
+    rules_are_closed = isinstance(rules, list) and all(
+        isinstance(row, Mapping)
+        and set(row) == {"type"}
+        and isinstance(row.get("type"), str)
+        for row in rules
+    )
+    rule_types = {row["type"] for row in rules} if rules_are_closed else set()
     if (
         not set(ruleset) <= _RULESET_DETAIL_FIELDS
         or
@@ -3065,8 +3076,7 @@ def _validate_live_github_state(state: Mapping[str, Any], snapshot: _GateSnapsho
         or set(ruleset_ref_name) != {"include", "exclude"}
         or ruleset_ref_name.get("include") != ["refs/heads/main"]
         or ruleset_ref_name.get("exclude") != []
-        or not isinstance(rules, list)
-        or any(not isinstance(row, Mapping) or set(row) != {"type"} for row in rules)
+        or not rules_are_closed
         or rule_types
         != {"deletion", "non_fast_forward", "required_linear_history", "required_signatures"}
     ):
@@ -3075,6 +3085,7 @@ def _validate_live_github_state(state: Mapping[str, Any], snapshot: _GateSnapsho
         raise ReleaseGateError("live GitHub tag does not resolve to release commit")
     if (
         not isinstance(release.get("id"), int)
+        or isinstance(release.get("id"), bool)
         or release.get("tag_name") != f"v{__version__}"
         or release.get("draft") is not False
         or release.get("prerelease") is not False
@@ -3446,6 +3457,8 @@ def _archive_rows(path: Path) -> tuple[tuple[str, bytes], ...]:
     windows_keys: dict[str, str] = {}
 
     def record(name: str) -> str:
+        if any(ord(character) < 32 or ord(character) == 127 for character in name):
+            raise ReleaseGateError(f"archive member path contains ASCII control character: {name!r}")
         if not name or "\\" in name or name.startswith(("/", "//")) or re.match(r"^[A-Za-z]:", name):
             raise ReleaseGateError(f"archive member has non-canonical absolute path: {name}")
         candidate = name[:-1] if name.endswith("/") else name
@@ -3493,12 +3506,13 @@ def _archive_rows(path: Path) -> tuple[tuple[str, bytes], ...]:
             if len(members) > _MAX_ARCHIVE_MEMBERS:
                 raise ReleaseGateError("archive member count exceeds limit")
             for member in members:
-                normalized = record(member.filename)
+                raw_name = member.orig_filename
+                normalized = record(raw_name)
                 mode = member.external_attr >> 16
                 member_type = stat.S_IFMT(mode)
                 if stat.S_ISLNK(mode) or member_type not in {0, stat.S_IFREG, stat.S_IFDIR}:
                     raise ReleaseGateError(f"archive non-regular zip member: {member.filename}")
-                directory = member.filename.endswith("/")
+                directory = raw_name.endswith("/")
                 if (directory and member_type not in {0, stat.S_IFDIR}) or (
                     not directory and member_type == stat.S_IFDIR
                 ):
