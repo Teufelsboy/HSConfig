@@ -114,9 +114,14 @@ def _jwt_value() -> str:
 
 
 def _git(root: Path, *args: str) -> str:
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key.upper().startswith("GIT_"):
+            environment.pop(key, None)
     completed = subprocess.run(
         ["git", *args],
         cwd=root,
+        env=environment,
         check=True,
         capture_output=True,
         text=True,
@@ -151,6 +156,7 @@ def _repository(tmp_path: Path) -> tuple[Path, Path]:
     root = tmp_path / "repository"
     root.mkdir()
     _git(root, "init", "-q")
+    _git(root, "config", "--local", "core.longpaths", "true")
     _git(root, "config", "user.email", "tests@example.invalid")
     _git(root, "config", "user.name", "HSConfig Tests")
     _git(root, "remote", "add", "origin", "https://github.com/Teufelsboy/HSConfig.git")
@@ -265,6 +271,39 @@ def _completed(command: tuple[str, ...], *, passed: bool = True) -> subprocess.C
         stdout=json.dumps(payload),
         stderr="",
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Git for Windows path handling only")
+def test_repository_fixture_supports_runner_length_paths_with_local_git_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner_length_tmp = (
+        tmp_path
+        / ("runner-temp-" + ("x" * 96))
+    )
+    runner_length_tmp.mkdir(parents=True)
+    deepest_report = (
+        runner_length_tmp
+        / "repository"
+        / "outputs"
+        / "ShadowPriest"
+        / "revisions"
+        / ("sha256-" + ("a" * 64))
+        / "04_package"
+        / "reports"
+        / "source_contract_audit.json"
+    )
+    assert len(str(deepest_report)) >= 260
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.longpaths")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "false")
+
+    repository, outputs = _repository(runner_length_tmp)
+
+    assert outputs.is_dir()
+    assert deepest_report.is_file()
+    assert _git(repository, "status", "--porcelain") == ""
+    assert _git(repository, "config", "--local", "--get", "core.longpaths") == "true"
 
 
 def test_gate_declares_the_exact_named_checks() -> None:
