@@ -12,7 +12,6 @@ jobs:
     runs-on: windows-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      HYPOTHESIS_STORAGE_DIRECTORY: ${{ runner.temp }}/hypothesis
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -31,6 +30,8 @@ jobs:
         run: python -m ruff check --no-cache src tests scripts
 
       - name: Run full test suite
+        env:
+          HYPOTHESIS_STORAGE_DIRECTORY: ${{ runner.temp }}/hypothesis
         run: python -m pytest -p no:cacheprovider
 
       - name: Audit dependencies
