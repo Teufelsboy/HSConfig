@@ -63,6 +63,10 @@ from hsconfig.release_gate import (
 )
 from hsconfig.near100_scorecard import build_near100_scorecard
 from hsconfig.semantic_inventory import canonical_semantic_claim
+from tests.helpers.package_byte_contract import (
+    AUDITED_DECK_NAMES,
+    prepare_audited_packages,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,6 +93,8 @@ EXPECTED_CHECKS = (
     "near100_scorecard",
 )
 _BACKSLASH = chr(92)
+_AUDITED_REPORT_BYTES: dict[str, tuple[bytes, bytes]] | None = None
+_AUDITED_REPORT_BYTES_LOCK = threading.Lock()
 
 
 def _local_windows_path() -> str:
@@ -118,7 +124,30 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _audited_report_bytes() -> dict[str, tuple[bytes, bytes]]:
+    global _AUDITED_REPORT_BYTES
+    with _AUDITED_REPORT_BYTES_LOCK:
+        if _AUDITED_REPORT_BYTES is None:
+            temporary_path: Path | None = None
+            with tempfile.TemporaryDirectory(prefix="hsconfig-release-gate-reports-") as temporary:
+                temporary_path = Path(temporary)
+                packages = prepare_audited_packages(temporary_path)
+                if tuple(packages) != AUDITED_DECK_NAMES:
+                    raise AssertionError("release_gate_audited_package_catalog_mismatch")
+                _AUDITED_REPORT_BYTES = {
+                    deck_name: (
+                        (package / "reports" / "disposition_ledger.json").read_bytes(),
+                        (package / "reports" / "source_contract_audit.json").read_bytes(),
+                    )
+                    for deck_name, package in packages.items()
+                }
+            if temporary_path is None or temporary_path.exists():
+                raise AssertionError("release_gate_audited_package_cache_residue")
+        return _AUDITED_REPORT_BYTES
+
+
 def _repository(tmp_path: Path) -> tuple[Path, Path]:
+    report_bytes = _audited_report_bytes()
     root = tmp_path / "repository"
     root.mkdir()
     _git(root, "init", "-q")
@@ -174,21 +203,12 @@ def _repository(tmp_path: Path) -> tuple[Path, Path]:
         (revision / "package.json").write_text("{}\n", encoding="utf-8")
         reports = revision / "04_package" / "reports"
         reports.mkdir(parents=True)
-        source_current = json.loads(
-            (ROOT / "outputs" / row["deck_name"] / "current.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        source_reports = (
-            ROOT
-            / "outputs"
-            / row["deck_name"]
-            / source_current["revision"]
-            / "04_package"
-            / "reports"
-        )
-        for report_name in ("disposition_ledger.json", "source_contract_audit.json"):
-            (reports / report_name).write_bytes((source_reports / report_name).read_bytes())
+        for report_name, data in zip(
+            ("disposition_ledger.json", "source_contract_audit.json"),
+            report_bytes[row["deck_name"]],
+            strict=True,
+        ):
+            (reports / report_name).write_bytes(data)
         (deck_root / "current.json").write_text(
             json.dumps(
                 {
@@ -2140,8 +2160,31 @@ def test_semantic_reports_reject_duplicate_rows_and_wrong_audit_deck(
         _produce_semantic_rows(repository, outputs, ".git/evidence.json")
 
 
-def test_actual_outputs_group_all_claim_occurrences_into_canonical_inventory() -> None:
-    rows = _produce_semantic_rows(ROOT, ROOT / "outputs", ".git/evidence.json")
+def test_actual_outputs_group_all_claim_occurrences_into_canonical_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_outputs = (ROOT / "outputs").resolve()
+    original_read_bytes = Path.read_bytes
+    original_read_text = Path.read_text
+
+    def reject_root_outputs_read(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved == root_outputs or root_outputs in resolved.parents:
+            raise AssertionError(f"release-gate tests read ignored outputs: {resolved}")
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        reject_root_outputs_read(path)
+        return original_read_bytes(path)
+
+    def guarded_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        reject_root_outputs_read(path)
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    repository, outputs = _repository(tmp_path)
+    rows = _produce_semantic_rows(repository, outputs, ".git/evidence.json")
     inventory = json.loads(
         (ROOT / "tests/fixtures/near100/current_semantic_inventory.json").read_text(
             encoding="utf-8"
@@ -4144,7 +4187,9 @@ def test_secret_scan_does_not_flag_noncredential_camelcase_assignment() -> None:
         assert not any(row.startswith("secret:") for row in violations)
 
 
-def test_prospective_task7_files_pass_the_production_publishability_scanner() -> None:
+def test_prospective_task7_files_pass_the_production_publishability_scanner(
+    tmp_path: Path,
+) -> None:
     prospective = (
         "src/hsconfig/near100_scorecard.py",
         "src/hsconfig/release_gate.py",
@@ -4159,9 +4204,10 @@ def test_prospective_task7_files_pass_the_production_publishability_scanner() ->
         violations.extend(_path_violations(relative))
         violations.extend(_text_violations(relative, data, public_doc=False))
 
+    _repository_root, outputs = _repository(tmp_path)
     result = scan_publishable_content(
         repository=ROOT,
-        outputs_root=ROOT / "outputs",
+        outputs_root=outputs,
         tree_mode="working-pre-cutover",
         build_distributions=False,
     )
@@ -4171,10 +4217,13 @@ def test_prospective_task7_files_pass_the_production_publishability_scanner() ->
     assert result["violations"] == []
 
 
-def test_real_working_pre_cutover_publishability_has_no_placeholder_violation() -> None:
+def test_real_working_pre_cutover_publishability_has_no_placeholder_violation(
+    tmp_path: Path,
+) -> None:
+    _repository_root, outputs = _repository(tmp_path)
     result = scan_publishable_content(
         repository=ROOT,
-        outputs_root=ROOT / "outputs",
+        outputs_root=outputs,
         tree_mode="working-pre-cutover",
         build_distributions=False,
     )

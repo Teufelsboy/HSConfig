@@ -240,7 +240,11 @@ def test_legacy_full_suite_is_fresh_checkout_safe_without_local_outputs():
         for step in job["steps"]
         if isinstance(step, dict) and isinstance(step.get("run"), str)
     ]
+    full_suite = workflow["jobs"]["full-test-suite"]
 
+    assert full_suite["env"]["HYPOTHESIS_STORAGE_DIRECTORY"] == (
+        "${{ runner.temp }}/hypothesis"
+    )
     assert commands == [
         'python -m pip install --upgrade pip setuptools\npython -m pip install -e ".[dev]"',
         "python -m ruff check --no-cache src tests scripts",
