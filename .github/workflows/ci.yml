@@ -1,0 +1,501 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+      TMPDIR: ${{ runner.temp }}
+      HSCONFIG_PYTHON_MINOR: "3.12"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bind and materialize the event commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_SHA -or -not $env:RUNNER_TEMP) { throw 'ci_baseline_environment_missing' }
+          python scripts/check_release_gate.py --repo . --outputs "$env:RUNNER_TEMP/ci-baseline-outputs" --tree-mode working-pre-cutover --locked-check ci-source-baseline --json
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Bootstrap locked runtime from committed source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $pythonMinor = $env:HSCONFIG_PYTHON_MINOR
+          if (@('3.11', '3.12') -notcontains $pythonMinor) {
+            throw "unsupported_python_minor:$pythonMinor"
+          }
+          $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+          if ($actualPythonMinor -ne $pythonMinor) {
+            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
+          }
+          $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
+          $commitOid = $env:HSCONFIG_CI_COMMIT_OID
+          $treeOid = $env:HSCONFIG_CI_TREE_OID
+          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
+          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
+          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+            throw 'committed_source_baseline_missing'
+          }
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ($checkoutStatus.Count -ne 0) {
+            throw 'checkout_not_clean_before_bootstrap'
+          }
+          $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
+          if (Test-Path -LiteralPath $runtimeRoot) {
+            throw 'locked_runtime_root_already_exists'
+          }
+          New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
+          $venvRoot = Join-Path $runtimeRoot 'environment'
+          python -m venv --without-pip $venvRoot
+          $venvPython = if ($IsWindows) {
+            Join-Path $venvRoot 'Scripts/python.exe'
+          } else {
+            Join-Path $venvRoot 'bin/python'
+          }
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
+          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
+          $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualPipSha256 -ne $expectedPipSha256) {
+            throw 'bootstrap_pip_hash_mismatch'
+          }
+          $env:PYTHONPATH = $pipWheel
+          & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
+          Remove-Item Env:PYTHONPATH
+          $actualPip = (& $venvPython -m pip --version)
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
+            throw 'bootstrap_pip_version_mismatch'
+          }
+          $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
+          $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
+          Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
+          $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
+          New-Item -ItemType Directory -Path $wheelhouse | Out-Null
+          & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
+          $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
+          $env:PYTHONPATH = $buildBackendRoot
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
+            throw 'checkout_identity_changed_after_dependency_install'
+          }
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
+          (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHONPATH=$buildBackendRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run Ruff
+        run: python -m ruff check --no-cache src tests scripts
+      - name: Synchronize the installed skill in runner temporary storage
+        run: python scripts/sync_installed_skill.py --install-root "$env:RUNNER_TEMP/hsconfig-skill"
+      - name: Run contract guardrails
+        run: python scripts/check_contract_guardrails.py --skill-install-root "$env:RUNNER_TEMP/hsconfig-skill"
+      - name: Run optimized contract-spine sentinel
+        run: python -O -m hsconfig.cli contract-spine-sentinel --json
+      - name: Run canonical twelve-deck contract acceptance
+        run: python -m pytest tests/test_audited_deck_set_acceptance.py -q -p no:cacheprovider
+      - name: Verify checkout residue is zero
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          $runnerItem = Get-Item -LiteralPath $runnerTemp -Force
+          if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) {
+            throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
+          }
+          $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+            $candidate = Join-Path $runnerTemp $name
+            if (Test-Path -LiteralPath $candidate) {
+              $item = Get-Item -LiteralPath $candidate -Force
+              if ($item.LinkType -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $item.PSIsContainer) {
+                throw "unsafe_runner_temp_cleanup_target:$candidate"
+              }
+              $expected = [IO.Path]::GetFullPath($candidate)
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              if (-not [String]::Equals($resolved, $expected, $comparison)) {
+                throw "unsafe_runner_temp_cleanup_target:$resolved"
+              }
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "checkout_dirty_after_job:$($dirty -join ',')" }
+          $residue = @('build', 'dist', 'src/hsconfig.egg-info', '.coverage', 'coverage.json', '.pytest_cache', '.hypothesis') | Where-Object { Test-Path -LiteralPath $_ }
+          if ($residue.Count -ne 0) { throw "checkout_residue_after_job:$($residue -join ',')" }
+          $bytecode = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -Directory | Where-Object { $_.Name -eq '__pycache__' })
+          if ($bytecode.Count -ne 0) { throw "checkout_bytecode_after_job:$($bytecode.FullName -join ',')" }
+          $packages = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -File | Where-Object { $_.Name -match '\.(whl|tar\.gz)$' })
+          if ($packages.Count -ne 0) { throw "checkout_package_artifact_after_job:$($packages.FullName -join ',')" }
+
+  test:
+    needs: contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.11", "3.12"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+      TMPDIR: ${{ runner.temp }}
+      HYPOTHESIS_STORAGE_DIRECTORY: ${{ runner.temp }}/hypothesis
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bind and materialize the event commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_SHA -or -not $env:RUNNER_TEMP) { throw 'ci_baseline_environment_missing' }
+          python scripts/check_release_gate.py --repo . --outputs "$env:RUNNER_TEMP/ci-baseline-outputs" --tree-mode working-pre-cutover --locked-check ci-source-baseline --json
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run canonical locked full tests and coverage
+        run: python scripts/check_release_gate.py --repo . --outputs outputs --tree-mode working-pre-cutover --locked-check full-tests-and-coverage --json
+      - name: Verify checkout residue is zero
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          $runnerItem = Get-Item -LiteralPath $runnerTemp -Force
+          if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) {
+            throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
+          }
+          $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+            $candidate = Join-Path $runnerTemp $name
+            if (Test-Path -LiteralPath $candidate) {
+              $item = Get-Item -LiteralPath $candidate -Force
+              if ($item.LinkType -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $item.PSIsContainer) {
+                throw "unsafe_runner_temp_cleanup_target:$candidate"
+              }
+              $expected = [IO.Path]::GetFullPath($candidate)
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              if (-not [String]::Equals($resolved, $expected, $comparison)) {
+                throw "unsafe_runner_temp_cleanup_target:$resolved"
+              }
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "checkout_dirty_after_job:$($dirty -join ',')" }
+          $residue = @('build', 'dist', 'src/hsconfig.egg-info', '.coverage', 'coverage.json', '.pytest_cache', '.hypothesis') | Where-Object { Test-Path -LiteralPath $_ }
+          if ($residue.Count -ne 0) { throw "checkout_residue_after_job:$($residue -join ',')" }
+          $bytecode = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -Directory | Where-Object { $_.Name -eq '__pycache__' })
+          if ($bytecode.Count -ne 0) { throw "checkout_bytecode_after_job:$($bytecode.FullName -join ',')" }
+          $packages = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -File | Where-Object { $_.Name -match '\.(whl|tar\.gz)$' })
+          if ($packages.Count -ne 0) { throw "checkout_package_artifact_after_job:$($packages.FullName -join ',')" }
+
+  package:
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+      TMPDIR: ${{ runner.temp }}
+      HSCONFIG_PYTHON_MINOR: "3.12"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bind and materialize the event commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_SHA -or -not $env:RUNNER_TEMP) { throw 'ci_baseline_environment_missing' }
+          python scripts/check_release_gate.py --repo . --outputs "$env:RUNNER_TEMP/ci-baseline-outputs" --tree-mode working-pre-cutover --locked-check ci-source-baseline --json
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Bootstrap locked runtime from committed source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $pythonMinor = $env:HSCONFIG_PYTHON_MINOR
+          if (@('3.11', '3.12') -notcontains $pythonMinor) {
+            throw "unsupported_python_minor:$pythonMinor"
+          }
+          $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+          if ($actualPythonMinor -ne $pythonMinor) {
+            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
+          }
+          $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
+          $commitOid = $env:HSCONFIG_CI_COMMIT_OID
+          $treeOid = $env:HSCONFIG_CI_TREE_OID
+          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
+          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
+          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+            throw 'committed_source_baseline_missing'
+          }
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ($checkoutStatus.Count -ne 0) {
+            throw 'checkout_not_clean_before_bootstrap'
+          }
+          $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
+          if (Test-Path -LiteralPath $runtimeRoot) {
+            throw 'locked_runtime_root_already_exists'
+          }
+          New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
+          $venvRoot = Join-Path $runtimeRoot 'environment'
+          python -m venv --without-pip $venvRoot
+          $venvPython = if ($IsWindows) {
+            Join-Path $venvRoot 'Scripts/python.exe'
+          } else {
+            Join-Path $venvRoot 'bin/python'
+          }
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
+          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
+          $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualPipSha256 -ne $expectedPipSha256) {
+            throw 'bootstrap_pip_hash_mismatch'
+          }
+          $env:PYTHONPATH = $pipWheel
+          & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
+          Remove-Item Env:PYTHONPATH
+          $actualPip = (& $venvPython -m pip --version)
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
+            throw 'bootstrap_pip_version_mismatch'
+          }
+          $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
+          $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
+          Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
+          $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
+          New-Item -ItemType Directory -Path $wheelhouse | Out-Null
+          & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
+          $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
+          $env:PYTHONPATH = $buildBackendRoot
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
+            throw 'checkout_identity_changed_after_dependency_install'
+          }
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
+          (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHONPATH=$buildBackendRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify distribution and fresh wheel installation
+        run: python scripts/verify_distribution.py --json
+      - name: Verify deterministic twelve-deck builds
+        run: python scripts/verify_twelve_decks.py --build-inputs src/hsconfig/resources/audited_build_inputs.json --json
+      - name: Verify version authority
+        run: python -m pytest tests/test_version_contract.py -q -p no:cacheprovider
+      - name: Verify checkout residue is zero
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          $runnerItem = Get-Item -LiteralPath $runnerTemp -Force
+          if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) {
+            throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
+          }
+          $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+            $candidate = Join-Path $runnerTemp $name
+            if (Test-Path -LiteralPath $candidate) {
+              $item = Get-Item -LiteralPath $candidate -Force
+              if ($item.LinkType -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $item.PSIsContainer) {
+                throw "unsafe_runner_temp_cleanup_target:$candidate"
+              }
+              $expected = [IO.Path]::GetFullPath($candidate)
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              if (-not [String]::Equals($resolved, $expected, $comparison)) {
+                throw "unsafe_runner_temp_cleanup_target:$resolved"
+              }
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "checkout_dirty_after_job:$($dirty -join ',')" }
+          $residue = @('build', 'dist', 'src/hsconfig.egg-info', '.coverage', 'coverage.json', '.pytest_cache', '.hypothesis') | Where-Object { Test-Path -LiteralPath $_ }
+          if ($residue.Count -ne 0) { throw "checkout_residue_after_job:$($residue -join ',')" }
+          $bytecode = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -Directory | Where-Object { $_.Name -eq '__pycache__' })
+          if ($bytecode.Count -ne 0) { throw "checkout_bytecode_after_job:$($bytecode.FullName -join ',')" }
+          $packages = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -File | Where-Object { $_.Name -match '\.(whl|tar\.gz)$' })
+          if ($packages.Count -ne 0) { throw "checkout_package_artifact_after_job:$($packages.FullName -join ',')" }
+
+  security:
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+      TMPDIR: ${{ runner.temp }}
+      HSCONFIG_PYTHON_MINOR: "3.12"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Bind and materialize the event commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_SHA -or -not $env:RUNNER_TEMP) { throw 'ci_baseline_environment_missing' }
+          python scripts/check_release_gate.py --repo . --outputs "$env:RUNNER_TEMP/ci-baseline-outputs" --tree-mode working-pre-cutover --locked-check ci-source-baseline --json
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Bootstrap locked runtime from committed source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $pythonMinor = $env:HSCONFIG_PYTHON_MINOR
+          if (@('3.11', '3.12') -notcontains $pythonMinor) {
+            throw "unsupported_python_minor:$pythonMinor"
+          }
+          $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
+          if ($actualPythonMinor -ne $pythonMinor) {
+            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
+          }
+          $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
+          $commitOid = $env:HSCONFIG_CI_COMMIT_OID
+          $treeOid = $env:HSCONFIG_CI_TREE_OID
+          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
+          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
+          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+            throw 'committed_source_baseline_missing'
+          }
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ($checkoutStatus.Count -ne 0) {
+            throw 'checkout_not_clean_before_bootstrap'
+          }
+          $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
+          if (Test-Path -LiteralPath $runtimeRoot) {
+            throw 'locked_runtime_root_already_exists'
+          }
+          New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
+          $venvRoot = Join-Path $runtimeRoot 'environment'
+          python -m venv --without-pip $venvRoot
+          $venvPython = if ($IsWindows) {
+            Join-Path $venvRoot 'Scripts/python.exe'
+          } else {
+            Join-Path $venvRoot 'bin/python'
+          }
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
+          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
+          $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualPipSha256 -ne $expectedPipSha256) {
+            throw 'bootstrap_pip_hash_mismatch'
+          }
+          $env:PYTHONPATH = $pipWheel
+          & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
+          Remove-Item Env:PYTHONPATH
+          $actualPip = (& $venvPython -m pip --version)
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
+            throw 'bootstrap_pip_version_mismatch'
+          }
+          $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
+          $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
+          Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
+          $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
+          New-Item -ItemType Directory -Path $wheelhouse | Out-Null
+          & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
+          $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
+          $env:PYTHONPATH = $buildBackendRoot
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
+            throw 'checkout_identity_changed_after_dependency_install'
+          }
+          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
+          (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PYTHONPATH=$buildBackendRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Audit the locked dependency closure
+        run: python -m pip_audit
+      - name: Run contract mutations
+        run: python scripts/run_contract_mutations.py --json
+      - name: Reconcile the canonical output inventory
+        run: python scripts/reconcile_outputs.py --outputs "${{ runner.temp }}/security-outputs" --apply --json
+      - name: Scan publishable content through the canonical release bootstrap
+        run: python scripts/check_release_gate.py --repo . --outputs "${{ runner.temp }}/security-outputs" --tree-mode working-pre-cutover --internal-check publishable_path_scan --json
+      - name: Check repository hygiene through the canonical release bootstrap
+        run: python scripts/check_release_gate.py --repo . --outputs "${{ runner.temp }}/security-outputs" --tree-mode working-pre-cutover --internal-check repository_hygiene --json
+      - name: Verify checkout residue is zero
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          $runnerItem = Get-Item -LiteralPath $runnerTemp -Force
+          if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) {
+            throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
+          }
+          $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+            $candidate = Join-Path $runnerTemp $name
+            if (Test-Path -LiteralPath $candidate) {
+              $item = Get-Item -LiteralPath $candidate -Force
+              if ($item.LinkType -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $item.PSIsContainer) {
+                throw "unsafe_runner_temp_cleanup_target:$candidate"
+              }
+              $expected = [IO.Path]::GetFullPath($candidate)
+              $resolved = (Resolve-Path -LiteralPath $candidate).Path
+              if (-not [String]::Equals($resolved, $expected, $comparison)) {
+                throw "unsafe_runner_temp_cleanup_target:$resolved"
+              }
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "checkout_dirty_after_job:$($dirty -join ',')" }
+          $residue = @('build', 'dist', 'src/hsconfig.egg-info', '.coverage', 'coverage.json', '.pytest_cache', '.hypothesis') | Where-Object { Test-Path -LiteralPath $_ }
+          if ($residue.Count -ne 0) { throw "checkout_residue_after_job:$($residue -join ',')" }
+          $bytecode = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -Directory | Where-Object { $_.Name -eq '__pycache__' })
+          if ($bytecode.Count -ne 0) { throw "checkout_bytecode_after_job:$($bytecode.FullName -join ',')" }
+          $packages = @(Get-ChildItem -LiteralPath '.' -Recurse -Force -File | Where-Object { $_.Name -match '\.(whl|tar\.gz)$' })
+          if ($packages.Count -ne 0) { throw "checkout_package_artifact_after_job:$($packages.FullName -join ',')" }

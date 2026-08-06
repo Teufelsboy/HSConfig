@@ -20,7 +20,7 @@ import tarfile
 import tempfile
 import threading
 import tomllib
-from typing import Any, Mapping
+from typing import Any, Mapping, NamedTuple, Sequence
 from urllib.request import Request, urlopen
 import uuid
 import venv
@@ -45,6 +45,7 @@ _SENTINEL = "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL"
 _MANIFEST = "HSCONFIG_RUNTIME_MANIFEST"
 _MANIFEST_DIGEST = "HSCONFIG_RUNTIME_MANIFEST_SHA256"
 _MAX_BOOTSTRAP_FILE = 512 * 1024 * 1024
+_MAX_CONTROLLER_SOURCE = 4 * 1024 * 1024
 _MAX_CHILD_STDOUT = 1024 * 1024
 _BOOTSTRAP_CHILD_TIMEOUT_SECONDS = 21_600
 _SUPPORTED_PYTHON_MINORS = {"3.11", "3.12"}
@@ -55,6 +56,15 @@ _GATED_CHILD_LAUNCHER = (
     "argv=json.loads(header); "
     "assert isinstance(argv,list) and argv and all(isinstance(x,str) for x in argv); "
     "raise SystemExit(subprocess.run(argv,stdin=sys.stdin.buffer).returncode)"
+)
+_VERIFIED_CONTROLLER_LAUNCHER = (
+    "import sys; path=sys.argv.pop(1); sys.argv[0]=path; "
+    "line=sys.stdin.buffer.readline(32); "
+    "(line.endswith(b'\\n') and line[:-1].isdigit()) or sys.exit(2); size=int(line); "
+    f"(0<size<={_MAX_CONTROLLER_SOURCE}) or sys.exit(2); "
+    "source=sys.stdin.buffer.read(size); (len(source)==size) or sys.exit(2); "
+    "scope={'__name__':'__main__','__file__':path,'__package__':None,'__cached__':None}; "
+    "exec(compile(source,path,'exec'),scope,scope)"
 )
 
 
@@ -88,6 +98,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--internal-check",
         choices=("publishable_path_scan", "repository_hygiene"),
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--locked-check",
+        choices=(
+            "ci-source-baseline",
+            "ci-source-revalidate",
+            "ci-wheelhouse-audit",
+            "full-tests-and-coverage",
+        ),
         help=argparse.SUPPRESS,
     )
     return parser
@@ -695,6 +715,9 @@ def _bootstrap_pip(
     wheel = compatible[0]
     destination = root / wheel["name"]
     _download(wheel["url"], destination, wheel["sha256"])
+    files = _wheel_inventory(destination)
+    pip_environment = dict(environment)
+    pip_environment["PYTHONPATH"] = str(destination)
     _run(
         (
             str(python),
@@ -707,7 +730,7 @@ def _bootstrap_pip(
             str(destination),
         ),
         cwd=root,
-        env=environment,
+        env=pip_environment,
     )
     return {
         "name": pip_rows[0]["name"],
@@ -715,7 +738,7 @@ def _bootstrap_pip(
         "url": wheel["url"],
         "sha256": wheel["sha256"],
         "wheel_path": str(destination),
-        "files": _wheel_inventory(destination),
+        "files": files,
     }
 
 
@@ -731,6 +754,10 @@ def _safe_extract_archive(archive: Path, destination: Path) -> None:
                 or any(part in {"", ".", ".."} for part in pure.parts)
                 or not (member.isfile() or member.isdir())
                 or member.size > _MAX_BOOTSTRAP_FILE
+                or (
+                    member.isfile()
+                    and member.mode not in {0o644, 0o664, 0o755, 0o775}
+                )
             ):
                 raise _BootstrapError("committed source archive is unsafe")
             target = destination.joinpath(*pure.parts)
@@ -743,9 +770,298 @@ def _safe_extract_archive(archive: Path, destination: Path) -> None:
                     raise _BootstrapError("committed source archive member is unreadable")
                 with target.open("xb") as handle:
                     shutil.copyfileobj(stream, handle, 1024 * 1024)
+                os.chmod(target, 0o755 if member.mode & 0o111 else 0o644)
 
 
-def _wheel_inventory(wheel: Path) -> list[dict[str, object]]:
+def _assert_repository_identity(repository: Path, commit_oid: str, tree_oid: str) -> None:
+    if (
+        _git(repository, "rev-parse", "HEAD") != commit_oid
+        or _git(repository, "rev-parse", "HEAD^{tree}") != tree_oid
+        or _git(repository, "rev-parse", f"{commit_oid}^{{tree}}") != tree_oid
+        or _git(repository, "status", "--porcelain=v1", "--untracked-files=all")
+    ):
+        raise _BootstrapError("repository changed during committed source bootstrap")
+
+
+def _assert_regular_git_tree(
+    repository: Path, commit_oid: str
+) -> tuple[dict[str, str], ...]:
+    listing = _git(repository, "ls-tree", "-rz", "--full-tree", commit_oid)
+    records = listing.split("\0")
+    if not records or records[-1] != "":
+        raise _BootstrapError("committed source tree listing is malformed")
+    entries: list[dict[str, str]] = []
+    for record in records[:-1]:
+        header, separator, name = record.partition("\t")
+        fields = header.split()
+        if (
+            not separator
+            or not name
+            or len(fields) != 3
+            or fields[0] not in {"100644", "100755"}
+            or fields[1] != "blob"
+            or re.fullmatch(r"[0-9a-f]{40}", fields[2]) is None
+        ):
+            raise _BootstrapError("committed source tree contains a non-regular entry")
+        pure = PurePosixPath(name)
+        if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+            raise _BootstrapError("committed source tree contains an unsafe path")
+        entries.append({"path": name, "git_mode": fields[0]})
+    return tuple(sorted(entries, key=lambda entry: entry["path"]))
+
+
+def _source_inventory_digest(inventory: object) -> str:
+    encoded = json.dumps(
+        inventory,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _build_source_inventory(
+    source_root: Path,
+    git_entries: Sequence[Mapping[str, str]],
+) -> tuple[tuple[dict[str, str], ...], str]:
+    source_root = source_root.absolute()
+    root_metadata = source_root.lstat()
+    if (
+        not stat.S_ISDIR(root_metadata.st_mode)
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or _is_reparse(root_metadata)
+        or source_root.resolve(strict=True) != source_root
+    ):
+        raise _BootstrapError("materialized source inventory is unsafe")
+    expected = {entry["path"]: entry["git_mode"] for entry in git_entries}
+    if len(expected) != len(git_entries):
+        raise _BootstrapError("materialized source inventory contains duplicate paths")
+    observed_paths: set[str] = set()
+    for path in source_root.rglob("*"):
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or _is_reparse(metadata):
+            raise _BootstrapError("materialized source inventory is unsafe")
+        if stat.S_ISDIR(metadata.st_mode):
+            continue
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+        ):
+            raise _BootstrapError("materialized source inventory is unsafe")
+        relative = path.relative_to(source_root).as_posix()
+        if relative in observed_paths:
+            raise _BootstrapError("materialized source inventory contains duplicate paths")
+        observed_paths.add(relative)
+    if observed_paths != set(expected):
+        raise _BootstrapError("materialized source inventory path set changed")
+    rows: list[dict[str, str]] = []
+    for relative, git_mode in sorted(expected.items()):
+        pure = PurePosixPath(relative)
+        if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+            raise _BootstrapError("materialized source inventory is unsafe")
+        path = source_root
+        for index, part in enumerate(pure.parts):
+            path /= part
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode) or _is_reparse(metadata):
+                raise _BootstrapError("materialized source inventory is unsafe")
+            final = index == len(pure.parts) - 1
+            if (final and not stat.S_ISREG(metadata.st_mode)) or (
+                not final and not stat.S_ISDIR(metadata.st_mode)
+            ):
+                raise _BootstrapError("materialized source inventory is unsafe")
+        if source_root not in path.resolve(strict=True).parents:
+            raise _BootstrapError("materialized source inventory is unsafe")
+        metadata = path.lstat()
+        expected_mode = 0o755 if git_mode == "100755" else 0o644
+        if os.name != "nt" and stat.S_IMODE(metadata.st_mode) != expected_mode:
+            raise _BootstrapError("materialized source inventory mode changed")
+        rows.append(
+            {
+                "path": relative,
+                "sha256": hashlib.sha256(_read_bound(path)).hexdigest(),
+                "git_mode": git_mode,
+            }
+        )
+    inventory = tuple(rows)
+    return inventory, _source_inventory_digest(inventory)
+
+
+class _SourceBinding(NamedTuple):
+    source_root: Path
+    commit_oid: str
+    tree_oid: str
+    inventory: tuple[dict[str, str], ...]
+    inventory_sha256: str
+
+
+class _RuntimeBootstrapBinding(NamedTuple):
+    python: Path
+    manifest_path: Path
+    manifest_sha256: str
+    sentinel: str
+
+
+def _assert_source_inventory(binding: _SourceBinding) -> None:
+    if _source_inventory_digest(binding.inventory) != binding.inventory_sha256:
+        raise _BootstrapError("materialized source inventory digest changed")
+    inventory, digest = _build_source_inventory(
+        binding.source_root,
+        tuple(
+            {"path": row["path"], "git_mode": row["git_mode"]}
+            for row in binding.inventory
+        ),
+    )
+    if inventory != binding.inventory or digest != binding.inventory_sha256:
+        raise _BootstrapError("materialized source inventory changed")
+
+
+def _bound_committed_controller(
+    manifest_path: Path,
+    manifest: object,
+) -> tuple[Path, Path, bytes]:
+    if not isinstance(manifest, dict):
+        raise _BootstrapError("committed source controller binding is invalid")
+    manifest_root = manifest_path.parent.resolve(strict=True)
+    source_candidate = manifest_root / "committed-source"
+    source_metadata = source_candidate.lstat()
+    if (
+        not stat.S_ISDIR(source_metadata.st_mode)
+        or stat.S_ISLNK(source_metadata.st_mode)
+        or _is_reparse(source_metadata)
+    ):
+        raise _BootstrapError("committed source controller binding is invalid")
+    source_root = source_candidate.resolve(strict=True)
+    if source_root != source_candidate:
+        raise _BootstrapError("committed source controller binding is invalid")
+    raw_inventory = manifest.get("source_inventory")
+    inventory_sha256 = manifest.get("source_inventory_sha256")
+    if (
+        not isinstance(raw_inventory, list)
+        or re.fullmatch(r"[0-9a-f]{64}", str(inventory_sha256)) is None
+    ):
+        raise _BootstrapError("committed source controller binding is invalid")
+    inventory: list[dict[str, str]] = []
+    for row in raw_inventory:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"path", "sha256", "git_mode"}
+            or not isinstance(row["path"], str)
+            or row["git_mode"] not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{64}", str(row["sha256"])) is None
+        ):
+            raise _BootstrapError("committed source controller binding is invalid")
+        inventory.append(dict(row))
+    if (
+        inventory != sorted(inventory, key=lambda row: row["path"])
+        or len({row["path"] for row in inventory}) != len(inventory)
+    ):
+        raise _BootstrapError("committed source controller binding is invalid")
+    binding = _SourceBinding(
+        source_root=source_root,
+        commit_oid=str(manifest.get("commit_oid", "")),
+        tree_oid=str(manifest.get("tree_oid", "")),
+        inventory=tuple(inventory),
+        inventory_sha256=str(inventory_sha256),
+    )
+    _assert_source_inventory(binding)
+    controller_rows = [
+        row for row in inventory if row["path"] == "scripts/check_release_gate.py"
+    ]
+    if len(controller_rows) != 1 or controller_rows[0]["git_mode"] != "100644":
+        raise _BootstrapError("committed source controller binding is invalid")
+    controller_candidate = source_root / "scripts" / "check_release_gate.py"
+    controller_metadata = controller_candidate.lstat()
+    controller_path = controller_candidate.resolve(strict=True)
+    controller_source = _read_bound(controller_path, _MAX_CONTROLLER_SOURCE)
+    if (
+        not stat.S_ISREG(controller_metadata.st_mode)
+        or stat.S_ISLNK(controller_metadata.st_mode)
+        or _is_reparse(controller_metadata)
+        or controller_path != controller_candidate
+        or hashlib.sha256(controller_source).hexdigest()
+        != controller_rows[0]["sha256"]
+    ):
+        raise _BootstrapError("committed source controller binding is invalid")
+    return source_root, controller_path, controller_source
+
+
+def _copy_bound_source(binding: _SourceBinding, destination: Path) -> _SourceBinding:
+    destination.mkdir()
+    for row in binding.inventory:
+        target = destination.joinpath(*PurePosixPath(row["path"]).parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb") as handle:
+            handle.write(_read_bound(binding.source_root / row["path"]))
+        os.chmod(target, 0o755 if row["git_mode"] == "100755" else 0o644)
+    copied = _SourceBinding(
+        source_root=destination,
+        commit_oid=binding.commit_oid,
+        tree_oid=binding.tree_oid,
+        inventory=binding.inventory,
+        inventory_sha256=binding.inventory_sha256,
+    )
+    _assert_source_inventory(copied)
+    return copied
+
+
+def _materialize_committed_source(
+    repository: Path,
+    bootstrap_root: Path,
+    expected_commit_oid: str | None = None,
+) -> _SourceBinding:
+    repository = repository.resolve(strict=True)
+    if _git(repository, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise _BootstrapError("release gate bootstrap requires a clean repository")
+    commit_oid = _git(repository, "rev-parse", "HEAD")
+    tree_oid = _git(repository, "rev-parse", "HEAD^{tree}")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", commit_oid) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree_oid) is None
+    ):
+        raise _BootstrapError("release gate bootstrap repository identity is invalid")
+    if expected_commit_oid is not None and commit_oid != expected_commit_oid:
+        raise _BootstrapError("checkout HEAD does not match the event commit")
+    git_entries = _assert_regular_git_tree(repository, commit_oid)
+    _assert_repository_identity(repository, commit_oid, tree_oid)
+
+    archive = bootstrap_root / "committed-source.tar"
+    staging = bootstrap_root / "committed-source"
+    if archive.exists() or staging.exists():
+        raise _BootstrapError("committed source destination already exists")
+    _run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "archive",
+            "--format=tar",
+            "-o",
+            str(archive),
+            commit_oid,
+        ),
+        cwd=repository,
+        env=_base_environment(),
+    )
+    _assert_repository_identity(repository, commit_oid, tree_oid)
+    staging.mkdir()
+    _safe_extract_archive(archive, staging)
+    _assert_repository_identity(repository, commit_oid, tree_oid)
+    inventory, inventory_sha256 = _build_source_inventory(staging, git_entries)
+    return _SourceBinding(
+        source_root=staging,
+        commit_oid=commit_oid,
+        tree_oid=tree_oid,
+        inventory=inventory,
+        inventory_sha256=inventory_sha256,
+    )
+
+
+def _wheel_inventory(
+    wheel: Path,
+    *,
+    allowed_startup_surfaces: frozenset[str] = frozenset(),
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     with zipfile.ZipFile(io.BytesIO(_read_bound(wheel))) as archive:
         infos = archive.infolist()
@@ -765,6 +1081,15 @@ def _wheel_inventory(wheel: Path) -> list[dict[str, object]]:
                     continue
                 raise _BootstrapError("bootstrap wheel inventory is unsafe")
             seen.add(info.filename)
+            basename = pure.name.casefold()
+            if (
+                basename.endswith((".pth", ".egg-link"))
+                or basename in {
+                "sitecustomize.py",
+                "usercustomize.py",
+                }
+            ) and info.filename not in allowed_startup_surfaces:
+                raise _BootstrapError("bootstrap wheel contains a Python startup surface")
             data = archive.read(info)
             rows.append(
                 {
@@ -774,6 +1099,254 @@ def _wheel_inventory(wheel: Path) -> list[dict[str, object]]:
                 }
             )
     return sorted(rows, key=lambda row: str(row["path"]))
+
+
+class _StartupSurfacePolicy(NamedTuple):
+    install: bool
+    allowed_startup_surfaces: tuple[str, ...]
+
+
+def _startup_surface_policy(name: object, version: object) -> _StartupSurfacePolicy:
+    key = (re.sub(r"[-_.]+", "-", str(name)).casefold(), str(version))
+    hooks = {
+        ("setuptools", "83.0.0"): ("distutils-precedence.pth",),
+        ("coverage", "7.15.2"): ("a1_coverage.pth",),
+    }.get(key, ())
+    return _StartupSurfacePolicy(
+        install=not hooks,
+        allowed_startup_surfaces=hooks,
+    )
+
+
+def _audit_local_wheelhouse(
+    wheelhouse: Path,
+    lock_rows: Mapping[tuple[str, str], Mapping[str, Any]],
+) -> list[dict[str, object]]:
+    root_metadata = wheelhouse.lstat()
+    if (
+        not stat.S_ISDIR(root_metadata.st_mode)
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or _is_reparse(root_metadata)
+    ):
+        raise _BootstrapError("local wheelhouse is unsafe")
+    candidates: dict[str, tuple[Mapping[str, Any], Mapping[str, str]]] = {}
+    for locked in lock_rows.values():
+        for candidate in locked["wheels"]:
+            filename = candidate["name"]
+            if filename in candidates:
+                raise _BootstrapError("selected lock wheel filenames are ambiguous")
+            candidates[filename] = (locked, candidate)
+    observed: set[tuple[str, str]] = set()
+    artifacts: list[dict[str, object]] = []
+    entries = sorted(wheelhouse.iterdir(), key=lambda path: path.name)
+    if len(entries) != len(lock_rows):
+        raise _BootstrapError("local wheelhouse closure is incomplete")
+    for wheel in entries:
+        metadata = wheel.lstat()
+        selected = candidates.get(wheel.name)
+        if (
+            selected is None
+            or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or _is_reparse(metadata)
+            or wheel.suffix.casefold() != ".whl"
+        ):
+            raise _BootstrapError("local wheelhouse closure is unsafe")
+        locked, candidate = selected
+        key = (
+            re.sub(r"[-_.]+", "-", str(locked["name"])).casefold(),
+            str(locked["version"]),
+        )
+        if key in observed:
+            raise _BootstrapError("local wheelhouse closure is ambiguous")
+        sha256 = hashlib.sha256(_read_bound(wheel)).hexdigest()
+        if sha256 != candidate["sha256"]:
+            raise _BootstrapError("local wheelhouse artifact hash mismatch")
+        observed.add(key)
+        policy = _startup_surface_policy(locked["name"], locked["version"])
+        files = _wheel_inventory(
+            wheel,
+            allowed_startup_surfaces=frozenset(policy.allowed_startup_surfaces),
+        )
+        artifacts.append(
+            {
+                "name": locked["name"],
+                "version": locked["version"],
+                "url": candidate["url"],
+                "sha256": sha256,
+                "wheel_path": str(wheel),
+                "files": files,
+                "install": policy.install,
+                "allowed_startup_surfaces": list(policy.allowed_startup_surfaces),
+            }
+        )
+    if observed != set(lock_rows):
+        raise _BootstrapError("local wheelhouse closure is incomplete")
+    return sorted(artifacts, key=lambda row: str(row["name"]).casefold())
+
+
+def _validate_locked_artifact(
+    artifact: Mapping[str, object],
+    locked: Mapping[str, Any],
+    manifest_root: Path,
+) -> None:
+    if set(artifact) != {
+        "name",
+        "version",
+        "url",
+        "sha256",
+        "wheel_path",
+        "files",
+        "install",
+        "allowed_startup_surfaces",
+    }:
+        raise _BootstrapError("locked artifact policy validation failed")
+    policy = _startup_surface_policy(locked.get("name"), locked.get("version"))
+    expected_hooks = list(policy.allowed_startup_surfaces)
+    if (
+        artifact["name"] != locked.get("name")
+        or artifact["version"] != locked.get("version")
+        or artifact["install"] is not policy.install
+        or artifact["allowed_startup_surfaces"] != expected_hooks
+    ):
+        raise _BootstrapError("locked artifact policy validation failed")
+    candidates = locked.get("wheels")
+    candidate = next(
+        (
+            row
+            for row in candidates
+            if isinstance(row, dict)
+            and row.get("name") == Path(str(artifact["wheel_path"])).name
+            and row.get("url") == artifact["url"]
+            and row.get("sha256") == artifact["sha256"]
+        ),
+        None,
+    ) if isinstance(candidates, list) else None
+    if candidate is None:
+        raise _BootstrapError("locked artifact policy validation failed")
+    wheel_path = Path(str(artifact["wheel_path"])).resolve(strict=True)
+    if manifest_root not in wheel_path.parents:
+        raise _BootstrapError("locked artifact policy validation failed")
+    wheel_source = _read_bound(wheel_path)
+    if (
+        hashlib.sha256(wheel_source).hexdigest() != artifact["sha256"]
+        or _wheel_inventory(
+            wheel_path,
+            allowed_startup_surfaces=frozenset(policy.allowed_startup_surfaces),
+        )
+        != artifact["files"]
+    ):
+        raise _BootstrapError("locked artifact policy validation failed")
+
+
+def _extract_locked_build_backend(
+    artifact: Mapping[str, object], destination: Path
+) -> Path:
+    return _extract_locked_python_overlay((artifact,), destination)
+
+
+def _extract_locked_python_overlay(
+    artifacts: Sequence[Mapping[str, object]], destination: Path
+) -> Path:
+    policies = [
+        _startup_surface_policy(artifact.get("name"), artifact.get("version"))
+        for artifact in artifacts
+    ]
+    if (
+        not artifacts
+        or len(
+            {
+                (
+                    re.sub(r"[-_.]+", "-", str(artifact.get("name", ""))).casefold(),
+                    str(artifact.get("version", "")),
+                )
+                for artifact in artifacts
+            }
+        )
+        != len(artifacts)
+        or any(
+            policy.install
+            or artifact.get("install") is not policy.install
+            or artifact.get("allowed_startup_surfaces")
+            != list(policy.allowed_startup_surfaces)
+            for artifact, policy in zip(artifacts, policies, strict=True)
+        )
+    ):
+        raise _BootstrapError("locked Python overlay artifact set is invalid")
+    destination.mkdir()
+    for artifact, policy in zip(artifacts, policies, strict=True):
+        wheel = Path(str(artifact.get("wheel_path", "")))
+        allowed = frozenset(policy.allowed_startup_surfaces)
+        if _wheel_inventory(
+            wheel, allowed_startup_surfaces=allowed
+        ) != artifact.get("files"):
+            raise _BootstrapError("locked Python overlay artifact changed")
+        with zipfile.ZipFile(io.BytesIO(_read_bound(wheel))) as archive:
+            for info in archive.infolist():
+                pure = PurePosixPath(info.filename)
+                if info.is_dir() or info.filename in allowed:
+                    continue
+                mode = info.external_attr >> 16
+                if mode and stat.S_IFMT(mode) not in {0, stat.S_IFREG}:
+                    raise _BootstrapError("locked Python overlay archive is unsafe")
+                target = destination.joinpath(*pure.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("xb") as handle:
+                    handle.write(archive.read(info))
+                os.chmod(target, 0o755 if mode & 0o111 else 0o644)
+    if list(destination.rglob("*.pth")):
+        raise _BootstrapError("locked Python overlay retained startup surface")
+    _assert_extracted_python_overlay(artifacts, destination)
+    return destination
+
+
+def _assert_extracted_build_backend(
+    artifact: Mapping[str, object], destination: Path
+) -> None:
+    _assert_extracted_python_overlay((artifact,), destination)
+
+
+def _assert_extracted_python_overlay(
+    artifacts: Sequence[Mapping[str, object]], destination: Path
+) -> None:
+    expected: dict[str, tuple[object, object]] = {}
+    for artifact in artifacts:
+        policy = _startup_surface_policy(artifact.get("name"), artifact.get("version"))
+        if (
+            policy.install
+            or artifact.get("install") is not policy.install
+            or artifact.get("allowed_startup_surfaces")
+            != list(policy.allowed_startup_surfaces)
+        ):
+            raise _BootstrapError("locked Python overlay policy changed")
+        raw_files = artifact.get("files")
+        if not isinstance(raw_files, list):
+            raise _BootstrapError("locked Python overlay inventory is invalid")
+        for row in raw_files:
+            if (
+                isinstance(row, dict)
+                and row.get("path") not in policy.allowed_startup_surfaces
+            ):
+                path = str(row["path"])
+                if path in expected:
+                    raise _BootstrapError("locked Python overlay paths collide")
+                expected[path] = (row["size"], row["sha256"])
+    observed: dict[str, tuple[int, str]] = {}
+    for path in destination.rglob("*"):
+        metadata = path.lstat()
+        if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
+            continue
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or _is_reparse(metadata)
+        ):
+            raise _BootstrapError("locked build backend extraction is unsafe")
+        relative = path.relative_to(destination).as_posix()
+        source = _read_bound(path)
+        observed[relative] = (len(source), hashlib.sha256(source).hexdigest())
+    if observed != expected:
+        raise _BootstrapError("locked Python overlay extraction changed")
 
 
 def _purge_runtime_bytecode(environment_root: Path) -> None:
@@ -881,25 +1454,28 @@ def _report_artifacts(
     return sorted(artifacts, key=lambda row: str(row["name"]).casefold())
 
 
-def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path, Path, str]:
+def _bootstrap_environment(
+    repository: Path,
+    bootstrap_root: Path,
+) -> _RuntimeBootstrapBinding:
     repository = repository.resolve(strict=True)
-    if _git(repository, "status", "--porcelain=v1", "--untracked-files=all"):
-        raise _BootstrapError("release gate bootstrap requires a clean repository")
-    commit_oid = _git(repository, "rev-parse", "HEAD")
-    tree_oid = _git(repository, "rev-parse", "HEAD^{tree}")
-    if re.fullmatch(r"[0-9a-f]{40}", commit_oid) is None or re.fullmatch(
-        r"[0-9a-f]{40}", tree_oid
-    ) is None:
-        raise _BootstrapError("release gate bootstrap repository identity is invalid")
-    lock_path, lock_document, lock_source = _selected_lock(repository)
-    repository_lock_binding = _bootstrap_lock_binding(lock_path, lock_source)
+    source_binding = _materialize_committed_source(
+        repository,
+        bootstrap_root,
+        os.environ.get("GITHUB_SHA") or None,
+    )
+    staging = source_binding.source_root
+    commit_oid = source_binding.commit_oid
+    tree_oid = source_binding.tree_oid
+    lock_path, lock_document, lock_source = _selected_lock(staging)
+    source_lock_binding = _bootstrap_lock_binding(lock_path, lock_source)
     canonical_lock, canonical_lock_binding = _materialize_bootstrap_lock(
         bootstrap_root,
         lock_source,
     )
     lock_rows = _lock_rows(lock_document)
     environment_root = bootstrap_root / "environment"
-    venv.EnvBuilder(with_pip=True, clear=False, symlinks=False).create(environment_root)
+    venv.EnvBuilder(with_pip=False, clear=False, symlinks=False).create(environment_root)
     python = _venv_python(environment_root)
     if not python.is_file():
         raise _BootstrapError("release gate bootstrap interpreter is missing")
@@ -915,15 +1491,14 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
     )
     for name in ("pip-cache", "temp"):
         (bootstrap_root / name).mkdir()
-    pip_artifact = _bootstrap_pip(python, lock_rows, bootstrap_root, environment)
-    report_root = bootstrap_root / "report"
-    report_root.mkdir()
-    report_path = report_root / "pip-report.json"
+    _bootstrap_pip(python, lock_rows, bootstrap_root, environment)
+    wheelhouse = bootstrap_root / "dependency-wheels"
+    wheelhouse.mkdir()
     with (
         _bootstrap_lock_execution_lease(
             lock_path,
             lock_source,
-            repository_lock_binding,
+            source_lock_binding,
         ),
         _bootstrap_lock_execution_lease(
             canonical_lock,
@@ -936,47 +1511,47 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
                 str(python),
                 "-m",
                 "pip",
-                "install",
+                "download",
                 "--require-virtualenv",
                 "--no-deps",
+                "--only-binary=:all:",
+                "--dest",
+                str(wheelhouse),
                 "-r",
                 str(canonical_lock),
-                "--report",
-                str(report_path),
             ),
-            cwd=report_root,
+            cwd=bootstrap_root,
             env=environment,
         )
-    artifacts = _report_artifacts(
-        report_path,
-        lock_rows,
-        bootstrap_root,
-        seeded=(pip_artifact,),
+    artifacts = _audit_local_wheelhouse(wheelhouse, lock_rows)
+    build_backend_artifacts = [
+        row for row in artifacts if row.get("install") is False
+    ]
+    if len(build_backend_artifacts) != 2:
+        raise _BootstrapError("locked Python overlay artifact set is incomplete")
+    build_backend_root = _extract_locked_python_overlay(
+        build_backend_artifacts, bootstrap_root / "build-backend"
     )
-    archive = bootstrap_root / "committed-source.tar"
+    environment["PYTHONPATH"] = str(build_backend_root)
+    install_artifacts = [row for row in artifacts if row.get("install") is True]
     _run(
         (
-            "git",
-            "-C",
-            str(repository),
-            "archive",
-            "--format=tar",
-            "-o",
-            str(archive),
-            commit_oid,
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--require-virtualenv",
+            "--no-index",
+            "--no-deps",
+            *(str(Path(str(row["wheel_path"]))) for row in install_artifacts),
         ),
-        cwd=repository,
-        env=_base_environment(),
+        cwd=bootstrap_root,
+        env=environment,
     )
-    if (
-        _git(repository, "rev-parse", f"{commit_oid}^{{tree}}") != tree_oid
-        or _git(repository, "rev-parse", "HEAD") != commit_oid
-        or _git(repository, "status", "--porcelain=v1", "--untracked-files=all")
-    ):
-        raise _BootstrapError("repository changed during committed source bootstrap")
-    staging = bootstrap_root / "committed-source"
-    staging.mkdir()
-    _safe_extract_archive(archive, staging)
+    _assert_repository_identity(repository, commit_oid, tree_oid)
+    build_binding = _copy_bound_source(
+        source_binding, bootstrap_root / "committed-build-source"
+    )
     local_wheels = bootstrap_root / "local-wheel"
     local_wheels.mkdir()
     _run(
@@ -988,7 +1563,7 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
             "--no-isolation",
             "--outdir",
             str(local_wheels),
-            str(staging),
+            str(build_binding.source_root),
         ),
         cwd=bootstrap_root,
         env=environment,
@@ -997,13 +1572,15 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
     if len(wheels) != 1:
         raise _BootstrapError("local committed wheel build is ambiguous")
     local_wheel = wheels[0]
+    local_sha256 = hashlib.sha256(_read_bound(local_wheel)).hexdigest()
+    local_files = _wheel_inventory(local_wheel)
+    _assert_source_inventory(source_binding)
     _run(
         (str(python), "-m", "pip", "install", "--no-deps", str(local_wheel)),
         cwd=bootstrap_root,
         env=environment,
     )
     _purge_runtime_bytecode(environment_root)
-    local_sha256 = hashlib.sha256(_read_bound(local_wheel)).hexdigest()
     sentinel = uuid.uuid4().hex + uuid.uuid4().hex
     manifest: dict[str, object] = {
         "schema_version": 1,
@@ -1011,6 +1588,9 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
         "repository": str(repository),
         "commit_oid": commit_oid,
         "tree_oid": tree_oid,
+        "source_inventory": list(source_binding.inventory),
+        "source_inventory_sha256": source_binding.inventory_sha256,
+        "build_backend_root": str(build_backend_root),
         "environment_root": str(environment_root),
         "lock_sha256": hashlib.sha256(lock_source).hexdigest(),
         "sentinel_sha256": hashlib.sha256(sentinel.encode("ascii")).hexdigest(),
@@ -1020,7 +1600,8 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
             "version": _project_version(staging),
             "wheel_path": str(local_wheel),
             "sha256": local_sha256,
-            "files": _wheel_inventory(local_wheel),
+            "files": local_files,
+            "source_inventory_sha256": source_binding.inventory_sha256,
         },
     }
     manifest_path = bootstrap_root / "runtime-manifest.json"
@@ -1032,7 +1613,12 @@ def _bootstrap_environment(repository: Path, bootstrap_root: Path) -> tuple[Path
         allow_nan=False,
     ).encode("utf-8")
     manifest_path.write_bytes(manifest_bytes)
-    return python, manifest_path, sentinel
+    return _RuntimeBootstrapBinding(
+        python=python,
+        manifest_path=manifest_path,
+        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        sentinel=sentinel,
+    )
 
 
 def _child_binding(args: argparse.Namespace) -> bool:
@@ -1058,6 +1644,9 @@ def _child_binding(args: argparse.Namespace) -> bool:
             "repository",
             "commit_oid",
             "tree_oid",
+            "source_inventory",
+            "source_inventory_sha256",
+            "build_backend_root",
             "environment_root",
             "lock_sha256",
             "sentinel_sha256",
@@ -1071,7 +1660,52 @@ def _child_binding(args: argparse.Namespace) -> bool:
         executable = Path(sys.executable).resolve(strict=True)
         repository = args.repo.resolve(strict=True)
         manifest_root = manifest_path.parent.resolve(strict=True)
-        lock_path, lock_document, lock_source = _selected_lock(repository)
+        source_root = (manifest_root / "committed-source").resolve(strict=True)
+        build_backend_source = Path(str(manifest["build_backend_root"]))
+        build_backend_metadata = build_backend_source.lstat()
+        build_backend_root = build_backend_source.resolve(strict=True)
+        raw_inventory = manifest["source_inventory"]
+        if not isinstance(raw_inventory, list):
+            return False
+        inventory: list[dict[str, str]] = []
+        for row in raw_inventory:
+            if (
+                not isinstance(row, dict)
+                or set(row) != {"path", "sha256", "git_mode"}
+                or not isinstance(row["path"], str)
+                or row["git_mode"] not in {"100644", "100755"}
+                or re.fullmatch(r"[0-9a-f]{64}", str(row["sha256"])) is None
+            ):
+                return False
+            inventory.append(dict(row))
+        controller_path = Path(__file__).resolve(strict=True)
+        committed_controller = (
+            source_root / "scripts" / "check_release_gate.py"
+        ).resolve(strict=True)
+        controller_row = next(
+            (
+                row
+                for row in inventory
+                if row["path"] == "scripts/check_release_gate.py"
+            ),
+            None,
+        )
+        if (
+            controller_path != committed_controller
+            or controller_row is None
+            or hashlib.sha256(_read_bound(controller_path)).hexdigest()
+            != controller_row["sha256"]
+        ):
+            return False
+        source_binding = _SourceBinding(
+            source_root=source_root,
+            commit_oid=str(manifest["commit_oid"]),
+            tree_oid=str(manifest["tree_oid"]),
+            inventory=tuple(inventory),
+            inventory_sha256=str(manifest["source_inventory_sha256"]),
+        )
+        _assert_source_inventory(source_binding)
+        lock_path, lock_document, lock_source = _selected_lock(source_root)
         del lock_path
         lock_rows = _lock_rows(lock_document)
         if (
@@ -1082,9 +1716,19 @@ def _child_binding(args: argparse.Namespace) -> bool:
             or stat.S_ISLNK(environment_metadata.st_mode)
             or _is_reparse(environment_metadata)
             or environment_root != manifest_root / "environment"
+            or not stat.S_ISDIR(build_backend_metadata.st_mode)
+            or stat.S_ISLNK(build_backend_metadata.st_mode)
+            or _is_reparse(build_backend_metadata)
+            or build_backend_root != manifest_root / "build-backend"
             or manifest["commit_oid"] != _git(repository, "rev-parse", "HEAD")
             or manifest["tree_oid"] != _git(repository, "rev-parse", "HEAD^{tree}")
             or _git(repository, "status", "--porcelain=v1", "--untracked-files=all")
+            or inventory != sorted(inventory, key=lambda row: row["path"])
+            or len({row["path"] for row in inventory}) != len(inventory)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(manifest["source_inventory_sha256"])
+            )
+            is None
             or manifest["lock_sha256"] != hashlib.sha256(lock_source).hexdigest()
         ):
             return False
@@ -1095,7 +1739,14 @@ def _child_binding(args: argparse.Namespace) -> bool:
         observed: set[tuple[str, str]] = set()
         for row in artifacts:
             if not isinstance(row, dict) or set(row) != {
-                "name", "version", "url", "sha256", "wheel_path", "files"
+                "name",
+                "version",
+                "url",
+                "sha256",
+                "wheel_path",
+                "files",
+                "install",
+                "allowed_startup_surfaces",
             }:
                 return False
             key = (
@@ -1103,32 +1754,30 @@ def _child_binding(args: argparse.Namespace) -> bool:
                 str(row["version"]),
             )
             locked = lock_rows.get(key)
-            if (
-                locked is None
-                or key in observed
-                or (row["url"], row["sha256"])
-                not in {(item["url"], item["sha256"]) for item in locked["wheels"]}
-            ):
+            if locked is None or key in observed:
                 return False
             observed.add(key)
-            wheel_path = Path(str(row["wheel_path"])).resolve(strict=True)
-            if manifest_root not in wheel_path.parents:
-                return False
-            wheel_source = _read_bound(wheel_path)
-            if (
-                hashlib.sha256(wheel_source).hexdigest() != row["sha256"]
-                or _wheel_inventory(wheel_path) != row["files"]
-            ):
-                return False
+            _validate_locked_artifact(row, locked, manifest_root)
         if observed != set(lock_rows) or set(local) != {
-            "name", "version", "wheel_path", "sha256", "files"
+            "name",
+            "version",
+            "wheel_path",
+            "sha256",
+            "files",
+            "source_inventory_sha256",
         }:
             return False
+        _assert_extracted_python_overlay(
+            [row for row in artifacts if row["install"] is False],
+            build_backend_root,
+        )
         local_wheel = Path(str(local["wheel_path"])).resolve(strict=True)
         local_source = _read_bound(local_wheel)
         if (
             local["name"] != "hsconfig"
-            or local["version"] != _project_version(repository)
+            or local["version"] != _project_version(source_root)
+            or local["source_inventory_sha256"]
+            != manifest["source_inventory_sha256"]
             or manifest_root not in local_wheel.parents
             or hashlib.sha256(local_source).hexdigest() != local["sha256"]
             or _wheel_inventory(local_wheel) != local["files"]
@@ -1153,6 +1802,11 @@ def _child_binding(args: argparse.Namespace) -> bool:
 
 
 def _child_main(args: argparse.Namespace) -> int:
+    if args.locked_check == "full-tests-and-coverage":
+        from scripts import run_coverage_gate  # noqa: PLC0415
+
+        return run_coverage_gate.main()
+
     from hsconfig.release_gate import (  # noqa: PLC0415
         check_repository_hygiene,
         run_release_gate,
@@ -1485,13 +2139,40 @@ def _terminate_unleased_process(process: subprocess.Popen[bytes]) -> None:
 
 def _run_bound_child(
     python: Path,
-    repository: Path,
+    invocation_directory: Path,
     environment: Mapping[str, str],
     argv: list[str],
     sentinel: str,
     *,
     timeout: int = _BOOTSTRAP_CHILD_TIMEOUT_SECONDS,
+    allow_locked_coverage_exit_two: bool = False,
+    controller_path: Path | None = None,
 ) -> tuple[int, dict[str, object]]:
+    child_environment = dict(environment)
+    child_cwd = invocation_directory.resolve(strict=True)
+    controller_source: bytes
+    if controller_path is None:
+        manifest_name = child_environment.get(_MANIFEST, "")
+        manifest_digest = child_environment.get(_MANIFEST_DIGEST, "")
+        if re.fullmatch(r"[0-9a-f]{64}", manifest_digest) is None:
+            raise _BootstrapError("release gate child manifest binding is missing")
+        manifest_path = Path(manifest_name).resolve(strict=True)
+        manifest_source = _read_bound(manifest_path, 64 * 1024 * 1024)
+        if hashlib.sha256(manifest_source).hexdigest() != manifest_digest:
+            raise _BootstrapError("release gate child manifest binding changed")
+        manifest_document = json.loads(
+            manifest_source, object_pairs_hook=_closed_object
+        )
+        source_root, controller_path, controller_source = _bound_committed_controller(
+            manifest_path, manifest_document
+        )
+        existing_pythonpath = child_environment.get("PYTHONPATH", "")
+        child_environment["PYTHONPATH"] = str(source_root) + (
+            os.pathsep + existing_pythonpath if existing_pythonpath else ""
+        )
+    else:
+        controller_path = controller_path.resolve(strict=True)
+        controller_source = _read_bound(controller_path, _MAX_CONTROLLER_SOURCE)
     if os.name != "nt":
         _enable_posix_subreaper()
     baseline = _linux_direct_children()
@@ -1512,8 +2193,8 @@ def _run_bound_child(
     try:
         process = subprocess.Popen(
             (str(python), "-c", _GATED_CHILD_LAUNCHER),
-            cwd=repository,
-            env=dict(environment),
+            cwd=child_cwd,
+            env=child_environment,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=sys.stderr,
@@ -1551,13 +2232,21 @@ def _run_bound_child(
         reader = threading.Thread(target=drain, daemon=True)
         reader.start()
         reader_started = True
-        child_argv = (str(python), str(Path(__file__).resolve()), *argv)
+        child_argv = (
+            str(python),
+            "-c",
+            _VERIFIED_CONTROLLER_LAUNCHER,
+            str(controller_path),
+            *argv,
+        )
         process.stdin.write(
             json.dumps(child_argv, ensure_ascii=False, separators=(",", ":")).encode(
                 "utf-8"
             )
             + b"\n"
         )
+        process.stdin.write(f"{len(controller_source)}\n".encode("ascii"))
+        process.stdin.write(controller_source)
         process.stdin.write(sentinel.encode("ascii") + b"\n")
         process.stdin.close()
         returncode = process.wait(timeout=timeout)
@@ -1595,10 +2284,11 @@ def _run_bound_child(
         document = json.loads(text, object_pairs_hook=_closed_object)
     except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
         raise _BootstrapError("release gate child emitted invalid JSON") from exc
+    allowed_returncodes = {0, 1, 2} if allow_locked_coverage_exit_two else {0, 1}
     if (
         not isinstance(document, dict)
         or not isinstance(document.get("passed"), bool)
-        or returncode not in {0, 1}
+        or returncode not in allowed_returncodes
         or document["passed"] is not (returncode == 0)
     ):
         raise _BootstrapError("release gate child result contradicts exit status")
@@ -1609,6 +2299,7 @@ def _bootstrap_and_reexec(
     args: argparse.Namespace,
     argv: list[str],
 ) -> tuple[int, dict[str, object]]:
+    invocation_directory = Path.cwd().resolve(strict=True)
     repository = args.repo.resolve()
     configured_temp = Path(tempfile.gettempdir()).resolve(strict=True)
     if configured_temp == repository or repository in configured_temp.parents:
@@ -1619,23 +2310,39 @@ def _bootstrap_and_reexec(
         root = Path(tempfile.mkdtemp(prefix="hsconfig-release-bootstrap-", dir=configured_temp))
         metadata = root.lstat()
         identity = (metadata.st_dev, metadata.st_ino)
-        python, manifest, sentinel = _bootstrap_environment(repository, root)
-        manifest_source = _read_bound(manifest, 64 * 1024 * 1024)
+        runtime_binding = _bootstrap_environment(repository, root)
+        manifest_source = _read_bound(
+            runtime_binding.manifest_path, 64 * 1024 * 1024
+        )
+        if (
+            hashlib.sha256(manifest_source).hexdigest()
+            != runtime_binding.manifest_sha256
+        ):
+            raise _BootstrapError("release gate child manifest binding changed")
+        manifest_document = json.loads(
+            manifest_source, object_pairs_hook=_closed_object
+        )
         environment = _base_environment()
         environment.update(
             {
-                _SENTINEL: sentinel,
-                _MANIFEST: str(manifest),
-                _MANIFEST_DIGEST: hashlib.sha256(manifest_source).hexdigest(),
-                "VIRTUAL_ENV": str(python.parent.parent),
+                _SENTINEL: runtime_binding.sentinel,
+                _MANIFEST: str(runtime_binding.manifest_path),
+                _MANIFEST_DIGEST: runtime_binding.manifest_sha256,
+                "VIRTUAL_ENV": str(runtime_binding.python.parent.parent),
             }
         )
+        build_backend_root = manifest_document.get("build_backend_root")
+        if isinstance(build_backend_root, str):
+            environment["PYTHONPATH"] = build_backend_root
         result = _run_bound_child(
-            python,
-            repository,
+            runtime_binding.python,
+            invocation_directory,
             environment,
             argv,
-            sentinel,
+            runtime_binding.sentinel,
+            allow_locked_coverage_exit_two=(
+                args.locked_check == "full-tests-and-coverage"
+            ),
         )
         return result
     finally:
@@ -1643,12 +2350,228 @@ def _bootstrap_and_reexec(
             _cleanup_bootstrap_root(root, identity)
 
 
+def _append_github_environment(path: Path, values: Mapping[str, str]) -> None:
+    for key, value in values.items():
+        if not re.fullmatch(r"[A-Z0-9_]+", key) or "\n" in value or "\r" in value:
+            raise _BootstrapError("CI baseline environment value is invalid")
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        for key, value in values.items():
+            handle.write(f"{key}={value}\n")
+
+
+def _write_source_inventory_manifest(root: Path, binding: _SourceBinding) -> Path:
+    path = root / "source-inventory.json"
+    document = {
+        "schema_version": 1,
+        "source_root": str(binding.source_root),
+        "commit_oid": binding.commit_oid,
+        "tree_oid": binding.tree_oid,
+        "inventory": list(binding.inventory),
+        "inventory_sha256": binding.inventory_sha256,
+    }
+    encoded = json.dumps(
+        document,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+    with path.open("xb") as handle:
+        handle.write(encoded)
+    return path
+
+
+def _load_ci_source_binding(args: argparse.Namespace) -> _SourceBinding:
+    repository = args.repo.resolve(strict=True)
+    runner_temp_value = os.environ.get("RUNNER_TEMP", "")
+    baseline_value = os.environ.get("HSCONFIG_CI_BASELINE_ROOT", "")
+    source_value = os.environ.get("HSCONFIG_CI_SOURCE_ROOT", "")
+    manifest_value = os.environ.get("HSCONFIG_CI_SOURCE_INVENTORY", "")
+    commit_oid = os.environ.get("HSCONFIG_CI_COMMIT_OID", "")
+    tree_oid = os.environ.get("HSCONFIG_CI_TREE_OID", "")
+    inventory_sha256 = os.environ.get("HSCONFIG_CI_SOURCE_INVENTORY_SHA256", "")
+    if (
+        not all((runner_temp_value, baseline_value, source_value, manifest_value))
+        or re.fullmatch(r"[0-9a-f]{40}", commit_oid) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree_oid) is None
+        or re.fullmatch(r"[0-9a-f]{64}", inventory_sha256) is None
+    ):
+        raise _BootstrapError("CI source binding environment is incomplete")
+    runner_temp = Path(runner_temp_value).resolve(strict=True)
+    baseline_root = Path(baseline_value).resolve(strict=True)
+    source_root = Path(source_value).resolve(strict=True)
+    manifest_path = Path(manifest_value).resolve(strict=True)
+    if (
+        baseline_root != runner_temp / "hsconfig-ci-source-baseline"
+        or source_root != baseline_root / "committed-source"
+        or manifest_path != baseline_root / "source-inventory.json"
+    ):
+        raise _BootstrapError("CI source binding path is invalid")
+    try:
+        document = json.loads(_read_bound(manifest_path), object_pairs_hook=_closed_object)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise _BootstrapError("CI source inventory manifest is invalid") from exc
+    if not isinstance(document, dict) or set(document) != {
+        "schema_version",
+        "source_root",
+        "commit_oid",
+        "tree_oid",
+        "inventory",
+        "inventory_sha256",
+    }:
+        raise _BootstrapError("CI source inventory manifest is invalid")
+    raw_inventory = document["inventory"]
+    if not isinstance(raw_inventory, list):
+        raise _BootstrapError("CI source inventory manifest is invalid")
+    inventory: list[dict[str, str]] = []
+    for row in raw_inventory:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"path", "sha256", "git_mode"}
+            or not isinstance(row["path"], str)
+            or row["git_mode"] not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{64}", str(row["sha256"])) is None
+        ):
+            raise _BootstrapError("CI source inventory manifest is invalid")
+        inventory.append(dict(row))
+    if (
+        document["schema_version"] != 1
+        or document["source_root"] != str(source_root)
+        or document["commit_oid"] != commit_oid
+        or document["tree_oid"] != tree_oid
+        or document["inventory_sha256"] != inventory_sha256
+        or inventory != sorted(inventory, key=lambda row: row["path"])
+        or len({row["path"] for row in inventory}) != len(inventory)
+    ):
+        raise _BootstrapError("CI source inventory manifest binding changed")
+    binding = _SourceBinding(
+        source_root=source_root,
+        commit_oid=commit_oid,
+        tree_oid=tree_oid,
+        inventory=tuple(inventory),
+        inventory_sha256=inventory_sha256,
+    )
+    _assert_source_inventory(binding)
+    _assert_repository_identity(repository, commit_oid, tree_oid)
+    return binding
+
+
+def _run_ci_source_revalidate(args: argparse.Namespace) -> int:
+    binding = _load_ci_source_binding(args)
+    _emit(
+        {
+            "passed": True,
+            "final_release_ready": False,
+            "version": _project_version(binding.source_root),
+            "commit_oid": binding.commit_oid,
+            "tree_oid": binding.tree_oid,
+            "checks": ["ci_source_revalidate"],
+            "errors": [],
+        }
+    )
+    return 0
+
+
+def _run_ci_wheelhouse_audit(args: argparse.Namespace) -> int:
+    binding = _load_ci_source_binding(args)
+    _lock_path, lock_document, _lock_source = _selected_lock(binding.source_root)
+    runner_temp = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+    wheelhouse = (
+        runner_temp / "hsconfig-locked-runtime" / "dependency-wheels"
+    ).resolve(strict=True)
+    artifacts = _audit_local_wheelhouse(wheelhouse, _lock_rows(lock_document))
+    build_backend_artifacts = [row for row in artifacts if row.get("install") is False]
+    if len(build_backend_artifacts) != 2:
+        raise _BootstrapError("locked Python overlay artifact set is incomplete")
+    build_backend_root = _extract_locked_python_overlay(
+        build_backend_artifacts,
+        runner_temp / "hsconfig-locked-runtime" / "build-backend",
+    )
+    _emit(
+        {
+            "passed": True,
+            "final_release_ready": False,
+            "version": _project_version(binding.source_root),
+            "commit_oid": binding.commit_oid,
+            "tree_oid": binding.tree_oid,
+            "checks": ["ci_wheelhouse_audit"],
+            "artifact_count": len(artifacts),
+            "build_backend_root": str(build_backend_root),
+            "errors": [],
+        }
+    )
+    return 0
+
+
+def _run_ci_source_baseline(args: argparse.Namespace) -> int:
+    repository = args.repo.resolve(strict=True)
+    runner_temp_value = os.environ.get("RUNNER_TEMP", "")
+    github_sha = os.environ.get("GITHUB_SHA", "")
+    github_environment_value = os.environ.get("GITHUB_ENV", "")
+    if (
+        not runner_temp_value
+        or re.fullmatch(r"[0-9a-f]{40}", github_sha) is None
+        or not github_environment_value
+    ):
+        raise _BootstrapError("CI baseline environment is incomplete")
+    runner_temp = Path(runner_temp_value).resolve(strict=True)
+    if runner_temp == repository or repository in runner_temp.parents:
+        raise _BootstrapError("CI baseline root must be outside repository")
+    root = runner_temp / "hsconfig-ci-source-baseline"
+    if root.exists():
+        raise _BootstrapError("CI baseline root already exists")
+    root.mkdir()
+    _append_github_environment(
+        Path(github_environment_value),
+        {"HSCONFIG_CI_BASELINE_ROOT": str(root)},
+    )
+    source_binding = _materialize_committed_source(
+        repository,
+        root,
+        github_sha,
+    )
+    inventory_manifest = _write_source_inventory_manifest(root, source_binding)
+    _append_github_environment(
+        Path(github_environment_value),
+        {
+            "HSCONFIG_CI_SOURCE_ROOT": str(source_binding.source_root),
+            "HSCONFIG_CI_COMMIT_OID": source_binding.commit_oid,
+            "HSCONFIG_CI_TREE_OID": source_binding.tree_oid,
+            "HSCONFIG_CI_SOURCE_INVENTORY": str(inventory_manifest),
+            "HSCONFIG_CI_SOURCE_INVENTORY_SHA256": source_binding.inventory_sha256,
+        },
+    )
+    _emit(
+        {
+            "passed": True,
+            "final_release_ready": False,
+            "version": _project_version(source_binding.source_root),
+            "commit_oid": source_binding.commit_oid,
+            "tree_oid": source_binding.tree_oid,
+            "checks": ["ci_source_baseline"],
+            "errors": [],
+        }
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     try:
         args = _parser().parse_args(args_list)
+        if args.locked_check == "ci-source-baseline":
+            return _run_ci_source_baseline(args)
+        if args.locked_check == "ci-source-revalidate":
+            return _run_ci_source_revalidate(args)
+        if args.locked_check == "ci-wheelhouse-audit":
+            return _run_ci_wheelhouse_audit(args)
+        child_binding_requested = any(
+            os.environ.get(name) for name in (_SENTINEL, _MANIFEST, _MANIFEST_DIGEST)
+        )
         if _child_binding(args):
             return _child_main(args)
+        if child_binding_requested:
+            raise _BootstrapError("release gate child binding failed")
         returncode, document = _bootstrap_and_reexec(args, args_list)
         _emit(document)
         return returncode

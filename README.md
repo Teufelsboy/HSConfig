@@ -87,20 +87,42 @@ the complete canonical outputs inventory. `final` is fail-closed with no
 historical publishability exceptions.
 
 The command itself is the stdlib-only bootstrap parent for the local Clean-OID
-producer/verifier. The legacy `full-test-suite` CI workflow does not invoke this
-command or depend on the ignored local `outputs/` tree: it still installs the
-development package, runs Ruff, runs the full pytest suite, and audits
-dependencies. Task 8 owns the later locked-CI consolidation. The local command
-selects the lock for the running Python minor. It supports Python 3.11 and 3.12,
+producer/verifier. The single locked `ci` workflow has `contract`, `test`,
+`package`, and `security` jobs; it reuses this parent only for the bound locked
+coverage route, the two canonical internal repository checks, and the
+stdlib-only event-commit baseline. That baseline binds `github.sha`, `HEAD`, the
+tree OID, clean status, and a sorted path/Git-mode/content-SHA256 inventory
+before any dependency download, rejects non-regular Git tree entries, and
+materializes the exact-OID archive through the same strict archive reader.
+Inventory validation checks the source root and every directory ancestor before
+reading a file, rejecting symlinks, junctions, reparse points, and any resolved
+path outside the materialized root even when outside bytes match. It
+does not claim final GitHub governance or gameplay
+validation. The local command selects the lock for the running Python minor. It
+supports Python 3.11 and 3.12,
 matching the two committed release locks; Python 3.13 or newer fails with one
 JSON document and exit code 2 before environment creation. It
 downloads and verifies the exact locked
-pip wheel even when `ensurepip` is older, creates a fresh disposable environment
-outside the checkout, installs the 43-package locked graph, builds `hsconfig`
-from `git archive HEAD`, and binds every installed artifact and RECORD entry to
-the selected wheel URL, SHA-256, inventory, commit, and tree before any gate
-check runs. Ambient packages, plugins, bytecode, and poisoned virtual
-environments are not trusted or reused.
+pip wheel into a venv created without `ensurepip`, downloads and inventories all
+43 locked wheels before install, installs the 41 startup-surface-free wheels
+from the local wheelhouse, and exposes the hash-bound Setuptools and Coverage
+payloads through a revalidated overlay with their `.pth` hooks omitted. It
+builds `hsconfig` from a second byte/mode/digest-identical committed-source
+materialization and binds each wheel inventory, the source inventory digest,
+commit, and tree before any gate check runs. Re-execution always starts
+`committed-source/scripts/check_release_gate.py`. Before creating the child
+process, the trusted parent revalidates the complete committed-source inventory
+and the controller's exact path, Git mode, bytes, SHA256, row, and inventory
+digest. The manifest producer returns the digest of the exact bytes it wrote,
+and the parent transports the already verified controller bytes to the child;
+the executable source is never reopened by path after validation. The child
+independently proves that its own controller path and content are that same
+source-inventory entry. The child retains the original invocation
+directory, so relative `--repo` and `--outputs` operands keep their public CLI
+meaning even though the executed script is the committed controller. The same
+package/version policy controls each wheel's install disposition, allowed
+startup hooks, and complete child-side re-inventory. Ambient packages, plugins,
+bytecode, and poisoned virtual environments are not trusted or reused.
 
 The gate is the only canonical producer/verifier. It requires `outputs/` to
 contain exactly the twelve catalog deck directories, snapshots every directory

@@ -920,6 +920,141 @@ def test_child_binding_rejects_caller_authored_minimal_manifest_before_import(
     assert BOOTSTRAP._child_binding(args) is False
 
 
+def test_locked_coverage_check_accepts_only_the_canonical_route() -> None:
+    """Catches expansion of the bootstrap parent into an arbitrary command runner."""
+    canonical = [
+        "--repo",
+        str(ROOT),
+        "--outputs",
+        str(ROOT / "outputs"),
+        "--locked-check",
+        "full-tests-and-coverage",
+        "--json",
+    ]
+
+    assert BOOTSTRAP._parser().parse_args(canonical).locked_check == "full-tests-and-coverage"
+    with pytest.raises(BOOTSTRAP._CliError, match="argument_error"):
+        BOOTSTRAP._parser().parse_args(
+            [*canonical[:-2], "arbitrary-command", "--json"]
+        )
+
+
+def test_locked_coverage_check_is_not_dispatched_before_child_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Catches execution of coverage from an unbound caller-controlled process."""
+    monkeypatch.setattr(BOOTSTRAP, "_child_binding", lambda _args: False)
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_bootstrap_and_reexec",
+        lambda *_args: (1, {"passed": False, "route": "bootstrap"}),
+    )
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_child_main",
+        lambda _args: (_ for _ in ()).throw(AssertionError("unbound child")),
+    )
+
+    assert BOOTSTRAP.main(
+        [
+            "--repo",
+            str(ROOT),
+            "--outputs",
+            str(ROOT / "outputs"),
+            "--locked-check",
+            "full-tests-and-coverage",
+            "--json",
+        ]
+    ) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "passed": False,
+        "route": "bootstrap",
+    }
+
+
+def test_bound_child_forwards_coverage_exit_two_without_rewriting_its_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catches loss of the coverage gate's distinct infrastructure failure result."""
+    document = {"passed": False, "failure": "runtime-lock"}
+
+    class Process:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO((json.dumps(document) + "\n").encode())
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 2
+
+        def kill(self) -> None:
+            return None
+
+    class Lease:
+        def __init__(self, _process: Process, _baseline: set[int]) -> None:
+            pass
+
+        def terminate_remaining(self) -> None:
+            return None
+
+    monkeypatch.setattr(BOOTSTRAP.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+    monkeypatch.setattr(BOOTSTRAP, "_BootstrapProcessTreeLease", Lease)
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="exit status"):
+        BOOTSTRAP._run_bound_child(
+            Path(sys.executable),
+            tmp_path,
+            {},
+            [],
+            "a" * 64,
+            controller_path=Path(BOOTSTRAP.__file__),
+        )
+    assert BOOTSTRAP._run_bound_child(
+        Path(sys.executable),
+        tmp_path,
+        {},
+        [],
+        "a" * 64,
+        allow_locked_coverage_exit_two=True,
+        controller_path=Path(BOOTSTRAP.__file__),
+    ) == (2, document)
+
+
+def test_bound_child_delegates_the_locked_route_to_the_coverage_gate_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Catches a bound locked route that substitutes a second coverage authority."""
+    from scripts import run_coverage_gate
+
+    document = {"passed": False, "failure": "coverage-runtime-lock"}
+    calls: list[str] = []
+
+    def coverage_main() -> int:
+        calls.append("coverage")
+        print(json.dumps(document, separators=(",", ":")))
+        return 2
+
+    monkeypatch.setattr(run_coverage_gate, "main", coverage_main)
+    args = BOOTSTRAP._parser().parse_args(
+        [
+            "--repo",
+            str(ROOT),
+            "--outputs",
+            str(ROOT / "outputs"),
+            "--locked-check",
+            "full-tests-and-coverage",
+            "--json",
+        ]
+    )
+
+    assert BOOTSTRAP._child_main(args) == 2
+    assert calls == ["coverage"]
+    assert capsys.readouterr().out == '{"passed":false,"failure":"coverage-runtime-lock"}\n'
+
+
 def test_unsupported_python_minor_fails_before_lock_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -970,6 +1105,8 @@ def test_bootstrap_archives_stored_commit_not_moving_head(
     bootstrap = tmp_path / "bootstrap"
     bootstrap.mkdir()
     commands: list[tuple[str, ...]] = []
+    selected_lock_roots: list[Path] = []
+    inventory_checkpoints: list[int] = []
 
     class Builder:
         def __init__(self, **_kwargs: object) -> None:
@@ -990,6 +1127,8 @@ def test_bootstrap_archives_stored_commit_not_moving_head(
             return tree_oid
         if args == ("status", "--porcelain=v1", "--untracked-files=all"):
             return ""
+        if args == ("ls-tree", "-rz", "--full-tree", commit_oid):
+            return f"100644 blob {'3' * 40}\ttracked.txt\0"
         raise AssertionError(args)
 
     def run(
@@ -1011,11 +1150,11 @@ def test_bootstrap_archives_stored_commit_not_moving_head(
 
     monkeypatch.setattr(BOOTSTRAP.venv, "EnvBuilder", Builder)
     monkeypatch.setattr(BOOTSTRAP, "_git", git)
-    monkeypatch.setattr(
-        BOOTSTRAP,
-        "_selected_lock",
-        lambda _repository: (lock_path, {"packages": []}, b"locked"),
-    )
+    def selected_lock(root: Path) -> tuple[Path, dict[str, object], bytes]:
+        selected_lock_roots.append(root)
+        return lock_path, {"packages": []}, b"locked"
+
+    monkeypatch.setattr(BOOTSTRAP, "_selected_lock", selected_lock)
     monkeypatch.setattr(BOOTSTRAP, "_lock_rows", lambda _document: {})
     monkeypatch.setattr(
         BOOTSTRAP,
@@ -1029,31 +1168,1069 @@ def test_bootstrap_archives_stored_commit_not_moving_head(
             "files": [],
         },
     )
-    monkeypatch.setattr(BOOTSTRAP, "_report_artifacts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_audit_local_wheelhouse",
+        lambda *_args, **_kwargs: [
+            {"name": "coverage", "install": False},
+            {"name": "setuptools", "install": False},
+        ],
+    )
+
+    def extract_backend(_artifact: object, destination: Path) -> Path:
+        destination.mkdir()
+        return destination
+
+    monkeypatch.setattr(BOOTSTRAP, "_extract_locked_python_overlay", extract_backend)
     monkeypatch.setattr(BOOTSTRAP, "_run", run)
-    monkeypatch.setattr(BOOTSTRAP, "_safe_extract_archive", lambda _a, _out: None)
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_safe_extract_archive",
+        lambda _a, out: (out / "tracked.txt").write_bytes(b"committed"),
+    )
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_assert_source_inventory",
+        lambda _binding: inventory_checkpoints.append(len(commands)),
+    )
     monkeypatch.setattr(BOOTSTRAP, "_purge_runtime_bytecode", lambda _root: None)
     monkeypatch.setattr(BOOTSTRAP, "_project_version", lambda _root: "1.0.0")
     monkeypatch.setattr(BOOTSTRAP, "_wheel_inventory", lambda _wheel: [])
 
-    BOOTSTRAP._bootstrap_environment(ROOT, bootstrap)
+    runtime_binding = BOOTSTRAP._bootstrap_environment(ROOT, bootstrap)
+    manifest_path = runtime_binding.manifest_path
 
     archive_commands = [command for command in commands if "archive" in command]
-    locked_install_commands = [
+    locked_download_commands = [
         command
         for command in commands
-        if "pip" in command and "install" in command and "-r" in command
+        if "pip" in command and "download" in command and "-r" in command
     ]
     assert len(archive_commands) == 1
     assert archive_commands[0][-1] == commit_oid
     assert "HEAD" not in archive_commands[0]
-    assert len(locked_install_commands) == 1
+    assert selected_lock_roots == [bootstrap / "committed-source"]
+    assert len(locked_download_commands) == 1
     canonical_lock = Path(
-        locked_install_commands[0][locked_install_commands[0].index("-r") + 1]
+        locked_download_commands[0][locked_download_commands[0].index("-r") + 1]
     )
     assert canonical_lock == bootstrap / "pylock.toml"
     assert canonical_lock.read_bytes() == lock_path.read_bytes() == b"locked"
     assert canonical_lock != lock_path
+    build_index = next(index for index, command in enumerate(commands) if "build" in command)
+    project_install_index = max(
+        index
+        for index, command in enumerate(commands)
+        if "pip" in command and "install" in command
+    )
+    assert len(inventory_checkpoints) == 2
+    assert inventory_checkpoints[0] == build_index
+    assert inventory_checkpoints[1] == project_install_index
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["source_inventory_sha256"] == BOOTSTRAP._source_inventory_digest(
+        manifest["source_inventory"]
+    )
+    assert (
+        manifest["local_project"]["source_inventory_sha256"]
+        == manifest["source_inventory_sha256"]
+    )
+    assert runtime_binding.manifest_sha256 == hashlib.sha256(
+        manifest_path.read_bytes()
+    ).hexdigest()
+
+
+def test_canonical_bootstrap_ignores_an_assume_unchanged_checkout_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for name in ("pylock.3.11.toml", "pylock.3.12.toml"):
+        shutil.copy2(ROOT / name, repository / name)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    lock = repository / f"pylock.{minor}.toml"
+    committed_lock = lock.read_bytes()
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", lock.name],
+        cwd=repository,
+        check=True,
+    )
+    lock.write_text("checkout lock must not be read\n", encoding="utf-8")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap_root.mkdir()
+
+    runtime_binding = BOOTSTRAP._bootstrap_environment(repository, bootstrap_root)
+    manifest_path = runtime_binding.manifest_path
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["lock_sha256"] == hashlib.sha256(committed_lock).hexdigest()
+    assert manifest["source_inventory_sha256"] == BOOTSTRAP._source_inventory_digest(
+        manifest["source_inventory"]
+    )
+    assert not list((bootstrap_root / "build-backend").rglob("*.pth"))
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status == ""
+
+
+def test_real_reexec_uses_inventory_bound_committed_controller(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for name in (
+        "pylock.3.11.toml",
+        "pylock.3.12.toml",
+        "scripts/check_release_gate.py",
+    ):
+        source = ROOT / name
+        destination = repository / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    controller_path = repository / "scripts" / "check_release_gate.py"
+    spec = importlib.util.spec_from_file_location("fixture_release_controller", controller_path)
+    assert spec is not None and spec.loader is not None
+    controller = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(controller)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap_root.mkdir()
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    runtime_binding = controller._bootstrap_environment(repository, bootstrap_root)
+    python = runtime_binding.python
+    manifest_path = runtime_binding.manifest_path
+    sentinel = runtime_binding.sentinel
+    manifest_source = controller._read_bound(manifest_path)
+    manifest = json.loads(manifest_source)
+    child_environment = controller._base_environment()
+    child_environment.update(
+        {
+            controller._SENTINEL: sentinel,
+            controller._MANIFEST: str(manifest_path),
+            controller._MANIFEST_DIGEST: hashlib.sha256(manifest_source).hexdigest(),
+            "VIRTUAL_ENV": str(python.parent.parent),
+            "PYTHONPATH": str(manifest["build_backend_root"]),
+        }
+    )
+    argv = [
+        "--repo",
+        str(repository),
+        "--outputs",
+        str(tmp_path / "route-outputs"),
+        "--tree-mode",
+        "working-pre-cutover",
+        "--internal-check",
+        "repository_hygiene",
+        "--json",
+    ]
+    args = controller._parser().parse_args(argv)
+
+    class Input:
+        buffer = io.BytesIO(sentinel.encode("ascii") + b"\n")
+
+    with monkeypatch.context() as binding_patch:
+        binding_patch.setattr(controller.sys, "stdin", Input())
+        binding_patch.setattr(controller.sys, "executable", str(python))
+        for key, value in child_environment.items():
+            binding_patch.setenv(key, value)
+        assert controller._child_binding(args) is False
+
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "scripts/check_release_gate.py"],
+        cwd=repository,
+        check=True,
+    )
+    controller_path.write_text(
+        "raise RuntimeError('mutable checkout controller executed')\n",
+        encoding="utf-8",
+    )
+
+    returncode, document = controller._run_bound_child(
+        python,
+        repository,
+        child_environment,
+        argv,
+        sentinel,
+        timeout=300,
+    )
+
+    assert returncode == 0
+    assert document["passed"] is True
+
+
+def test_parent_rejects_committed_controller_swap_before_process_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for name in (
+        "pylock.3.11.toml",
+        "pylock.3.12.toml",
+        "scripts/check_release_gate.py",
+    ):
+        source = ROOT / name
+        destination = repository / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    controller_path = repository / "scripts" / "check_release_gate.py"
+    spec = importlib.util.spec_from_file_location("tamper_release_controller", controller_path)
+    assert spec is not None and spec.loader is not None
+    controller = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(controller)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap_root.mkdir()
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    runtime_binding = controller._bootstrap_environment(repository, bootstrap_root)
+    committed_controller = bootstrap_root / "committed-source" / "scripts" / "check_release_gate.py"
+    committed_controller.write_text(
+        "raise RuntimeError('swapped committed controller executed')\n",
+        encoding="utf-8",
+    )
+    process_creations = 0
+
+    def reject_process_creation(*_args: object, **_kwargs: object) -> object:
+        nonlocal process_creations
+        process_creations += 1
+        raise AssertionError("committed controller tamper reached process creation")
+
+    monkeypatch.setattr(
+        controller,
+        "_bootstrap_environment",
+        lambda *_args: runtime_binding,
+    )
+    monkeypatch.setattr(controller.subprocess, "Popen", reject_process_creation)
+    argv = [
+        "--repo",
+        str(repository),
+        "--outputs",
+        str(tmp_path / "route-outputs"),
+        "--tree-mode",
+        "working-pre-cutover",
+        "--internal-check",
+        "repository_hygiene",
+        "--json",
+    ]
+
+    assert controller.main(argv) == 2
+    output = capsys.readouterr().out
+    assert output.count("\n") == 1
+    document = json.loads(output)
+    assert document["passed"] is False
+    assert document["errors"] == ["release gate bootstrap failed"]
+    assert process_creations == 0
+
+
+def test_verified_controller_bytes_cannot_be_swapped_at_process_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for name in (
+        "pylock.3.11.toml",
+        "pylock.3.12.toml",
+        "scripts/check_release_gate.py",
+    ):
+        source = ROOT / name
+        destination = repository / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    controller_path = repository / "scripts" / "check_release_gate.py"
+    spec = importlib.util.spec_from_file_location("toctou_release_controller", controller_path)
+    assert spec is not None and spec.loader is not None
+    controller = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(controller)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap_root.mkdir()
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    bootstrap = controller._bootstrap_environment(repository, bootstrap_root)
+    committed_controller = bootstrap_root / "committed-source" / "scripts" / "check_release_gate.py"
+    unchecked_marker = tmp_path / "unchecked-controller-executed.txt"
+    replacement = (
+        "from pathlib import Path\n"
+        f"Path({str(unchecked_marker)!r}).write_text('unchecked', encoding='utf-8')\n"
+        "print('{\"passed\":true}')\n"
+    )
+    real_popen = controller.subprocess.Popen
+    process_creations = 0
+
+    def swap_at_process_creation(*args: object, **kwargs: object) -> object:
+        nonlocal process_creations
+        process_creations += 1
+        if process_creations == 1:
+            committed_controller.write_text(replacement, encoding="utf-8")
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(controller, "_bootstrap_environment", lambda *_args: bootstrap)
+    monkeypatch.setattr(controller.subprocess, "Popen", swap_at_process_creation)
+    argv = [
+        "--repo",
+        str(repository),
+        "--outputs",
+        str(tmp_path / "route-outputs"),
+        "--tree-mode",
+        "working-pre-cutover",
+        "--internal-check",
+        "repository_hygiene",
+        "--json",
+    ]
+
+    assert controller.main(argv) == 2
+    output = capfd.readouterr().out
+    assert output.count("\n") == 1
+    document = json.loads(output)
+    assert document["passed"] is False
+    assert document["errors"] == ["release gate bootstrap failed"]
+    assert process_creations == 1
+    assert not unchecked_marker.exists()
+
+
+def test_real_reexec_preserves_exact_relative_public_operands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for name in (
+        "pylock.3.11.toml",
+        "pylock.3.12.toml",
+        "scripts/check_release_gate.py",
+    ):
+        source = ROOT / name
+        destination = repository / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    controller_path = repository / "scripts" / "check_release_gate.py"
+    spec = importlib.util.spec_from_file_location("relative_release_controller", controller_path)
+    assert spec is not None and spec.loader is not None
+    controller = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(controller)
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.chdir(repository)
+    argv = [
+        "--repo",
+        ".",
+        "--outputs",
+        "outputs",
+        "--tree-mode",
+        "working-pre-cutover",
+        "--internal-check",
+        "repository_hygiene",
+        "--json",
+    ]
+
+    assert controller.main(argv) == 0
+    output = capfd.readouterr().out
+    assert output.count("\n") == 1
+    assert json.loads(output)["passed"] is True
+
+
+def test_ci_source_baseline_rejects_ref_mutated_before_capture(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    (repository / "tracked.txt").write_text("first", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "first",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    expected = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (repository / "tracked.txt").write_text("second", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "second",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    root = tmp_path / "baseline"
+    root.mkdir()
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="event commit"):
+        BOOTSTRAP._materialize_committed_source(repository, root, expected)
+    assert list(root.iterdir()) == []
+
+
+def test_ci_source_baseline_rejects_unsafe_archive_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    (repository / "tracked.txt").write_text("safe", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    expected = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    original_run = BOOTSTRAP._run
+
+    def unsafe_archive(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        timeout: int = 900,
+    ) -> None:
+        if "archive" not in command:
+            original_run(command, cwd=cwd, env=env, timeout=timeout)
+            return
+        archive_path = Path(command[command.index("-o") + 1])
+        with tarfile.open(archive_path, "w") as archive:
+            member = tarfile.TarInfo("linked")
+            member.type = tarfile.SYMTYPE
+            member.linkname = "../outside"
+            archive.addfile(member)
+
+    monkeypatch.setattr(BOOTSTRAP, "_run", unsafe_archive)
+    root = tmp_path / "baseline"
+    root.mkdir()
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="archive is unsafe"):
+        BOOTSTRAP._materialize_committed_source(repository, root, expected)
+    assert not (tmp_path / "outside").exists()
+
+
+def test_ci_source_baseline_rejects_non_regular_git_tree_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commit_oid = "1" * 40
+
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_git",
+        lambda _repository, *arguments: (
+            f"120000 blob {'2' * 40}\tlinked\0"
+            if arguments == ("ls-tree", "-rz", "--full-tree", commit_oid)
+            else (_ for _ in ()).throw(AssertionError(arguments))
+        ),
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="non-regular"):
+        BOOTSTRAP._assert_regular_git_tree(tmp_path, commit_oid)
+
+
+def test_materialized_source_inventory_binds_sorted_content_and_git_modes(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    (repository / "z-script.sh").write_bytes(b"#!/bin/sh\nexit 0\n")
+    (repository / "a-data.txt").write_bytes(b"data\n")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "update-index", "--chmod=+x", "z-script.sh"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    expected_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    root = tmp_path / "baseline"
+    root.mkdir()
+
+    binding = BOOTSTRAP._materialize_committed_source(
+        repository, root, expected_commit
+    )
+    expected_inventory = (
+        {
+            "path": "a-data.txt",
+            "sha256": hashlib.sha256(b"data\n").hexdigest(),
+            "git_mode": "100644",
+        },
+        {
+            "path": "z-script.sh",
+            "sha256": hashlib.sha256(b"#!/bin/sh\nexit 0\n").hexdigest(),
+            "git_mode": "100755",
+        },
+    )
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            expected_inventory,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    ).hexdigest()
+
+    assert binding.source_root == root / "committed-source"
+    assert binding.commit_oid == expected_commit
+    assert binding.inventory == expected_inventory
+    assert binding.inventory_sha256 == expected_digest
+    BOOTSTRAP._assert_source_inventory(binding)
+
+
+@pytest.mark.parametrize("mutation", ("content", "inventory_mode"))
+def test_materialized_source_revalidation_rejects_content_or_mode_mutation(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    (repository / "tracked.txt").write_bytes(b"original")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    root = tmp_path / "baseline"
+    root.mkdir()
+    binding = BOOTSTRAP._materialize_committed_source(repository, root)
+    if mutation == "content":
+        (binding.source_root / "tracked.txt").write_bytes(b"changed")
+    else:
+        binding.inventory[0]["git_mode"] = "100755"
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="source inventory"):
+        BOOTSTRAP._assert_source_inventory(binding)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction semantics")
+def test_source_inventory_rejects_nested_file_redirected_by_ancestor_junction(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "committed-source"
+    source_root.mkdir()
+    outside = tmp_path / "outside"
+    (outside / "sub").mkdir(parents=True)
+    payload = b"inventory-identical-but-outside-root\n"
+    (outside / "sub" / "module.py").write_bytes(payload)
+    junction = source_root / "pkg"
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.skip("junction creation unavailable")
+    inventory = (
+        {
+            "path": "pkg/sub/module.py",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "git_mode": "100644",
+        },
+    )
+    inventory_sha256 = hashlib.sha256(
+        json.dumps(
+            inventory,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    ).hexdigest()
+    binding = BOOTSTRAP._SourceBinding(
+        source_root=source_root,
+        commit_oid="1" * 40,
+        tree_oid="2" * 40,
+        inventory=inventory,
+        inventory_sha256=inventory_sha256,
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="source inventory.*unsafe"):
+        BOOTSTRAP._assert_source_inventory(binding)
+
+
+def test_safe_extract_preserves_allowed_committed_file_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_path = tmp_path / "source.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        for name, mode in (("data.txt", 0o644), ("script.sh", 0o755)):
+            payload = name.encode("ascii")
+            member = tarfile.TarInfo(name)
+            member.mode = mode
+            member.size = len(payload)
+            archive.addfile(member, io.BytesIO(payload))
+    observed: list[tuple[str, int]] = []
+    real_chmod = os.chmod
+
+    def record_mode(path: Path, mode: int) -> None:
+        observed.append((Path(path).name, mode))
+        real_chmod(path, mode)
+
+    monkeypatch.setattr(BOOTSTRAP.os, "chmod", record_mode)
+    destination = tmp_path / "source"
+    destination.mkdir()
+
+    BOOTSTRAP._safe_extract_archive(archive_path, destination)
+
+    assert observed == [("data.txt", 0o644), ("script.sh", 0o755)]
+
+
+@pytest.mark.parametrize("startup_name", ("payload.pth", "sitecustomize.py", "usercustomize.py"))
+def test_dependency_wheel_inventory_rejects_python_startup_surfaces(
+    tmp_path: Path,
+    startup_name: str,
+) -> None:
+    wheel = tmp_path / "dependency.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("dependency/__init__.py", "")
+        archive.writestr(startup_name, "raise RuntimeError('executed')")
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="startup surface"):
+        BOOTSTRAP._wheel_inventory(wheel)
+
+
+def test_local_wheelhouse_audit_requires_exact_complete_hash_bound_closure(
+    tmp_path: Path,
+) -> None:
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    wheels: list[tuple[str, bytes]] = []
+    for name in ("alpha-1.0-py3-none-any.whl", "beta-2.0-py3-none-any.whl"):
+        path = wheelhouse / name
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(f"{name.split('-', 1)[0]}/__init__.py", "")
+        wheels.append((name, path.read_bytes()))
+    rows = {
+        ("alpha", "1.0"): {
+            "name": "alpha",
+            "version": "1.0",
+            "wheels": [
+                {
+                    "name": wheels[0][0],
+                    "url": "https://example.invalid/alpha.whl",
+                    "sha256": hashlib.sha256(wheels[0][1]).hexdigest(),
+                }
+            ],
+        },
+        ("beta", "2.0"): {
+            "name": "beta",
+            "version": "2.0",
+            "wheels": [
+                {
+                    "name": wheels[1][0],
+                    "url": "https://example.invalid/beta.whl",
+                    "sha256": hashlib.sha256(wheels[1][1]).hexdigest(),
+                }
+            ],
+        },
+    }
+
+    artifacts = BOOTSTRAP._audit_local_wheelhouse(wheelhouse, rows)
+
+    assert [row["name"] for row in artifacts] == ["alpha", "beta"]
+    assert all(row["files"] for row in artifacts)
+    (wheelhouse / wheels[1][0]).unlink()
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="wheelhouse closure"):
+        BOOTSTRAP._audit_local_wheelhouse(wheelhouse, rows)
+
+
+def test_setuptools_startup_hook_is_never_installed_with_dependencies(
+    tmp_path: Path,
+) -> None:
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    wheel = wheelhouse / "setuptools-83.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("setuptools/__init__.py", "__version__ = '83.0.0'")
+        archive.writestr(
+            "distutils-precedence.pth", "import _distutils_hack; _distutils_hack.add_shim()"
+        )
+    rows = {
+        ("setuptools", "83.0.0"): {
+            "name": "setuptools",
+            "version": "83.0.0",
+            "wheels": [
+                {
+                    "name": wheel.name,
+                    "url": "https://example.invalid/setuptools.whl",
+                    "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+                }
+            ],
+        }
+    }
+
+    artifact = BOOTSTRAP._audit_local_wheelhouse(wheelhouse, rows)[0]
+    backend = BOOTSTRAP._extract_locked_build_backend(artifact, tmp_path / "backend")
+
+    assert artifact["install"] is False
+    assert artifact["allowed_startup_surfaces"] == ["distutils-precedence.pth"]
+    assert (backend / "setuptools" / "__init__.py").is_file()
+    assert not list(backend.rglob("*.pth"))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("missing_hooks", "wrong_hooks", "wrong_disposition", "wrong_inventory"),
+)
+def test_manifest_artifact_validation_fails_closed_on_policy_mismatch(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    wheel = wheelhouse / "coverage-7.15.2-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("coverage/__init__.py", "")
+        archive.writestr("a1_coverage.pth", "import coverage")
+    locked = {
+        "name": "coverage",
+        "version": "7.15.2",
+        "wheels": [
+            {
+                "name": wheel.name,
+                "url": "https://example.invalid/coverage.whl",
+                "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+            }
+        ],
+    }
+    artifact = BOOTSTRAP._audit_local_wheelhouse(
+        wheelhouse, {("coverage", "7.15.2"): locked}
+    )[0]
+    if mutation == "missing_hooks":
+        artifact.pop("allowed_startup_surfaces")
+    elif mutation == "wrong_hooks":
+        artifact["allowed_startup_surfaces"] = ["wrong.pth"]
+    elif mutation == "wrong_disposition":
+        artifact["install"] = True
+    else:
+        artifact["files"] = [*artifact["files"], {"path": "extra", "size": 0, "sha256": "0" * 64}]
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="artifact policy"):
+        BOOTSTRAP._validate_locked_artifact(artifact, locked, tmp_path)
+
+
+def test_manifest_artifact_validation_accepts_exact_central_policy(
+    tmp_path: Path,
+) -> None:
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    wheel = wheelhouse / "coverage-7.15.2-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("coverage/__init__.py", "")
+        archive.writestr("a1_coverage.pth", "import coverage")
+    locked = {
+        "name": "coverage",
+        "version": "7.15.2",
+        "wheels": [
+            {
+                "name": wheel.name,
+                "url": "https://example.invalid/coverage.whl",
+                "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+            }
+        ],
+    }
+    artifact = BOOTSTRAP._audit_local_wheelhouse(
+        wheelhouse, {("coverage", "7.15.2"): locked}
+    )[0]
+
+    BOOTSTRAP._validate_locked_artifact(artifact, locked, tmp_path)
+
+
+def test_direct_ci_source_revalidation_accepts_intact_then_rejects_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    commit_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    github_environment = tmp_path / "github-env"
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("GITHUB_SHA", commit_oid)
+    monkeypatch.setenv("GITHUB_ENV", str(github_environment))
+    baseline_args = [
+        "--repo",
+        str(repository),
+        "--outputs",
+        str(runner_temp / "unused-outputs"),
+        "--locked-check",
+        "ci-source-baseline",
+        "--json",
+    ]
+
+    assert BOOTSTRAP.main(baseline_args) == 0
+    capsys.readouterr()
+    for line in github_environment.read_text(encoding="utf-8").splitlines():
+        key, value = line.split("=", 1)
+        monkeypatch.setenv(key, value)
+    revalidate_args = [
+        "--repo",
+        str(repository),
+        "--outputs",
+        str(runner_temp / "unused-outputs"),
+        "--locked-check",
+        "ci-source-revalidate",
+        "--json",
+    ]
+
+    assert BOOTSTRAP.main(revalidate_args) == 0
+    assert json.loads(capsys.readouterr().out)["passed"] is True
+    source_root = Path(os.environ["HSCONFIG_CI_SOURCE_ROOT"])
+    (source_root / "README.md").write_bytes(b"mutated")
+    assert BOOTSTRAP.main(revalidate_args) == 2
+    assert json.loads(capsys.readouterr().out)["passed"] is False
 
 
 @pytest.mark.parametrize("mutation", ("content", "replacement"))
@@ -1315,12 +2492,22 @@ def test_parent_bounds_and_validates_child_stdout_before_forwarding(
 
     if error is None:
         assert BOOTSTRAP._run_bound_child(
-            Path(sys.executable), tmp_path, {}, [], "d" * 64
+            Path(sys.executable),
+            tmp_path,
+            {},
+            [],
+            "d" * 64,
+            controller_path=Path(BOOTSTRAP.__file__),
         ) == (0, {"passed": True})
     else:
         with pytest.raises(BOOTSTRAP._BootstrapError, match=error):
             BOOTSTRAP._run_bound_child(
-                Path(sys.executable), tmp_path, {}, [], "d" * 64
+                Path(sys.executable),
+                tmp_path,
+                {},
+                [],
+                "d" * 64,
+                controller_path=Path(BOOTSTRAP.__file__),
             )
 
 
@@ -1383,7 +2570,12 @@ def test_bootstrap_thread_setup_failure_closes_tree_pipes_and_reaps(
 
     with pytest.raises(expected):
         BOOTSTRAP._run_bound_child(
-            Path(sys.executable), tmp_path, {}, [], "a" * 64
+            Path(sys.executable),
+            tmp_path,
+            {},
+            [],
+            "a" * 64,
+            controller_path=Path(BOOTSTRAP.__file__),
         )
 
     assert events == ["lease", "kill", "wait"]
@@ -1460,7 +2652,12 @@ def test_bootstrap_state_setup_baseexception_after_popen_closes_tree_and_pipes(
 
     with pytest.raises(expected):
         BOOTSTRAP._run_bound_child(
-            Path(sys.executable), tmp_path, {}, [], "c" * 64
+            Path(sys.executable),
+            tmp_path,
+            {},
+            [],
+            "c" * 64,
+            controller_path=Path(BOOTSTRAP.__file__),
         )
 
     assert events == ["lease_init", "lease", "kill", "wait"]
@@ -1514,7 +2711,12 @@ def test_bootstrap_reader_error_after_valid_json_fails_closed(
 
     with pytest.raises(BOOTSTRAP._BootstrapError, match="stdout read failed"):
         BOOTSTRAP._run_bound_child(
-            Path(sys.executable), tmp_path, {}, [], "b" * 64
+            Path(sys.executable),
+            tmp_path,
+            {},
+            [],
+            "b" * 64,
+            controller_path=Path(BOOTSTRAP.__file__),
         )
 
     assert process.stdin.closed is True
@@ -1632,6 +2834,7 @@ def test_bootstrap_parent_failure_terminates_stubborn_descendant_tree(
             [],
             "f" * 64,
             timeout=1,
+            controller_path=child_script,
         )
     time.sleep(3)
 
@@ -1656,7 +2859,12 @@ def test_parent_completes_bootstrap_cleanup_before_returning_child_json(
     monkeypatch.setattr(
         BOOTSTRAP,
         "_bootstrap_environment",
-        lambda repository, bootstrap: (python, manifest, "e" * 64),
+        lambda repository, bootstrap: BOOTSTRAP._RuntimeBootstrapBinding(
+            python=python,
+            manifest_path=manifest,
+            manifest_sha256=hashlib.sha256(b"{}").hexdigest(),
+            sentinel="e" * 64,
+        ),
     )
     monkeypatch.setattr(BOOTSTRAP, "_read_bound", lambda *_args, **_kwargs: b"{}")
     monkeypatch.setattr(

@@ -45,22 +45,46 @@ scan; it never marks `final_release_ready=true`. Candidate mode requires a
 detached candidate tree and an explicitly verified outputs root. Final mode is
 the default and permits no historical exception.
 
-This command is the local Clean-OID producer/verifier, not the current legacy CI
-producer. The legacy `full-test-suite` workflow does not invoke it and does not
-depend on the ignored local `outputs/` tree; that workflow still installs the
-development package, runs Ruff, runs the full pytest suite, and audits
-dependencies. Task 8 owns the later locked-CI consolidation. The command's
-stdlib-only parent selects the current Python-minor lock. Only Python 3.11 and
+This command is the local Clean-OID producer/verifier. The single locked `ci`
+workflow has `contract`, `test`, `package`, and `security` jobs; it reuses the
+bound parent only for locked coverage and the canonical internal repository
+checks, plus a stdlib-only event-commit baseline before dependency downloads.
+The baseline binds `github.sha`, `HEAD`, the tree OID, and clean status, rejects
+non-regular Git tree entries, records the sorted path/Git-mode/content-SHA256
+inventory, and extracts the exact-OID archive through the existing strict
+archive boundary. Source-inventory validation checks the root and every
+directory ancestor before file reads, rejecting symlinks, junctions, reparse
+points, and resolved paths outside the materialized root even when their bytes
+match. Dependency installation is wheel-only for Windows x64 and
+Linux x86_64. It does not claim final GitHub governance or gameplay validation.
+The command's stdlib-only parent selects the current
+Python-minor lock. Only Python 3.11 and
 3.12 are canonical because those are the committed release locks; Python 3.13
 or newer produces exactly one failure JSON document with exit code 2. The
 parent upgrades the fresh
 environment from the exact locked
-pip wheel by URL and SHA-256, installs the exact 43-package graph, and builds the
-local package from `git archive HEAD` in external disposable storage. The child
-starts only after the manifest binds the interpreter, repository, commit, tree,
-lock, selected wheel inventories, and installed RECORD payloads. No ambient
-environment, plugin, cached bytecode, or pre-existing virtual environment is an
-authority input.
+pip wheel by URL and SHA-256 in a venv created without `ensurepip`, audits all 43
+locked wheels before use, and installs the 41 wheels without interpreter-startup
+surfaces from the local wheelhouse. The exact Setuptools and Coverage wheels are
+instead exposed through a revalidated overlay with their `.pth` hooks omitted.
+The local package is built from a second byte/mode/digest-identical committed
+source materialization in external disposable storage. The child starts only
+after the manifest binds the interpreter, repository, commit, tree, source
+inventory digest, lock, selected wheel inventories, startup-free overlay, and
+local wheel. It executes only the controller under the manifest-bound
+`committed-source/scripts/` directory. Before process creation, the trusted
+parent revalidates the complete committed-source inventory and the controller's
+exact path, Git mode, bytes, SHA256, inventory row, and digest. The bootstrap
+producer returns the digest of the exact manifest bytes it wrote, and the
+parent sends the already verified controller bytes through the gated child
+transport instead of reopening the executable source by path. The child then
+independently verifies its own path/content against that source inventory. The
+child runs from the original invocation directory, preserving relative
+`--repo` and `--outputs` operands while retaining the exact committed script
+path. One package/version policy is reused for wheel audit and child binding,
+including exact install disposition, allowed startup-hook set, and full wheel
+re-inventory. No ambient environment, plugin, cached bytecode, or pre-existing
+virtual environment is an authority input.
 
 The release gate is the only canonical producer/verifier. It requires
 `outputs/` to contain exactly the twelve catalog deck directories, binds the
