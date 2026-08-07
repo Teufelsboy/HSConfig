@@ -856,6 +856,8 @@ def _bound_nonlocal_distribution(
         "url": "https://example.invalid/pip.whl",
         "wheel_path": str(wheel_path),
         "sha256": digest,
+        "install": True,
+        "allowed_startup_surfaces": [],
         "files": runner._wheel_inventory(wheel_source),
         "_wheel_source": wheel_source,
     }
@@ -902,6 +904,44 @@ def test_distribution_origin_accepts_manifest_bound_pip_direct_url(
     )
 
 
+def test_distribution_origin_accepts_hash_bound_initial_pip_bootstrap_wheel(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, _direct_url = _bound_nonlocal_distribution(
+        tmp_path,
+        monkeypatch,
+    )
+    bootstrap = tmp_path / "bootstrap"
+    wheel_name = "pip-26.1.2-py3-none-any.whl"
+    initial_wheel = bootstrap / wheel_name
+    initial_wheel.write_bytes(artifact["_wheel_source"])
+    manifest_wheel = bootstrap / "dependency-wheels" / wheel_name
+    manifest_wheel.parent.mkdir()
+    manifest_wheel.write_bytes(artifact["_wheel_source"])
+    artifact["wheel_path"] = str(manifest_wheel)
+    direct_url = json.dumps(
+        {
+            "archive_info": {
+                "hash": f"sha256={artifact['sha256']}",
+                "hashes": {"sha256": artifact["sha256"]},
+            },
+            "url": initial_wheel.resolve(strict=True).as_uri(),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    distribution.current_direct_url = direct_url
+    _set_runtime_direct_url_payload(distribution, direct_url, write_payload=True)
+
+    runner._assert_distribution_origin(
+        distribution,
+        local_project=False,
+        artifact=artifact,
+    )
+
+
 def test_distribution_origin_preserves_index_install_without_direct_url(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -917,6 +957,49 @@ def test_distribution_origin_preserves_index_install_without_direct_url(
         distribution,
         local_project=False,
         artifact=artifact,
+    )
+
+
+def test_distribution_origin_accepts_manifest_validated_raw_wheel_overlay(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    root = tmp_path / "bootstrap" / "build-backend"
+    dist_info = root / "coverage-7.15.2.dist-info"
+    dist_info.mkdir(parents=True)
+    package = root / "coverage.py"
+    package.write_bytes(b"VERSION = '7.15.2'\n")
+    (dist_info / "WHEEL").write_text("Wheel-Version: 1.0\n", encoding="utf-8")
+    (dist_info / "RECORD").write_text("coverage.py,,\n", encoding="utf-8")
+
+    class Distribution:
+        def read_text(self, filename: str) -> str | None:
+            return {
+                "INSTALLER": None,
+                "WHEEL": "Wheel-Version: 1.0\n",
+                "RECORD": "coverage.py,,\n",
+                "direct_url.json": None,
+            }.get(filename)
+
+        def locate_file(self, filename: str) -> Path:
+            del filename
+            return root
+
+    artifact = {
+        "name": "coverage",
+        "version": "7.15.2",
+        "install": False,
+        "allowed_startup_surfaces": ["a1_coverage.pth"],
+        "_runtime_root": root,
+    }
+
+    assert (
+        runner._assert_distribution_origin(
+            Distribution(),
+            local_project=False,
+            artifact=artifact,
+        )
+        == set()
     )
 
 
@@ -1380,13 +1463,56 @@ def _write_local_runtime_manifest(
     lock.write_text("packages = []\n", encoding="utf-8")
     monkeypatch.setattr(runner, "LOCK_FILE", lock)
     sentinel = "c" * 64
-    manifest = tmp_path / "bootstrap" / "manifest.json"
+    bootstrap_root = tmp_path / "bootstrap"
+    source_root = bootstrap_root / "committed-source"
+    source_root.mkdir()
+    listing = subprocess.run(
+        ("git", "-C", str(repository), "ls-tree", "-rz", "--full-tree", "HEAD"),
+        check=True,
+        capture_output=True,
+    ).stdout
+    source_inventory: list[dict[str, str]] = []
+    for record in listing[:-1].split(b"\0"):
+        metadata, raw_path = record.split(b"\t", 1)
+        mode, object_type, oid = metadata.split(b" ")
+        assert object_type == b"blob"
+        relative = raw_path.decode("utf-8")
+        payload = subprocess.run(
+            ("git", "-C", str(repository), "cat-file", "blob", oid.decode("ascii")),
+            check=True,
+            capture_output=True,
+        ).stdout
+        destination = source_root.joinpath(*relative.split("/"))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        source_inventory.append(
+            {
+                "path": relative,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "git_mode": mode.decode("ascii"),
+            }
+        )
+    source_inventory.sort(key=lambda row: row["path"])
+    source_inventory_sha256 = hashlib.sha256(
+        json.dumps(
+            source_inventory,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    ).hexdigest()
+    build_backend_root = bootstrap_root / "build-backend"
+    build_backend_root.mkdir()
+    manifest = bootstrap_root / "runtime-manifest.json"
     document = {
         "schema_version": 1,
         "python_minor": f"{sys.version_info.major}.{sys.version_info.minor}",
         "repository": str(repository.resolve(strict=True)),
         "commit_oid": artifact["_commit_oid"],
         "tree_oid": artifact["_tree_oid"],
+        "source_inventory": source_inventory,
+        "source_inventory_sha256": source_inventory_sha256,
+        "build_backend_root": str(build_backend_root),
         "environment_root": str(Path(sys.prefix).resolve(strict=True)),
         "lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
         "sentinel_sha256": hashlib.sha256(sentinel.encode("ascii")).hexdigest(),
@@ -1394,7 +1520,8 @@ def _write_local_runtime_manifest(
         "local_project": {
             key: artifact[key]
             for key in ("name", "version", "wheel_path", "sha256", "files")
-        },
+        }
+        | {"source_inventory_sha256": source_inventory_sha256},
     }
     source = json.dumps(document, separators=(",", ":"), sort_keys=True).encode("utf-8")
     manifest.write_bytes(source)
@@ -1402,6 +1529,211 @@ def _write_local_runtime_manifest(
     monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST", str(manifest))
     monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST_SHA256", hashlib.sha256(source).hexdigest())
     return lock
+
+
+def _runtime_source_inventory_document(
+    rows: list[dict[str, str]],
+) -> dict[str, object]:
+    digest = hashlib.sha256(
+        json.dumps(
+            rows,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    ).hexdigest()
+    return {
+        "source_inventory": rows,
+        "source_inventory_sha256": digest,
+        "local_project": {"source_inventory_sha256": digest},
+    }
+
+
+def _create_directory_redirect(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        environment = os.environ.copy()
+        environment["HSCONFIG_TEST_LINK_PATH"] = str(link)
+        environment["HSCONFIG_TEST_LINK_TARGET"] = str(target)
+        subprocess.run(
+            (
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "New-Item -ItemType Junction "
+                "-Path $env:HSCONFIG_TEST_LINK_PATH "
+                "-Target $env:HSCONFIG_TEST_LINK_TARGET | Out-Null",
+            ),
+            check=True,
+            env=environment,
+        )
+        return
+    link.symlink_to(target, target_is_directory=True)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction regression")
+def test_runtime_source_inventory_rejects_nested_junction(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    manifest = tmp_path / "bootstrap" / "runtime-manifest.json"
+    source_root = manifest.parent / "committed-source"
+    real_root = source_root / "real"
+    payload = b"VALUE = 1\n"
+    (real_root / "nested").mkdir(parents=True)
+    (real_root / "nested" / "module.py").write_bytes(payload)
+    _create_directory_redirect(source_root / "alias", real_root)
+    digest = hashlib.sha256(payload).hexdigest()
+    rows = [
+        {"path": relative, "sha256": digest, "git_mode": "100644"}
+        for relative in ("alias/nested/module.py", "real/nested/module.py")
+    ]
+
+    with pytest.raises(runner.RuntimeLockError, match="runtime bootstrap.*unsafe"):
+        runner._validate_runtime_source_inventory(
+            _runtime_source_inventory_document(rows),
+            manifest,
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction regression")
+def test_runtime_overlay_rejects_nested_junction(tmp_path: Path) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    build_backend_root = tmp_path / "build-backend"
+    real_root = build_backend_root / "real"
+    payload = b"VALUE = 1\n"
+    real_root.mkdir(parents=True)
+    (real_root / "module.py").write_bytes(payload)
+    _create_directory_redirect(build_backend_root / "alias", real_root)
+    digest = hashlib.sha256(payload).hexdigest()
+    artifacts = [
+        {
+            "install": False,
+            "allowed_startup_surfaces": [],
+            "files": [
+                {"path": relative, "size": len(payload), "sha256": digest}
+                for relative in ("real/module.py",)
+            ],
+        }
+    ]
+
+    with pytest.raises(runner.RuntimeLockError, match="overlay"):
+        runner._validate_runtime_overlay(artifacts, build_backend_root)
+
+
+def test_runtime_overlay_rejects_unmanifested_file(tmp_path: Path) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    build_backend_root = tmp_path / "build-backend"
+    build_backend_root.mkdir()
+    (build_backend_root / "unbound.py").write_text("VALUE = 1\n", encoding="utf-8")
+    artifacts = [
+        {
+            "install": False,
+            "allowed_startup_surfaces": [],
+            "files": [],
+        }
+    ]
+
+    with pytest.raises(runner.RuntimeLockError, match="overlay inventory differs"):
+        runner._validate_runtime_overlay(artifacts, build_backend_root)
+
+
+def test_runtime_git_mode_maps_posix_execute_bits(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+
+    assert runner._runtime_git_mode(stat.S_IFREG | 0o644) == "100644"
+    assert runner._runtime_git_mode(stat.S_IFREG | 0o755) == "100755"
+
+
+@pytest.mark.parametrize("mode", (0o666, 0o744, 0o700))
+def test_runtime_git_mode_rejects_noncanonical_posix_modes(
+    monkeypatch: MonkeyPatch,
+    mode: int,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+
+    with pytest.raises(runner.RuntimeLockError, match="mode"):
+        runner._runtime_git_mode(stat.S_IFREG | mode)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX executable mode regression")
+def test_runtime_source_inventory_rejects_git_mode_mismatch(
+    tmp_path: Path,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    manifest = tmp_path / "bootstrap" / "runtime-manifest.json"
+    source_root = manifest.parent / "committed-source"
+    source_root.mkdir(parents=True)
+    payload = b"VALUE = 1\n"
+    source_file = source_root / "module.py"
+    source_file.write_bytes(payload)
+    source_file.chmod(0o644)
+    rows = [
+        {
+            "path": "module.py",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "git_mode": "100755",
+        }
+    ]
+
+    with pytest.raises(runner.RuntimeLockError, match="source inventory differs"):
+        runner._validate_runtime_source_inventory(
+            _runtime_source_inventory_document(rows),
+            manifest,
+        )
+
+
+def test_current_bootstrap_manifest_is_consumed_by_runtime_lock_check(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    distribution, artifact, repository = _bound_local_distribution(
+        tmp_path,
+        monkeypatch,
+        installed_payload=b"VALUE = 1\n",
+    )
+    (repository / "pyproject.toml").write_text(
+        '[project]\nname = "hsconfig"\ndynamic = ["version"]\n',
+        encoding="utf-8",
+    )
+    (repository / "src" / "hsconfig" / "version.py").write_text(
+        '__version__ = "1.0.0"\n',
+        encoding="utf-8",
+    )
+    subprocess.run(("git", "-C", str(repository), "add", "."), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-q", "-m", "runtime manifest"),
+        check=True,
+    )
+    artifact["_commit_oid"] = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="ascii",
+    ).stdout.strip()
+    artifact["_tree_oid"] = subprocess.run(
+        ("git", "-C", str(repository), "rev-parse", "HEAD^{tree}"),
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="ascii",
+    ).stdout.strip()
+    lock = _write_local_runtime_manifest(tmp_path, monkeypatch, artifact, repository)
+    distribution.metadata = {"Name": "hsconfig"}
+    distribution.version = "1.0.0"
+    monkeypatch.setattr(runner.importlib_metadata, "distributions", lambda: (distribution,))
+    monkeypatch.setattr(runner, "_locked_versions", lambda lock_file: {})
+    monkeypatch.setattr(runner, "_locked_wheels", lambda lock_file: {})
+    monkeypatch.setattr(runner, "_assert_distribution_origin", lambda *args, **kwargs: set())
+    monkeypatch.setattr(runner, "_assert_runtime_tree_closed", lambda *args: None)
+
+    runner._assert_runtime_matches_lock(lock)
 
 
 def _commit_repository_path(
@@ -2046,6 +2378,52 @@ def test_distribution_origin_rejects_unbound_or_malformed_direct_url(
         )
 
 
+def test_bound_nonlocal_direct_url_accepts_installed_locked_dependency(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    bootstrap = tmp_path / "bootstrap"
+    environment = bootstrap / "environment"
+    environment.mkdir(parents=True)
+    wheel_path = bootstrap / "dependency-wheels" / "boolean_py-5.0-py3-none-any.whl"
+    wheel_path.parent.mkdir()
+    with zipfile.ZipFile(wheel_path, "w") as archive:
+        archive.writestr("boolean.py", b"VALUE = True\n")
+        archive.writestr("boolean_py-5.0.dist-info/WHEEL", b"Wheel-Version: 1.0\n")
+        archive.writestr("boolean_py-5.0.dist-info/RECORD", b"")
+    wheel_source = wheel_path.read_bytes()
+    digest = hashlib.sha256(wheel_source).hexdigest()
+    direct_url = json.dumps(
+        {
+            "archive_info": {
+                "hash": f"sha256={digest}",
+                "hashes": {"sha256": digest},
+            },
+            "url": wheel_path.resolve(strict=True).as_uri(),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    artifact: dict[str, object] = {
+        "name": "boolean-py",
+        "version": "5.0",
+        "url": "https://example.invalid/boolean_py.whl",
+        "wheel_path": str(wheel_path),
+        "sha256": digest,
+        "install": True,
+        "allowed_startup_surfaces": [],
+        "files": runner._wheel_inventory(wheel_source),
+        "_wheel_source": wheel_source,
+    }
+    monkeypatch.setattr(runner.sys, "prefix", str(environment))
+
+    assert runner._assert_bound_nonlocal_direct_url(direct_url, artifact) == (
+        "boolean_py-5.0.dist-info/direct_url.json",
+        direct_url.encode("utf-8"),
+    )
+
+
 def test_runtime_lock_detects_replacement_during_read(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -2092,6 +2470,71 @@ def test_coverage_run_uses_unique_external_paths_and_isolates_plugins() -> None:
             )
         assert not second.run_root.exists()
     assert not first.run_root.exists()
+
+
+def test_coverage_environment_rejects_ambient_tool_authorities(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    external_debug = tmp_path / "ambient-coverage-debug.log"
+    ambient = {
+        "COVERAGE_DEBUG": "config",
+        "COVERAGE_DEBUG_FILE": str(external_debug),
+        "COVERAGE_PROCESS_START": str(tmp_path / "ambient-coveragerc"),
+        "HYPOTHESIS_PROFILE": "ambient-profile",
+        "PYTEST_ADDOPTS": "--trace-config",
+        "PYTEST_PLUGINS": "ambient.plugin",
+        "PYTHONBREAKPOINT": "ambient.breakpoint",
+        "PYTHONINSPECT": "1",
+        "PYTHONPATH": str(tmp_path / "ambient-pythonpath"),
+        "PYTHONSTARTUP": str(tmp_path / "ambient-startup.py"),
+    }
+    for key, value in ambient.items():
+        monkeypatch.setenv(key, value)
+
+    with runner.isolated_coverage_environment() as run:
+        completed = subprocess.run(
+            (
+                sys.executable,
+                "-c",
+                "import coverage; c=coverage.Coverage(); c.start(); c.stop()",
+            ),
+            cwd=ROOT,
+            env=run.environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        inherited = sorted(set(ambient) & set(run.environment))
+
+    assert completed.returncode == 0, completed.stderr
+    assert inherited == ["PYTEST_PLUGINS"]
+    assert run.environment["PYTEST_PLUGINS"] == (
+        "pytest_cov.plugin,_hypothesis_pytestplugin"
+    )
+    assert not external_debug.exists()
+
+
+def test_coverage_environment_reconstructs_validated_runtime_pythonpath(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    source_root = tmp_path / "committed-source"
+    build_backend_root = tmp_path / "build-backend"
+    source_root.mkdir()
+    build_backend_root.mkdir()
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "ambient"))
+
+    with runner.isolated_coverage_environment(
+        (source_root, build_backend_root)
+    ) as run:
+        assert run.environment["PYTHONPATH"].split(os.pathsep) == [
+            str(source_root),
+            str(build_backend_root),
+        ]
 
 
 @pytest.mark.parametrize("kind", ("directory", "symlink", "hardlink"))

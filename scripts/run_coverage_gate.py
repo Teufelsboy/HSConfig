@@ -770,6 +770,240 @@ def _wheel_inventory(source: bytes) -> list[dict[str, object]]:
     return sorted(rows, key=lambda row: str(row["path"]))
 
 
+def _source_inventory_digest(inventory: object) -> str:
+    encoded = json.dumps(
+        inventory,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _runtime_git_mode(mode: int) -> str | None:
+    if sys.platform == "win32":
+        return None
+    materialized = stat.S_IMODE(mode)
+    if materialized == 0o644:
+        return "100644"
+    if materialized == 0o755:
+        return "100755"
+    raise RuntimeLockError("runtime bootstrap source mode is noncanonical")
+
+
+def _assert_runtime_path_ancestors(
+    root: Path,
+    parts: list[str],
+    *,
+    label: str,
+) -> Path:
+    current = root
+    try:
+        for part in parts[:-1]:
+            current = current / part
+            metadata = current.lstat()
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or _is_reparse(metadata)
+                or current.resolve(strict=True) != current
+            ):
+                raise RuntimeLockError(f"{label} is unsafe")
+    except RuntimeLockError:
+        raise
+    except OSError as exc:
+        raise RuntimeLockError(f"{label} is unsafe") from exc
+    return root.joinpath(*parts)
+
+
+def _runtime_regular_tree(root: Path, *, label: str) -> list[Path]:
+    try:
+        root_metadata = root.lstat()
+        if (
+            not stat.S_ISDIR(root_metadata.st_mode)
+            or stat.S_ISLNK(root_metadata.st_mode)
+            or _is_reparse(root_metadata)
+            or root.resolve(strict=True) != root
+        ):
+            raise RuntimeLockError(f"{label} is unsafe")
+        pending = [root]
+        files: list[Path] = []
+        while pending:
+            directory = pending.pop()
+            with os.scandir(directory) as entries:
+                for entry in sorted(entries, key=lambda item: item.name):
+                    path = Path(entry.path)
+                    metadata = path.lstat()
+                    if stat.S_ISLNK(metadata.st_mode) or _is_reparse(metadata):
+                        raise RuntimeLockError(f"{label} is unsafe")
+                    if stat.S_ISDIR(metadata.st_mode):
+                        if path.resolve(strict=True) != path:
+                            raise RuntimeLockError(f"{label} is unsafe")
+                        pending.append(path)
+                        continue
+                    if (
+                        not stat.S_ISREG(metadata.st_mode)
+                        or getattr(metadata, "st_nlink", 1) not in {0, 1}
+                        or path.resolve(strict=True) != path
+                    ):
+                        raise RuntimeLockError(f"{label} is unsafe")
+                    files.append(path)
+    except RuntimeLockError:
+        raise
+    except OSError as exc:
+        raise RuntimeLockError(f"{label} is unsafe") from exc
+    return sorted(files, key=lambda path: path.relative_to(root).as_posix())
+
+
+def _runtime_startup_surface_policy(name: object, version: object) -> tuple[bool, tuple[str, ...]]:
+    key = (_normalized_name(str(name)), str(version))
+    hooks = {
+        ("setuptools", "83.0.0"): ("distutils-precedence.pth",),
+        ("coverage", "7.15.2"): ("a1_coverage.pth",),
+    }.get(key, ())
+    return not hooks, hooks
+
+
+def _validate_runtime_source_inventory(
+    document: Mapping[str, object],
+    manifest_path: Path,
+) -> str:
+    raw_inventory = document.get("source_inventory")
+    inventory_sha256 = document.get("source_inventory_sha256")
+    local = document.get("local_project")
+    if (
+        not isinstance(raw_inventory, list)
+        or not isinstance(inventory_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", inventory_sha256) is None
+        or not isinstance(local, dict)
+        or local.get("source_inventory_sha256") != inventory_sha256
+    ):
+        raise RuntimeLockError("runtime bootstrap source inventory is invalid")
+    source_root_candidate = manifest_path.parent / "committed-source"
+    try:
+        root_metadata = source_root_candidate.lstat()
+        source_root = source_root_candidate.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeLockError("runtime bootstrap source inventory is invalid") from exc
+    if (
+        not stat.S_ISDIR(root_metadata.st_mode)
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or _is_reparse(root_metadata)
+        or source_root != source_root_candidate
+    ):
+        raise RuntimeLockError("runtime bootstrap source inventory is invalid")
+    inventory: list[dict[str, str]] = []
+    expected_paths: set[str] = set()
+    for row in raw_inventory:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"path", "sha256", "git_mode"}
+            or not isinstance(row.get("path"), str)
+            or row.get("git_mode") not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{64}", str(row.get("sha256"))) is None
+        ):
+            raise RuntimeLockError("runtime bootstrap source inventory is invalid")
+        relative = str(row["path"])
+        parts = relative.split("/")
+        if (
+            not parts
+            or not all(_is_canonical_repository_component(part) for part in parts)
+            or relative in expected_paths
+        ):
+            raise RuntimeLockError("runtime bootstrap source inventory is invalid")
+        expected_paths.add(relative)
+        path = _assert_runtime_path_ancestors(
+            source_root,
+            parts,
+            label="runtime bootstrap committed source",
+        )
+        try:
+            payload, metadata = _read_bound_regular_file(
+                path,
+                maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+                error_type=RuntimeLockError,
+                label="runtime bootstrap committed source",
+            )
+        except OSError as exc:
+            raise RuntimeLockError("runtime bootstrap source inventory is invalid") from exc
+        if (
+            source_root not in path.resolve(strict=True).parents
+            or hashlib.sha256(payload).hexdigest() != row["sha256"]
+            or (
+                (actual_mode := _runtime_git_mode(metadata.st_mode)) is not None
+                and actual_mode != row["git_mode"]
+            )
+        ):
+            raise RuntimeLockError("runtime bootstrap source inventory differs")
+        inventory.append(dict(row))
+    observed_paths = {
+        path.relative_to(source_root).as_posix()
+        for path in _runtime_regular_tree(
+            source_root,
+            label="runtime bootstrap source inventory",
+        )
+    }
+    if (
+        inventory != sorted(inventory, key=lambda row: row["path"])
+        or observed_paths != expected_paths
+        or _source_inventory_digest(inventory) != inventory_sha256
+    ):
+        raise RuntimeLockError("runtime bootstrap source inventory differs")
+    return inventory_sha256
+
+
+def _validate_runtime_overlay(
+    artifacts: list[dict[str, object]],
+    build_backend_root: Path,
+) -> None:
+    expected: dict[str, tuple[int, str]] = {}
+    for artifact in artifacts:
+        if artifact["install"] is not False:
+            continue
+        omitted = set(artifact["allowed_startup_surfaces"])
+        for row in artifact["files"]:
+            if not isinstance(row, dict) or set(row) != {"path", "size", "sha256"}:
+                raise RuntimeLockError("runtime bootstrap overlay inventory is invalid")
+            relative = row.get("path")
+            size = row.get("size")
+            digest = row.get("sha256")
+            if (
+                not isinstance(relative, str)
+                or not isinstance(size, int)
+                or size < 0
+                or re.fullmatch(r"[0-9a-f]{64}", str(digest)) is None
+            ):
+                raise RuntimeLockError("runtime bootstrap overlay inventory is invalid")
+            parts = relative.split("/")
+            if not parts or not all(
+                _is_canonical_repository_component(part) for part in parts
+            ):
+                raise RuntimeLockError("runtime bootstrap overlay inventory is invalid")
+            if relative in omitted:
+                continue
+            if relative in expected:
+                raise RuntimeLockError("runtime bootstrap overlay paths collide")
+            expected[relative] = (size, str(digest))
+    observed: dict[str, tuple[int, str]] = {}
+    for path in _runtime_regular_tree(
+        build_backend_root,
+        label="runtime bootstrap overlay",
+    ):
+        payload, _ = _read_bound_regular_file(
+            path,
+            maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+            error_type=RuntimeLockError,
+            label="runtime bootstrap overlay payload",
+        )
+        observed[path.relative_to(build_backend_root).as_posix()] = (
+            len(payload),
+            hashlib.sha256(payload).hexdigest(),
+        )
+    if observed != expected:
+        raise RuntimeLockError("runtime bootstrap overlay inventory differs")
+
+
 def _load_runtime_manifest(
     lock_file: Path,
     locked: Mapping[str, tuple[str, str]],
@@ -807,6 +1041,9 @@ def _load_runtime_manifest(
         "repository",
         "commit_oid",
         "tree_oid",
+        "source_inventory",
+        "source_inventory_sha256",
+        "build_backend_root",
         "environment_root",
         "lock_sha256",
         "sentinel_sha256",
@@ -822,8 +1059,19 @@ def _load_runtime_manifest(
     )
     try:
         environment_root = Path(document["environment_root"]).resolve(strict=True)
+        build_backend_candidate = Path(document["build_backend_root"])
+        build_backend_metadata = build_backend_candidate.lstat()
+        build_backend_root = build_backend_candidate.resolve(strict=True)
     except (OSError, TypeError) as exc:
         raise RuntimeLockError("runtime bootstrap manifest is invalid") from exc
+    if (
+        not stat.S_ISDIR(build_backend_metadata.st_mode)
+        or stat.S_ISLNK(build_backend_metadata.st_mode)
+        or _is_reparse(build_backend_metadata)
+        or build_backend_root != manifest_path.parent.resolve(strict=True) / "build-backend"
+    ):
+        raise RuntimeLockError("runtime bootstrap manifest binding differs")
+    source_inventory_sha256 = _validate_runtime_source_inventory(document, manifest_path)
     try:
         head = _bound_git_oid("HEAD")
         tree = _bound_git_oid("HEAD^{tree}")
@@ -857,9 +1105,21 @@ def _load_runtime_manifest(
         raise RuntimeLockError("runtime bootstrap artifact set is invalid")
     bound: dict[str, dict[str, object]] = {}
     for row in (*artifacts, local):
-        if not isinstance(row, dict) or set(row) != {
-            "name", "version", "wheel_path", "sha256", "files", *( {"url"} if row is not local else set())
-        }:
+        expected_row_keys = (
+            {"name", "version", "wheel_path", "sha256", "files", "source_inventory_sha256"}
+            if row is local
+            else {
+                "name",
+                "version",
+                "url",
+                "wheel_path",
+                "sha256",
+                "files",
+                "install",
+                "allowed_startup_surfaces",
+            }
+        )
+        if not isinstance(row, dict) or set(row) != expected_row_keys:
             raise RuntimeLockError("runtime bootstrap artifact row is invalid")
         name = row.get("name")
         version = row.get("version")
@@ -870,7 +1130,10 @@ def _load_runtime_manifest(
         if normalized in bound or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             raise RuntimeLockError("runtime bootstrap artifact row is invalid")
         if normalized == "hsconfig":
-            if version != str(document.get("local_project", {}).get("version")):
+            if (
+                version != str(document.get("local_project", {}).get("version"))
+                or row.get("source_inventory_sha256") != source_inventory_sha256
+            ):
                 raise RuntimeLockError("runtime bootstrap local artifact differs")
         else:
             if normalized not in locked or locked[normalized][1] != version:
@@ -878,6 +1141,12 @@ def _load_runtime_manifest(
             url = row.get("url")
             if not isinstance(url, str) or (url, digest) not in candidates[normalized]:
                 raise RuntimeLockError("runtime bootstrap artifact differs from project lock")
+            install, allowed_startup_surfaces = _runtime_startup_surface_policy(name, version)
+            if (
+                row.get("install") is not install
+                or row.get("allowed_startup_surfaces") != list(allowed_startup_surfaces)
+            ):
+                raise RuntimeLockError("runtime bootstrap artifact policy differs")
         wheel_path = Path(str(row.get("wheel_path", "")))
         try:
             wheel_resolved = wheel_path.resolve(strict=True)
@@ -899,9 +1168,12 @@ def _load_runtime_manifest(
         if normalized == "hsconfig":
             copied["_commit_oid"] = str(document["commit_oid"])
             copied["_tree_oid"] = str(document["tree_oid"])
+        elif copied["install"] is False:
+            copied["_runtime_root"] = build_backend_root
         bound[normalized] = copied
     if set(bound) != set(locked) | {"hsconfig"}:
         raise RuntimeLockError("runtime bootstrap artifact set differs")
+    _validate_runtime_overlay(artifacts, build_backend_root)
     return bound
 
 
@@ -1467,10 +1739,29 @@ def _assert_bound_nonlocal_direct_url(
             for path in inventory_paths
             if path.split("/", 1)[0].endswith(".dist-info")
         }
+        normalized_name = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_name)
         normalized_version = re.sub(r"[^A-Za-z0-9.]+", "_", artifact_version)
-        expected_dist_info = f"pip-{normalized_version}.dist-info"
+        expected_dist_info = f"{normalized_name}-{normalized_version}.dist-info"
         expected_direct_url_path = f"{expected_dist_info}/direct_url.json"
         direct_url_source = direct_url.encode("utf-8")
+        bound_origin_url = wheel_path.as_uri()
+        if (
+            _normalized_name(artifact_name) == "pip"
+            and payload.get("url") != bound_origin_url
+        ):
+            initial_wheel = (bootstrap_root / wheel_path.name).resolve(strict=True)
+            initial_source, _initial_identity = _read_bound_regular_file(
+                initial_wheel,
+                maximum_bytes=MAX_RUNTIME_ARTIFACT_BYTES,
+                error_type=RuntimeLockError,
+                label="initial pip bootstrap wheel",
+            )
+            if (
+                wheel_path.parent == bootstrap_root / "dependency-wheels"
+                and initial_wheel.parent == bootstrap_root
+                and initial_source == wheel_source
+            ):
+                bound_origin_url = initial_wheel.as_uri()
     except (
         json.JSONDecodeError,
         OSError,
@@ -1484,9 +1775,11 @@ def _assert_bound_nonlocal_direct_url(
     if (
         not isinstance(wheel_source, bytes)
         or not isinstance(artifact_name, str)
-        or _normalized_name(artifact_name) != "pip"
         or not isinstance(artifact_version, str)
+        or not normalized_name
         or not normalized_version
+        or artifact.get("install") is not True
+        or artifact.get("allowed_startup_surfaces") != []
         or re.fullmatch(r"[0-9a-f]{64}", digest) is None
         or bootstrap_root not in wheel_path.parents
         or ROOT in wheel_path.parents
@@ -1497,12 +1790,12 @@ def _assert_bound_nonlocal_direct_url(
         or f"{expected_dist_info}/RECORD" not in inventory_paths
         or payload
         != {
-            "archive_info": {
-                "hash": f"sha256={digest}",
-                "hashes": {"sha256": digest},
-            },
-            "url": wheel_path.as_uri(),
-        }
+                "archive_info": {
+                    "hash": f"sha256={digest}",
+                    "hashes": {"sha256": digest},
+                },
+                "url": bound_origin_url,
+            }
     ):
         raise RuntimeLockError("installed package origin differs from bound artifact")
     return expected_direct_url_path, direct_url_source
@@ -1518,6 +1811,26 @@ def _assert_distribution_origin(
     wheel = _distribution_text(distribution, "WHEEL")
     record = _distribution_text(distribution, "RECORD")
     direct_url = _distribution_text(distribution, "direct_url.json")
+    if not local_project and artifact is not None and artifact.get("install") is False:
+        try:
+            root = Path(distribution.locate_file("")).resolve(strict=True)
+            runtime_root = Path(str(artifact.get("_runtime_root", ""))).resolve(strict=True)
+        except (AttributeError, OSError) as exc:
+            raise RuntimeLockError("runtime overlay origin is unverifiable") from exc
+        install, allowed_startup_surfaces = _runtime_startup_surface_policy(
+            artifact.get("name"), artifact.get("version")
+        )
+        if (
+            install
+            or artifact.get("allowed_startup_surfaces") != list(allowed_startup_surfaces)
+            or root != runtime_root
+            or installer is not None
+            or wheel is None
+            or record is None
+            or direct_url is not None
+        ):
+            raise RuntimeLockError("runtime overlay origin differs from bound artifact")
+        return set()
     if installer != "pip\n" or wheel is None or record is None:
         raise RuntimeLockError("installed package artifact identity is unverifiable")
     try:
@@ -1809,7 +2122,9 @@ def _assert_runtime_tree_closed(
         raise RuntimeLockError("runtime installation contains unrecorded payload")
 
 
-def _assert_runtime_matches_lock(lock_file: Path = LOCK_FILE) -> None:
+def _assert_runtime_matches_lock(
+    lock_file: Path = LOCK_FILE,
+) -> tuple[Path, Path] | None:
     locked = _locked_versions(lock_file)
     artifacts = _load_runtime_manifest(lock_file, locked)
     visible: dict[str, list[Any]] = {}
@@ -1882,6 +2197,11 @@ def _assert_runtime_matches_lock(lock_file: Path = LOCK_FILE) -> None:
     )
     if artifacts is not None:
         _assert_runtime_tree_closed(claimed_paths, Path(sys.prefix))
+        manifest_root = Path(
+            os.environ["HSCONFIG_RUNTIME_MANIFEST"]
+        ).parent.resolve(strict=True)
+        return manifest_root / "committed-source", manifest_root / "build-backend"
+    return None
 
 
 def _coverage_directory_identity(run_root: Path) -> tuple[int, int]:
@@ -2220,7 +2540,9 @@ def _delete_windows_entry(
 
 
 @contextmanager
-def isolated_coverage_environment() -> Iterator[CoverageRun]:
+def isolated_coverage_environment(
+    runtime_pythonpath: tuple[Path, Path] | None = None,
+) -> Iterator[CoverageRun]:
     configured_temporary_root = Path(tempfile.gettempdir())
     try:
         temporary_metadata = configured_temporary_root.lstat()
@@ -2247,14 +2569,10 @@ def isolated_coverage_environment() -> Iterator[CoverageRun]:
             raise CoverageGateError("coverage run directory changed during setup")
         environment = os.environ.copy()
         for key in tuple(environment):
-            if key.upper() in {
-                "PYTEST_ADDOPTS",
-                "PYTHONHOME",
-                "PYTHONPATH",
-                "PYTHONUSERBASE",
-                "PYTEST_DEBUG_TEMPROOT",
-                "HYPOTHESIS_STORAGE_DIRECTORY",
-            }:
+            upper = key.upper()
+            if upper.startswith(
+                ("COVERAGE_", "HYPOTHESIS_", "PYTEST_", "PYTHON")
+            ):
                 environment.pop(key, None)
         coverage_data = run_root / ".coverage"
         coverage_json = run_root / "coverage.json"
@@ -2273,6 +2591,10 @@ def isolated_coverage_environment() -> Iterator[CoverageRun]:
                 "HYPOTHESIS_STORAGE_DIRECTORY": str(hypothesis_storage),
             }
         )
+        if runtime_pythonpath is not None:
+            environment["PYTHONPATH"] = os.pathsep.join(
+                str(path) for path in runtime_pythonpath
+            )
         yield CoverageRun(
             run_root=run_root,
             run_identity=run_identity,
@@ -2572,10 +2894,10 @@ def _run_pytest_bounded(
 
 def main() -> int:
     try:
-        _assert_runtime_matches_lock(LOCK_FILE)
+        runtime_pythonpath = _assert_runtime_matches_lock(LOCK_FILE)
         pytest_failure: tuple[str, int] | None = None
         checker_result: subprocess.CompletedProcess[str] | None = None
-        with isolated_coverage_environment() as run:
+        with isolated_coverage_environment(runtime_pythonpath) as run:
             pytest_result = _run_pytest_bounded(
                 _pytest_coverage_command(run.coverage_json),
                 cwd=ROOT,

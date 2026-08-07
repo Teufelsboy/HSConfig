@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from email.parser import Parser
 import hashlib
 import io
 import json
@@ -25,9 +26,12 @@ import threading
 import time
 import tomllib
 from typing import Any, Literal
+import unicodedata
 import uuid
 import zipfile
 
+from packaging.tags import parse_tag
+from packaging.utils import InvalidWheelFilename, canonicalize_name, parse_wheel_filename
 import yaml
 
 from hsconfig.near100_scorecard import (
@@ -159,6 +163,10 @@ _MAX_ARCHIVE_MEMBER_BYTES = 16 * 1024 * 1024
 _MAX_ARCHIVE_TOTAL_BYTES = 128 * 1024 * 1024
 _MAX_ARCHIVE_COMPRESSION_RATIO = 200
 _MAX_PUBLISHABLE_FILE_BYTES = 128 * 1024 * 1024
+_MAX_ZIP_MEMBER_NAME_BYTES = 4 * 1024
+_SUPPORTED_CORE_METADATA_VERSIONS = frozenset(
+    {"1.0", "1.1", "1.2", "2.1", "2.2", "2.3", "2.4", "2.5"}
+)
 _FINAL_EVIDENCE_MAX_AGE_SECONDS = 300
 _SEMANTIC_REPORT_CLAIM_OCCURRENCES = 426
 
@@ -201,7 +209,7 @@ _EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
                 "b09e213b1b3c5de6a10c926a918910c16492926bc537286f1149ab79cf95a0b0",
     },
     "docs/operator/README.md": {
-        623: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
+        647: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
     },
     "src/hsconfig/cli_parser.py": {
         61: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
@@ -1071,9 +1079,1179 @@ def _validate_repository(repository: Path, outputs_root: Path, tree_mode: TreeMo
     return root, outputs, commit_oid
 
 
+def _runtime_relative_path(value: object, *, context: str) -> PurePosixPath:
+    if not isinstance(value, str) or not value or "\\" in value or ":" in value:
+        raise ReleaseGateError(f"{context} path is invalid")
+    relative = PurePosixPath(value)
+    if (
+        relative.is_absolute()
+        or relative.as_posix() != value
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        raise ReleaseGateError(f"{context} path is invalid")
+    return relative
+
+
+def _runtime_tree_index(
+    root: Path,
+    *,
+    context: str,
+) -> dict[str, tuple[Path, os.stat_result]]:
+    if root.resolve(strict=True) != root:
+        raise ReleaseGateError(f"{context} root is redirected")
+    rows = _walk_regular_tree(root, context=context)
+    return {relative: (path, metadata) for relative, path, metadata in rows}
+
+
+def _runtime_source_digest(inventory: object) -> str:
+    encoded = json.dumps(
+        inventory,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _assert_active_repository_snapshot(
+    repository: Path,
+    *,
+    commit_oid: str,
+    tree_oid: str,
+) -> None:
+    if (
+        str(_git(repository, "rev-parse", "HEAD")).strip() != commit_oid
+        or str(_git(repository, "rev-parse", "HEAD^{tree}")).strip() != tree_oid
+        or str(_git(repository, "rev-parse", f"{commit_oid}^{{tree}}")).strip()
+        != tree_oid
+        or str(_git(repository, "status", "--porcelain=v1", "--untracked-files=all"))
+    ):
+        raise ReleaseGateError("active runtime repository snapshot changed")
+
+
+def _active_head_source_inventory(
+    repository: Path,
+    commit_oid: str,
+) -> list[dict[str, str]]:
+    listing = str(
+        _git(repository, "ls-tree", "-rz", "--full-tree", commit_oid)
+    )
+    records = listing.split("\0")
+    if not records or records[-1] != "":
+        raise ReleaseGateError("active runtime HEAD tree is malformed")
+    modes: dict[str, str] = {}
+    for record in records[:-1]:
+        header, separator, name = record.partition("\t")
+        fields = header.split()
+        relative = _runtime_relative_path(name, context="active runtime HEAD")
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] not in {"100644", "100755"}
+            or fields[1] != "blob"
+            or re.fullmatch(r"[0-9a-f]{40}", fields[2]) is None
+            or relative.as_posix() in modes
+        ):
+            raise ReleaseGateError("active runtime HEAD tree is malformed")
+        modes[relative.as_posix()] = fields[0]
+    archive_source = bytes(
+        _git(repository, "archive", "--format=tar", commit_oid, text=False)
+    )
+    if len(archive_source) > _MAX_PUBLISHABLE_FILE_BYTES:
+        raise ReleaseGateError("active runtime HEAD archive is oversized")
+    payloads: dict[str, bytes] = {}
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive_source), mode="r:") as archive:
+            members = archive.getmembers()
+            if len(members) > _MAX_ARCHIVE_MEMBERS:
+                raise ReleaseGateError("active runtime HEAD archive is oversized")
+            for member in members:
+                if member.isdir():
+                    continue
+                relative = _runtime_relative_path(
+                    member.name, context="active runtime HEAD"
+                ).as_posix()
+                if (
+                    not member.isfile()
+                    or member.size > _MAX_ARCHIVE_MEMBER_BYTES
+                    or relative in payloads
+                ):
+                    raise ReleaseGateError("active runtime HEAD archive is invalid")
+                stream = archive.extractfile(member)
+                if stream is None:
+                    raise ReleaseGateError("active runtime HEAD archive is invalid")
+                payload = stream.read(_MAX_ARCHIVE_MEMBER_BYTES + 1)
+                if len(payload) != member.size:
+                    raise ReleaseGateError("active runtime HEAD archive is invalid")
+                payloads[relative] = payload
+    except (tarfile.TarError, OSError) as exc:
+        raise ReleaseGateError("active runtime HEAD archive is invalid") from exc
+    if set(payloads) != set(modes):
+        raise ReleaseGateError("active runtime HEAD archive differs from tree")
+    return [
+        {
+            "path": relative,
+            "sha256": hashlib.sha256(payloads[relative]).hexdigest(),
+            "git_mode": modes[relative],
+        }
+        for relative in sorted(modes)
+    ]
+
+
+def _active_lock_rows(source: bytes) -> list[dict[str, object]]:
+    try:
+        document = tomllib.loads(source.decode("utf-8"))
+    except (UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ReleaseGateError("active runtime selected lock is invalid") from exc
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"lock-version", "created-by", "packages"}
+        or document["lock-version"] != "1.0"
+        or document["created-by"] != "pip"
+        or not isinstance(document["packages"], list)
+        or len(document["packages"]) != 43
+    ):
+        raise ReleaseGateError("active runtime selected lock is invalid")
+    rows: list[dict[str, object]] = []
+    identities: set[tuple[str, str]] = set()
+    for package in document["packages"]:
+        if not isinstance(package, dict) or set(package) not in (
+            {"name", "version", "wheels"},
+            {"name", "version", "wheels", "sdist"},
+        ):
+            raise ReleaseGateError("active runtime selected lock is invalid")
+        name = package["name"]
+        version = package["version"]
+        wheels = package["wheels"]
+        identity = (re.sub(r"[-_.]+", "-", str(name)).casefold(), str(version))
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(version, str)
+            or not version
+            or not isinstance(wheels, list)
+            or not wheels
+            or identity in identities
+        ):
+            raise ReleaseGateError("active runtime selected lock is invalid")
+        if "sdist" in package:
+            sdist = package["sdist"]
+            if not isinstance(sdist, dict) or set(sdist) != {
+                "name",
+                "url",
+                "hashes",
+            }:
+                raise ReleaseGateError("active runtime selected lock is invalid")
+            hashes = sdist["hashes"]
+            if (
+                not isinstance(sdist["name"], str)
+                or not sdist["name"]
+                or not isinstance(sdist["url"], str)
+                or not sdist["url"].startswith("https://")
+                or not isinstance(hashes, dict)
+                or set(hashes) != {"sha256"}
+                or re.fullmatch(r"[0-9a-f]{64}", str(hashes["sha256"])) is None
+            ):
+                raise ReleaseGateError("active runtime selected lock is invalid")
+        candidates: list[dict[str, str]] = []
+        candidate_keys: set[tuple[str, str, str]] = set()
+        for wheel in wheels:
+            if not isinstance(wheel, dict) or set(wheel) != {
+                "name",
+                "url",
+                "hashes",
+            }:
+                raise ReleaseGateError("active runtime selected lock is invalid")
+            hashes = wheel["hashes"]
+            if not isinstance(hashes, dict) or set(hashes) != {"sha256"}:
+                raise ReleaseGateError("active runtime selected lock is invalid")
+            candidate = {
+                "name": str(wheel["name"]),
+                "url": str(wheel["url"]),
+                "sha256": str(hashes["sha256"]),
+            }
+            key = (candidate["name"], candidate["url"], candidate["sha256"])
+            if (
+                not isinstance(wheel["name"], str)
+                or not candidate["name"].endswith(".whl")
+                or not isinstance(wheel["url"], str)
+                or not candidate["url"].startswith("https://")
+                or re.fullmatch(r"[0-9a-f]{64}", candidate["sha256"]) is None
+                or key in candidate_keys
+            ):
+                raise ReleaseGateError("active runtime selected lock is invalid")
+            candidate_keys.add(key)
+            candidates.append(candidate)
+        identities.add(identity)
+        rows.append(
+            {
+                "identity": identity,
+                "name": name,
+                "version": version,
+                "wheels": candidates,
+            }
+        )
+    if [row["identity"] for row in rows] != sorted(identities):
+        raise ReleaseGateError("active runtime selected lock order is invalid")
+    return rows
+
+
+def _active_startup_policy(identity: tuple[str, str]) -> tuple[bool, list[str]]:
+    hooks = {
+        ("setuptools", "83.0.0"): ["distutils-precedence.pth"],
+        ("coverage", "7.15.2"): ["a1_coverage.pth"],
+    }.get(identity, [])
+    return not hooks, hooks
+
+
+def _active_wheel_inventory(
+    source: bytes,
+    *,
+    allowed_startup_surfaces: frozenset[str] = frozenset(),
+) -> list[dict[str, object]]:
+    if len(source) > _MAX_ARCHIVE_TOTAL_BYTES:
+        raise ReleaseGateError("active runtime wheel compressed content is oversized")
+    rows: list[dict[str, object]] = []
+    exact_paths: set[str] = set()
+    windows_paths: dict[str, str] = {}
+    node_types: dict[str, str] = {}
+
+    try:
+        from scripts.run_coverage_gate import (  # noqa: PLC0415
+            _is_canonical_repository_component,
+        )
+    except ImportError as exc:
+        raise ReleaseGateError(
+            "active runtime portable path policy is unavailable"
+        ) from exc
+
+    def canonical_member_path(name: str, *, directory: bool) -> tuple[str, str]:
+        if (
+            not name
+            or any(ord(character) < 32 or ord(character) == 127 for character in name)
+            or "\\" in name
+            or name.startswith(("/", "//"))
+            or re.match(r"^[A-Za-z]:", name)
+        ):
+            raise ReleaseGateError("active runtime wheel member path is invalid")
+        candidate = name[:-1] if directory else name
+        parts = candidate.split("/")
+        if (
+            not candidate
+            or any(
+                not _is_canonical_repository_component(part) for part in parts
+            )
+            or any(unicodedata.normalize("NFC", part) != part for part in parts)
+        ):
+            raise ReleaseGateError("active runtime wheel member path is invalid")
+        normalized = "/".join(parts)
+        windows_key = "/".join(
+            unicodedata.normalize("NFC", part).casefold() for part in parts
+        )
+        if normalized in exact_paths:
+            raise ReleaseGateError("active runtime wheel has a duplicate member")
+        previous = windows_paths.get(windows_key)
+        if previous is not None and previous != normalized:
+            raise ReleaseGateError("active runtime wheel has a Windows path collision")
+        for index in range(1, len(parts)):
+            prefix = "/".join(
+                unicodedata.normalize("NFC", part).casefold()
+                for part in parts[:index]
+            )
+            if node_types.get(prefix) == "file":
+                raise ReleaseGateError("active runtime wheel has a prefix collision")
+            node_types.setdefault(prefix, "directory")
+        kind = "directory" if directory else "file"
+        existing = node_types.get(windows_key)
+        if existing is not None and existing != kind:
+            raise ReleaseGateError("active runtime wheel has a file-directory collision")
+        node_types[windows_key] = kind
+        exact_paths.add(normalized)
+        windows_paths[windows_key] = normalized
+        return normalized, windows_key
+
+    def bind_local_header(
+        info: zipfile.ZipInfo,
+        *,
+        central_name: bytes,
+        central_directory_offset: int,
+    ) -> tuple[int, int]:
+        offset = info.header_offset
+        fixed_end = offset + 30
+        if (
+            not isinstance(offset, int)
+            or isinstance(offset, bool)
+            or offset < 0
+            or fixed_end > central_directory_offset
+            or source[offset:offset + 4] != b"PK\x03\x04"
+        ):
+            raise ReleaseGateError("active runtime wheel local header is invalid")
+        local_flags = int.from_bytes(source[offset + 6:offset + 8], "little")
+        local_method = int.from_bytes(source[offset + 8:offset + 10], "little")
+        local_crc = int.from_bytes(source[offset + 14:offset + 18], "little")
+        local_compressed_size = int.from_bytes(
+            source[offset + 18:offset + 22], "little"
+        )
+        local_file_size = int.from_bytes(source[offset + 22:offset + 26], "little")
+        name_length = int.from_bytes(source[offset + 26:offset + 28], "little")
+        extra_length = int.from_bytes(source[offset + 28:offset + 30], "little")
+        name_end = fixed_end + name_length
+        payload_offset = name_end + extra_length
+        payload_end = payload_offset + info.compress_size
+        if (
+            name_length > _MAX_ZIP_MEMBER_NAME_BYTES
+            or extra_length != 0
+            or name_end > central_directory_offset
+            or payload_offset > central_directory_offset
+            or payload_end > central_directory_offset
+        ):
+            raise ReleaseGateError("active runtime wheel local header is invalid")
+        encoding = "utf-8" if info.flag_bits & 0x800 else "cp437"
+        local_name = source[fixed_end:name_end]
+        try:
+            decoded_name = local_name.decode(encoding)
+            canonical_name = info.orig_filename.encode(encoding)
+        except UnicodeError as exc:
+            raise ReleaseGateError(
+                "active runtime wheel local filename is invalid"
+            ) from exc
+        supported_flags = 0x800 | (0x6 if info.compress_type == zipfile.ZIP_DEFLATED else 0)
+        if (
+            local_flags != info.flag_bits
+            or info.flag_bits & (0x1 | 0x8)
+            or info.flag_bits & ~supported_flags
+            or local_method != info.compress_type
+            or local_method not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+            or name_length != len(central_name)
+            or local_name != central_name
+            or central_name != canonical_name
+            or decoded_name != info.orig_filename
+            or local_crc != info.CRC
+            or local_compressed_size != info.compress_size
+            or local_file_size != info.file_size
+        ):
+            raise ReleaseGateError("active runtime wheel local header differs")
+        return offset, payload_end
+
+    def bind_central_directory(
+        infos: Sequence[zipfile.ZipInfo],
+        *,
+        central_directory_offset: int,
+        archive_comment: bytes,
+    ) -> list[bytes]:
+        cursor = central_directory_offset
+        names: list[bytes] = []
+        for info in infos:
+            fixed_end = cursor + 46
+            if (
+                fixed_end > len(source)
+                or source[cursor:cursor + 4] != b"PK\x01\x02"
+            ):
+                raise ReleaseGateError(
+                    "active runtime wheel central header is invalid"
+                )
+            flags = int.from_bytes(source[cursor + 8:cursor + 10], "little")
+            method = int.from_bytes(source[cursor + 10:cursor + 12], "little")
+            crc = int.from_bytes(source[cursor + 16:cursor + 20], "little")
+            compressed_size = int.from_bytes(
+                source[cursor + 20:cursor + 24], "little"
+            )
+            file_size = int.from_bytes(source[cursor + 24:cursor + 28], "little")
+            name_length = int.from_bytes(source[cursor + 28:cursor + 30], "little")
+            extra_length = int.from_bytes(source[cursor + 30:cursor + 32], "little")
+            comment_length = int.from_bytes(source[cursor + 32:cursor + 34], "little")
+            disk_number = int.from_bytes(source[cursor + 34:cursor + 36], "little")
+            internal_attr = int.from_bytes(source[cursor + 36:cursor + 38], "little")
+            external_attr = int.from_bytes(source[cursor + 38:cursor + 42], "little")
+            local_offset = int.from_bytes(source[cursor + 42:cursor + 46], "little")
+            name_end = fixed_end + name_length
+            extra_end = name_end + extra_length
+            record_end = extra_end + comment_length
+            if (
+                name_length > _MAX_ZIP_MEMBER_NAME_BYTES
+                or extra_length != 0
+                or comment_length != 0
+                or record_end > len(source)
+            ):
+                raise ReleaseGateError(
+                    "active runtime wheel central header is invalid"
+                )
+            raw_name = source[fixed_end:name_end]
+            encoding = "utf-8" if flags & 0x800 else "cp437"
+            try:
+                decoded_name = raw_name.decode(encoding)
+                canonical_name = info.orig_filename.encode(encoding)
+            except UnicodeError as exc:
+                raise ReleaseGateError(
+                    "active runtime wheel central filename is invalid"
+                ) from exc
+            if (
+                flags != info.flag_bits
+                or method != info.compress_type
+                or crc != info.CRC
+                or compressed_size != info.compress_size
+                or file_size != info.file_size
+                or disk_number != 0
+                or internal_attr != info.internal_attr
+                or external_attr != info.external_attr
+                or local_offset != info.header_offset
+                or raw_name != canonical_name
+                or decoded_name != info.orig_filename
+                or source[name_end:extra_end] != info.extra
+                or info.comment != b""
+                or source[extra_end:record_end] != info.comment
+            ):
+                raise ReleaseGateError("active runtime wheel central header differs")
+            names.append(raw_name)
+            cursor = record_end
+        eocd_end = cursor + 22
+        if (
+            eocd_end > len(source)
+            or source[cursor:cursor + 4] != b"PK\x05\x06"
+        ):
+            raise ReleaseGateError("active runtime wheel end record is invalid")
+        disk_number = int.from_bytes(source[cursor + 4:cursor + 6], "little")
+        central_disk = int.from_bytes(source[cursor + 6:cursor + 8], "little")
+        disk_members = int.from_bytes(source[cursor + 8:cursor + 10], "little")
+        total_members = int.from_bytes(source[cursor + 10:cursor + 12], "little")
+        central_size = int.from_bytes(source[cursor + 12:cursor + 16], "little")
+        central_offset = int.from_bytes(source[cursor + 16:cursor + 20], "little")
+        comment_length = int.from_bytes(source[cursor + 20:cursor + 22], "little")
+        if (
+            disk_number != 0
+            or central_disk != 0
+            or disk_members != len(infos)
+            or total_members != len(infos)
+            or central_size != cursor - central_directory_offset
+            or central_offset != central_directory_offset
+            or comment_length != 0
+            or archive_comment != b""
+            or comment_length != len(archive_comment)
+            or eocd_end + comment_length != len(source)
+            or source[eocd_end:] != archive_comment
+        ):
+            raise ReleaseGateError("active runtime wheel end record differs")
+        return names
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            infos = archive.infolist()
+            central_directory_offset = archive.start_dir
+            if (
+                len(infos) > _MAX_ARCHIVE_MEMBERS
+                or not isinstance(central_directory_offset, int)
+                or isinstance(central_directory_offset, bool)
+                or central_directory_offset < 0
+                or central_directory_offset > len(source)
+            ):
+                raise ReleaseGateError("active runtime wheel member count is oversized")
+            central_names = bind_central_directory(
+                infos,
+                central_directory_offset=central_directory_offset,
+                archive_comment=archive.comment,
+            )
+            validated: list[tuple[zipfile.ZipInfo, str]] = []
+            local_spans: list[tuple[int, int]] = []
+            total_declared = 0
+            for info, central_name in zip(infos, central_names, strict=True):
+                raw_name = info.orig_filename
+                directory = raw_name.endswith("/")
+                normalized, _windows_key = canonical_member_path(
+                    raw_name,
+                    directory=directory,
+                )
+                mode = info.external_attr >> 16
+                member_type = stat.S_IFMT(mode)
+                if (
+                    stat.S_ISLNK(mode)
+                    or member_type not in {0, stat.S_IFREG, stat.S_IFDIR}
+                    or (directory and member_type not in {0, stat.S_IFDIR})
+                    or (not directory and member_type == stat.S_IFDIR)
+                ):
+                    raise ReleaseGateError("active runtime wheel member is not regular")
+                local_spans.append(
+                    bind_local_header(
+                        info,
+                        central_name=central_name,
+                        central_directory_offset=central_directory_offset,
+                    )
+                )
+                if info.flag_bits & 0x1:
+                    raise ReleaseGateError("active runtime wheel member is encrypted")
+                if info.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+                    raise ReleaseGateError(
+                        "active runtime wheel compression method is unsupported"
+                    )
+                if directory:
+                    if info.CRC != 0 or info.compress_size != 0 or info.file_size != 0:
+                        raise ReleaseGateError(
+                            "active runtime wheel directory payload is invalid"
+                        )
+                    continue
+                total_declared += info.file_size
+                if (
+                    info.file_size > _MAX_ARCHIVE_TOTAL_BYTES
+                    or total_declared > _MAX_ARCHIVE_TOTAL_BYTES
+                    or (info.file_size and info.compress_size == 0)
+                    or (
+                        info.compress_size
+                        and info.file_size / info.compress_size
+                        > _MAX_ARCHIVE_COMPRESSION_RATIO
+                    )
+                    or (
+                        PurePosixPath(normalized).name.casefold().endswith(
+                            (".pth", ".egg-link")
+                        )
+                        or PurePosixPath(normalized).name.casefold()
+                        in {"sitecustomize.py", "usercustomize.py"}
+                    )
+                    and normalized not in allowed_startup_surfaces
+                ):
+                    raise ReleaseGateError("active runtime wheel is invalid")
+                validated.append((info, normalized))
+            ordered_spans = sorted(local_spans)
+            if (
+                not ordered_spans
+                or ordered_spans[0][0] != 0
+                or ordered_spans[-1][1] != central_directory_offset
+                or any(
+                    previous_end != current_start
+                    for (_previous_start, previous_end), (current_start, _current_end)
+                    in zip(ordered_spans, ordered_spans[1:], strict=False)
+                )
+            ):
+                raise ReleaseGateError("active runtime wheel local layout is invalid")
+            if total_declared and (
+                not source
+                or total_declared / len(source) > _MAX_ARCHIVE_COMPRESSION_RATIO
+            ):
+                raise ReleaseGateError("active runtime wheel compression ratio is invalid")
+            for info, normalized in validated:
+                with archive.open(info, "r") as stream:
+                    chunks: list[bytes] = []
+                    size = 0
+                    while True:
+                        chunk = stream.read(min(1024 * 1024, info.file_size - size + 1))
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if size > info.file_size or size > _MAX_ARCHIVE_TOTAL_BYTES:
+                            raise ReleaseGateError("active runtime wheel member is oversized")
+                        chunks.append(chunk)
+                payload = b"".join(chunks)
+                if size != info.file_size:
+                    raise ReleaseGateError("active runtime wheel is invalid")
+                rows.append(
+                    {
+                        "path": normalized,
+                        "size": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                )
+    except (NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise ReleaseGateError("active runtime wheel is invalid") from exc
+    return sorted(rows, key=lambda row: str(row["path"]))
+
+
+def _assert_active_wheel_identity(
+    source: bytes,
+    *,
+    filename: str,
+    expected_name: str,
+    expected_version: str,
+    require_py3_none_any: bool,
+) -> None:
+    try:
+        parsed_name, parsed_version, parsed_build, parsed_tags = parse_wheel_filename(
+            filename
+        )
+    except InvalidWheelFilename as exc:
+        raise ReleaseGateError("active runtime wheel filename is invalid") from exc
+    filename_fields = filename[:-4].split("-")
+    normalized_name = canonicalize_name(expected_name)
+    distribution_token = normalized_name.replace("-", "_")
+    if (
+        filename != filename.casefold()
+        or not filename.endswith(".whl")
+        or len(filename_fields) not in {5, 6}
+        or filename_fields[0] != distribution_token
+        or filename_fields[1] != expected_version
+        or canonicalize_name(str(parsed_name)) != normalized_name
+        or str(parsed_version) != expected_version
+        or not parsed_tags
+        or (
+            require_py3_none_any
+            and set(parsed_tags) != set(parse_tag("py3-none-any"))
+        )
+    ):
+        raise ReleaseGateError("active runtime wheel filename identity is invalid")
+    expected_dist_info = f"{distribution_token}-{expected_version}.dist-info"
+    try:
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            names = archive.namelist()
+            dist_info_roots = {
+                PurePosixPath(name).parts[0]
+                for name in names
+                if PurePosixPath(name).parts
+                and PurePosixPath(name).parts[0].endswith(".dist-info")
+            }
+            metadata_name = f"{expected_dist_info}/METADATA"
+            wheel_name = f"{expected_dist_info}/WHEEL"
+            if (
+                dist_info_roots != {expected_dist_info}
+                or names.count(metadata_name) != 1
+                or names.count(wheel_name) != 1
+            ):
+                raise ReleaseGateError("active runtime wheel dist-info identity is invalid")
+            metadata_source = archive.read(metadata_name).decode("utf-8")
+            wheel_source = archive.read(wheel_name).decode("utf-8")
+    except (
+        KeyError,
+        NotImplementedError,
+        RuntimeError,
+        UnicodeError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise ReleaseGateError("active runtime wheel identity is invalid") from exc
+    metadata = Parser().parsestr(metadata_source)
+    wheel = Parser().parsestr(wheel_source)
+    metadata_core_versions = metadata.get_all("Metadata-Version", [])
+    metadata_names = metadata.get_all("Name", [])
+    metadata_versions = metadata.get_all("Version", [])
+    if (
+        len(metadata_core_versions) != 1
+        or metadata_core_versions[0] not in _SUPPORTED_CORE_METADATA_VERSIONS
+        or len(metadata_names) != 1
+        or canonicalize_name(metadata_names[0]) != normalized_name
+        or metadata_versions != [expected_version]
+        or bool(metadata.defects)
+        or metadata.is_multipart()
+        or not isinstance(metadata.get_payload(), str)
+    ):
+        raise ReleaseGateError("active runtime wheel metadata identity is invalid")
+    raw_wheel_headers = [name.casefold() for name, _value in wheel.raw_items()]
+    allowed_headers = {
+        "build",
+        "generator",
+        "root-is-purelib",
+        "tag",
+        "wheel-version",
+    }
+    wheel_versions = wheel.get_all("Wheel-Version", [])
+    roots = wheel.get_all("Root-Is-Purelib", [])
+    wheel_tags = wheel.get_all("Tag", [])
+    wheel_builds = wheel.get_all("Build", [])
+    generators = wheel.get_all("Generator", [])
+    if (
+        any(name not in allowed_headers for name in raw_wheel_headers)
+        or wheel_versions != ["1.0"]
+        or len(roots) != 1
+        or len(wheel_tags) != len(set(wheel_tags))
+        or not wheel_tags
+        or len(wheel_builds) > 1
+        or len(generators) > 1
+        or bool(str(wheel.get_payload()).strip())
+    ):
+        raise ReleaseGateError("active runtime WHEEL headers are invalid")
+    try:
+        metadata_tags = set().union(*(parse_tag(value) for value in wheel_tags))
+    except ValueError as exc:
+        raise ReleaseGateError("active runtime WHEEL tags are invalid") from exc
+    expected_builds = (
+        [f"{parsed_build[0]}{parsed_build[1]}"] if parsed_build else []
+    )
+    pure_tags = all(
+        tag.abi == "none" and tag.platform == "any" for tag in parsed_tags
+    )
+    expected_root = "true" if pure_tags else "false"
+    if (
+        metadata_tags != set(parsed_tags)
+        or wheel_builds != expected_builds
+        or roots != [expected_root]
+        or (require_py3_none_any and roots != ["true"])
+    ):
+        raise ReleaseGateError("active runtime WHEEL identity is invalid")
+
+
+def _active_project_version(source_root: Path) -> str:
+    source = _secure_read_bytes(
+        source_root,
+        PurePosixPath("src/hsconfig/version.py"),
+        context="active runtime project version",
+    )
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, UnicodeError) as exc:
+        raise ReleaseGateError("active runtime project version is invalid") from exc
+    values = [
+        node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "__version__"
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    if len(values) != 1:
+        raise ReleaseGateError("active runtime project version is invalid")
+    return values[0]
+
+
+def _assert_active_local_project(
+    local: object,
+    *,
+    manifest_root: Path,
+    source_root: Path,
+    inventory_digest: str,
+) -> None:
+    if not isinstance(local, dict) or set(local) != {
+        "name",
+        "version",
+        "wheel_path",
+        "sha256",
+        "files",
+        "source_inventory_sha256",
+    }:
+        raise ReleaseGateError("active runtime local project schema is invalid")
+    version = _active_project_version(source_root)
+    digest = local["sha256"]
+    local_root = manifest_root / "local-wheel"
+    wheel_path = Path(str(local["wheel_path"])).absolute()
+    if (
+        local["name"] != "hsconfig"
+        or local["version"] != version
+        or local["source_inventory_sha256"] != inventory_digest
+        or re.fullmatch(r"[0-9a-f]{64}", str(digest)) is None
+        or wheel_path.parent != local_root
+        or wheel_path.resolve(strict=True) != wheel_path
+        or wheel_path.suffix != ".whl"
+    ):
+        raise ReleaseGateError("active runtime local project binding is invalid")
+    local_index = _runtime_tree_index(
+        local_root,
+        context="active runtime local wheel",
+    )
+    if set(local_index) != {wheel_path.name}:
+        raise ReleaseGateError("active runtime local wheel closure is invalid")
+    wheel_source = _secure_read_bytes(
+        local_root,
+        _runtime_relative_path(wheel_path.name, context="active runtime local wheel"),
+        context="active runtime local wheel",
+        expected_identity=_stat_identity(local_index[wheel_path.name][1]),
+    )
+    if hashlib.sha256(wheel_source).hexdigest() != digest:
+        raise ReleaseGateError("active runtime local wheel changed")
+    inventory = _active_wheel_inventory(wheel_source)
+    if local["files"] != inventory:
+        raise ReleaseGateError("active runtime local wheel inventory changed")
+    _assert_active_wheel_identity(
+        wheel_source,
+        filename=wheel_path.name,
+        expected_name="hsconfig",
+        expected_version=version,
+        require_py3_none_any=True,
+    )
+
+
+def _runtime_artifact_inventory(
+    artifacts: object,
+    *,
+    manifest_root: Path,
+    lock_rows: Sequence[Mapping[str, object]],
+) -> dict[str, tuple[int, str]]:
+    if not isinstance(artifacts, list) or len(artifacts) != len(lock_rows):
+        raise ReleaseGateError("active runtime artifact set is invalid")
+    expected_overlay: dict[str, tuple[int, str]] = {}
+    identities: set[tuple[str, str]] = set()
+    install_values: set[bool] = set()
+    observed_order: list[tuple[str, str]] = []
+    for artifact, locked in zip(artifacts, lock_rows, strict=True):
+        if not isinstance(artifact, dict) or set(artifact) != {
+            "name",
+            "version",
+            "url",
+            "sha256",
+            "wheel_path",
+            "files",
+            "install",
+            "allowed_startup_surfaces",
+        }:
+            raise ReleaseGateError("active runtime artifact schema is invalid")
+        name = artifact["name"]
+        version = artifact["version"]
+        url = artifact["url"]
+        digest = artifact["sha256"]
+        install = artifact["install"]
+        files = artifact["files"]
+        allowed = artifact["allowed_startup_surfaces"]
+        identity = (re.sub(r"[-_.]+", "-", str(name)).casefold(), str(version))
+        expected_install, expected_allowed = _active_startup_policy(identity)
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(version, str)
+            or not version
+            or not isinstance(url, str)
+            or not url
+            or re.fullmatch(r"[0-9a-f]{64}", str(digest)) is None
+            or not isinstance(install, bool)
+            or not isinstance(files, list)
+            or not isinstance(allowed, list)
+            or any(not isinstance(value, str) for value in allowed)
+            or len(set(allowed)) != len(allowed)
+            or identity in identities
+            or identity != locked["identity"]
+            or name != locked["name"]
+            or version != locked["version"]
+            or install is not expected_install
+            or allowed != expected_allowed
+        ):
+            raise ReleaseGateError("active runtime artifact schema is invalid")
+        identities.add(identity)
+        observed_order.append(identity)
+        install_values.add(install)
+        wheel_path = Path(str(artifact["wheel_path"]))
+        try:
+            wheel_relative = PurePosixPath(
+                wheel_path.relative_to(manifest_root).as_posix()
+            )
+        except (TypeError, ValueError) as exc:
+            raise ReleaseGateError("active runtime artifact path is invalid") from exc
+        wheel_source = _secure_read_bytes(
+            manifest_root,
+            wheel_relative,
+            context="active runtime artifact",
+        )
+        if hashlib.sha256(wheel_source).hexdigest() != digest:
+            raise ReleaseGateError("active runtime artifact changed")
+        candidates = locked["wheels"]
+        if not isinstance(candidates, list) or not any(
+            isinstance(candidate, dict)
+            and candidate.get("name") == wheel_path.name
+            and candidate.get("url") == url
+            and candidate.get("sha256") == digest
+            for candidate in candidates
+        ):
+            raise ReleaseGateError("active runtime artifact is not selected by lock")
+        allowed_paths = {
+            _runtime_relative_path(value, context="active runtime artifact").as_posix()
+            for value in allowed
+        }
+        artifact_paths: set[str] = set()
+        normalized_files: list[dict[str, object]] = []
+        for row in files:
+            if not isinstance(row, dict) or set(row) != {"path", "size", "sha256"}:
+                raise ReleaseGateError("active runtime artifact inventory is invalid")
+            relative = _runtime_relative_path(
+                row["path"], context="active runtime artifact"
+            ).as_posix()
+            size = row["size"]
+            row_digest = row["sha256"]
+            if (
+                relative in artifact_paths
+                or not isinstance(size, int)
+                or isinstance(size, bool)
+                or size < 0
+                or re.fullmatch(r"[0-9a-f]{64}", str(row_digest)) is None
+            ):
+                raise ReleaseGateError("active runtime artifact inventory is invalid")
+            artifact_paths.add(relative)
+            normalized_files.append(dict(row))
+            if not install and relative not in allowed_paths:
+                if relative in expected_overlay:
+                    raise ReleaseGateError("active runtime overlay paths collide")
+                expected_overlay[relative] = (size, str(row_digest))
+        if normalized_files != sorted(
+            normalized_files, key=lambda row: str(row["path"])
+        ) or not allowed_paths.issubset(artifact_paths):
+            raise ReleaseGateError("active runtime artifact inventory is invalid")
+        if _active_wheel_inventory(
+            wheel_source,
+            allowed_startup_surfaces=frozenset(expected_allowed),
+        ) != normalized_files:
+            raise ReleaseGateError("active runtime artifact inventory changed")
+        _assert_active_wheel_identity(
+            wheel_source,
+            filename=wheel_path.name,
+            expected_name=str(name),
+            expected_version=str(version),
+            require_py3_none_any=False,
+        )
+    if install_values != {False, True}:
+        raise ReleaseGateError("active runtime artifact policy is incomplete")
+    if observed_order != [row["identity"] for row in lock_rows]:
+        raise ReleaseGateError("active runtime artifact order is invalid")
+    return expected_overlay
+
+
+def _assert_runtime_tree_payloads(
+    root: Path,
+    expected: Mapping[str, tuple[int | None, str]],
+    *,
+    context: str,
+    modes: Mapping[str, str] | None = None,
+) -> None:
+    for _pass in range(2):
+        observed = _runtime_tree_index(root, context=context)
+        if set(observed) != set(expected):
+            raise ReleaseGateError(f"{context} inventory differs")
+        for relative, (expected_size, expected_digest) in expected.items():
+            _path, metadata = observed[relative]
+            if modes is not None and os.name != "nt":
+                expected_mode = 0o755 if modes[relative] == "100755" else 0o644
+                if stat.S_IMODE(metadata.st_mode) != expected_mode:
+                    raise ReleaseGateError(f"{context} mode differs")
+            source = _secure_read_bytes(
+                root,
+                PurePosixPath(relative),
+                context=context,
+                expected_identity=_stat_identity(metadata),
+            )
+            if (
+                (expected_size is not None and len(source) != expected_size)
+                or hashlib.sha256(source).hexdigest() != expected_digest
+            ):
+                raise ReleaseGateError(f"{context} payload differs")
+
+
+def _bound_active_runtime_paths(repository: Path) -> tuple[Path, Path]:
+    sentinel = os.environ["HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL"]
+    manifest_name = os.environ["HSCONFIG_RUNTIME_MANIFEST"]
+    expected_digest = os.environ["HSCONFIG_RUNTIME_MANIFEST_SHA256"]
+    if (
+        re.fullmatch(r"[0-9a-f]{64}", sentinel) is None
+        or re.fullmatch(r"[0-9a-f]{64}", expected_digest) is None
+    ):
+        raise ReleaseGateError("active runtime binding values are invalid")
+    manifest_path = Path(manifest_name).absolute()
+    if (
+        manifest_path.name != "runtime-manifest.json"
+        or manifest_path.resolve(strict=True) != manifest_path
+    ):
+        raise ReleaseGateError("active runtime binding path is invalid")
+    manifest_root = manifest_path.parent
+    manifest_source = _secure_read_bytes(
+        manifest_root,
+        PurePosixPath("runtime-manifest.json"),
+        context="active runtime manifest",
+        max_bytes=64 * 1024 * 1024,
+    )
+    if hashlib.sha256(manifest_source).hexdigest() != expected_digest:
+        raise ReleaseGateError("active runtime manifest changed")
+    document = _load_json_bytes(manifest_source, source="runtime manifest")
+    if not isinstance(document, dict) or set(document) != {
+        "schema_version",
+        "python_minor",
+        "repository",
+        "commit_oid",
+        "tree_oid",
+        "source_inventory",
+        "source_inventory_sha256",
+        "build_backend_root",
+        "environment_root",
+        "lock_sha256",
+        "sentinel_sha256",
+        "artifacts",
+        "local_project",
+    }:
+        raise ReleaseGateError("active runtime manifest schema is invalid")
+    repository_root = repository.resolve(strict=True)
+    head_oid = str(_git(repository_root, "rev-parse", "HEAD")).strip()
+    tree_oid = str(_git(repository_root, "rev-parse", "HEAD^{tree}")).strip()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head_oid) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree_oid) is None
+    ):
+        raise ReleaseGateError("active runtime repository identity is invalid")
+    _assert_active_repository_snapshot(
+        repository_root,
+        commit_oid=head_oid,
+        tree_oid=tree_oid,
+    )
+    lock_relative = PurePosixPath(
+        f"pylock.{sys.version_info.major}.{sys.version_info.minor}.toml"
+    )
+    lock_source = _secure_read_bytes(
+        repository_root,
+        lock_relative,
+        context="active runtime selected lock",
+        max_bytes=8 * 1024 * 1024,
+    )
+    source_root = manifest_root / "committed-source"
+    build_backend_root = manifest_root / "build-backend"
+    bound_lock_source = _secure_read_bytes(
+        source_root,
+        lock_relative,
+        context="active runtime bound selected lock",
+        max_bytes=8 * 1024 * 1024,
+    )
+    if bound_lock_source != lock_source:
+        raise ReleaseGateError("active runtime selected lock binding differs")
+    lock_rows = _active_lock_rows(lock_source)
+    authoritative_inventory = _active_head_source_inventory(
+        repository_root,
+        head_oid,
+    )
+    local = document["local_project"]
+    inventory = document["source_inventory"]
+    inventory_digest = document["source_inventory_sha256"]
+    if (
+        document["schema_version"] != 1
+        or document["python_minor"]
+        != f"{sys.version_info.major}.{sys.version_info.minor}"
+        or document["repository"] != str(repository_root)
+        or re.fullmatch(r"[0-9a-f]{40}", str(document["commit_oid"])) is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(document["tree_oid"])) is None
+        or re.fullmatch(r"[0-9a-f]{64}", str(document["lock_sha256"])) is None
+        or document["commit_oid"] != head_oid
+        or document["tree_oid"] != tree_oid
+        or document["lock_sha256"] != hashlib.sha256(lock_source).hexdigest()
+        or document["build_backend_root"] != str(build_backend_root)
+        or Path(str(document["environment_root"])).resolve(strict=True)
+        != Path(sys.prefix).resolve(strict=True)
+        or document["sentinel_sha256"]
+        != hashlib.sha256(sentinel.encode("ascii")).hexdigest()
+        or not isinstance(inventory, list)
+        or re.fullmatch(r"[0-9a-f]{64}", str(inventory_digest)) is None
+        or _runtime_source_digest(inventory) != inventory_digest
+    ):
+        raise ReleaseGateError("active runtime binding is inconsistent")
+    expected_source: dict[str, tuple[int | None, str]] = {}
+    source_modes: dict[str, str] = {}
+    normalized_inventory: list[dict[str, object]] = []
+    for row in inventory:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"path", "sha256", "git_mode"}
+            or row["git_mode"] not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{64}", str(row["sha256"])) is None
+        ):
+            raise ReleaseGateError("active runtime source inventory is invalid")
+        relative = _runtime_relative_path(
+            row["path"], context="active runtime source"
+        ).as_posix()
+        if relative in expected_source:
+            raise ReleaseGateError("active runtime source inventory is invalid")
+        expected_source[relative] = (None, str(row["sha256"]))
+        source_modes[relative] = str(row["git_mode"])
+        normalized_inventory.append(dict(row))
+    if (
+        normalized_inventory
+        != sorted(normalized_inventory, key=lambda row: str(row["path"]))
+        or normalized_inventory != authoritative_inventory
+        or inventory_digest != _runtime_source_digest(authoritative_inventory)
+    ):
+        raise ReleaseGateError("active runtime source inventory is invalid")
+    expected_overlay = _runtime_artifact_inventory(
+        document["artifacts"],
+        manifest_root=manifest_root,
+        lock_rows=lock_rows,
+    )
+    _assert_active_local_project(
+        local,
+        manifest_root=manifest_root,
+        source_root=source_root,
+        inventory_digest=str(inventory_digest),
+    )
+    _assert_runtime_tree_payloads(
+        source_root,
+        expected_source,
+        context="active runtime source",
+        modes=source_modes,
+    )
+    _assert_runtime_tree_payloads(
+        build_backend_root,
+        expected_overlay,
+        context="active runtime overlay",
+    )
+    controller_relative = "scripts/check_release_gate.py"
+    if (
+        source_modes.get(controller_relative) != "100644"
+        or Path(sys.argv[0]).resolve(strict=True)
+        != source_root / PurePosixPath(controller_relative)
+    ):
+        raise ReleaseGateError("active runtime controller binding is invalid")
+    final_manifest_source = _secure_read_bytes(
+        manifest_root,
+        PurePosixPath("runtime-manifest.json"),
+        context="active runtime manifest",
+        max_bytes=64 * 1024 * 1024,
+    )
+    final_repository_lock = _secure_read_bytes(
+        repository_root,
+        lock_relative,
+        context="active runtime selected lock",
+        max_bytes=8 * 1024 * 1024,
+    )
+    final_bound_lock = _secure_read_bytes(
+        source_root,
+        lock_relative,
+        context="active runtime bound selected lock",
+        max_bytes=8 * 1024 * 1024,
+    )
+    if (
+        final_manifest_source != manifest_source
+        or hashlib.sha256(final_manifest_source).hexdigest() != expected_digest
+        or final_repository_lock != lock_source
+        or final_bound_lock != lock_source
+    ):
+        raise ReleaseGateError("active runtime binding changed during validation")
+    _runtime_artifact_inventory(
+        document["artifacts"],
+        manifest_root=manifest_root,
+        lock_rows=lock_rows,
+    )
+    _assert_active_local_project(
+        local,
+        manifest_root=manifest_root,
+        source_root=source_root,
+        inventory_digest=str(inventory_digest),
+    )
+    _assert_runtime_tree_payloads(
+        source_root,
+        expected_source,
+        context="active runtime source",
+        modes=source_modes,
+    )
+    _assert_runtime_tree_payloads(
+        build_backend_root,
+        expected_overlay,
+        context="active runtime overlay",
+    )
+    _assert_active_repository_snapshot(
+        repository_root,
+        commit_oid=head_oid,
+        tree_oid=tree_oid,
+    )
+    return source_root, build_backend_root
+
+
+def _active_runtime_paths(repository: Path) -> tuple[Path, Path] | None:
+    names = (
+        "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL",
+        "HSCONFIG_RUNTIME_MANIFEST",
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+    )
+    present = tuple(name in os.environ for name in names)
+    if not any(present):
+        return None
+    if not all(present):
+        raise ReleaseGateError("active runtime binding is incomplete")
+    try:
+        return _bound_active_runtime_paths(repository)
+    except ReleaseGateError as exc:
+        raise ReleaseGateError("active runtime binding is invalid") from exc
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise ReleaseGateError("active runtime binding is invalid") from exc
+
+
 def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_CommandSpec, ...]:
     python = sys.executable
-    script = root / "scripts" / "check_release_gate.py"
+    active_runtime_paths = _active_runtime_paths(root)
+    script_root = active_runtime_paths[0] if active_runtime_paths is not None else root
+    script = script_root / "scripts" / "check_release_gate.py"
     build_inputs = root / "src" / "hsconfig" / "resources" / "audited_build_inputs.json"
     score_mode = "pre_cutover" if tree_mode != "final" else "final"
     common_internal = (
@@ -1275,6 +2453,7 @@ def _safe_detail(
 
 
 def _controlled_environment(repository: Path) -> dict[str, str]:
+    active_runtime_paths = _active_runtime_paths(repository)
     environment = _base_environment()
     for key in tuple(environment):
         upper = key.upper()
@@ -1292,13 +2471,33 @@ def _controlled_environment(repository: Path) -> dict[str, str]:
             "PIP_NO_INPUT": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONNOUSERSITE": "1",
-            "PYTHONPATH": str(repository / "src"),
+            "PYTHONPATH": (
+                os.pathsep.join(str(path) for path in active_runtime_paths)
+                if active_runtime_paths is not None
+                else str(repository / "src")
+            ),
             "PYTHONIOENCODING": "utf-8",
             "PYTHONUTF8": "1",
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
             "PYTEST_PLUGINS": "pytest_cov.plugin,_hypothesis_pytestplugin",
         }
     )
+    return environment
+
+
+def _distribution_build_environment(repository: Path) -> dict[str, str]:
+    active_runtime_paths = _active_runtime_paths(repository)
+    environment = _controlled_environment(repository)
+    for name in (
+        "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL",
+        "HSCONFIG_RUNTIME_MANIFEST",
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+    ):
+        environment.pop(name, None)
+    if active_runtime_paths is None:
+        environment.pop("PYTHONPATH", None)
+    else:
+        environment["PYTHONPATH"] = str(active_runtime_paths[1])
     return environment
 
 
@@ -3637,6 +4836,7 @@ def _stage_tracked_source(repository: Path, target: Path) -> None:
 def _scan_distributions(repository: Path) -> tuple[list[str], int]:
     violations: list[str] = []
     count = 0
+    build_environment = _distribution_build_environment(repository)
     with TemporaryDirectory(prefix="hsconfig-release-distribution-") as temporary:
         target = Path(temporary)
         source = target / "source"
@@ -3646,9 +4846,17 @@ def _scan_distributions(repository: Path) -> tuple[list[str], int]:
         except (OSError, ReleaseGateError) as exc:
             return ([f"distribution_source_staging_failed:{exc}"], 0)
         completed = _execute_bounded(
-            (sys.executable, "-m", "build", "--outdir", str(artifacts_root), str(source)),
+            (
+                sys.executable,
+                "-m",
+                "build",
+                "--no-isolation",
+                "--outdir",
+                str(artifacts_root),
+                str(source),
+            ),
             cwd=source,
-            env=_controlled_environment(source),
+            env=build_environment,
             timeout=1_200,
         )
         if completed.returncode != 0:

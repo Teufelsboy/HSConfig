@@ -1,6 +1,6 @@
 name: ci
 
-on:
+"on":
   push:
     branches: [main]
   workflow_dispatch:
@@ -46,65 +46,44 @@ jobs:
             throw "unsupported_python_minor:$pythonMinor"
           }
           $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
-          if ($actualPythonMinor -ne $pythonMinor) {
-            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
-          }
+          if ($actualPythonMinor -ne $pythonMinor) { throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor" }
           $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
           $commitOid = $env:HSCONFIG_CI_COMMIT_OID
           $treeOid = $env:HSCONFIG_CI_TREE_OID
-          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
-          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
-          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
-            throw 'committed_source_baseline_missing'
-          }
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ($checkoutStatus.Count -ne 0) {
-            throw 'checkout_not_clean_before_bootstrap'
-          }
+          if (-not $sourceRoot -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw 'committed_source_baseline_missing' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_not_clean_before_bootstrap' }
           $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
-          if (Test-Path -LiteralPath $runtimeRoot) {
-            throw 'locked_runtime_root_already_exists'
-          }
+          if (Test-Path -LiteralPath $runtimeRoot) { throw 'locked_runtime_root_already_exists' }
           New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
           $venvRoot = Join-Path $runtimeRoot 'environment'
           python -m venv --without-pip $venvRoot
-          $venvPython = if ($IsWindows) {
-            Join-Path $venvRoot 'Scripts/python.exe'
-          } else {
-            Join-Path $venvRoot 'bin/python'
-          }
+          $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
+          $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
           $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
           $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
           $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualPipSha256 -ne $expectedPipSha256) {
-            throw 'bootstrap_pip_hash_mismatch'
-          }
+          if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
           $env:PYTHONPATH = $pipWheel
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
-            throw 'bootstrap_pip_version_mismatch'
-          }
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
           $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
           New-Item -ItemType Directory -Path $wheelhouse | Out-Null
           & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
-          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name).FullName
           & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
           $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
           $env:PYTHONPATH = $buildBackendRoot
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
-            throw 'checkout_identity_changed_after_dependency_install'
-          }
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_identity_changed_after_dependency_install' }
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
           & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
           (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -254,65 +233,44 @@ jobs:
             throw "unsupported_python_minor:$pythonMinor"
           }
           $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
-          if ($actualPythonMinor -ne $pythonMinor) {
-            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
-          }
+          if ($actualPythonMinor -ne $pythonMinor) { throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor" }
           $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
           $commitOid = $env:HSCONFIG_CI_COMMIT_OID
           $treeOid = $env:HSCONFIG_CI_TREE_OID
-          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
-          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
-          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
-            throw 'committed_source_baseline_missing'
-          }
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ($checkoutStatus.Count -ne 0) {
-            throw 'checkout_not_clean_before_bootstrap'
-          }
+          if (-not $sourceRoot -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw 'committed_source_baseline_missing' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_not_clean_before_bootstrap' }
           $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
-          if (Test-Path -LiteralPath $runtimeRoot) {
-            throw 'locked_runtime_root_already_exists'
-          }
+          if (Test-Path -LiteralPath $runtimeRoot) { throw 'locked_runtime_root_already_exists' }
           New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
           $venvRoot = Join-Path $runtimeRoot 'environment'
           python -m venv --without-pip $venvRoot
-          $venvPython = if ($IsWindows) {
-            Join-Path $venvRoot 'Scripts/python.exe'
-          } else {
-            Join-Path $venvRoot 'bin/python'
-          }
+          $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
+          $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
           $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
           $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
           $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualPipSha256 -ne $expectedPipSha256) {
-            throw 'bootstrap_pip_hash_mismatch'
-          }
+          if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
           $env:PYTHONPATH = $pipWheel
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
-            throw 'bootstrap_pip_version_mismatch'
-          }
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
           $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
           New-Item -ItemType Directory -Path $wheelhouse | Out-Null
           & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
-          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name).FullName
           & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
           $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
           $env:PYTHONPATH = $buildBackendRoot
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
-            throw 'checkout_identity_changed_after_dependency_install'
-          }
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_identity_changed_after_dependency_install' }
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
           & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
           (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -392,65 +350,44 @@ jobs:
             throw "unsupported_python_minor:$pythonMinor"
           }
           $actualPythonMinor = (python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')").Trim()
-          if ($actualPythonMinor -ne $pythonMinor) {
-            throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor"
-          }
+          if ($actualPythonMinor -ne $pythonMinor) { throw "python_minor_mismatch:expected=$pythonMinor,actual=$actualPythonMinor" }
           $sourceRoot = $env:HSCONFIG_CI_SOURCE_ROOT
           $commitOid = $env:HSCONFIG_CI_COMMIT_OID
           $treeOid = $env:HSCONFIG_CI_TREE_OID
-          $sourceInventory = $env:HSCONFIG_CI_SOURCE_INVENTORY
-          $sourceInventorySha256 = $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256
-          if (-not $sourceRoot -or -not $sourceInventory -or -not $sourceInventorySha256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
-            throw 'committed_source_baseline_missing'
-          }
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ($checkoutStatus.Count -ne 0) {
-            throw 'checkout_not_clean_before_bootstrap'
-          }
+          if (-not $sourceRoot -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY -or -not $env:HSCONFIG_CI_SOURCE_INVENTORY_SHA256 -or -not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw 'committed_source_baseline_missing' }
+          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_not_clean_before_bootstrap' }
           $runtimeRoot = Join-Path $env:RUNNER_TEMP 'hsconfig-locked-runtime'
-          if (Test-Path -LiteralPath $runtimeRoot) {
-            throw 'locked_runtime_root_already_exists'
-          }
+          if (Test-Path -LiteralPath $runtimeRoot) { throw 'locked_runtime_root_already_exists' }
           New-Item -ItemType Directory -Path $runtimeRoot | Out-Null
           $venvRoot = Join-Path $runtimeRoot 'environment'
           python -m venv --without-pip $venvRoot
-          $venvPython = if ($IsWindows) {
-            Join-Path $venvRoot 'Scripts/python.exe'
-          } else {
-            Join-Path $venvRoot 'bin/python'
-          }
+          $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
+          $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
           $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
           $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
           $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualPipSha256 -ne $expectedPipSha256) {
-            throw 'bootstrap_pip_hash_mismatch'
-          }
+          if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
           $env:PYTHONPATH = $pipWheel
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') {
-            throw 'bootstrap_pip_version_mismatch'
-          }
+          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
           $wheelhouse = Join-Path $runtimeRoot 'dependency-wheels'
           New-Item -ItemType Directory -Path $wheelhouse | Out-Null
           & $venvPython -m pip download --require-virtualenv --no-deps --only-binary=:all: --dest $wheelhouse -r $canonicalLock
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
-          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-wheelhouse-audit" --tree-mode working-pre-cutover --locked-check ci-wheelhouse-audit --json
+          $dependencyWheels = @(Get-ChildItem -LiteralPath $wheelhouse -File -Filter '*.whl' | Where-Object { $_.Name -notlike 'setuptools-*' -and $_.Name -notlike 'coverage-*' } | Sort-Object -Property Name).FullName
           & $venvPython -m pip install --require-virtualenv --no-index --no-deps $dependencyWheels
           $buildBackendRoot = Join-Path $runtimeRoot 'build-backend'
           $env:PYTHONPATH = $buildBackendRoot
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
-          $checkoutStatus = @(git status --porcelain=v1 --untracked-files=all)
-          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or $checkoutStatus.Count -ne 0) {
-            throw 'checkout_identity_changed_after_dependency_install'
-          }
-          & $venvPython (Join-Path $sourceRoot 'scripts/check_release_gate.py') --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
+          if ((git rev-parse HEAD).Trim() -ne $commitOid -or (git rev-parse 'HEAD^{tree}').Trim() -ne $treeOid -or @(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'checkout_identity_changed_after_dependency_install' }
+          & $venvPython $gate --repo . --outputs "$env:RUNNER_TEMP/ci-source-revalidate" --tree-mode working-pre-cutover --locked-check ci-source-revalidate --json
           & $venvPython -m pip install --require-virtualenv --no-deps --no-build-isolation $sourceRoot
           (Split-Path -Parent $venvPython) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "VIRTUAL_ENV=$venvRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append

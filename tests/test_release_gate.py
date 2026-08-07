@@ -6,6 +6,7 @@ import importlib.util
 from itertools import product
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import shutil
@@ -29,6 +30,7 @@ from hsconfig.release_gate import (
     ReleaseGateError,
     ReleaseGateResult,
     _archive_rows,
+    _active_runtime_paths,
     _assert_snapshot_unchanged,
     _build_base_evidence,
     _capture_snapshot,
@@ -47,8 +49,8 @@ from hsconfig.release_gate import (
     _repository_identity,
     _run_one,
     _safe_detail,
-    _scan_distributions,
     _scan_current_packages,
+    _scan_distributions,
     _shannon_entropy,
     _stage_tracked_source,
     _text_violations,
@@ -459,6 +461,1778 @@ def test_controlled_environment_runs_real_repository_property_test_without_resid
     assert completed.returncode == 0, completed.stderr
     assert "1 passed" in completed.stdout
     assert all(not path.exists() for path in residue)
+
+
+@pytest.fixture(scope="module")
+def real_active_runtime_template(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> dict[str, Path]:
+    fixture_root = tmp_path_factory.mktemp("real-active-runtime")
+    repository = fixture_root / "repository"
+    repository.mkdir()
+    archive = fixture_root / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Active Binding Contract",
+            "-c",
+            "user.email=active-binding@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    bootstrap_root = fixture_root / "bootstrap"
+    bootstrap_root.mkdir()
+    binding = BOOTSTRAP._bootstrap_environment(repository, bootstrap_root)
+    sentinel = fixture_root / "sentinel.txt"
+    sentinel.write_text(binding.sentinel, encoding="ascii")
+    return {
+        "repository": repository,
+        "bootstrap_root": bootstrap_root,
+        "manifest": binding.manifest_path,
+        "python": binding.python,
+        "sentinel": sentinel,
+    }
+
+
+def _write_active_runtime_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    template: dict[str, Path],
+) -> dict[str, Path]:
+    bootstrap_root = tmp_path / "bootstrap"
+    shutil.copytree(template["bootstrap_root"], bootstrap_root)
+    source_root = bootstrap_root / "committed-source"
+    controller = source_root / "scripts" / "check_release_gate.py"
+    build_backend_root = bootstrap_root / "build-backend"
+    sentinel = "d" * 64
+    manifest = json.loads(template["manifest"].read_text(encoding="utf-8"))
+    old_root = template["bootstrap_root"]
+    manifest["build_backend_root"] = str(build_backend_root)
+    manifest["environment_root"] = str(Path(sys.prefix).resolve(strict=True))
+    manifest["sentinel_sha256"] = hashlib.sha256(
+        sentinel.encode("ascii")
+    ).hexdigest()
+    for artifact in manifest["artifacts"]:
+        artifact["wheel_path"] = str(
+            bootstrap_root / Path(artifact["wheel_path"]).relative_to(old_root)
+        )
+    manifest["local_project"]["wheel_path"] = str(
+        bootstrap_root
+        / Path(manifest["local_project"]["wheel_path"]).relative_to(old_root)
+    )
+    manifest_path = bootstrap_root / "runtime-manifest.json"
+    manifest_source = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    manifest_path.write_bytes(manifest_source)
+    monkeypatch.setenv("HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL", sentinel)
+    monkeypatch.setenv("HSCONFIG_RUNTIME_MANIFEST", str(manifest_path))
+    monkeypatch.setenv(
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+        hashlib.sha256(manifest_source).hexdigest(),
+    )
+    monkeypatch.setattr(sys, "argv", [str(controller), "--json"])
+    return {
+        "repository": template["repository"],
+        "bootstrap_root": bootstrap_root,
+        "source_root": source_root,
+        "controller": controller,
+        "bound_module": source_root / "src" / "hsconfig" / "version.py",
+        "build_backend_root": build_backend_root,
+        "manifest": manifest_path,
+        "local_wheel": Path(manifest["local_project"]["wheel_path"]),
+    }
+
+
+def _rewrite_active_runtime_manifest(
+    binding: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    document: dict[str, Any],
+) -> None:
+    source = json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    binding["manifest"].write_bytes(source)
+    monkeypatch.setenv(
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+        hashlib.sha256(source).hexdigest(),
+    )
+
+
+@pytest.mark.parametrize(
+    "values",
+    (
+        {"HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL": "d" * 64},
+        {
+            "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL": "d" * 64,
+            "HSCONFIG_RUNTIME_MANIFEST": "",
+            "HSCONFIG_RUNTIME_MANIFEST_SHA256": "not-a-digest",
+        },
+    ),
+    ids=("partial", "malformed"),
+)
+def test_active_runtime_binding_fails_closed_before_specs_or_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    values: dict[str, str],
+) -> None:
+    for name in (
+        "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL",
+        "HSCONFIG_RUNTIME_MANIFEST",
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(ROOT)
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _command_specs(ROOT, tmp_path / "outputs", "working-pre-cutover")
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _controlled_environment(ROOT)
+
+
+def test_active_runtime_binding_rejects_post_binding_source_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    bound_module = binding["bound_module"]
+    original = release_gate_module._secure_read_bytes
+    mutated = False
+
+    def mutate_after_controller_read(*args: object, **kwargs: object) -> bytes:
+        nonlocal mutated
+        source = original(*args, **kwargs)
+        relative = args[1]
+        if str(relative) == "src/hsconfig/version.py" and not mutated:
+            mutated = True
+            bound_module.write_text("VALUE = 2\n", encoding="utf-8")
+        return source
+
+    monkeypatch.setattr(
+        release_gate_module,
+        "_secure_read_bytes",
+        mutate_after_controller_read,
+    )
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+    assert mutated is True
+
+
+def test_active_runtime_binding_rejects_unmanifested_overlay_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    (binding["build_backend_root"] / "unbound.py").write_text(
+        "VALUE = 1\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_active_runtime_binding_rejects_manifest_commit_mismatch_before_specs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    manifest_path = binding["manifest"]
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["commit_oid"] = "a" * 40
+    source = json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    manifest_path.write_bytes(source)
+    monkeypatch.setenv(
+        "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+        hashlib.sha256(source).hexdigest(),
+    )
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _command_specs(
+            binding["repository"], tmp_path / "outputs", "working-pre-cutover"
+        )
+
+
+def test_active_runtime_binding_rejects_self_consistent_two_row_source_subset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    kept = {
+        "scripts/check_release_gate.py",
+        "src/hsconfig/version.py",
+    }
+    document["source_inventory"] = [
+        row for row in document["source_inventory"] if row["path"] in kept
+    ]
+    assert len(document["source_inventory"]) == 2
+    digest = BOOTSTRAP._source_inventory_digest(document["source_inventory"])
+    document["source_inventory_sha256"] = digest
+    document["local_project"]["source_inventory_sha256"] = digest
+    for path in binding["source_root"].rglob("*"):
+        if path.is_file() and path.relative_to(binding["source_root"]).as_posix() not in kept:
+            path.unlink()
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_active_runtime_binding_rejects_self_consistent_two_artifact_subset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    installed = next(row for row in document["artifacts"] if row["install"] is True)
+    coverage = next(row for row in document["artifacts"] if row["name"] == "coverage")
+    document["artifacts"] = sorted(
+        (installed, coverage), key=lambda row: row["name"].casefold()
+    )
+    allowed = set(coverage["allowed_startup_surfaces"])
+    expected_overlay = {
+        row["path"] for row in coverage["files"] if row["path"] not in allowed
+    }
+    for path in binding["build_backend_root"].rglob("*"):
+        if path.is_file() and path.relative_to(
+            binding["build_backend_root"]
+        ).as_posix() not in expected_overlay:
+            path.unlink()
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_active_runtime_binding_rejects_local_wheel_byte_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    with binding["local_wheel"].open("ab") as wheel:
+        wheel.write(b"post-manifest mutation")
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize(
+    "substitution",
+    ("version", "path", "digest", "files"),
+)
+def test_active_runtime_binding_rejects_local_project_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    substitution: str,
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    local = document["local_project"]
+    if substitution == "version":
+        local["version"] = "999.0.0"
+    elif substitution == "path":
+        substitute = binding["bootstrap_root"] / "substitute.whl"
+        shutil.copy2(binding["local_wheel"], substitute)
+        local["wheel_path"] = str(substitute)
+    elif substitution == "digest":
+        local["sha256"] = "a" * 64
+    else:
+        local["files"] = []
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def _unbounded_test_wheel_rows(wheel: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    with zipfile.ZipFile(wheel) as archive:
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            payload = archive.read(info)
+            rows.append(
+                {
+                    "path": info.filename,
+                    "size": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            )
+    return sorted(rows, key=lambda row: str(row["path"]))
+
+
+def _append_unsafe_wheel_members(
+    wheel: Path, unsafe_kind: str
+) -> list[dict[str, object]]:
+    additions: list[dict[str, object]] = []
+    with zipfile.ZipFile(
+        wheel,
+        "a",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        if unsafe_kind == "oversized":
+            payload = b"0" * (1024 * 1024)
+            digest = hashlib.sha256(payload).hexdigest()
+            for index in range(129):
+                path = f"unsafe-payload/{index:03d}.bin"
+                archive.writestr(path, payload)
+                additions.append(
+                    {"path": path, "size": len(payload), "sha256": digest}
+                )
+        elif unsafe_kind == "casefold":
+            for path, payload in (
+                ("unsafe-package/A.py", b"A = 1\n"),
+                ("unsafe-package/a.py", b"A = 2\n"),
+            ):
+                archive.writestr(path, payload)
+                additions.append(
+                    {
+                        "path": path,
+                        "size": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                )
+        elif unsafe_kind == "prefix":
+            archive.writestr("unsafe-prefix/", b"")
+            payload = b"not a directory\n"
+            archive.writestr("unsafe-prefix", payload)
+            additions.append(
+                {
+                    "path": "unsafe-prefix",
+                    "size": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            )
+        else:
+            reserved_names = {
+                "reserved_con": "package/CON.py",
+                "reserved_lpt9": "package/lPt9.json",
+                "reserved_com1": "package/CoM¹.Py",
+                "reserved_lpt3": "package/LPT³.txt",
+            }
+            path = reserved_names[unsafe_kind]
+            payload = b"reserved = True\n"
+            archive.writestr(path, payload)
+            additions.append(
+                {
+                    "path": path,
+                    "size": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            )
+    return additions
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize("unsafe_kind", ("oversized", "casefold", "prefix"))
+def test_active_runtime_binding_rejects_unsafe_dependency_and_local_wheels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    unsafe_kind: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    if surface == "local":
+        wheel = binding["local_wheel"]
+        target = document["local_project"]
+    else:
+        target = next(row for row in document["artifacts"] if row["install"] is True)
+        wheel = Path(target["wheel_path"])
+    additions = _append_unsafe_wheel_members(wheel, unsafe_kind)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    target["files"] = sorted(
+        [*target["files"], *additions],
+        key=lambda row: str(row["path"]),
+    )
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row
+                for row in locked["wheels"]
+                if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize(
+    "unsafe_kind",
+    ("reserved_con", "reserved_lpt9", "reserved_com1", "reserved_lpt3"),
+)
+def test_active_runtime_binding_rejects_windows_reserved_wheel_components(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    unsafe_kind: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    additions = _append_unsafe_wheel_members(wheel, unsafe_kind)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    target["files"] = sorted(
+        [*target["files"], *additions],
+        key=lambda row: str(row["path"]),
+    )
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def _rewrite_wheel_member_header(
+    wheel: Path,
+    *,
+    filename: str,
+    method: int | None = None,
+    set_flag_bits: int = 0,
+) -> None:
+    source = bytearray(wheel.read_bytes())
+    with zipfile.ZipFile(io.BytesIO(source)) as archive:
+        member = next(info for info in archive.infolist() if info.filename == filename)
+        encoded_filename = member.filename.encode("utf-8")
+        if set_flag_bits:
+            flags = int.from_bytes(
+                source[member.header_offset + 6 : member.header_offset + 8],
+                "little",
+            )
+            source[member.header_offset + 6 : member.header_offset + 8] = (
+                flags | set_flag_bits
+            ).to_bytes(2, "little")
+        if method is not None:
+            source[member.header_offset + 8 : member.header_offset + 10] = (
+                method.to_bytes(2, "little")
+            )
+    offset = 0
+    found = False
+    while True:
+        offset = source.find(b"PK\x01\x02", offset)
+        if offset < 0:
+            break
+        name_length = int.from_bytes(source[offset + 28 : offset + 30], "little")
+        extra_length = int.from_bytes(source[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(source[offset + 32 : offset + 34], "little")
+        name_start = offset + 46
+        if bytes(source[name_start : name_start + name_length]) == encoded_filename:
+            if set_flag_bits:
+                flags = int.from_bytes(source[offset + 8 : offset + 10], "little")
+                source[offset + 8 : offset + 10] = (flags | set_flag_bits).to_bytes(
+                    2, "little"
+                )
+            if method is not None:
+                source[offset + 10 : offset + 12] = method.to_bytes(2, "little")
+            found = True
+            break
+        offset = name_start + name_length + extra_length + comment_length
+    assert found is True
+    wheel.write_bytes(source)
+
+
+def _set_first_wheel_member_compression_method(wheel: Path, method: int) -> None:
+    with zipfile.ZipFile(wheel) as archive:
+        filename = next(info.filename for info in archive.infolist() if not info.is_dir())
+    _rewrite_wheel_member_header(wheel, filename=filename, method=method)
+
+
+def _rewrite_local_wheel_member_header(
+    wheel: Path,
+    *,
+    member_kind: str,
+    mutation: str,
+) -> None:
+    if member_kind == "directory":
+        with zipfile.ZipFile(wheel) as archive:
+            has_directory = any(info.is_dir() for info in archive.infolist())
+        if not has_directory:
+            info = zipfile.ZipInfo("unsafe-local-header/")
+            info.external_attr = (stat.S_IFDIR | 0o755) << 16
+            with zipfile.ZipFile(wheel, "a") as archive:
+                archive.writestr(info, b"")
+    source = bytearray(wheel.read_bytes())
+    with zipfile.ZipFile(io.BytesIO(source)) as archive:
+        member = next(
+            info
+            for info in archive.infolist()
+            if info.is_dir() is (member_kind == "directory")
+        )
+    offset = member.header_offset
+    if mutation == "method99":
+        source[offset + 8 : offset + 10] = (99).to_bytes(2, "little")
+    elif mutation in {"encrypted", "descriptor", "utf8"}:
+        masks = {"encrypted": 0x1, "descriptor": 0x8, "utf8": 0x800}
+        flags = int.from_bytes(source[offset + 6 : offset + 8], "little")
+        source[offset + 6 : offset + 8] = (flags | masks[mutation]).to_bytes(
+            2, "little"
+        )
+    elif mutation == "signature":
+        source[offset : offset + 4] = b"BAD!"
+    elif mutation == "name":
+        source[offset + 30] ^= 0x1
+    elif mutation in {"name_length", "extra_length"}:
+        field_offset = offset + (26 if mutation == "name_length" else 28)
+        value = int.from_bytes(source[field_offset : field_offset + 2], "little")
+        source[field_offset : field_offset + 2] = (value + 1).to_bytes(2, "little")
+    else:
+        field_offsets = {"crc": 14, "compressed_size": 18, "file_size": 22}
+        field_offset = offset + field_offsets[mutation]
+        value = int.from_bytes(source[field_offset : field_offset + 4], "little")
+        source[field_offset : field_offset + 4] = (value ^ 0x1).to_bytes(
+            4, "little"
+        )
+    wheel.write_bytes(source)
+
+
+def _rewrite_central_wheel_member_header(
+    wheel: Path,
+    *,
+    member_kind: str,
+    mutation: str,
+) -> None:
+    source = bytearray(wheel.read_bytes())
+    with zipfile.ZipFile(io.BytesIO(source)) as archive:
+        member = next(
+            info
+            for info in archive.infolist()
+            if info.is_dir() is (member_kind == "directory")
+        )
+    encoding = "utf-8" if member.flag_bits & 0x800 else "cp437"
+    encoded_name = member.orig_filename.encode(encoding)
+    offset = 0
+    while True:
+        offset = source.find(b"PK\x01\x02", offset)
+        assert offset >= 0
+        name_length = int.from_bytes(source[offset + 28 : offset + 30], "little")
+        name_start = offset + 46
+        if bytes(source[name_start : name_start + name_length]) == encoded_name:
+            break
+        extra_length = int.from_bytes(source[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(source[offset + 32 : offset + 34], "little")
+        offset = name_start + name_length + extra_length + comment_length
+    if mutation == "method99":
+        source[offset + 10 : offset + 12] = (99).to_bytes(2, "little")
+    elif mutation in {"encrypted", "descriptor", "utf8"}:
+        masks = {"encrypted": 0x1, "descriptor": 0x8, "utf8": 0x800}
+        flags = int.from_bytes(source[offset + 8 : offset + 10], "little")
+        source[offset + 8 : offset + 10] = (flags | masks[mutation]).to_bytes(
+            2, "little"
+        )
+    elif mutation == "signature":
+        source[offset : offset + 4] = b"BAD!"
+    elif mutation == "name":
+        source[offset + 46] ^= 0x1
+    elif mutation in {"name_length", "extra_length"}:
+        field_offset = offset + (28 if mutation == "name_length" else 30)
+        value = int.from_bytes(source[field_offset : field_offset + 2], "little")
+        source[field_offset : field_offset + 2] = (value + 1).to_bytes(2, "little")
+    else:
+        field_offsets = {"crc": 16, "compressed_size": 20, "file_size": 24}
+        field_offset = offset + field_offsets[mutation]
+        value = int.from_bytes(source[field_offset : field_offset + 4], "little")
+        source[field_offset : field_offset + 4] = (value ^ 0x1).to_bytes(
+            4, "little"
+        )
+    wheel.write_bytes(source)
+
+
+def _wheel_raw_layout(
+    source: bytes,
+) -> tuple[list[zipfile.ZipInfo], list[int], int, int]:
+    with zipfile.ZipFile(io.BytesIO(source)) as archive:
+        infos = archive.infolist()
+        central_start = archive.start_dir
+    central_offsets: list[int] = []
+    cursor = central_start
+    for _info in infos:
+        assert source[cursor : cursor + 4] == b"PK\x01\x02"
+        central_offsets.append(cursor)
+        name_length = int.from_bytes(source[cursor + 28 : cursor + 30], "little")
+        extra_length = int.from_bytes(source[cursor + 30 : cursor + 32], "little")
+        comment_length = int.from_bytes(source[cursor + 32 : cursor + 34], "little")
+        cursor += 46 + name_length + extra_length + comment_length
+    assert source[cursor : cursor + 4] == b"PK\x05\x06"
+    return infos, central_offsets, central_start, cursor
+
+
+def _insert_wheel_bytes(wheel: Path, *, offset: int, payload: bytes) -> None:
+    source = bytearray(wheel.read_bytes())
+    infos, central_offsets, central_start, eocd_offset = _wheel_raw_layout(source)
+    delta = len(payload)
+    for info, central_offset in zip(infos, central_offsets, strict=True):
+        if info.header_offset >= offset:
+            source[central_offset + 42 : central_offset + 46] = (
+                info.header_offset + delta
+            ).to_bytes(4, "little")
+    if central_start >= offset:
+        source[eocd_offset + 16 : eocd_offset + 20] = (
+            central_start + delta
+        ).to_bytes(4, "little")
+    source[offset:offset] = payload
+    wheel.write_bytes(source)
+
+
+def _rewrite_wheel_with_member_extra(wheel: Path, extra: bytes) -> None:
+    rewritten = io.BytesIO()
+    with zipfile.ZipFile(wheel) as source:
+        rows = [(info, source.read(info)) for info in source.infolist()]
+    target = next(info for info, _payload in rows if not info.is_dir())
+    target.extra = extra
+    with zipfile.ZipFile(rewritten, "w") as destination:
+        for info, payload in rows:
+            destination.writestr(info, payload)
+    wheel.write_bytes(rewritten.getvalue())
+
+
+def _rewrite_wheel_with_member_comment(wheel: Path, comment: bytes) -> None:
+    rewritten = io.BytesIO()
+    with zipfile.ZipFile(wheel) as source:
+        rows = [(info, source.read(info)) for info in source.infolist()]
+    target = next(info for info, _payload in reversed(rows) if not info.is_dir())
+    target.comment = comment
+    with zipfile.ZipFile(rewritten, "w") as destination:
+        for info, payload in rows:
+            destination.writestr(info, payload)
+    wheel.write_bytes(rewritten.getvalue())
+
+
+def _mutate_wheel_comment_closure(wheel: Path, mutation: str) -> None:
+    if mutation == "member_comment":
+        _rewrite_wheel_with_member_comment(wheel, b"hidden member comment")
+    elif mutation == "archive_comment":
+        with zipfile.ZipFile(wheel, "a") as archive:
+            archive.comment = b"hidden archive comment"
+    else:
+        source = bytearray(wheel.read_bytes())
+        _infos, central_offsets, central_start, eocd_offset = _wheel_raw_layout(
+            source
+        )
+        assert int.from_bytes(
+            source[central_offsets[-1] + 32 : central_offsets[-1] + 34],
+            "little",
+        ) == 0
+        assert int.from_bytes(source[eocd_offset + 20 : eocd_offset + 22], "little") == 0
+        original_eocd = bytes(source[eocd_offset : eocd_offset + 22])
+        source.extend(original_eocd)
+        source[central_offsets[-1] + 32 : central_offsets[-1] + 34] = (22).to_bytes(
+            2,
+            "little",
+        )
+        final_eocd = eocd_offset + 22
+        central_size = eocd_offset - central_start
+        source[final_eocd + 12 : final_eocd + 16] = (central_size + 22).to_bytes(
+            4,
+            "little",
+        )
+        wheel.write_bytes(source)
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize(
+    "mutation",
+    ("member_comment", "archive_comment", "embedded_original_eocd"),
+)
+def test_active_runtime_binding_rejects_hidden_wheel_comment_structure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _mutate_wheel_comment_closure(wheel, mutation)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def _append_directory_member(wheel: Path, payload: bytes = b"") -> str:
+    name = "hidden-directory-payload/"
+    info = zipfile.ZipInfo(name)
+    info.external_attr = (stat.S_IFDIR | 0o755) << 16
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(info, payload)
+    return name
+
+
+def _patch_wheel_member_integrity_fields(
+    wheel: Path,
+    *,
+    filename: str,
+    crc: int | None = None,
+    compressed_size: int | None = None,
+    file_size: int | None = None,
+) -> None:
+    source = bytearray(wheel.read_bytes())
+    infos, central_offsets, _central_start, _eocd_offset = _wheel_raw_layout(source)
+    member_index = next(
+        index for index, info in enumerate(infos) if info.filename == filename
+    )
+    local_offset = infos[member_index].header_offset
+    central_offset = central_offsets[member_index]
+    for value, local_field, central_field in (
+        (crc, 14, 16),
+        (compressed_size, 18, 20),
+        (file_size, 22, 24),
+    ):
+        if value is not None:
+            encoded = value.to_bytes(4, "little")
+            source[local_offset + local_field : local_offset + local_field + 4] = encoded
+            source[central_offset + central_field : central_offset + central_field + 4] = encoded
+    wheel.write_bytes(source)
+
+
+def _mutate_wheel_closure(wheel: Path, mutation: str) -> None:
+    if mutation == "zip64_extra":
+        _rewrite_wheel_with_member_extra(wheel, b"\x01\x00\x00\x00")
+    elif mutation == "duplicate_extra":
+        _rewrite_wheel_with_member_extra(
+            wheel,
+            b"\xfe\xca\x00\x00\xfe\xca\x00\x00",
+        )
+    elif mutation == "malformed_extra":
+        source = bytearray(wheel.read_bytes())
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            member = next(info for info in archive.infolist() if not info.is_dir())
+        local_offset = member.header_offset
+        name_length = int.from_bytes(
+            source[local_offset + 26 : local_offset + 28], "little"
+        )
+        extra_length = int.from_bytes(
+            source[local_offset + 28 : local_offset + 30], "little"
+        )
+        malformed = b"\xfe\xca\x04\x00\x00"
+        source[local_offset + 28 : local_offset + 30] = (
+            extra_length + len(malformed)
+        ).to_bytes(2, "little")
+        wheel.write_bytes(source)
+        _insert_wheel_bytes(
+            wheel,
+            offset=local_offset + 30 + name_length + extra_length,
+            payload=malformed,
+        )
+    elif mutation == "preamble":
+        _insert_wheel_bytes(wheel, offset=0, payload=b"PREAMBLE")
+    elif mutation == "inter_member_gap":
+        source = wheel.read_bytes()
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            member = archive.infolist()[0]
+        name_length = int.from_bytes(
+            source[member.header_offset + 26 : member.header_offset + 28], "little"
+        )
+        extra_length = int.from_bytes(
+            source[member.header_offset + 28 : member.header_offset + 30], "little"
+        )
+        payload_end = (
+            member.header_offset
+            + 30
+            + name_length
+            + extra_length
+            + member.compress_size
+        )
+        _insert_wheel_bytes(wheel, offset=payload_end, payload=b"INTER-GAP")
+    elif mutation == "precentral_gap":
+        source = wheel.read_bytes()
+        with zipfile.ZipFile(io.BytesIO(source)) as archive:
+            central_start = archive.start_dir
+        _insert_wheel_bytes(wheel, offset=central_start, payload=b"CENTRAL-GAP")
+    elif mutation == "directory_payload":
+        _append_directory_member(wheel, b"hidden")
+    elif mutation == "directory_crc":
+        name = _append_directory_member(wheel)
+        _patch_wheel_member_integrity_fields(wheel, filename=name, crc=1)
+    elif mutation == "directory_file_size":
+        name = _append_directory_member(wheel)
+        _patch_wheel_member_integrity_fields(wheel, filename=name, file_size=1)
+    else:
+        name = _append_directory_member(wheel, b"x")
+        _patch_wheel_member_integrity_fields(
+            wheel,
+            filename=name,
+            crc=0,
+            file_size=0,
+        )
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "zip64_extra",
+        "malformed_extra",
+        "duplicate_extra",
+        "preamble",
+        "inter_member_gap",
+        "precentral_gap",
+        "directory_payload",
+        "directory_crc",
+        "directory_compressed_size",
+        "directory_file_size",
+    ),
+)
+def test_active_runtime_binding_rejects_unclosed_wheel_byte_structure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _mutate_wheel_closure(wheel, mutation)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize(
+    "trailer",
+    (
+        b"PK\x05\x06" + (b"\x00" * 18),
+        b"PK\x06\x06" + (b"\x00" * 52),
+        b"PK\x06\x07" + (b"\x00" * 16),
+    ),
+)
+def test_active_wheel_inventory_rejects_duplicate_or_zip64_end_records(
+    tmp_path: Path,
+    trailer: bytes,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    wheel = tmp_path / "end-record.whl"
+    with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("package/module.py", b"VALUE = 1\n")
+    wheel.write_bytes(wheel.read_bytes() + trailer)
+
+    with pytest.raises(ReleaseGateError):
+        release_gate_module._active_wheel_inventory(wheel.read_bytes())
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize("member_kind", ("file", "directory"))
+@pytest.mark.parametrize("mutation", ("method99", "encrypted"))
+def test_active_runtime_binding_rejects_local_only_wheel_security_header_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    member_kind: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _rewrite_local_wheel_member_header(
+        wheel,
+        member_kind=member_kind,
+        mutation=mutation,
+    )
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize(
+    ("member_kind", "mutation"),
+    (
+        ("directory", "descriptor"),
+        ("directory", "utf8"),
+        ("directory", "crc"),
+        ("directory", "compressed_size"),
+        ("directory", "file_size"),
+        ("directory", "signature"),
+        ("directory", "name"),
+        ("directory", "name_length"),
+        ("directory", "extra_length"),
+        ("file", "descriptor"),
+        ("file", "utf8"),
+        ("file", "crc"),
+        ("file", "compressed_size"),
+        ("file", "file_size"),
+    ),
+)
+def test_active_wheel_inventory_rejects_local_header_structural_ambiguity(
+    tmp_path: Path,
+    member_kind: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    wheel = tmp_path / "structural.whl"
+    directory = zipfile.ZipInfo("package/")
+    directory.external_attr = (stat.S_IFDIR | 0o755) << 16
+    with zipfile.ZipFile(
+        wheel,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as archive:
+        archive.writestr(directory, b"")
+        archive.writestr("package/module.py", b"VALUE = 1\n")
+    _rewrite_local_wheel_member_header(
+        wheel,
+        member_kind=member_kind,
+        mutation=mutation,
+    )
+
+    with pytest.raises(ReleaseGateError):
+        release_gate_module._active_wheel_inventory(wheel.read_bytes())
+
+
+@pytest.mark.parametrize("member_kind", ("directory", "file"))
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "method99",
+        "encrypted",
+        "descriptor",
+        "utf8",
+        "crc",
+        "compressed_size",
+        "file_size",
+        "signature",
+        "name",
+        "name_length",
+        "extra_length",
+    ),
+)
+def test_active_wheel_inventory_rejects_central_only_header_ambiguity(
+    tmp_path: Path,
+    member_kind: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    wheel = tmp_path / "central-structural.whl"
+    directory = zipfile.ZipInfo("package/")
+    directory.external_attr = (stat.S_IFDIR | 0o755) << 16
+    with zipfile.ZipFile(
+        wheel,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as archive:
+        archive.writestr(directory, b"")
+        archive.writestr("package/module.py", b"VALUE = 1\n")
+    _rewrite_central_wheel_member_header(
+        wheel,
+        member_kind=member_kind,
+        mutation=mutation,
+    )
+
+    with pytest.raises(ReleaseGateError):
+        release_gate_module._active_wheel_inventory(wheel.read_bytes())
+
+
+def _append_unsafe_wheel_directory(wheel: Path, unsafe_kind: str) -> None:
+    filename = "unsafe-directory/"
+    info = zipfile.ZipInfo(filename)
+    info.external_attr = (stat.S_IFDIR | 0o755) << 16
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr(info, b"")
+    if unsafe_kind == "method99":
+        _rewrite_wheel_member_header(wheel, filename=filename, method=99)
+    else:
+        _rewrite_wheel_member_header(wheel, filename=filename, set_flag_bits=0x1)
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize("unsafe_kind", ("method99", "encrypted"))
+def test_active_runtime_binding_rejects_unsafe_wheel_directory_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    unsafe_kind: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _append_unsafe_wheel_directory(wheel, unsafe_kind)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+def test_active_runtime_binding_translates_unsupported_wheel_compression_to_gate_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _set_first_wheel_member_compression_method(wheel, 99)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_unsupported_local_wheel_compression_cli_emits_one_failure_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    wheel = binding["local_wheel"]
+    _set_first_wheel_member_compression_method(wheel, 99)
+    document["local_project"]["sha256"] = hashlib.sha256(
+        wheel.read_bytes()
+    ).hexdigest()
+    document["environment_root"] = str(binding["bootstrap_root"] / "environment")
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+    python = binding["bootstrap_root"] / "environment" / "Scripts" / "python.exe"
+    sentinel = real_active_runtime_template["sentinel"].read_text(encoding="ascii")
+    environment = BOOTSTRAP._base_environment()
+    environment.update(
+        {
+            BOOTSTRAP._SENTINEL: sentinel,
+            BOOTSTRAP._MANIFEST: str(binding["manifest"]),
+            BOOTSTRAP._MANIFEST_DIGEST: os.environ[
+                "HSCONFIG_RUNTIME_MANIFEST_SHA256"
+            ],
+            "VIRTUAL_ENV": str(binding["bootstrap_root"] / "environment"),
+            "PYTHONPATH": os.pathsep.join(
+                (str(binding["source_root"]), str(binding["build_backend_root"]))
+            ),
+        }
+    )
+    completed = subprocess.run(
+        (
+            str(python),
+            str(binding["controller"]),
+            "--repo",
+            str(binding["repository"]),
+            "--outputs",
+            str(binding["repository"] / "outputs"),
+            "--tree-mode",
+            "working-pre-cutover",
+            "--json",
+            "--internal-check",
+            "repository_hygiene",
+        ),
+        cwd=binding["repository"],
+        env=environment,
+        input=sentinel + "\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        timeout=600,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout.count("\n") == 1
+    document = json.loads(completed.stdout)
+    assert document["passed"] is False
+    assert document["errors"] == ["release gate bootstrap failed"]
+    assert "Traceback" not in completed.stderr
+
+
+@pytest.mark.parametrize(
+    "filename",
+    (
+        "renamed-local-payload.bin",
+        "other-{version}-py3-none-any.whl",
+        "hsconfig-9.9.9-py3-none-any.whl",
+        "hsconfig-{version}-invalid.whl",
+        "hsconfig-{version}-py3-none-any.bin",
+        "HSConfig-{version}-py3-none-any.whl",
+    ),
+)
+def test_active_runtime_binding_rejects_noncanonical_local_wheel_filename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    filename: str,
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    version = document["local_project"]["version"]
+    renamed = binding["local_wheel"].with_name(filename.format(version=version))
+    binding["local_wheel"].replace(renamed)
+    document["local_project"]["wheel_path"] = str(renamed)
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_active_runtime_binding_rejects_local_wheel_tag_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    wheel = binding["local_wheel"]
+    rewritten = io.BytesIO()
+    with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(
+        rewritten,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as destination:
+        for info in source.infolist():
+            payload = source.read(info)
+            if info.filename.endswith(".dist-info/WHEEL"):
+                text = payload.decode("utf-8")
+                payload = re.sub(
+                    r"(?m)^Tag: .+$",
+                    "Tag: py2-none-any",
+                    text,
+                ).encode("utf-8")
+            destination.writestr(info, payload)
+    wheel.write_bytes(rewritten.getvalue())
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    document["local_project"]["sha256"] = hashlib.sha256(
+        wheel.read_bytes()
+    ).hexdigest()
+    document["local_project"]["files"] = _unbounded_test_wheel_rows(wheel)
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def _rewrite_wheel_identity(wheel: Path, mutation: str) -> None:
+    rewritten = io.BytesIO()
+    with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(
+        rewritten,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+    ) as destination:
+        for info in source.infolist():
+            name = info.filename
+            payload = source.read(info)
+            if mutation == "dist_info_root" and ".dist-info/" in name:
+                _root, separator, rest = name.partition("/")
+                name = f"evil-999.dist-info{separator}{rest}"
+            elif info.filename.endswith(".dist-info/METADATA"):
+                text = payload.decode("utf-8")
+                if mutation == "metadata_name":
+                    text = re.sub(r"(?m)^Name: .+$", "Name: evil", text)
+                elif mutation == "metadata_version":
+                    text = re.sub(r"(?m)^Version: .+$", "Version: 999", text)
+                elif mutation == "metadata_core_version_missing":
+                    text = re.sub(r"(?m)^Metadata-Version: .+\r?\n", "", text)
+                elif mutation == "metadata_core_version_unsupported":
+                    text = re.sub(
+                        r"(?m)^Metadata-Version: .+$",
+                        "Metadata-Version: 9.9",
+                        text,
+                    )
+                elif mutation == "metadata_core_version_duplicate":
+                    text = re.sub(
+                        r"(?m)^(Metadata-Version: .+\r?\n)",
+                        r"\1\1",
+                        text,
+                        count=1,
+                    )
+                elif mutation == "metadata_parser_defect":
+                    separator = "\r\n\r\n" if "\r\n\r\n" in text else "\n\n"
+                    head, found, body = text.partition(separator)
+                    assert found
+                    text = head + "\nMalformed identity line" + found + body
+                payload = text.encode("utf-8")
+            elif info.filename.endswith(".dist-info/WHEEL"):
+                text = payload.decode("utf-8")
+                if mutation == "wheel_tag":
+                    text = re.sub(r"(?m)^Tag: .+$", "Tag: py2-none-any", text)
+                elif mutation == "root_false":
+                    text = re.sub(
+                        r"(?m)^Root-Is-Purelib: .+$",
+                        "Root-Is-Purelib: false",
+                        text,
+                    )
+                elif mutation == "root_missing":
+                    text = re.sub(r"(?m)^Root-Is-Purelib: .+\r?\n", "", text)
+                elif mutation == "root_duplicate":
+                    text += "Root-Is-Purelib: true\n"
+                elif mutation == "tag_duplicate":
+                    tag = next(
+                        line for line in text.splitlines() if line.startswith("Tag: ")
+                    )
+                    text += tag + "\n"
+                elif mutation == "unknown_identity":
+                    text += "Identity-Name: evil\n"
+                payload = text.encode("utf-8")
+            destination.writestr(name, payload)
+    wheel.write_bytes(rewritten.getvalue())
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "root_missing",
+        "root_false",
+        "root_duplicate",
+        "tag_duplicate",
+        "unknown_identity",
+    ),
+)
+def test_active_runtime_binding_rejects_unclosed_local_wheel_headers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    mutation: str,
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    wheel = binding["local_wheel"]
+    _rewrite_wheel_identity(wheel, mutation)
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    document["local_project"]["sha256"] = hashlib.sha256(
+        wheel.read_bytes()
+    ).hexdigest()
+    document["local_project"]["files"] = _unbounded_test_wheel_rows(wheel)
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("metadata_name", "metadata_version", "wheel_tag", "root_false", "dist_info_root"),
+)
+def test_active_runtime_binding_rejects_dependency_internal_identity_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = next(row for row in document["artifacts"] if row["install"] is True)
+    wheel = Path(target["wheel_path"])
+    _rewrite_wheel_identity(wheel, mutation)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    target["files"] = _unbounded_test_wheel_rows(wheel)
+    original_lock_rows = release_gate_module._active_lock_rows
+
+    def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+        rows = original_lock_rows(source)
+        locked = next(row for row in rows if row["name"] == target["name"])
+        candidate = next(
+            row for row in locked["wheels"] if row["name"] == wheel.name
+        )
+        candidate["sha256"] = digest
+        return rows
+
+    monkeypatch.setattr(
+        release_gate_module,
+        "_active_lock_rows",
+        selected_lock_rows,
+    )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize("surface", ("dependency", "local"))
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "metadata_core_version_missing",
+        "metadata_core_version_unsupported",
+        "metadata_core_version_duplicate",
+        "metadata_parser_defect",
+    ),
+)
+def test_active_runtime_binding_rejects_invalid_core_metadata_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    surface: str,
+    mutation: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    target = (
+        document["local_project"]
+        if surface == "local"
+        else next(row for row in document["artifacts"] if row["install"] is True)
+    )
+    wheel = Path(target["wheel_path"])
+    _rewrite_wheel_identity(wheel, mutation)
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    target["sha256"] = digest
+    target["files"] = _unbounded_test_wheel_rows(wheel)
+    if surface == "dependency":
+        original_lock_rows = release_gate_module._active_lock_rows
+
+        def selected_lock_rows(source: bytes) -> list[dict[str, object]]:
+            rows = original_lock_rows(source)
+            locked = next(row for row in rows if row["name"] == target["name"])
+            candidate = next(
+                row for row in locked["wheels"] if row["name"] == wheel.name
+            )
+            candidate["sha256"] = digest
+            return rows
+
+        monkeypatch.setattr(
+            release_gate_module,
+            "_active_lock_rows",
+            selected_lock_rows,
+        )
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.parametrize("substitution", ("order", "count"))
+def test_active_runtime_binding_rejects_artifact_order_or_count_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+    substitution: str,
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    document = json.loads(binding["manifest"].read_text(encoding="utf-8"))
+    if substitution == "order":
+        document["artifacts"].reverse()
+    else:
+        index = next(
+            index
+            for index, row in enumerate(document["artifacts"])
+            if row["install"] is True
+        )
+        document["artifacts"].pop(index)
+    _rewrite_active_runtime_manifest(binding, monkeypatch, document)
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction semantics")
+def test_active_runtime_binding_rejects_nested_build_backend_junction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    external = tmp_path / "external-overlay"
+    external.mkdir()
+    environment = os.environ.copy()
+    environment["HSCONFIG_TEST_LINK_PATH"] = str(
+        binding["build_backend_root"] / "redirect"
+    )
+    environment["HSCONFIG_TEST_LINK_TARGET"] = str(external)
+    subprocess.run(
+        (
+            "pwsh",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "New-Item -ItemType Junction "
+            "-Path $env:HSCONFIG_TEST_LINK_PATH "
+            "-Target $env:HSCONFIG_TEST_LINK_TARGET | Out-Null",
+        ),
+        check=True,
+        env=environment,
+    )
+
+    with pytest.raises(ReleaseGateError, match="runtime binding"):
+        _active_runtime_paths(binding["repository"])
+
+
+def test_distribution_build_environment_separates_staged_source_from_active_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    ambient_debug = tmp_path / "ambient-coverage-debug.txt"
+    monkeypatch.setenv("COVERAGE_DEBUG_FILE", str(ambient_debug))
+    monkeypatch.setenv("HYPOTHESIS_PROFILE", "ambient")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--trace")
+    monkeypatch.setenv("PYTHONSTARTUP", str(tmp_path / "ambient-startup.py"))
+    controlled_repositories: list[Path] = []
+    staged_sources: list[Path] = []
+    observed_environments: list[dict[str, str]] = []
+    original_controlled_environment = release_gate_module._controlled_environment
+
+    def record_controlled_environment(repository: Path) -> dict[str, str]:
+        controlled_repositories.append(repository)
+        return original_controlled_environment(repository)
+
+    def stage_source(repository: Path, destination: Path) -> None:
+        assert repository == binding["repository"]
+        destination.mkdir()
+        staged_sources.append(destination)
+
+    def observe_build(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        assert cwd == staged_sources[0]
+        assert Path(command[-1]) == staged_sources[0]
+        assert "--no-isolation" in command
+        assert timeout == 1_200
+        observed_environments.append(dict(env))
+        return subprocess.CompletedProcess(command, 1, "", "expected diagnostic stop")
+
+    monkeypatch.setattr(
+        release_gate_module,
+        "_controlled_environment",
+        record_controlled_environment,
+    )
+    monkeypatch.setattr(release_gate_module, "_stage_tracked_source", stage_source)
+    monkeypatch.setattr(release_gate_module, "_execute_bounded", observe_build)
+
+    violations, artifact_count = _scan_distributions(binding["repository"])
+
+    assert controlled_repositories == [binding["repository"]]
+    assert len(staged_sources) == 1
+    assert artifact_count == 0
+    assert violations == ["distribution_build_failed:returncode=1"]
+    assert len(observed_environments) == 1
+    environment = observed_environments[0]
+    assert environment["PYTHONPATH"] == str(binding["build_backend_root"])
+    assert all(
+        name not in environment
+        for name in (
+            "HSCONFIG_RELEASE_GATE_BOOTSTRAP_SENTINEL",
+            "HSCONFIG_RUNTIME_MANIFEST",
+            "HSCONFIG_RUNTIME_MANIFEST_SHA256",
+            "COVERAGE_DEBUG_FILE",
+            "HYPOTHESIS_PROFILE",
+            "PYTEST_ADDOPTS",
+            "PYTHONSTARTUP",
+        )
+    )
+    assert not ambient_debug.exists()
+
+
+def test_controlled_environment_preserves_only_manifest_bound_python_overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    source_root = binding["source_root"]
+    build_backend_root = binding["build_backend_root"]
+    locked_root = tmp_path / "locked-site-packages"
+    locked_metadata = locked_root / "locked_pkg-1.0.dist-info" / "METADATA"
+    locked_metadata.parent.mkdir(parents=True)
+    locked_metadata.write_text(
+        "Metadata-Version: 2.1\nName: locked-pkg\nVersion: 1.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "ambient-pythonpath"))
+    monkeypatch.setenv("PYTEST_PLUGINS", "ambient.plugin")
+
+    environment = _controlled_environment(binding["repository"])
+    completed = subprocess.run(
+        (
+            sys.executable,
+            "-S",
+            "-c",
+            "import importlib.metadata,json,sys;"
+            "sys.path.insert(0,sys.argv[1]);"
+            "names=sorted(d.metadata['Name'] for d in importlib.metadata.distributions());"
+            "print(json.dumps(names,separators=(',',':')))",
+            str(locked_root),
+        ),
+        cwd=binding["repository"],
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert environment["PYTHONPATH"].split(os.pathsep) == [
+        str(source_root),
+        str(build_backend_root),
+    ]
+    assert environment["PYTEST_PLUGINS"] == "pytest_cov.plugin,_hypothesis_pytestplugin"
+    assert json.loads(completed.stdout) == ["coverage", "locked-pkg", "setuptools"]
 
 
 def test_controlled_environment_runs_real_repository_tmp_path_test_without_residue(
@@ -1418,6 +3192,215 @@ def test_real_reexec_uses_inventory_bound_committed_controller(
 
     assert returncode == 0
     assert document["passed"] is True
+
+
+def test_internal_command_specs_execute_the_bound_committed_controller(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    archive = tmp_path / "repository.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with tarfile.open(archive) as source:
+        source.extractall(repository)
+    for relative in (
+        ".github/workflows/ci.yml",
+        "scripts/run_coverage_gate.py",
+        "src/hsconfig/release_gate.py",
+    ):
+        (repository / relative).write_bytes((ROOT / relative).read_bytes())
+    shutil.copytree(ROOT / "outputs", repository / "outputs", dirs_exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    controller_path = repository / "scripts" / "check_release_gate.py"
+    controller_spec = importlib.util.spec_from_file_location(
+        "internal_command_controller", controller_path
+    )
+    assert controller_spec is not None and controller_spec.loader is not None
+    controller = importlib.util.module_from_spec(controller_spec)
+    controller_spec.loader.exec_module(controller)
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap_root.mkdir()
+    binding = controller._bootstrap_environment(repository, bootstrap_root)
+    manifest_source = binding.manifest_path.read_bytes()
+    manifest = json.loads(manifest_source)
+    artifact_keys = {
+        "name",
+        "version",
+        "url",
+        "sha256",
+        "wheel_path",
+        "files",
+        "install",
+        "allowed_startup_surfaces",
+    }
+    assert manifest["artifacts"]
+    assert all(set(artifact) == artifact_keys for artifact in manifest["artifacts"])
+    assert any(artifact["install"] is True for artifact in manifest["artifacts"])
+    assert any(artifact["install"] is False for artifact in manifest["artifacts"])
+    committed_controller = (
+        bootstrap_root / "committed-source" / "scripts" / "check_release_gate.py"
+    )
+    environment = controller._base_environment()
+    environment.update(
+        {
+            controller._SENTINEL: binding.sentinel,
+            controller._MANIFEST: str(binding.manifest_path),
+            controller._MANIFEST_DIGEST: hashlib.sha256(manifest_source).hexdigest(),
+            "VIRTUAL_ENV": str(binding.python.parent.parent),
+            "PYTHONPATH": os.pathsep.join(
+                (
+                    str(bootstrap_root / "committed-source"),
+                    str(manifest["build_backend_root"]),
+                )
+            ),
+        }
+    )
+    binding_probe = (
+        "import argparse,importlib.util,json,sys;"
+        "from pathlib import Path;"
+        "path=Path(sys.argv[1]);"
+        "spec=importlib.util.spec_from_file_location('bound_probe',path);"
+        "module=importlib.util.module_from_spec(spec);"
+        "sys.modules[spec.name]=module;spec.loader.exec_module(module);"
+        "print(json.dumps({'binding':module._child_binding("
+        "argparse.Namespace(repo=Path(sys.argv[2])))}))"
+    )
+    bound = subprocess.run(
+        (
+            str(binding.python),
+            "-c",
+            binding_probe,
+            str(committed_controller),
+            str(repository),
+        ),
+        cwd=repository,
+        env=environment,
+        input=(binding.sentinel + "\n").encode("ascii"),
+        check=True,
+        capture_output=True,
+    )
+    assert json.loads(bound.stdout)["binding"] is True
+
+    locked_coverage_probe = (
+        "import importlib.util,json,subprocess,sys;"
+        "from pathlib import Path;"
+        "repo=Path(sys.argv[1]);runner_path=repo/'scripts'/'run_coverage_gate.py';"
+        "spec=importlib.util.spec_from_file_location('locked_coverage_probe',runner_path);"
+        "runner=importlib.util.module_from_spec(spec);"
+        "sys.modules[spec.name]=runner;spec.loader.exec_module(runner);"
+        "runtime_paths=runner._assert_runtime_matches_lock();"
+        "assert runtime_paths is not None;"
+        "child_code=\"import coverage,pytest_cov.plugin,_hypothesis_pytestplugin,"
+        "setuptools.build_meta,hsconfig,json;"
+        "print(json.dumps({'coverage':coverage.__file__,'pytest_cov':pytest_cov.plugin.__file__,"
+        "'hypothesis':_hypothesis_pytestplugin.__file__,'backend':setuptools.build_meta.__file__,"
+        "'hsconfig':hsconfig.__file__},separators=(',',':')))\";"
+        "context=runner.isolated_coverage_environment(runtime_paths);"
+        "run=context.__enter__();"
+        "completed=subprocess.run((sys.executable,'-c',child_code),cwd=repo,env=run.environment,"
+        "capture_output=True,text=True,encoding='utf-8');"
+        "context.__exit__(None,None,None);"
+        "print(json.dumps({'returncode':completed.returncode,'stderr':completed.stderr,"
+        "'pythonpath':run.environment['PYTHONPATH'].split(__import__('os').pathsep),"
+        "'modules':json.loads(completed.stdout) if completed.returncode==0 else {}},"
+        "separators=(',',':')))"
+    )
+    locked_coverage = subprocess.run(
+        (
+            str(binding.python),
+            "-c",
+            locked_coverage_probe,
+            str(repository),
+        ),
+        cwd=repository,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=600,
+    )
+    coverage_result = json.loads(locked_coverage.stdout)
+    assert coverage_result["returncode"] == 0, coverage_result
+    assert coverage_result["pythonpath"] == [
+        str(bootstrap_root / "committed-source"),
+        str(bootstrap_root / "build-backend"),
+    ]
+    assert str(bootstrap_root / "build-backend") in coverage_result["modules"][
+        "backend"
+    ]
+
+    integration_probe = (
+        "import json,os,sys;"
+        "from pathlib import Path;"
+        "from hsconfig.release_gate import _active_runtime_paths,_command_specs,_run_one;"
+        "repo=Path(sys.argv[1]);outputs=Path(sys.argv[2]);"
+        "sys.argv[0]=sys.argv[3];"
+        "active=_active_runtime_paths(repo);"
+        "manifest_root=Path(os.environ['HSCONFIG_RUNTIME_MANIFEST']).parent;"
+        "assert active==(Path(sys.argv[3]).parents[1],manifest_root/'build-backend');"
+        "wanted={'publishable_path_scan','repository_hygiene'};"
+        "specs=[s for s in _command_specs(repo,outputs,'working-pre-cutover') "
+        "if s.name in wanted];"
+        "results=[_run_one(s,repository=repo) for s in specs];"
+        "print(json.dumps([{'name':s.name,'controller':s.command[1],"
+        "'passed':r.passed,'returncode':r.details.get('returncode'),"
+        "'result':r.details.get('result')} for s,r in zip(specs,results)],"
+        "separators=(',',':')))"
+    )
+    completed = subprocess.run(
+        (
+            str(binding.python),
+            "-c",
+            integration_probe,
+            str(repository),
+            str(repository / "outputs"),
+            str(committed_controller),
+        ),
+        cwd=repository,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=600,
+    )
+    results = json.loads(completed.stdout)
+
+    assert [row["name"] for row in results] == [
+        "publishable_path_scan",
+        "repository_hygiene",
+    ]
+    assert all(row["controller"] == str(committed_controller) for row in results)
+    for row in results:
+        assert row["returncode"] == 0, json.dumps(row)
+        assert row["passed"] is True, json.dumps(row)
+        assert row["result"]["passed"] is True, json.dumps(row)
 
 
 def test_parent_rejects_committed_controller_swap_before_process_creation(
@@ -4572,6 +6555,17 @@ def test_yaml_oversized_nonsensitive_key_fails_closed_as_structural_violation() 
     assert any(row.startswith("invalid_yaml_content:") for row in violations)
 
 
+def test_current_ci_workflow_stays_within_publishable_yaml_scalar_limits() -> None:
+    result = scan_publishable_content(
+        repository=ROOT,
+        outputs_root=ROOT / "outputs",
+        tree_mode="working-pre-cutover",
+        build_distributions=False,
+    )
+
+    assert "invalid_yaml_content:.github/workflows/ci.yml" not in result["violations"]
+
+
 @pytest.mark.parametrize("scalar_style", ("single", "plain"))
 @pytest.mark.parametrize("length", (4_096, 4_097))
 @pytest.mark.parametrize(
@@ -5477,6 +7471,21 @@ def test_real_working_pre_cutover_publishability_has_no_placeholder_violation(
 
     marker = "place" + "holder"
     assert [row for row in result["violations"] if marker in row] == []
+
+
+def test_current_operator_placeholder_reference_is_exactly_approved() -> None:
+    relative = "docs/operator/README.md"
+    data = (ROOT / relative).read_bytes()
+    line = data.decode("utf-8").splitlines()[646]
+
+    assert hashlib.sha256(line.strip().encode("utf-8")).hexdigest() == (
+        "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
+    )
+    assert f"public_placeholder:{relative}:647" not in _text_violations(
+        relative,
+        data,
+        public_doc=True,
+    )
 
 
 def test_placeholder_reference_exception_is_path_content_and_archive_bound() -> None:
@@ -6983,7 +8992,7 @@ def test_distribution_scan_inspects_both_built_archive_kinds(
     monkeypatch.setattr("hsconfig.release_gate._stage_tracked_source", lambda *_: None)
 
     def execute(command: tuple[str, ...], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        artifacts = Path(command[4])
+        artifacts = Path(command[command.index("--outdir") + 1])
         artifacts.mkdir(parents=True)
         (artifacts / "hsconfig-1.0.0-py3-none-any.whl").write_bytes(b"wheel")
         (artifacts / "hsconfig-1.0.0.tar.gz").write_bytes(b"sdist")
