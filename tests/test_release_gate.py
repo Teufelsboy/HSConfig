@@ -468,21 +468,32 @@ def real_active_runtime_template(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> dict[str, Path]:
     fixture_root = tmp_path_factory.mktemp("real-active-runtime")
-    repository = fixture_root / "repository"
-    repository.mkdir()
+    seed_repository = fixture_root / "seed-repository"
+    seed_repository.mkdir()
     archive = fixture_root / "repository.tar"
     subprocess.run(
-        ["git", "archive", "--format=tar", "-o", str(archive), "HEAD"],
+        [
+            "git",
+            "-c",
+            "core.autocrlf=false",
+            "archive",
+            "--format=tar",
+            "-o",
+            str(archive),
+            "HEAD",
+        ],
         cwd=ROOT,
         check=True,
     )
     with tarfile.open(archive) as source:
-        source.extractall(repository)
-    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        source.extractall(seed_repository)
+    subprocess.run(["git", "init", "-q"], cwd=seed_repository, check=True)
     subprocess.run(
-        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+        ["git", "config", "core.autocrlf", "false"],
+        cwd=seed_repository,
+        check=True,
     )
-    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(["git", "add", "."], cwd=seed_repository, check=True)
     subprocess.run(
         [
             "git",
@@ -495,6 +506,25 @@ def real_active_runtime_template(
             "-m",
             "fixture",
         ],
+        cwd=seed_repository,
+        check=True,
+    )
+    repository = fixture_root / "repository"
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.autocrlf=true",
+            "clone",
+            "-q",
+            str(seed_repository),
+            str(repository),
+        ],
+        cwd=fixture_root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "true"],
         cwd=repository,
         check=True,
     )
@@ -649,6 +679,148 @@ def test_active_runtime_binding_rejects_post_binding_source_mutation(
     with pytest.raises(ReleaseGateError, match="runtime binding"):
         _active_runtime_paths(binding["repository"])
     assert mutated is True
+
+
+def test_active_runtime_binding_uses_committed_lock_bytes_with_autocrlf_true(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    real_active_runtime_template: dict[str, Path],
+) -> None:
+    binding = _write_active_runtime_binding(
+        tmp_path, monkeypatch, real_active_runtime_template
+    )
+    repository = binding["repository"]
+    lock_path = repository / "pylock.3.11.toml"
+    assert b"\r\n" in lock_path.read_bytes()
+    assert b"\r\n" not in (
+        binding["source_root"] / "pylock.3.11.toml"
+    ).read_bytes()
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert status.stdout == ""
+
+    assert _active_runtime_paths(repository) == (
+        binding["source_root"],
+        binding["build_backend_root"],
+    )
+
+
+def test_active_head_inventory_rejects_export_subst_archive_bytes(
+    tmp_path: Path,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    (repository / ".gitattributes").write_text(
+        "version.txt export-subst\n", encoding="utf-8"
+    )
+    (repository / "version.txt").write_text("$Format:%H$\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    commit_oid = _git(repository, "rev-parse", "HEAD")
+
+    with pytest.raises(ReleaseGateError, match="archive differs from tree blobs"):
+        release_gate_module._active_head_source_inventory(repository, commit_oid)
+
+
+def test_active_git_blob_batch_rejects_missing_object(tmp_path: Path) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    entries = (
+        {
+            "path": "missing.txt",
+            "git_mode": "100644",
+            "blob_oid": "f" * 40,
+        },
+    )
+
+    with pytest.raises(ReleaseGateError, match="Git blob batch is invalid"):
+        release_gate_module._git_blob_payloads(repository, entries)
+
+
+def test_active_git_blob_batch_rejects_malformed_check_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    entries = (
+        {
+            "path": "tracked.txt",
+            "git_mode": "100644",
+            "blob_oid": "1" * 40,
+        },
+    )
+
+    monkeypatch.setattr(
+        release_gate_module,
+        "_run_git_blob_batch",
+        lambda *args, **kwargs: b"malformed\n",
+    )
+
+    with pytest.raises(ReleaseGateError, match="Git blob batch is invalid"):
+        release_gate_module._git_blob_payloads(repository, entries)
+
+
+@pytest.mark.parametrize(
+    "check_line",
+    (
+        b" e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 blob 0\n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 blob 0 \n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391\tblob 0\n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391  blob 0\n",
+    ),
+    ids=("leading", "trailing", "tab", "repeated"),
+)
+def test_active_git_blob_batch_rejects_noncanonical_check_whitespace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    check_line: bytes,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    oid = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    responses = iter((check_line, f"{oid} blob 0\n\n".encode("ascii")))
+    monkeypatch.setattr(
+        release_gate_module,
+        "_run_git_blob_batch",
+        lambda *args, **kwargs: next(responses),
+    )
+
+    with pytest.raises(ReleaseGateError, match="Git blob batch is invalid"):
+        release_gate_module._git_blob_payloads(
+            tmp_path,
+            ({"path": "empty", "git_mode": "100644", "blob_oid": oid},),
+        )
 
 
 def test_active_runtime_binding_rejects_unmanifested_overlay_file(
@@ -2452,6 +2624,24 @@ def test_dependency_audit_command_uses_the_exact_project_lock() -> None:
     )
 
 
+def test_contract_spine_command_binds_the_exact_repository_root() -> None:
+    command = next(
+        spec.command
+        for spec in _command_specs(ROOT, ROOT / "outputs", "working-pre-cutover")
+        if spec.name == "contract_spine"
+    )
+
+    assert command == (
+        sys.executable,
+        "-m",
+        "hsconfig.cli",
+        "contract-spine-sentinel",
+        "--repo-root",
+        str(ROOT),
+        "--json",
+    )
+
+
 def test_selected_audit_projection_is_exactly_the_43_package_minor_lock() -> None:
     _validate_selected_audit_projection(ROOT)
 
@@ -3793,6 +3983,444 @@ def test_ci_source_baseline_rejects_non_regular_git_tree_mode(
         BOOTSTRAP._assert_regular_git_tree(tmp_path, commit_oid)
 
 
+def test_ci_blob_batch_rejects_missing_object(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    entries = (
+        {
+            "path": "missing.txt",
+            "git_mode": "100644",
+            "blob_oid": "f" * 40,
+        },
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="blob batch is invalid"):
+        BOOTSTRAP._git_blob_payloads(repository, entries)
+
+
+def test_ci_blob_batch_rejects_malformed_check_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    entries = (
+        {
+            "path": "tracked.txt",
+            "git_mode": "100644",
+            "blob_oid": "1" * 40,
+        },
+    )
+
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_run_git_blob_batch",
+        lambda *args, **kwargs: b"malformed\n",
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="blob batch is invalid"):
+        BOOTSTRAP._git_blob_payloads(repository, entries)
+
+
+@pytest.mark.parametrize(
+    "check_line",
+    (
+        b" e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 blob 0\n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 blob 0 \n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391\tblob 0\n",
+        b"e69de29bb2d1d6434b8b29ae775ad8c2e48c5391  blob 0\n",
+    ),
+    ids=("leading", "trailing", "tab", "repeated"),
+)
+def test_ci_blob_batch_rejects_noncanonical_check_whitespace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    check_line: bytes,
+) -> None:
+    oid = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    responses = iter((check_line, f"{oid} blob 0\n\n".encode("ascii")))
+    monkeypatch.setattr(
+        BOOTSTRAP,
+        "_run_git_blob_batch",
+        lambda *args, **kwargs: next(responses),
+    )
+
+    with pytest.raises(BOOTSTRAP._BootstrapError, match="blob batch is invalid"):
+        BOOTSTRAP._git_blob_payloads(
+            tmp_path,
+            ({"path": "empty", "git_mode": "100644", "blob_oid": oid},),
+        )
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+@pytest.mark.parametrize("stream_name", ("stdout", "stderr"))
+def test_git_blob_batch_streaming_capture_is_hard_bounded_and_terminates_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    stream_name: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    error_type = BOOTSTRAP._BootstrapError if surface == "controller" else ReleaseGateError
+    marker = tmp_path / f"{surface}-{stream_name}-descendant.txt"
+    descendant = (
+        "import pathlib,time; time.sleep(1.25); "
+        f"pathlib.Path({str(marker)!r}).write_text('escaped',encoding='utf-8')"
+    )
+    producer = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable,'-c',{descendant!r}]); "
+        f"stream=sys.{stream_name}.buffer; "
+        "stream.write(b'x'*(1024*1024)); stream.flush(); time.sleep(30)"
+    )
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda repository, argument: (sys.executable, "-c", producer),
+    )
+    started = time.monotonic()
+
+    with pytest.raises(error_type, match=f"{stream_name}.*size limit"):
+        module._run_git_blob_batch(
+            tmp_path,
+            "--batch",
+            b"request\n",
+            maximum=32,
+            timeout=5,
+        )
+
+    assert time.monotonic() - started < 3
+    time.sleep(1.75)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+@pytest.mark.parametrize("failure", ("timeout", "exit"))
+def test_git_blob_batch_streaming_capture_rejects_timeout_or_nonzero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    failure: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    error_type = BOOTSTRAP._BootstrapError if surface == "controller" else ReleaseGateError
+    producer = "import time; time.sleep(30)" if failure == "timeout" else "raise SystemExit(7)"
+    expected = "timed out" if failure == "timeout" else "exited nonzero"
+    timeout = 0.2 if failure == "timeout" else 5
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda repository, argument: (sys.executable, "-c", producer),
+    )
+    started = time.monotonic()
+
+    with pytest.raises(error_type, match=expected):
+        module._run_git_blob_batch(
+            tmp_path,
+            "--batch",
+            b"request\n",
+            maximum=32,
+            timeout=timeout,
+        )
+
+    assert time.monotonic() - started < 3
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+def test_git_blob_batch_rejects_truncated_payload_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    error_type = BOOTSTRAP._BootstrapError if surface == "controller" else ReleaseGateError
+    oid = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    responses = iter(
+        (
+            f"{oid} blob 0\n".encode("ascii"),
+            f"{oid} blob 0\n".encode("ascii"),
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "_run_git_blob_batch",
+        lambda *args, **kwargs: next(responses),
+    )
+
+    with pytest.raises(error_type, match="blob batch is invalid"):
+        module._git_blob_payloads(
+            tmp_path,
+            ({"path": "empty", "git_mode": "100644", "blob_oid": oid},),
+        )
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+def test_git_blob_batch_target_cannot_launch_before_process_tree_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    lease_name = (
+        "_BootstrapProcessTreeLease" if surface == "controller" else "_ProcessTreeLease"
+    )
+    real_lease = getattr(module, lease_name)
+    marker = tmp_path / f"{surface}-pre-lease-descendant.txt"
+    descendant = (
+        "import pathlib,time; time.sleep(1.0); "
+        f"pathlib.Path({str(marker)!r}).write_text('escaped',encoding='utf-8')"
+    )
+    producer = (
+        "import subprocess,sys; "
+        f"subprocess.Popen([sys.executable,'-c',{descendant!r}]); "
+        "sys.stdout.buffer.write(b'ok'); sys.stdout.buffer.flush()"
+    )
+
+    class DelayedLease:
+        def __init__(self, process, baseline):
+            time.sleep(0.5)
+            self._lease = real_lease(process, baseline)
+
+        def terminate_remaining(self) -> None:
+            self._lease.terminate_remaining()
+
+    monkeypatch.setattr(module, lease_name, DelayedLease)
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda repository, argument: (sys.executable, "-c", producer),
+        raising=False,
+    )
+
+    output = module._run_git_blob_batch(
+        tmp_path,
+        "--batch",
+        b"request\n",
+        maximum=32,
+        timeout=5,
+    )
+
+    assert output == b"ok"
+    time.sleep(1.25)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+def test_git_blob_batch_lease_assignment_failure_never_launches_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    error_type = BOOTSTRAP._BootstrapError if surface == "controller" else ReleaseGateError
+    lease_name = (
+        "_BootstrapProcessTreeLease" if surface == "controller" else "_ProcessTreeLease"
+    )
+    marker = tmp_path / f"{surface}-assignment-failure-target.txt"
+    producer = (
+        "import pathlib; "
+        f"pathlib.Path({str(marker)!r}).write_text('launched',encoding='utf-8')"
+    )
+
+    class FailingLease:
+        def __init__(self, process, baseline):
+            raise OSError("synthetic lease failure")
+
+    monkeypatch.setattr(module, lease_name, FailingLease)
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda repository, argument: (sys.executable, "-c", producer),
+        raising=False,
+    )
+
+    with pytest.raises(error_type, match="blob batch is invalid"):
+        module._run_git_blob_batch(
+            tmp_path,
+            "--batch",
+            b"request\n",
+            maximum=32,
+            timeout=5,
+        )
+
+    time.sleep(0.5)
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+@pytest.mark.parametrize("lease_outcome", ("delayed", "failure"))
+@pytest.mark.parametrize("checkout_shadow", ("json", "subprocess"))
+def test_git_blob_launcher_is_isolated_before_lease_and_never_writes_bytecode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    lease_outcome: str,
+    checkout_shadow: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    error_type = BOOTSTRAP._BootstrapError if surface == "controller" else ReleaseGateError
+    lease_name = (
+        "_BootstrapProcessTreeLease" if surface == "controller" else "_ProcessTreeLease"
+    )
+    real_lease = getattr(module, lease_name)
+    repository = tmp_path / "repository"
+    ambient = tmp_path / "ambient"
+    repository.mkdir()
+    ambient.mkdir()
+    attempted_markers: list[Path] = []
+    descendant_markers: list[Path] = []
+
+    def hostile_module(path: Path, identity: str) -> None:
+        attempted = tmp_path / f"{surface}-{lease_outcome}-{identity}-imported.txt"
+        descendant = tmp_path / f"{surface}-{lease_outcome}-{identity}-descendant.txt"
+        attempted_markers.append(attempted)
+        descendant_markers.append(descendant)
+        descendant_source = (
+            "import time; time.sleep(1.0); "
+            f"handle=open({str(descendant)!r},'w',encoding='utf-8'); "
+            "handle.write('escaped'); handle.close()"
+        )
+        path.write_text(
+            "import os,sys\n"
+            f"handle=open({str(attempted)!r},'w',encoding='utf-8')\n"
+            "handle.write('imported')\n"
+            "handle.close()\n"
+            f"os.spawnv(os.P_NOWAIT,sys.executable,[sys.executable,'-c',{descendant_source!r}])\n"
+            "raise ImportError('hostile import')\n",
+            encoding="utf-8",
+        )
+
+    hostile_module(repository / f"{checkout_shadow}.py", f"checkout-{checkout_shadow}")
+    hostile_module(ambient / "sitecustomize.py", "sitecustomize")
+    hostile_module(ambient / "usercustomize.py", "usercustomize")
+    monkeypatch.setenv("PYTHONPATH", str(ambient))
+    monkeypatch.setenv("PYTHONUSERBASE", str(ambient / "user-base"))
+
+    target_marker = tmp_path / f"{surface}-{lease_outcome}-target.txt"
+    producer = (
+        "import pathlib,sys; "
+        f"pathlib.Path({str(target_marker)!r}).write_text('launched',encoding='utf-8'); "
+        "sys.stdout.buffer.write(b'ok'); sys.stdout.buffer.flush()"
+    )
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda root, argument: (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            producer,
+        ),
+    )
+
+    if lease_outcome == "delayed":
+
+        class SyntheticLease:
+            def __init__(self, process, baseline):
+                time.sleep(0.4)
+                self._lease = real_lease(process, baseline)
+
+            def terminate_remaining(self) -> None:
+                self._lease.terminate_remaining()
+
+    else:
+
+        class SyntheticLease:
+            def __init__(self, process, baseline):
+                raise OSError("synthetic lease failure")
+
+    monkeypatch.setattr(module, lease_name, SyntheticLease)
+
+    if lease_outcome == "delayed":
+        output = module._run_git_blob_batch(
+            repository,
+            "--batch",
+            b"request\n",
+            maximum=32,
+            timeout=5,
+        )
+        assert output == b"ok"
+        assert target_marker.is_file()
+    else:
+        with pytest.raises(error_type, match="blob batch is invalid"):
+            module._run_git_blob_batch(
+                repository,
+                "--batch",
+                b"request\n",
+                maximum=32,
+                timeout=5,
+            )
+        assert not target_marker.exists()
+
+    time.sleep(1.25)
+    assert all(not marker.exists() for marker in attempted_markers)
+    assert all(not marker.exists() for marker in descendant_markers)
+    assert not (repository / "__pycache__").exists()
+    assert not (ambient / "__pycache__").exists()
+
+
+@pytest.mark.parametrize("surface", ("controller", "active"))
+def test_git_blob_launcher_uses_exact_isolated_interpreter_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    import hsconfig.release_gate as release_gate_module
+
+    module = BOOTSTRAP if surface == "controller" else release_gate_module
+    observed: list[tuple[str, ...]] = []
+    real_popen = subprocess.Popen
+
+    def observe_launcher(command: tuple[str, ...], **kwargs: object):
+        observed.append(tuple(command))
+        return real_popen(command, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "Popen", observe_launcher)
+    monkeypatch.setattr(
+        module,
+        "_git_blob_command",
+        lambda root, argument: (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            "import sys; sys.stdout.buffer.write(b'ok')",
+        ),
+    )
+
+    assert module._run_git_blob_batch(
+        tmp_path,
+        "--batch",
+        b"request\n",
+        maximum=32,
+        timeout=5,
+    ) == b"ok"
+    assert observed[0] == (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        module._GIT_BLOB_BATCH_LAUNCHER,
+    )
+
+
 def test_materialized_source_inventory_binds_sorted_content_and_git_modes(
     tmp_path: Path,
 ) -> None:
@@ -3864,6 +4492,98 @@ def test_materialized_source_inventory_binds_sorted_content_and_git_modes(
     assert binding.inventory == expected_inventory
     assert binding.inventory_sha256 == expected_digest
     BOOTSTRAP._assert_source_inventory(binding)
+
+
+def test_materialized_source_inventory_ignores_ambient_autocrlf_true(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "true"], cwd=repository, check=True
+    )
+    source = b"first\nsecond\n"
+    (repository / "tracked.txt").write_bytes(source)
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    expected_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    root = tmp_path / "baseline"
+    root.mkdir()
+
+    binding = BOOTSTRAP._materialize_committed_source(
+        repository, root, expected_commit
+    )
+
+    assert (binding.source_root / "tracked.txt").read_bytes() == source
+    assert binding.inventory == (
+        {
+            "path": "tracked.txt",
+            "sha256": hashlib.sha256(source).hexdigest(),
+            "git_mode": "100644",
+        },
+    )
+    BOOTSTRAP._assert_source_inventory(binding)
+
+
+def test_materialized_source_rejects_export_subst_archive_bytes(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"], cwd=repository, check=True
+    )
+    (repository / ".gitattributes").write_text(
+        "version.txt export-subst\n", encoding="utf-8"
+    )
+    (repository / "version.txt").write_text("$Format:%H$\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI Contract",
+            "-c",
+            "user.email=ci-contract@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    expected_commit = _git(repository, "rev-parse", "HEAD")
+    root = tmp_path / "baseline"
+    root.mkdir()
+
+    with pytest.raises(
+        BOOTSTRAP._BootstrapError,
+        match="archive differs from Git blobs",
+    ):
+        BOOTSTRAP._materialize_committed_source(repository, root, expected_commit)
 
 
 @pytest.mark.parametrize("mutation", ("content", "inventory_mode"))

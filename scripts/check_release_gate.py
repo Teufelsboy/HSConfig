@@ -66,6 +66,15 @@ _VERIFIED_CONTROLLER_LAUNCHER = (
     "scope={'__name__':'__main__','__file__':path,'__package__':None,'__cached__':None}; "
     "exec(compile(source,path,'exec'),scope,scope)"
 )
+_GIT_BLOB_BATCH_LAUNCHER = (
+    "import json,subprocess,sys; line=sys.stdin.buffer.readline(65537); "
+    "(line.endswith(b'\\n') and len(line)<=65536) or sys.exit(2); "
+    "argv=json.loads(line); "
+    "(isinstance(argv,list) and 1<=len(argv)<=32 and "
+    "all(isinstance(value,str) and value for value in argv)) or sys.exit(2); "
+    "payload=sys.stdin.buffer.read(410001); len(payload)<=410000 or sys.exit(2); "
+    "raise SystemExit(subprocess.run(argv,input=payload,shell=False).returncode)"
+)
 
 
 class _CliError(ValueError):
@@ -791,6 +800,7 @@ def _assert_regular_git_tree(
     if not records or records[-1] != "":
         raise _BootstrapError("committed source tree listing is malformed")
     entries: list[dict[str, str]] = []
+    paths: set[str] = set()
     for record in records[:-1]:
         header, separator, name = record.partition("\t")
         fields = header.split()
@@ -801,13 +811,281 @@ def _assert_regular_git_tree(
             or fields[0] not in {"100644", "100755"}
             or fields[1] != "blob"
             or re.fullmatch(r"[0-9a-f]{40}", fields[2]) is None
+            or name in paths
         ):
             raise _BootstrapError("committed source tree contains a non-regular entry")
         pure = PurePosixPath(name)
         if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
             raise _BootstrapError("committed source tree contains an unsafe path")
-        entries.append({"path": name, "git_mode": fields[0]})
+        paths.add(name)
+        entries.append(
+            {"path": name, "git_mode": fields[0], "blob_oid": fields[2]}
+        )
+    if len(entries) > 10_000:
+        raise _BootstrapError("committed source tree contains too many entries")
     return tuple(sorted(entries, key=lambda entry: entry["path"]))
+
+
+def _git_blob_command(repository: Path, argument: str) -> tuple[str, ...]:
+    return ("git", "-C", str(repository), "cat-file", argument)
+
+
+def _run_git_blob_batch(
+    repository: Path,
+    argument: str,
+    requests: bytes,
+    *,
+    maximum: int,
+    timeout: float = 120,
+) -> bytes:
+    if maximum < 0 or timeout <= 0 or len(requests) > 10_000 * 41:
+        raise _BootstrapError("committed source blob batch is invalid")
+    target_command = _git_blob_command(repository, argument)
+    launch_header = json.dumps(
+        list(target_command),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    if len(launch_header) > 65_536:
+        raise _BootstrapError("committed source blob batch is invalid")
+    launch_input = launch_header + requests
+    platform_options: dict[str, object] = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    process: subprocess.Popen[bytes] | None = None
+    lease: _BootstrapProcessTreeLease | None = None
+    writer: threading.Thread | None = None
+    writer_started = False
+    readers: list[threading.Thread] = []
+    started_readers: list[threading.Thread] = []
+    stdout = bytearray()
+    stderr = bytearray()
+    stdout_oversized = threading.Event()
+    stderr_oversized = threading.Event()
+    transport_errors: list[BaseException] = []
+    timed_out = False
+    returncode: int | None = None
+
+    def terminate_process() -> None:
+        if process is None:
+            return
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+    def drain(
+        stream: Any,
+        target: bytearray,
+        limit: int,
+        oversized: threading.Event,
+    ) -> None:
+        try:
+            while True:
+                remaining = limit + 1 - len(target)
+                if remaining <= 0:
+                    oversized.set()
+                    terminate_process()
+                    return
+                chunk = stream.read(min(8192, remaining))
+                if not chunk:
+                    return
+                target.extend(chunk)
+                if len(target) > limit:
+                    oversized.set()
+                    terminate_process()
+                    return
+        except (OSError, ValueError) as exc:
+            transport_errors.append(exc)
+            terminate_process()
+
+    def write_requests() -> None:
+        if process is None or process.stdin is None:
+            return
+        try:
+            process.stdin.write(launch_input)
+            process.stdin.flush()
+        except BrokenPipeError:
+            pass
+        except (OSError, ValueError) as exc:
+            transport_errors.append(exc)
+            terminate_process()
+        finally:
+            try:
+                process.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+    try:
+        if os.name != "nt":
+            _enable_posix_subreaper()
+        baseline = _linux_direct_children()
+        process = subprocess.Popen(
+            (sys.executable, "-I", "-S", "-B", "-c", _GIT_BLOB_BATCH_LAUNCHER),
+            cwd=repository,
+            env=_base_environment(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            **platform_options,
+        )
+        lease = _BootstrapProcessTreeLease(process, baseline)
+        if process.stdin is None or process.stdout is None or process.stderr is None:
+            raise OSError("committed source blob batch pipes are unavailable")
+        readers = [
+            threading.Thread(
+                target=drain,
+                args=(process.stdout, stdout, maximum, stdout_oversized),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain,
+                args=(process.stderr, stderr, 64 * 1024, stderr_oversized),
+                daemon=True,
+            ),
+        ]
+        for reader in readers:
+            reader.start()
+            started_readers.append(reader)
+        writer = threading.Thread(target=write_requests, daemon=True)
+        writer.start()
+        writer_started = True
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise _BootstrapError("committed source blob batch is invalid") from exc
+    finally:
+        if process is not None:
+            if lease is not None:
+                lease.terminate_remaining()
+            else:
+                _terminate_unleased_process(process)
+        joiners = (
+            [writer] if writer is not None and writer_started else []
+        ) + started_readers
+        for thread in joiners:
+            thread.join(timeout=30)
+        if process is not None:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except (OSError, ValueError):
+                        pass
+    if any(
+        thread.is_alive()
+        for thread in (
+            [writer] if writer is not None and writer_started else []
+        )
+        + started_readers
+    ):
+        raise _BootstrapError("committed source blob batch transport did not terminate")
+    if stdout_oversized.is_set():
+        raise _BootstrapError("committed source blob batch stdout exceeded size limit")
+    if stderr_oversized.is_set():
+        raise _BootstrapError("committed source blob batch stderr exceeded size limit")
+    if timed_out:
+        raise _BootstrapError("committed source blob batch timed out")
+    if transport_errors:
+        raise _BootstrapError("committed source blob batch transport is invalid")
+    if returncode != 0:
+        raise _BootstrapError("committed source blob batch exited nonzero")
+    if len(stdout) > maximum or len(stderr) > 64 * 1024:
+        raise _BootstrapError("committed source blob batch is invalid")
+    return bytes(stdout)
+
+
+def _git_blob_payloads(
+    repository: Path,
+    git_entries: Sequence[Mapping[str, str]],
+) -> dict[str, bytes]:
+    if len(git_entries) > 10_000:
+        raise _BootstrapError("committed source blob batch is invalid")
+    paths: set[str] = set()
+    object_oids: list[str] = []
+    seen_oids: set[str] = set()
+    for entry in git_entries:
+        path = entry.get("path")
+        oid = entry.get("blob_oid")
+        if (
+            not isinstance(path, str)
+            or path in paths
+            or re.fullmatch(r"[0-9a-f]{40}", str(oid)) is None
+        ):
+            raise _BootstrapError("committed source blob batch is invalid")
+        paths.add(path)
+        normalized_oid = str(oid)
+        if normalized_oid not in seen_oids:
+            seen_oids.add(normalized_oid)
+            object_oids.append(normalized_oid)
+    requests = b"".join(f"{oid}\n".encode("ascii") for oid in object_oids)
+    checked = _run_git_blob_batch(
+        repository,
+        "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+        requests,
+        maximum=len(object_oids) * 96,
+    )
+    lines = checked.split(b"\n")
+    if not lines or lines[-1] != b"" or len(lines) != len(object_oids) + 1:
+        raise _BootstrapError("committed source blob batch is invalid")
+    sizes: dict[str, int] = {}
+    for oid, line in zip(object_oids, lines[:-1], strict=True):
+        try:
+            fields = line.decode("ascii").split(" ")
+        except UnicodeError as exc:
+            raise _BootstrapError("committed source blob batch is invalid") from exc
+        if (
+            len(fields) != 3
+            or fields[0] != oid
+            or fields[1] != "blob"
+            or re.fullmatch(r"0|[1-9][0-9]*", fields[2]) is None
+            or line != f"{oid} blob {fields[2]}".encode("ascii")
+        ):
+            raise _BootstrapError("committed source blob batch is invalid")
+        size = int(fields[2])
+        if size > _MAX_BOOTSTRAP_FILE:
+            raise _BootstrapError("committed source blob batch is invalid")
+        sizes[oid] = size
+    total_size = sum(sizes[str(entry["blob_oid"])] for entry in git_entries)
+    if total_size > _MAX_BOOTSTRAP_FILE:
+        raise _BootstrapError("committed source blob batch is invalid")
+    batch = _run_git_blob_batch(
+        repository,
+        "--batch",
+        requests,
+        maximum=sum(sizes.values()) + len(object_oids) * 96,
+    )
+    offset = 0
+    blobs: dict[str, bytes] = {}
+    for oid in object_oids:
+        size = sizes[oid]
+        header = f"{oid} blob {size}\n".encode("ascii")
+        if batch[offset : offset + len(header)] != header:
+            raise _BootstrapError("committed source blob batch is invalid")
+        offset += len(header)
+        end = offset + size
+        if end >= len(batch) or batch[end : end + 1] != b"\n":
+            raise _BootstrapError("committed source blob batch is invalid")
+        payload = batch[offset:end]
+        digest = hashlib.sha1(
+            b"blob " + str(size).encode("ascii") + b"\0" + payload,
+            usedforsecurity=False,
+        ).hexdigest()
+        if digest != oid:
+            raise _BootstrapError("committed source blob batch is invalid")
+        blobs[oid] = payload
+        offset = end + 1
+    if offset != len(batch):
+        raise _BootstrapError("committed source blob batch is invalid")
+    return {
+        str(entry["path"]): blobs[str(entry["blob_oid"])]
+        for entry in git_entries
+    }
 
 
 def _source_inventory_digest(inventory: object) -> str:
@@ -1023,6 +1301,7 @@ def _materialize_committed_source(
     if expected_commit_oid is not None and commit_oid != expected_commit_oid:
         raise _BootstrapError("checkout HEAD does not match the event commit")
     git_entries = _assert_regular_git_tree(repository, commit_oid)
+    blob_payloads = _git_blob_payloads(repository, git_entries)
     _assert_repository_identity(repository, commit_oid, tree_oid)
 
     archive = bootstrap_root / "committed-source.tar"
@@ -1032,6 +1311,8 @@ def _materialize_committed_source(
     _run(
         (
             "git",
+            "-c",
+            "core.autocrlf=false",
             "-C",
             str(repository),
             "archive",
@@ -1047,6 +1328,11 @@ def _materialize_committed_source(
     staging.mkdir()
     _safe_extract_archive(archive, staging)
     _assert_repository_identity(repository, commit_oid, tree_oid)
+    if any(
+        _read_bound(staging / entry["path"]) != blob_payloads[entry["path"]]
+        for entry in git_entries
+    ):
+        raise _BootstrapError("committed source archive differs from Git blobs")
     inventory, inventory_sha256 = _build_source_inventory(staging, git_entries)
     return _SourceBinding(
         source_root=staging,
@@ -2129,7 +2415,7 @@ def _terminate_unleased_process(process: subprocess.Popen[bytes]) -> None:
             process.kill()
         process.wait(timeout=30)
     finally:
-        for stream in (process.stdin, process.stdout):
+        for stream in (process.stdin, process.stdout, process.stderr):
             if stream is not None:
                 try:
                     stream.close()

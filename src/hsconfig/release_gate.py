@@ -163,6 +163,15 @@ _MAX_ARCHIVE_MEMBER_BYTES = 16 * 1024 * 1024
 _MAX_ARCHIVE_TOTAL_BYTES = 128 * 1024 * 1024
 _MAX_ARCHIVE_COMPRESSION_RATIO = 200
 _MAX_PUBLISHABLE_FILE_BYTES = 128 * 1024 * 1024
+_GIT_BLOB_BATCH_LAUNCHER = (
+    "import json,subprocess,sys; line=sys.stdin.buffer.readline(65537); "
+    "(line.endswith(b'\\n') and len(line)<=65536) or sys.exit(2); "
+    "argv=json.loads(line); "
+    "(isinstance(argv,list) and 1<=len(argv)<=32 and "
+    "all(isinstance(value,str) and value for value in argv)) or sys.exit(2); "
+    "payload=sys.stdin.buffer.read(410001); len(payload)<=410000 or sys.exit(2); "
+    "raise SystemExit(subprocess.run(argv,input=payload,shell=False).returncode)"
+)
 _MAX_ZIP_MEMBER_NAME_BYTES = 4 * 1024
 _SUPPORTED_CORE_METADATA_VERSIONS = frozenset(
     {"1.0", "1.1", "1.2", "2.1", "2.2", "2.3", "2.4", "2.5"}
@@ -1130,6 +1139,269 @@ def _assert_active_repository_snapshot(
         raise ReleaseGateError("active runtime repository snapshot changed")
 
 
+def _git_blob_command(repository: Path, argument: str) -> tuple[str, ...]:
+    return ("git", "-C", str(repository), "cat-file", argument)
+
+
+def _run_git_blob_batch(
+    repository: Path,
+    argument: str,
+    requests: bytes,
+    *,
+    maximum: int,
+    timeout: float = 60,
+) -> bytes:
+    if maximum < 0 or timeout <= 0 or len(requests) > _MAX_ARCHIVE_MEMBERS * 41:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    target_command = _git_blob_command(repository, argument)
+    launch_header = json.dumps(
+        list(target_command),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\n"
+    if len(launch_header) > 65_536:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    launch_input = launch_header + requests
+    platform_options: dict[str, Any] = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    process: subprocess.Popen[bytes] | None = None
+    lease: _ProcessTreeLease | None = None
+    writer: threading.Thread | None = None
+    writer_started = False
+    readers: list[threading.Thread] = []
+    started_readers: list[threading.Thread] = []
+    stdout = bytearray()
+    stderr = bytearray()
+    stdout_oversized = threading.Event()
+    stderr_oversized = threading.Event()
+    transport_errors: list[BaseException] = []
+    timed_out = False
+    returncode: int | None = None
+
+    def terminate_process() -> None:
+        if process is None:
+            return
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+    def drain(
+        stream: Any,
+        target: bytearray,
+        limit: int,
+        oversized: threading.Event,
+    ) -> None:
+        try:
+            while True:
+                remaining = limit + 1 - len(target)
+                if remaining <= 0:
+                    oversized.set()
+                    terminate_process()
+                    return
+                chunk = stream.read(min(8192, remaining))
+                if not chunk:
+                    return
+                target.extend(chunk)
+                if len(target) > limit:
+                    oversized.set()
+                    terminate_process()
+                    return
+        except (OSError, ValueError) as exc:
+            transport_errors.append(exc)
+            terminate_process()
+
+    def write_requests() -> None:
+        if process is None or process.stdin is None:
+            return
+        try:
+            process.stdin.write(launch_input)
+            process.stdin.flush()
+        except BrokenPipeError:
+            pass
+        except (OSError, ValueError) as exc:
+            transport_errors.append(exc)
+            terminate_process()
+        finally:
+            try:
+                process.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+    try:
+        if os.name != "nt":
+            _enable_posix_subreaper()
+        baseline = _linux_direct_children()
+        process = subprocess.Popen(
+            (sys.executable, "-I", "-S", "-B", "-c", _GIT_BLOB_BATCH_LAUNCHER),
+            cwd=repository,
+            env=_base_environment(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            **platform_options,
+        )
+        lease = _ProcessTreeLease(process, baseline)
+        if process.stdin is None or process.stdout is None or process.stderr is None:
+            raise OSError("active runtime Git blob batch pipes are unavailable")
+        readers = [
+            threading.Thread(
+                target=drain,
+                args=(process.stdout, stdout, maximum, stdout_oversized),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain,
+                args=(process.stderr, stderr, 64 * 1024, stderr_oversized),
+                daemon=True,
+            ),
+        ]
+        for reader in readers:
+            reader.start()
+            started_readers.append(reader)
+        writer = threading.Thread(target=write_requests, daemon=True)
+        writer.start()
+        writer_started = True
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ReleaseGateError("active runtime Git blob batch is invalid") from exc
+    finally:
+        if process is not None:
+            if lease is not None:
+                lease.terminate_remaining()
+            elif process.poll() is None:
+                process.kill()
+                process.wait(timeout=30)
+        joiners = (
+            [writer] if writer is not None and writer_started else []
+        ) + started_readers
+        for thread in joiners:
+            thread.join(timeout=30)
+        if process is not None:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except (OSError, ValueError):
+                        pass
+    if any(
+        thread.is_alive()
+        for thread in (
+            [writer] if writer is not None and writer_started else []
+        )
+        + started_readers
+    ):
+        raise ReleaseGateError("active runtime Git blob batch transport did not terminate")
+    if stdout_oversized.is_set():
+        raise ReleaseGateError("active runtime Git blob batch stdout exceeded size limit")
+    if stderr_oversized.is_set():
+        raise ReleaseGateError("active runtime Git blob batch stderr exceeded size limit")
+    if timed_out:
+        raise ReleaseGateError("active runtime Git blob batch timed out")
+    if transport_errors:
+        raise ReleaseGateError("active runtime Git blob batch transport is invalid")
+    if returncode != 0:
+        raise ReleaseGateError("active runtime Git blob batch exited nonzero")
+    if len(stdout) > maximum or len(stderr) > 64 * 1024:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    return bytes(stdout)
+
+
+def _git_blob_payloads(
+    repository: Path,
+    git_entries: Sequence[Mapping[str, str]],
+) -> dict[str, bytes]:
+    if len(git_entries) > _MAX_ARCHIVE_MEMBERS:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    paths: set[str] = set()
+    object_oids: list[str] = []
+    seen_oids: set[str] = set()
+    for entry in git_entries:
+        path = entry.get("path")
+        oid = entry.get("blob_oid")
+        if (
+            not isinstance(path, str)
+            or path in paths
+            or re.fullmatch(r"[0-9a-f]{40}", str(oid)) is None
+        ):
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        paths.add(path)
+        normalized_oid = str(oid)
+        if normalized_oid not in seen_oids:
+            seen_oids.add(normalized_oid)
+            object_oids.append(normalized_oid)
+    requests = b"".join(f"{oid}\n".encode("ascii") for oid in object_oids)
+    checked = _run_git_blob_batch(
+        repository,
+        "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+        requests,
+        maximum=len(object_oids) * 96,
+    )
+    lines = checked.split(b"\n")
+    if not lines or lines[-1] != b"" or len(lines) != len(object_oids) + 1:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    sizes: dict[str, int] = {}
+    for oid, line in zip(object_oids, lines[:-1], strict=True):
+        try:
+            fields = line.decode("ascii").split(" ")
+        except UnicodeError as exc:
+            raise ReleaseGateError("active runtime Git blob batch is invalid") from exc
+        if (
+            len(fields) != 3
+            or fields[0] != oid
+            or fields[1] != "blob"
+            or re.fullmatch(r"0|[1-9][0-9]*", fields[2]) is None
+            or line != f"{oid} blob {fields[2]}".encode("ascii")
+        ):
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        size = int(fields[2])
+        if size > _MAX_ARCHIVE_MEMBER_BYTES:
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        sizes[oid] = size
+    total_size = sum(sizes[str(entry["blob_oid"])] for entry in git_entries)
+    if total_size > _MAX_PUBLISHABLE_FILE_BYTES:
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    batch = _run_git_blob_batch(
+        repository,
+        "--batch",
+        requests,
+        maximum=sum(sizes.values()) + len(object_oids) * 96,
+    )
+    offset = 0
+    blobs: dict[str, bytes] = {}
+    for oid in object_oids:
+        size = sizes[oid]
+        header = f"{oid} blob {size}\n".encode("ascii")
+        if batch[offset : offset + len(header)] != header:
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        offset += len(header)
+        end = offset + size
+        if end >= len(batch) or batch[end : end + 1] != b"\n":
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        payload = batch[offset:end]
+        digest = hashlib.sha1(
+            b"blob " + str(size).encode("ascii") + b"\0" + payload,
+            usedforsecurity=False,
+        ).hexdigest()
+        if digest != oid:
+            raise ReleaseGateError("active runtime Git blob batch is invalid")
+        blobs[oid] = payload
+        offset = end + 1
+    if offset != len(batch):
+        raise ReleaseGateError("active runtime Git blob batch is invalid")
+    return {
+        str(entry["path"]): blobs[str(entry["blob_oid"])]
+        for entry in git_entries
+    }
+
+
 def _active_head_source_inventory(
     repository: Path,
     commit_oid: str,
@@ -1140,6 +1412,7 @@ def _active_head_source_inventory(
     records = listing.split("\0")
     if not records or records[-1] != "":
         raise ReleaseGateError("active runtime HEAD tree is malformed")
+    entries: list[dict[str, str]] = []
     modes: dict[str, str] = {}
     for record in records[:-1]:
         header, separator, name = record.partition("\t")
@@ -1155,8 +1428,24 @@ def _active_head_source_inventory(
         ):
             raise ReleaseGateError("active runtime HEAD tree is malformed")
         modes[relative.as_posix()] = fields[0]
+        entries.append(
+            {
+                "path": relative.as_posix(),
+                "git_mode": fields[0],
+                "blob_oid": fields[2],
+            }
+        )
+    blob_payloads = _git_blob_payloads(repository, entries)
     archive_source = bytes(
-        _git(repository, "archive", "--format=tar", commit_oid, text=False)
+        _git(
+            repository,
+            "-c",
+            "core.autocrlf=false",
+            "archive",
+            "--format=tar",
+            commit_oid,
+            text=False,
+        )
     )
     if len(archive_source) > _MAX_PUBLISHABLE_FILE_BYTES:
         raise ReleaseGateError("active runtime HEAD archive is oversized")
@@ -1189,10 +1478,12 @@ def _active_head_source_inventory(
         raise ReleaseGateError("active runtime HEAD archive is invalid") from exc
     if set(payloads) != set(modes):
         raise ReleaseGateError("active runtime HEAD archive differs from tree")
+    if payloads != blob_payloads:
+        raise ReleaseGateError("active runtime HEAD archive differs from tree blobs")
     return [
         {
             "path": relative,
-            "sha256": hashlib.sha256(payloads[relative]).hexdigest(),
+            "sha256": hashlib.sha256(blob_payloads[relative]).hexdigest(),
             "git_mode": modes[relative],
         }
         for relative in sorted(modes)
@@ -2073,22 +2364,14 @@ def _bound_active_runtime_paths(repository: Path) -> tuple[Path, Path]:
     lock_relative = PurePosixPath(
         f"pylock.{sys.version_info.major}.{sys.version_info.minor}.toml"
     )
-    lock_source = _secure_read_bytes(
-        repository_root,
-        lock_relative,
-        context="active runtime selected lock",
-        max_bytes=8 * 1024 * 1024,
-    )
     source_root = manifest_root / "committed-source"
     build_backend_root = manifest_root / "build-backend"
-    bound_lock_source = _secure_read_bytes(
+    lock_source = _secure_read_bytes(
         source_root,
         lock_relative,
         context="active runtime bound selected lock",
         max_bytes=8 * 1024 * 1024,
     )
-    if bound_lock_source != lock_source:
-        raise ReleaseGateError("active runtime selected lock binding differs")
     lock_rows = _active_lock_rows(lock_source)
     authoritative_inventory = _active_head_source_inventory(
         repository_root,
@@ -2179,12 +2462,6 @@ def _bound_active_runtime_paths(repository: Path) -> tuple[Path, Path]:
         context="active runtime manifest",
         max_bytes=64 * 1024 * 1024,
     )
-    final_repository_lock = _secure_read_bytes(
-        repository_root,
-        lock_relative,
-        context="active runtime selected lock",
-        max_bytes=8 * 1024 * 1024,
-    )
     final_bound_lock = _secure_read_bytes(
         source_root,
         lock_relative,
@@ -2194,8 +2471,9 @@ def _bound_active_runtime_paths(repository: Path) -> tuple[Path, Path]:
     if (
         final_manifest_source != manifest_source
         or hashlib.sha256(final_manifest_source).hexdigest() != expected_digest
-        or final_repository_lock != lock_source
         or final_bound_lock != lock_source
+        or _active_head_source_inventory(repository_root, head_oid)
+        != authoritative_inventory
     ):
         raise ReleaseGateError("active runtime binding changed during validation")
     _runtime_artifact_inventory(
@@ -2269,7 +2547,19 @@ def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_Com
     return (
         _CommandSpec("ruff", (python, "-m", "ruff", "check", "--no-cache", "src", "tests", "scripts"), 600),
         _CommandSpec("full_tests_and_coverage", (python, str(root / "scripts" / "run_coverage_gate.py")), 18_000),
-        _CommandSpec("contract_spine", (python, "-m", "hsconfig.cli", "contract-spine-sentinel", "--json"), 600),
+        _CommandSpec(
+            "contract_spine",
+            (
+                python,
+                "-m",
+                "hsconfig.cli",
+                "contract-spine-sentinel",
+                "--repo-root",
+                str(root),
+                "--json",
+            ),
+            600,
+        ),
         _CommandSpec("twelve_deck_acceptance", (python, "-m", "pytest", "tests/test_audited_deck_set_acceptance.py", "-q", "-p", "no:cacheprovider"), 1_800),
         _CommandSpec("contract_mutations", (python, str(root / "scripts" / "run_contract_mutations.py"), "--json"), 1_200),
         _CommandSpec(

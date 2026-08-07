@@ -83,6 +83,8 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
         "-m",
         "hsconfig.cli",
         "contract-spine-sentinel",
+        "--repo-root",
+        str(repo_root),
         "--json",
     )
     assert commands[2].argv[:3] == (sys.executable, "-m", "pytest")

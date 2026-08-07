@@ -7,7 +7,16 @@ from hsconfig.cli import main
 
 
 def test_contract_spine_sentinel_cli_returns_clean_json(capsys):
-    exit_code = main(["contract-spine-sentinel", "--json"])
+    repo_root = Path(__file__).resolve().parents[1]
+
+    exit_code = main(
+        [
+            "contract-spine-sentinel",
+            "--repo-root",
+            str(repo_root),
+            "--json",
+        ]
+    )
     output = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
@@ -15,6 +24,61 @@ def test_contract_spine_sentinel_cli_returns_clean_json(capsys):
     assert output["operator_gate_impact"] == "diagnostic_only"
     assert output["apply_blocking"] is False
     assert output["problems"] == []
+
+
+def test_contract_spine_sentinel_cli_uses_explicit_root_from_foreign_cwd(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    repo_root = Path(__file__).resolve().parents[1]
+    foreign_cwd = tmp_path / "foreign"
+    foreign_cwd.mkdir()
+    installed_module = (
+        tmp_path
+        / "environment"
+        / "Lib"
+        / "site-packages"
+        / "hsconfig"
+        / "contract_spine_sentinel.py"
+    )
+    monkeypatch.chdir(foreign_cwd)
+    monkeypatch.setattr(sentinel, "__file__", str(installed_module))
+
+    exit_code = main(
+        [
+            "contract-spine-sentinel",
+            "--repo-root",
+            str(repo_root),
+            "--json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["status"] == "clean"
+    assert output["problems"] == []
+
+
+def test_contract_spine_sentinel_cli_rejects_non_repository_root(
+    tmp_path: Path,
+    capsys,
+):
+    exit_code = main(
+        [
+            "contract-spine-sentinel",
+            "--repo-root",
+            str(tmp_path),
+            "--json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert output["status"] == "failed"
+    assert "must be an HSConfig repository root" in output["errors"][0]
 
 
 def test_contract_spine_sentinel_cli_can_write_json_report(tmp_path: Path, capsys):
@@ -63,7 +127,8 @@ def test_contract_spine_sentinel_cli_returns_failure_for_drift(
 ):
     from hsconfig.commands import contract_spine_sentinel as command
 
-    def drifted_report():
+    def drifted_report(*, repo_root: Path):
+        assert repo_root == Path.cwd().resolve(strict=True)
         return {
             "status": "drift_detected",
             "operator_gate_impact": "diagnostic_only",

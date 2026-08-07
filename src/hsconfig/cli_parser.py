@@ -243,6 +243,11 @@ def build_parser() -> argparse.ArgumentParser:
             "This command does not grant apply permission and never writes runtime files."
         ),
     )
+    contract_spine_sentinel.add_argument(
+        "--repo-root",
+        default=".",
+        help="HSConfig repository root to inspect (default: current directory).",
+    )
     contract_spine_sentinel.add_argument("--out", help="Optional JSON output path.")
     contract_spine_sentinel.add_argument("--json", action="store_true")
 

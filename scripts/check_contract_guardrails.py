@@ -90,6 +90,8 @@ def guardrail_commands(
                 "-m",
                 "hsconfig.cli",
                 "contract-spine-sentinel",
+                "--repo-root",
+                str(repo_root),
                 "--json",
             ),
         ),
