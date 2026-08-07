@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+RUNNER_ENVIRONMENT_STEP = "Initialize runner-scoped environment"
 LOCKED_COVERAGE = (
     "python scripts/check_release_gate.py --repo . --outputs outputs "
     "--tree-mode working-pre-cutover --locked-check full-tests-and-coverage --json"
@@ -244,16 +245,74 @@ def test_non_test_jobs_bootstrap_the_exact_hash_bound_minor_lock_outside_checkou
     ] == LOCKED_COVERAGE
 
 
+def test_runner_context_is_scoped_to_initialization_steps_that_persist_environment(
+    tmp_path: Path,
+) -> None:
+    """Catches job-level runner expressions that make GitHub reject the workflow."""
+    jobs = _workflow()["jobs"]
+    assert isinstance(jobs, dict)
+
+    for job_name, job in jobs.items():
+        job_environment = job.get("env", {})
+        assert isinstance(job_environment, dict)
+        assert all(
+            "${{ runner." not in str(value)
+            for value in job_environment.values()
+        )
+
+        steps = _steps(job)
+        initializer = steps[0]
+        assert initializer["name"] == RUNNER_ENVIRONMENT_STEP
+        assert initializer["shell"] == "pwsh"
+        step_environment = initializer.get("env")
+        assert step_environment == {
+            "HSCONFIG_RUNNER_TEMP": "${{ runner.temp }}",
+        }
+
+        runner_temp = tmp_path / job_name / "runner-temp"
+        runner_temp.mkdir(parents=True)
+        expected_environment = {
+            "PIP_CACHE_DIR": str(runner_temp / "pip-cache"),
+            "TEMP": str(runner_temp),
+            "TMP": str(runner_temp),
+            "TMPDIR": str(runner_temp),
+        }
+        if job_name == "test":
+            expected_environment["HYPOTHESIS_STORAGE_DIRECTORY"] = (
+                str(runner_temp / "hypothesis")
+            )
+
+        command = initializer.get("run")
+        assert isinstance(command, str)
+        github_environment = tmp_path / job_name / "github-env"
+        environment = os.environ.copy()
+        environment["GITHUB_ENV"] = str(github_environment)
+        environment["HSCONFIG_RUNNER_TEMP"] = str(runner_temp)
+
+        completed = subprocess.run(
+            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+            cwd=ROOT,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        persisted = dict(
+            line.split("=", 1)
+            for line in github_environment.read_text(encoding="utf-8").splitlines()
+        )
+        assert persisted == expected_environment
+
+
 def test_jobs_check_checkout_residue_after_their_real_work() -> None:
     """Catches CI commands that leave build, coverage, or package metadata behind."""
     jobs = _workflow()["jobs"]
     assert isinstance(jobs, dict)
 
     for job in jobs.values():
-        assert job["env"]["PIP_CACHE_DIR"] == "${{ runner.temp }}/pip-cache"
-        assert job["env"]["TEMP"] == "${{ runner.temp }}"
-        assert job["env"]["TMP"] == "${{ runner.temp }}"
-        assert job["env"]["TMPDIR"] == "${{ runner.temp }}"
         steps = _steps(job)
         final = steps[-1]
         assert final["name"] == "Verify checkout residue is zero"
@@ -286,8 +345,9 @@ def test_every_job_binds_and_materializes_the_event_commit_before_setup_or_downl
 
     for job in jobs.values():
         steps = _steps(job)
-        assert steps[0]["name"] == "Checkout"
-        baseline = steps[1]
+        assert steps[0]["name"] == RUNNER_ENVIRONMENT_STEP
+        assert steps[1]["name"] == "Checkout"
+        baseline = steps[2]
         assert baseline["name"] == "Bind and materialize the event commit"
         assert baseline["shell"] == "pwsh"
         command = baseline["run"]
@@ -296,7 +356,7 @@ def test_every_job_binds_and_materializes_the_event_commit_before_setup_or_downl
         assert "$env:GITHUB_SHA" in command
         assert "$env:RUNNER_TEMP" in command
         assert "tar -xf" not in command
-        assert steps[2]["name"] == "Set up Python"
+        assert steps[3]["name"] == "Set up Python"
 
 
 def test_security_outputs_and_final_cleanup_stay_in_runner_temp() -> None:

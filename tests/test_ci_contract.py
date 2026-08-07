@@ -239,9 +239,15 @@ def test_consolidated_ci_routes_full_tests_through_the_locked_bootstrap():
         if isinstance(step, dict) and isinstance(step.get("run"), str)
     ]
 
-    assert test_job["env"]["HYPOTHESIS_STORAGE_DIRECTORY"] == (
-        "${{ runner.temp }}/hypothesis"
+    initializer = next(
+        step
+        for step in test_job["steps"]
+        if step.get("name") == "Initialize runner-scoped environment"
     )
+    assert initializer["env"] == {
+        "HSCONFIG_RUNNER_TEMP": "${{ runner.temp }}",
+    }
+    assert "HYPOTHESIS_STORAGE_DIRECTORY" in initializer["run"]
     assert (
         "python scripts/check_release_gate.py --repo . --outputs outputs "
         "--tree-mode working-pre-cutover --locked-check full-tests-and-coverage "

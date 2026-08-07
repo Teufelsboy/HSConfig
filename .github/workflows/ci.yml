@@ -18,12 +18,25 @@ jobs:
     timeout-minutes: 90
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
       HSCONFIG_PYTHON_MINOR: "3.12"
     steps:
+      - name: Initialize runner-scoped environment
+        shell: pwsh
+        env:
+          HSCONFIG_RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_ENV -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
+          $runnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          $values = [ordered]@{
+            PIP_CACHE_DIR = (Join-Path $runnerTemp 'pip-cache')
+            TEMP = $runnerTemp
+            TMP = $runnerTemp
+            TMPDIR = $runnerTemp
+          }
+          foreach ($entry in $values.GetEnumerator()) {
+            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bind and materialize the event commit
@@ -144,12 +157,25 @@ jobs:
         python-version: ["3.11", "3.12"]
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
-      HYPOTHESIS_STORAGE_DIRECTORY: ${{ runner.temp }}/hypothesis
     steps:
+      - name: Initialize runner-scoped environment
+        shell: pwsh
+        env:
+          HSCONFIG_RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_ENV -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
+          $runnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          $values = [ordered]@{
+            PIP_CACHE_DIR = (Join-Path $runnerTemp 'pip-cache')
+            TEMP = $runnerTemp
+            TMP = $runnerTemp
+            TMPDIR = $runnerTemp
+            HYPOTHESIS_STORAGE_DIRECTORY = (Join-Path $runnerTemp 'hypothesis')
+          }
+          foreach ($entry in $values.GetEnumerator()) {
+            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bind and materialize the event commit
@@ -205,12 +231,25 @@ jobs:
     timeout-minutes: 180
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
       HSCONFIG_PYTHON_MINOR: "3.12"
     steps:
+      - name: Initialize runner-scoped environment
+        shell: pwsh
+        env:
+          HSCONFIG_RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_ENV -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
+          $runnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          $values = [ordered]@{
+            PIP_CACHE_DIR = (Join-Path $runnerTemp 'pip-cache')
+            TEMP = $runnerTemp
+            TMP = $runnerTemp
+            TMPDIR = $runnerTemp
+          }
+          foreach ($entry in $values.GetEnumerator()) {
+            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bind and materialize the event commit
@@ -322,12 +361,25 @@ jobs:
     timeout-minutes: 240
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
       HSCONFIG_PYTHON_MINOR: "3.12"
     steps:
+      - name: Initialize runner-scoped environment
+        shell: pwsh
+        env:
+          HSCONFIG_RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GITHUB_ENV -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
+          $runnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          $values = [ordered]@{
+            PIP_CACHE_DIR = (Join-Path $runnerTemp 'pip-cache')
+            TEMP = $runnerTemp
+            TMP = $runnerTemp
+            TMPDIR = $runnerTemp
+          }
+          foreach ($entry in $values.GetEnumerator()) {
+            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bind and materialize the event commit
