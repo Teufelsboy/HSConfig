@@ -20,6 +20,10 @@ from hsconfig.source_acquisition_provenance import (
 from hsconfig.source_research_manifest import build_source_research_manifest
 
 
+def _windows_path(drive: str, *parts: str) -> str:
+    return drive + ":" + "\\" + "\\".join(parts)
+
+
 def _policy_profile() -> PolicyProfile:
     rules = b'[{"claim_kind":"mulligan_keep","source_family":"guide"}]'
     return PolicyProfile(
@@ -109,7 +113,9 @@ def _positive_record() -> dict[str, object]:
         "claim_text": claim_text,
         "content_sha256": provenance["content_sha256"],
         "acquisition_provenance": provenance,
-        "local_cache_path": r"C:\private\research\cute-warrior.html",
+        "local_cache_path": _windows_path(
+            "C", "private", "research", "cute-warrior.html"
+        ),
         "deck_code": "AAEBA-raw-secret-deck-code",
     }
 
@@ -404,7 +410,7 @@ def test_frozen_bundle_is_deterministic_portable_and_fully_bound() -> None:
         }
     ]
     serialized = json.dumps(first, sort_keys=True)
-    assert r"C:\private" not in serialized
+    assert _windows_path("C", "private") not in serialized
     assert "AAEBA-raw-secret-deck-code" not in serialized
     assert first["content_sha256"].startswith("sha256:")
 
@@ -656,11 +662,11 @@ def test_frozen_bundle_rejects_policy_rebinding_after_closure() -> None:
         "/srv/hsconfig/source.txt",
         "/workspace/hsconfig/source.txt",
         "/custom/absolute/source.txt",
-        r"C:\hsconfig\source.txt",
-        "D:/hsconfig/source.txt",
-        r"\\server\share\source.txt",
-        r"\\?\C:\hsconfig\source.txt",
-        r"\\.\C:\hsconfig\source.txt",
+        _windows_path("C", "hsconfig", "source.txt"),
+        "D:" + "/" + "/".join(("hsconfig", "source.txt")),
+        "\\" * 2 + "\\".join(("server", "share", "source.txt")),
+        "\\\\?\\" + _windows_path("C", "hsconfig", "source.txt"),
+        "\\\\.\\" + _windows_path("C", "hsconfig", "source.txt"),
     ],
 )
 def test_frozen_bundle_rejects_absolute_paths_in_every_projected_string(

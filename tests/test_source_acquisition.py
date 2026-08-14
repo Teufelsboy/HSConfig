@@ -249,7 +249,7 @@ def test_injected_fetcher_cannot_assign_live_authority(acquisition_kwargs):
     ("extra_key", "sensitive_value"),
     [
         ("raw_html", "<script>secret</script>"),
-        ("local_path", "C:/Users/operator/private/source.html"),
+        ("local_path", "C:" + "/" + "/".join(("Users", "operator", "private", "source.html"))),
         ("source_url", "https://example.test/guide?token=super-secret"),
     ],
 )

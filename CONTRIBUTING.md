@@ -1,7 +1,16 @@
 # Contributing
 
+External code contributions and pull requests are not accepted.
+
+Report non-security bugs through
+[GitHub Issues](https://github.com/Teufelsboy/HSConfig/issues). Report security
+vulnerabilities through the private route documented in [SECURITY.md](SECURITY.md).
+Never attach sensitive runtime evidence to a public report.
+
+The remaining guidance is for repository maintainers.
+
 Start with `README.md`, then follow
-[`docs/operator/README.md`](docs/operator/README.md) for the single current
+[docs/operator/README.md](docs/operator/README.md) for the single current
 operator path.
 
 Use test-driven development for behavior changes: add a focused failing test,
@@ -18,7 +27,7 @@ Maintenance scripts, inventories, historical documents, diagnostics, tests,
 and generated contracts cannot authorize runtime writes. Runtime writes occur
 only through the documented apply command.
 
-Before submitting a change, run the focused tests first and then:
+Before recording a maintainer change, run the focused tests first and then:
 
 ```powershell
 python -m ruff check --no-cache src tests scripts

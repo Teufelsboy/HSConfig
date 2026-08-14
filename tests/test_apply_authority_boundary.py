@@ -6,6 +6,7 @@ import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 from hsconfig.io import read_json, write_json
 from hsconfig.runtime_apply import apply_package
 from tests.helpers.current_apply_eligible_package import (
@@ -216,7 +217,7 @@ def test_configure_operator_and_apply_gate_share_one_literal_decision(
         ]
     )
     configure = json.loads(capsys.readouterr().out)
-    package = out / "04_package"
+    package = resolve_current_package(out)
     operator = read_json(package / "reports" / "operator_summary.json")
     gate = evaluate_apply_gate(package)
 

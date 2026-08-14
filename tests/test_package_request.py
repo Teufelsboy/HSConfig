@@ -25,12 +25,13 @@ from hsconfig.package_request import (
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
 
 RESOURCE_ROOT = Path("src/hsconfig/resources")
+SYNTHETIC_RUNTIME_ROOT = "C:" + "/runtime"
 
 
 def test_package_invocation_is_slotted_frozen_and_excludes_transport_fields() -> None:
     invocation = PackageInvocation(
         deck_code="AAECAfixture",
-        runtime_root="C:/runtime",
+        runtime_root=SYNTHETIC_RUNTIME_ROOT,
         cards_json="cards.json",
         claims_json=None,
         guide_sources_json="guide_sources.json",
@@ -77,7 +78,7 @@ def test_package_invocation_rejects_invalid_required_runtime_values(
 ) -> None:
     values = {
         "deck_code": "AAECAfixture",
-        "runtime_root": "C:/runtime",
+        "runtime_root": SYNTHETIC_RUNTIME_ROOT,
         "cards_json": None,
         "claims_json": None,
         "guide_sources_json": None,
@@ -100,7 +101,7 @@ def test_general_resolution_request_detaches_every_nested_mutable_input() -> Non
         snapshot=PackageResolutionSnapshot.from_preconfig(preconfig),
         invocation=PackageInvocation(
             deck_code="AAECAgeneral",
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -144,7 +145,7 @@ def test_general_request_authority_graph_rejects_all_rebinding() -> None:
         ),
         invocation=PackageInvocation(
             deck_code="AAECAgeneral",
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -274,7 +275,7 @@ def test_general_request_binds_invocation_code_to_frozen_identity() -> None:
             snapshot=snapshot,
             invocation=PackageInvocation(
                 deck_code="DIFFERENT",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,
@@ -414,7 +415,7 @@ def test_resolved_request_binds_strict_context_to_invocation_deck_code() -> None
             snapshot=snapshot,
             invocation=PackageInvocation(
                 deck_code="not-the-audited-deck-code",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,
@@ -448,7 +449,7 @@ def test_resolved_request_accepts_the_matching_audited_deck_code() -> None:
         snapshot=snapshot,
         invocation=PackageInvocation(
             deck_code=deck_code,
-            runtime_root="C:/runtime",
+            runtime_root=SYNTHETIC_RUNTIME_ROOT,
             cards_json=None,
             claims_json=None,
             guide_sources_json=None,
@@ -489,6 +490,12 @@ def test_strict_resolution_context_rejects_mismatched_resource_authority() -> No
                 store.read_by_sha256(digest)
                 for digest in inputs.source_bundle_resource_sha256s
             ),
+            general_preconfig_canonical_json=store.read_by_sha256(
+                inputs.general_preconfig_resource_sha256
+            ),
+            acquisition_closure_canonical_json=store.read_by_sha256(
+                inputs.acquisition_closure_resource_sha256
+            ),
             globalvalues_baseline_canonical_json=store.read_by_sha256(
                 inputs.globalvalues_baseline_resource_sha256
             ),
@@ -519,7 +526,7 @@ def test_resolved_request_rejects_generic_documents_in_specialized_fields() -> N
             ),
             invocation=PackageInvocation(
                 deck_code="AAECAgeneral",
-                runtime_root="C:/runtime",
+                runtime_root=SYNTHETIC_RUNTIME_ROOT,
                 cards_json=None,
                 claims_json=None,
                 guide_sources_json=None,
@@ -650,6 +657,16 @@ def _strict_context_with_mutable_resources():
         ),
         bytearray(
             store.read_by_sha256(
+                inputs.general_preconfig_resource_sha256
+            )
+        ),
+        bytearray(
+            store.read_by_sha256(
+                inputs.acquisition_closure_resource_sha256
+            )
+        ),
+        bytearray(
+            store.read_by_sha256(
                 inputs.globalvalues_baseline_resource_sha256
             )
         ),
@@ -662,6 +679,10 @@ def _strict_context_with_mutable_resources():
         policy_profile_canonical_json=mutable_resources[2],
         evidence_contract_canonical_json=mutable_resources[3],
         source_bundle_canonical_json=mutable_resources[4 : 4 + source_count],
+        general_preconfig_canonical_json=mutable_resources[4 + source_count],
+        acquisition_closure_canonical_json=mutable_resources[
+            5 + source_count
+        ],
         globalvalues_baseline_canonical_json=mutable_resources[-1],
     )
     return context, mutable_resources

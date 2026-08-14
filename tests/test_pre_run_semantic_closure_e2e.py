@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from hsconfig import pre_run_metrics
 from hsconfig.cli import main
 from hsconfig.audited_deck_catalog import load_audited_deck_catalog
 from hsconfig.evidence_contract import (
@@ -1055,6 +1056,262 @@ def _aggregate_audited_packages(
         semantic_inventory=inventory,
         audited_catalog=catalog,
     )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    (
+        ("manifest_not_mapping", "pre_run_input_manifest_malformed"),
+        ("handoff_not_mapping", "pre_run_authority_handoff_malformed"),
+        ("pre_run_hash_stale", "pre_run_closure_hash_stale"),
+        ("pre_run_cross_deck", "pre_run_closure_cross_deck"),
+        ("deck_identity_cross_deck", "pre_run_deck_identity_cross_deck"),
+        ("report_hash_drift", "pre_run_closure_report_hash_mismatch"),
+        ("verified_cross_deck", "verified_emission_cross_deck"),
+        (
+            "semantic_projection_drift",
+            "verified_emission_semantic_projection_mismatch",
+        ),
+        ("precision_drift", "pre_run_emission_precision_mismatch"),
+        ("recall_drift", "pre_run_emission_recall_mismatch"),
+        ("layered_ratio_drift", "pre_run_layered_coverage_mismatch"),
+        ("status_drift", "pre_run_closure_status_mismatch"),
+        ("strategy_drift", "pre_run_strategy_authority_status_invalid"),
+        ("exact_flag_drift", "pre_run_exact_guide_authority_mismatch"),
+        ("scope_drift", "pre_run_closure_hsconfig_scope_invalid"),
+        ("deck_cards_not_list", "pre_run_deck_identity_malformed"),
+        ("deck_card_malformed", "pre_run_deck_identity_malformed"),
+        ("deck_hash_drift", "pre_run_deck_identity_hash_mismatch"),
+    ),
+)
+def test_public_pre_run_validator_rejects_each_integrity_mutation(
+    audited_packages: tuple[_MemoryPackageView, ...],
+    mutation: str,
+    reason: str,
+) -> None:
+    documents = deepcopy(audited_packages[0].documents)
+    manifest = documents["reports/input_manifest.json"]
+    pre_run = documents["reports/pre_run_closure.json"]
+    deck_identity = documents["reports/deck_identity.json"]
+    assert isinstance(manifest, dict)
+    assert isinstance(pre_run, dict)
+    assert isinstance(deck_identity, dict)
+
+    if mutation == "manifest_not_mapping":
+        documents["reports/input_manifest.json"] = []
+    elif mutation == "handoff_not_mapping":
+        manifest["pre_run_authority_handoff"] = []
+    elif mutation == "pre_run_hash_stale":
+        pre_run["strategy_authority_status"] = "strong"
+    elif mutation == "pre_run_cross_deck":
+        pre_run["deck_fingerprint"] = "sha256:" + ("b" * 64)
+        _rehash(pre_run)
+    elif mutation == "deck_identity_cross_deck":
+        deck_identity["deck_fingerprint"] = "sha256:" + ("b" * 64)
+    elif mutation == "report_hash_drift":
+        pre_run["report_hashes"]["disposition_ledger"] = (
+            "sha256:" + ("0" * 64)
+        )
+        _rehash(pre_run)
+    elif mutation == "verified_cross_deck":
+        verified = pre_run["verified_emission"]
+        original_fingerprint = verified["deck_fingerprint"]
+        other_fingerprint = "sha256:" + ("b" * 64)
+        verified["deck_fingerprint"] = other_fingerprint
+        for row in verified["semantic_expectations"]:
+            row["deck_fingerprint"] = other_fingerprint
+            row["composite_identity"] = row["composite_identity"].replace(
+                original_fingerprint,
+                other_fingerprint,
+                1,
+            )
+        _rehash(pre_run)
+    elif mutation == "semantic_projection_drift":
+        pre_run["verified_emission"]["semantic_expectations"].pop()
+        _rehash(pre_run)
+    elif mutation == "precision_drift":
+        pre_run["emission_precision"] = {
+            "numerator": 0,
+            "denominator": 1,
+            "fraction": "0/1",
+            "value": 0.0,
+            "vacuous": False,
+        }
+        _rehash(pre_run)
+    elif mutation == "recall_drift":
+        pre_run["eligible_emission_recall"] = {
+            "numerator": 0,
+            "denominator": 1,
+            "fraction": "0/1",
+            "value": 0.0,
+            "vacuous": False,
+        }
+        _rehash(pre_run)
+    elif mutation == "layered_ratio_drift":
+        pre_run["layered_pre_run_source_coverage"] = {
+            "numerator": 0,
+            "denominator": 1,
+            "fraction": "0/1",
+            "value": 0.0,
+            "vacuous": False,
+        }
+        _rehash(pre_run)
+    elif mutation == "status_drift":
+        pre_run["pre_run_contract_status"] = "incomplete"
+        _rehash(pre_run)
+    elif mutation == "strategy_drift":
+        pre_run["strategy_authority_status"] = "future"
+        _rehash(pre_run)
+    elif mutation == "exact_flag_drift":
+        pre_run["exact_guide_authority"] = True
+        _rehash(pre_run)
+    elif mutation == "scope_drift":
+        pre_run["hsconfig_scope"] = "RUNTIME"
+        _rehash(pre_run)
+    elif mutation == "deck_cards_not_list":
+        deck_identity["main_deck"] = {}
+    elif mutation == "deck_card_malformed":
+        deck_identity["main_deck"] = [{}]
+    else:
+        deck_identity["main_deck"][0]["count"] += 1
+
+    with pytest.raises(ValueError, match=reason):
+        validate_pre_run_package_reports(_MemoryPackageView(documents))
+
+
+def test_public_pre_run_validator_rejects_cross_deck_globalvalues_ledger(
+    audited_packages: tuple[_MemoryPackageView, ...],
+) -> None:
+    documents = deepcopy(audited_packages[0].documents)
+    validated = validate_pre_run_package_reports(audited_packages[0])
+    other_fingerprint = "sha256:" + ("b" * 64)
+    decisions = tuple(
+        replace(decision, deck_fingerprint=other_fingerprint)
+        for decision in validated.globalvalues_ledger.decisions
+    )
+    cross_deck = GlobalValuesDecisionLedger(
+        deck_fingerprint=other_fingerprint,
+        baseline_sha256=globalvalues_baseline_sha256(decisions),
+        decisions=decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(decisions),
+    )
+    documents["reports/globalvalues_decision_ledger.json"] = (
+        globalvalues_decision_report_document(cross_deck)
+    )
+
+    with pytest.raises(ValueError, match="pre_run_report_cross_deck"):
+        validate_pre_run_package_reports(_MemoryPackageView(documents))
+
+
+def _aggregate_with_validated_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    packages: tuple[_MemoryPackageView, ...],
+    validated_rows: tuple[pre_run_metrics.ValidatedPreRunPackage, ...],
+) -> dict:
+    # Every row comes from the real package validator before the one targeted
+    # aggregate mutation is applied; isolate aggregation from a second reload.
+    by_package = {
+        id(package): validated
+        for package, validated in zip(packages, validated_rows, strict=True)
+    }
+    monkeypatch.setattr(
+        pre_run_metrics,
+        "validate_pre_run_package_reports",
+        lambda package: by_package[id(package)],
+    )
+    inventory, catalog = _approved_inventory_and_catalog()
+    return aggregate_pre_run_closure(
+        packages,
+        semantic_inventory=inventory,
+        audited_catalog=catalog,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    (
+        ("fingerprint_set", "pre_run_semantic_inventory_mismatch"),
+        ("deck_name", "pre_run_semantic_inventory_mismatch"),
+        ("cards_not_list", "pre_run_deck_identity_malformed"),
+        ("sideboards_not_list", "pre_run_deck_identity_malformed"),
+        ("claim_collision", "pre_run_composite_claim_collision"),
+        ("audited_totals", "pre_run_audited_totals_mismatch"),
+    ),
+)
+def test_aggregate_rejects_each_validated_integrity_mutation(
+    audited_packages: tuple[_MemoryPackageView, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    reason: str,
+) -> None:
+    validated = [
+        validate_pre_run_package_reports(package)
+        for package in audited_packages
+    ]
+    first = validated[0]
+    if mutation == "fingerprint_set":
+        validated[0] = replace(
+            first,
+            deck_fingerprint="sha256:" + ("b" * 64),
+        )
+    elif mutation == "deck_name":
+        validated[0] = replace(
+            first,
+            deck_identity={**first.deck_identity, "deck_name": "OtherDeck"},
+        )
+    elif mutation == "cards_not_list":
+        validated[0] = replace(
+            first,
+            deck_identity={**first.deck_identity, "main_deck": {}},
+        )
+    elif mutation == "sideboards_not_list":
+        validated[0] = replace(
+            first,
+            deck_identity={**first.deck_identity, "sideboards": {}},
+        )
+    elif mutation == "claim_collision":
+        duplicate_claims = (
+            *first.disposition_ledger.claims,
+            first.disposition_ledger.claims[0],
+        )
+        validated[0] = replace(
+            first,
+            disposition_ledger=_disposition_with_rows(
+                first.disposition_ledger,
+                claims=duplicate_claims,
+            ),
+        )
+    else:
+        deck_identity = deepcopy(first.deck_identity)
+        deck_identity["main_deck"][0]["count"] += 1
+        validated[0] = replace(first, deck_identity=deck_identity)
+
+    with pytest.raises(ValueError, match=reason):
+        _aggregate_with_validated_rows(
+            monkeypatch,
+            audited_packages,
+            tuple(validated),
+        )
+
+
+def test_aggregate_records_exact_guide_authority_from_validated_package(
+    audited_packages: tuple[_MemoryPackageView, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validated = tuple(
+        validate_pre_run_package_reports(package)
+        for package in audited_packages
+    )
+    exact = (replace(validated[0], exact_guide_authority=True), *validated[1:])
+
+    result = _aggregate_with_validated_rows(
+        monkeypatch,
+        audited_packages,
+        exact,
+    )
+
+    assert result["exact_guide_authority_count"] == 1
+    assert result["exact_guide_authority_decks"] == [exact[0].deck_fingerprint]
 
 
 def test_audited_twelve_deck_acceptance_uses_only_validated_inventory_catalog():

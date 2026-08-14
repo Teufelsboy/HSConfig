@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from hsconfig.semantic_inventory import validate_semantic_inventory
+from hsconfig.semantic_inventory import canonical_semantic_claim, validate_semantic_inventory
 
 
 _FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "near100"
@@ -54,7 +54,6 @@ def test_near100_inventory_freezes_approved_counts(
         inventory,
         audited_catalog=audited_catalog["decks"],
     )
-
     assert summary.deck_count == 12
     assert summary.main_slot_count == 360
     assert summary.main_card_identity_count == 205
@@ -62,6 +61,98 @@ def test_near100_inventory_freezes_approved_counts(
     assert summary.disposition_row_count == 208
     assert summary.claim_count == 316
     assert summary.globalvalues_decision_count == 456
+    assert len(inventory["semantic_claims"]) == 316
+    assert sum(len(deck["claims"]) for deck in inventory["decks"]) == 316
+    assert all(
+        row == canonical_semantic_claim(row)
+        and len(row["claim_key"]) == 64
+        and row["claim_key"] == row["claim_key"].lower()
+        for row in inventory["semantic_claims"]
+    )
+
+
+def test_canonical_semantic_claim_uses_the_exact_five_field_full_sha_contract() -> None:
+    row = canonical_semantic_claim(
+        {
+            "claim_kind": " mechanic_usage ",
+            "evidence_text_short": " Draw   a card. ",
+            "cards": ["B", "A", "A"],
+            "lowered_surfaces": ["mulligan", "cardid", "cardid"],
+            "source_title": " Søurce ",
+            "unrelated_audit_field": "ignored",
+        }
+    )
+
+    assert row == {
+        "claim_key": "b6f6d26f63a1b02c659ee18232f89480098b18c5adb3421d39a966c1056e6460",
+        "claim_kind": "mechanic_usage",
+        "evidence_text_short": "Draw a card.",
+        "cards": ["A", "B"],
+        "lowered_surfaces": ["cardid", "mulligan"],
+        "source_title": "Søurce",
+    }
+
+
+def test_inventory_rejects_semantic_substitution_after_embedded_checksum_rewrite(
+    inventory: dict[str, Any], audited_catalog: dict[str, Any]
+) -> None:
+    changed = copy.deepcopy(inventory)
+    claim = changed["semantic_claims"][0]
+    claim["evidence_text_short"] += " changed"
+    claim.pop("claim_key")
+    changed["semantic_claims"][0] = canonical_semantic_claim(claim)
+    _refresh_checksum(changed)
+
+    with pytest.raises(
+        ValueError, match="semantic_inventory_approved_content_sha256_invalid"
+    ):
+        validate_semantic_inventory(changed, audited_catalog=audited_catalog["decks"])
+
+
+def test_inventory_rejects_noncanonical_or_duplicate_semantic_claims(
+    inventory: dict[str, Any], audited_catalog: dict[str, Any]
+) -> None:
+    changed = copy.deepcopy(inventory)
+    changed["semantic_claims"][0]["evidence_text_short"] += "  "
+    _refresh_checksum(changed)
+    with pytest.raises(ValueError, match="semantic_claim"):
+        validate_semantic_inventory(changed, audited_catalog=audited_catalog["decks"])
+
+    duplicated = copy.deepcopy(inventory)
+    duplicated["semantic_claims"][1] = copy.deepcopy(duplicated["semantic_claims"][0])
+    _refresh_checksum(duplicated)
+    with pytest.raises(ValueError, match="semantic_claim_identity"):
+        validate_semantic_inventory(duplicated, audited_catalog=audited_catalog["decks"])
+
+
+@pytest.mark.parametrize("delta", [-1, 1])
+def test_inventory_rejects_wrong_semantic_claim_count(
+    inventory: dict[str, Any], audited_catalog: dict[str, Any], delta: int
+) -> None:
+    changed = copy.deepcopy(inventory)
+    if delta < 0:
+        changed["semantic_claims"].pop()
+    else:
+        changed["semantic_claims"].append(copy.deepcopy(changed["semantic_claims"][-1]))
+    _refresh_checksum(changed)
+
+    with pytest.raises(ValueError, match="semantic_claim_count"):
+        validate_semantic_inventory(changed, audited_catalog=audited_catalog["decks"])
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra"])
+def test_inventory_rejects_open_semantic_claim_rows(
+    inventory: dict[str, Any], audited_catalog: dict[str, Any], mutation: str
+) -> None:
+    changed = copy.deepcopy(inventory)
+    if mutation == "missing":
+        changed["semantic_claims"][0].pop("source_title")
+    else:
+        changed["semantic_claims"][0]["unexpected"] = True
+    _refresh_checksum(changed)
+
+    with pytest.raises(ValueError, match="semantic_claim_invalid"):
+        validate_semantic_inventory(changed, audited_catalog=audited_catalog["decks"])
 
 
 def test_score_contract_freezes_all_hard_minimums(

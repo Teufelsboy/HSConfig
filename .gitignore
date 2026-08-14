@@ -21,6 +21,10 @@ ENV/
 
 # HSConfig generated output
 outputs/
+/.hsconfig-output-reconcile-transaction/
+/.hsconfig-output-reconcile-prepare-*/
+/.hsconfig-output-reconcile-cleanup-*/
+/.hsconfig-output-reconcile.lock
 tmp/
 temp/
 .superpowers/

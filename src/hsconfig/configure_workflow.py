@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 from typing import Any, Callable
 
@@ -30,7 +31,11 @@ from hsconfig.config_quality_contract import (
     semantic_handoff_projection,
 )
 from hsconfig.configure_models import ConfigureRequest, ConfigureResult
-from hsconfig.configure_run_model import create_configure_run_model
+from hsconfig.configure_run_model import (
+    ConfigureRunModel,
+    create_configure_run_model,
+    render_configure_run_model,
+)
 from hsconfig.configure_stage_snapshot import (
     collect_configure_stage_artifacts,
 )
@@ -44,6 +49,7 @@ from hsconfig.configure_summary import (
     build_configure_summary,
     build_stage_failure_summary,
 )
+from hsconfig.current_output import lease_package_input
 from hsconfig.configure_source_closure_receipt import (
     build_configure_source_closure_receipt,
 )
@@ -54,17 +60,19 @@ from hsconfig.internal_source_authority import (
     reject_caller_supplied_source_authority,
     split_source_documents_handoff,
 )
-from hsconfig.operator_summary import refresh_generated_file_accounting
-from hsconfig.output_ownership_manifest import build_output_ownership_manifest
-from hsconfig.package_derivation_receipt import refresh_package_derivation_authority
-from hsconfig.package_io import prepare_research_output_dir
-from hsconfig.source_bundle import build_source_bundle
+from hsconfig.output_publisher import (
+    PublishedOutput,
+    publish_configure_run,
+)
+from hsconfig.package_io import (
+    prepare_research_output_dir,
+    snapshot_bounded_filesystem_package,
+)
+from hsconfig.package_render_authority import render_package_authority
 from hsconfig.source_closure_intake import (
-    SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH,
     build_source_closure_intake_receipt,
     summarize_source_closure_intake,
 )
-from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 from hsconfig.source_candidate_plan import (
     build_source_candidate_plan,
     dedupe_acquisition_urls,
@@ -74,6 +82,14 @@ from hsconfig.source_readiness_preview import build_source_readiness_preview
 
 
 ApplyPayload = Callable[[argparse.Namespace], tuple[dict[str, Any], int]]
+_RUNTIME_APPLY_SUCCESS_STATUSES = frozenset(
+    {
+        "applied",
+        "already_current",
+        "recovered",
+        "committed_receipt_pending",
+    }
+)
 BuildConfigQualityReport = Callable[[Path], dict[str, Any]]
 PackageModelObserver = Callable[[PackageModel], None]
 SourceManifestPayload = Callable[
@@ -102,50 +118,359 @@ def execute_configure(
 ) -> ConfigureResult:
     if not isinstance(request, ConfigureRequest):
         raise TypeError("configure_request_required")
-    args = _request_namespace(request)
     observed_models: list[PackageModel] = []
-    try:
-        summary, exit_code = _execute_configure_namespace(
-            args,
-            stage_observer=stage_observer,
-            configure_fault_hook=configure_fault_hook,
-            apply_payload_fn=apply_payload_fn,
-            build_config_quality_report_fn=build_config_quality_report_fn,
-            source_manifest_payload_fn=source_manifest_payload_fn,
-            source_acquire_for_configure_fn=source_acquire_for_configure_fn,
-            package_model_observer=observed_models.append,
-        )
-        package_model = None
-        configure_run_model = None
-        if exit_code == 0:
+    package_model = None
+    configure_run_model = None
+    published_output: PublishedOutput | None = None
+    with tempfile.TemporaryDirectory(prefix="hsconfig-configure-") as raw:
+        temporary_root = Path(raw)
+        args = _request_namespace(request)
+        args.out = str(temporary_root)
+        args.apply = False
+        try:
+            summary, exit_code = _execute_configure_namespace(
+                args,
+                stage_observer=stage_observer,
+                configure_fault_hook=configure_fault_hook,
+                apply_payload_fn=apply_payload_fn,
+                build_config_quality_report_fn=build_config_quality_report_fn,
+                source_manifest_payload_fn=source_manifest_payload_fn,
+                source_acquire_for_configure_fn=source_acquire_for_configure_fn,
+                package_model_observer=observed_models.append,
+            )
+            if exit_code != 0:
+                return ConfigureResult(
+                    status=str(summary["status"]),
+                    exit_code=exit_code,
+                    package_model=None,
+                    configure_run_model=None,
+                    published_output=None,
+                    summary=summary,
+                )
             if len(observed_models) != 1:
                 raise ValueError("configure_package_model_observation_invalid")
             package_model = observed_models[0]
+            collected_stage_artifacts = (
+                collect_configure_stage_artifacts(temporary_root)
+            )
             configure_run_model = create_configure_run_model(
                 package=package_model,
-                stage_artifacts=collect_configure_stage_artifacts(
-                    request.output_root
-                ),
+                stage_artifacts={
+                    path: content
+                    for path, content in collected_stage_artifacts.items()
+                    if path != "configure_summary.json"
+                },
             )
-    except Exception as exc:
-        summary = build_stage_failure_summary("configure", exc)
-        exit_code = 1
-        package_model = None
-        configure_run_model = None
-        try:
-            write_json(
-                request.output_root / "configure_summary.json",
+            rendered = render_configure_run_model(configure_run_model)
+            _verify_temporary_build_matches_model(
+                temporary_root,
+                configure_run_model=configure_run_model,
+            )
+            published_output = publish_configure_run(
+                rendered,
+                request.output_root,
+            )
+            summary = _publication_summary(
                 summary,
+                temporary_root=temporary_root,
+                published=published_output,
             )
-        except Exception:
-            pass
+            if request.apply_requested:
+                summary, exit_code = _apply_published_configure(
+                    request,
+                    summary=summary,
+                    published=published_output,
+                    configure_fault_hook=configure_fault_hook,
+                    apply_payload_fn=apply_payload_fn,
+                )
+                if exit_code != 0:
+                    package_model = None
+                    configure_run_model = None
+                    published_output = None
+            else:
+                exit_code = 0
+        except Exception as exc:
+            summary = build_stage_failure_summary("configure", exc)
+            exit_code = 1
+            package_model = None
+            configure_run_model = None
+            published_output = None
     return ConfigureResult(
         status=str(summary["status"]),
         exit_code=exit_code,
         package_model=package_model,
         configure_run_model=configure_run_model,
+        published_output=published_output,
         summary=summary,
     )
+
+
+def _verify_temporary_build_matches_model(
+    temporary_root: Path,
+    *,
+    configure_run_model: ConfigureRunModel,
+) -> None:
+    expected_stage = {
+        artifact.relative_path: artifact.content
+        for artifact in configure_run_model.stage_artifacts
+        if artifact.relative_path != "configure_summary.json"
+    }
+    actual_stage = collect_configure_stage_artifacts(temporary_root)
+    actual_stage.pop("configure_summary.json")
+    if actual_stage != expected_stage:
+        raise ValueError("configure_stage_model_byte_mismatch")
+
+    expected_package = render_package_authority(
+        configure_run_model.package
+    ).artifacts
+    actual_package = snapshot_bounded_filesystem_package(
+        temporary_root / "04_package"
+    )
+    if actual_package.file_names() != expected_package.file_names():
+        raise ValueError("configure_package_model_file_set_mismatch")
+    if any(
+        actual_package.read_bytes(artifact.relative_path)
+        != artifact.content
+        for artifact in expected_package
+    ):
+        raise ValueError("configure_package_model_byte_mismatch")
+
+
+def _publication_summary(
+    summary: Mapping[str, Any],
+    *,
+    temporary_root: Path,
+    published: PublishedOutput,
+) -> dict[str, Any]:
+    rebased = _rebase_temporary_paths(
+        dict(summary),
+        temporary_root=temporary_root,
+        revision_root=published.revision_root,
+    )
+    if not isinstance(rebased, dict):
+        raise TypeError("configure_summary_invalid")
+    rebased.update(
+        {
+            "output_root": str(published.output_root),
+            "package_path": str(published.package_root),
+            "published_revision": published.revision_root.relative_to(
+                published.output_root
+            ).as_posix(),
+            "published_package": published.package_root.relative_to(
+                published.output_root
+            ).as_posix(),
+            "publication_content_root_sha256": (
+                published.content_root_sha256
+            ),
+            "reused_existing_revision": (
+                published.reused_existing_revision
+            ),
+        }
+    )
+    return rebased
+
+
+def _apply_published_configure(
+    request: ConfigureRequest,
+    *,
+    summary: Mapping[str, Any],
+    published: PublishedOutput,
+    configure_fault_hook: ConfigureFaultHook | None,
+    apply_payload_fn: ApplyPayload,
+) -> tuple[dict[str, Any], int]:
+    try:
+        with lease_package_input(request.output_root) as lease:
+            if (
+                lease.publication is None
+                or lease.content_root_sha256
+                != published.content_root_sha256
+                or lease.package_root != published.package_root
+            ):
+                raise ValueError("configure_apply_publication_digest_mismatch")
+            operator_summary = read_json(
+                lease.package_root
+                / "reports"
+                / "operator_summary.json"
+            )
+            deck_input_verification = operator_summary.get(
+                "deck_input_verification",
+                {},
+            )
+            if (
+                not isinstance(deck_input_verification, Mapping)
+                or deck_input_verification.get("runtime_apply_eligible")
+                is not True
+            ):
+                return _configure_apply_failure_summary(
+                    summary,
+                    {
+                        "status": "failed",
+                        "errors": ["deck_input_not_verified"],
+                    },
+                    apply_status=1,
+                ), 1
+            expected_package = lease.package_root
+
+        invoke_configure_fault(
+            configure_fault_hook,
+            ConfigureFaultPoint.APPLY,
+        )
+        apply_payload_result, apply_status = apply_payload_fn(
+            SimpleNamespace(
+                package=str(request.output_root),
+                runtime_root=(
+                    str(request.runtime_root)
+                    if request.runtime_root is not None
+                    else None
+                ),
+                allow_source_informed=False,
+                fake=False,
+                from_fake_receipt=None,
+                immutable_package=True,
+                expected_publication_content_root_sha256=(
+                    published.content_root_sha256
+                ),
+                expected_published_package=str(expected_package),
+                json=True,
+            )
+        )
+        if apply_status != 0:
+            return _configure_apply_failure_summary(
+                summary,
+                apply_payload_result,
+                apply_status=apply_status,
+            ), apply_status
+        runtime_apply_status = _runtime_apply_status(apply_payload_result)
+        if runtime_apply_status is None:
+            return _configure_apply_failure_summary(
+                summary,
+                {
+                    **apply_payload_result,
+                    "status": "failed",
+                    "errors": ["configure_apply_status_invalid"],
+                },
+                apply_status=1,
+            ), 1
+        return _configure_apply_success_summary(
+            summary,
+            apply_payload_result=apply_payload_result,
+            runtime_apply_status=runtime_apply_status,
+        ), 0
+    except Exception as error:
+        return _configure_apply_failure_summary(
+            summary,
+            {
+                "status": "failed",
+                "errors": [str(error)],
+            },
+            apply_status=1,
+        ), 1
+
+
+def _configure_apply_success_summary(
+    summary: Mapping[str, Any],
+    *,
+    apply_payload_result: Mapping[str, Any],
+    runtime_apply_status: str,
+) -> dict[str, Any]:
+    updated = dict(summary)
+    updated.update(
+        {
+            "status": "OK",
+            "apply_performed": True,
+            "apply_status": 0,
+            "apply_result": dict(apply_payload_result),
+            "runtime_apply_status": runtime_apply_status,
+            "runtime_package_match": None,
+            "runtime_package_match_status": "not_checked",
+        }
+    )
+    _project_transient_apply_state(updated, apply_status=0)
+    return updated
+
+
+def _runtime_apply_status(
+    apply_payload_result: Mapping[str, Any],
+) -> str | None:
+    receipt = apply_payload_result.get("receipt")
+    if not isinstance(receipt, Mapping):
+        return None
+    receipt_status = receipt.get("status")
+    payload_status = apply_payload_result.get("status")
+    if (
+        receipt_status not in _RUNTIME_APPLY_SUCCESS_STATUSES
+        or payload_status != receipt_status
+    ):
+        return None
+    return str(receipt_status)
+
+
+def _configure_apply_failure_summary(
+    summary: Mapping[str, Any],
+    apply_payload_result: Mapping[str, Any],
+    *,
+    apply_status: int,
+) -> dict[str, Any]:
+    updated = dict(summary)
+    updated.update(dict(apply_payload_result))
+    updated.update(
+        {
+            "status": "failed",
+            "stage": "apply",
+            "apply_performed": False,
+            "apply_status": apply_status,
+        }
+    )
+    _project_transient_apply_state(
+        updated,
+        apply_status=apply_status,
+    )
+    return updated
+
+
+def _project_transient_apply_state(
+    summary: dict[str, Any],
+    *,
+    apply_status: int,
+) -> None:
+    for key in ("acceptance_summary", "config_proof_summary"):
+        value = summary.get(key)
+        if isinstance(value, dict):
+            value["apply_requested"] = True
+            value["apply_status"] = apply_status
+
+
+def _rebase_temporary_paths(
+    value: Any,
+    *,
+    temporary_root: Path,
+    revision_root: Path,
+) -> Any:
+    if isinstance(value, str):
+        try:
+            relative = Path(value).relative_to(temporary_root)
+        except (TypeError, ValueError):
+            return value
+        return str(revision_root / relative)
+    if isinstance(value, list):
+        return [
+            _rebase_temporary_paths(
+                item,
+                temporary_root=temporary_root,
+                revision_root=revision_root,
+            )
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _rebase_temporary_paths(
+                item,
+                temporary_root=temporary_root,
+                revision_root=revision_root,
+            )
+            for key, item in value.items()
+        }
+    return value
 
 
 def _request_namespace(request: ConfigureRequest) -> argparse.Namespace:
@@ -265,7 +590,6 @@ def _execute_configure_namespace(
     prepare_source_authority_handoff = None
     source_autopilot_path = None
     mulligan_source_gaps: list[dict[str, str]] = []
-    source_closure_intake_receipt_path = None
     source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
     explicit_source_urls = dedupe_acquisition_urls(
         list(getattr(args, "source_url", []) or [])
@@ -521,11 +845,6 @@ def _execute_configure_namespace(
     reports_dir = package_dir / "reports"
     guide_claim_bundle = read_json(reports_dir / "guide_claim_bundle.json")
     operator_summary = read_json(reports_dir / "operator_summary.json")
-    explainability_report = read_json(
-        reports_dir / "source_to_runtime_explainability.json"
-    )
-    source_claim_gap_report = read_json(reports_dir / "source_claim_gap_report.json")
-    source_bundle_path = reports_dir / "source_bundle.json"
     source_closure_intake_receipt = None
     if bool(getattr(args, "online_source", False)) or bool(
         getattr(args, "auto_source", False)
@@ -537,59 +856,10 @@ def _execute_configure_namespace(
                 getattr(args, "source_search_results_json", None)
             ),
         )
-        source_closure_intake_receipt_path = (
-            package_dir / SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH
-        )
-        write_json(source_closure_intake_receipt_path, source_closure_intake_receipt)
-
-    write_json(
-        source_bundle_path,
-        build_source_bundle(
-            deck_name=args.deck_name,
-            deck_code=args.deck_code,
-            source_records=guide_claim_bundle.get("source_evidence_index", []),
-            claims=guide_claim_bundle.get("claims", []),
-            operator_summary=operator_summary,
-            explainability_report=explainability_report,
-        ),
-    )
-    generated_files = sorted(
-        {
-            *(str(path) for path in operator_summary.get("generated_files", [])),
-            "reports/source_bundle.json",
-            *(
-                [SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH]
-                if source_closure_intake_receipt is not None
-                else []
-            ),
-        }
-    )
-    output_ownership_manifest = build_output_ownership_manifest(generated_files)
-    write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
-    operator_summary = refresh_generated_file_accounting(
-        operator_summary,
-        generated_files=generated_files,
-        output_ownership_manifest=output_ownership_manifest,
-    )
-    operator_summary["package_derivation"] = refresh_package_derivation_authority(
-        package_dir
-    )
     if source_closure_intake_receipt is not None:
         operator_summary["source_closure_intake"] = summarize_source_closure_intake(
             source_closure_intake_receipt
         )
-    source_evidence_closure_path = reports_dir / "source_evidence_closure.json"
-    write_json(
-        source_evidence_closure_path,
-        build_source_evidence_closure_report(
-            deck_name=args.deck_name,
-            deck_code=args.deck_code,
-            operator_summary=operator_summary,
-            source_to_runtime_explainability_report=explainability_report,
-            source_claim_gap_report=source_claim_gap_report,
-        ),
-    )
-    write_json(reports_dir / "operator_summary.json", operator_summary)
     config_quality_summary = _build_config_quality_summary(
         package_dir,
         build_config_quality_report_fn=build_config_quality_report_fn,
@@ -636,8 +906,6 @@ def _execute_configure_namespace(
     operator_summary["load_safe_to_install"] = load_safe_to_install
     operator_summary["use_config_now"] = load_safe_to_install
     operator_summary["use_config_now_scope"] = "load_safety_only"
-    write_json(reports_dir / "operator_summary.json", operator_summary)
-
     apply_payload_result: dict[str, Any] | None = None
     apply_status = None
     if bool(getattr(args, "apply", False)):
@@ -686,35 +954,27 @@ def _execute_configure_namespace(
         if apply_status != 0:
             return _finish(out, "failed", {"stage": "apply", **apply_payload_result}, apply_status)
 
-    apply_receipt = (
-        apply_payload_result.get("receipt")
-        if isinstance(apply_payload_result, dict)
-        else None
-    )
-    runtime_package_match = (
-        apply_receipt.get("runtime_package_match")
-        if isinstance(apply_receipt, dict)
-        else None
-    )
-    runtime_package_match_status = (
-        runtime_package_match.get("status")
-        if isinstance(runtime_package_match, dict)
-        else "not_checked"
-    )
-    if bool(getattr(args, "apply", False)) and runtime_package_match_status != "matched":
-        return _finish(
-            out,
-            "failed",
-            {
-                **(apply_payload_result if isinstance(apply_payload_result, dict) else {}),
-                "stage": "apply",
-                "status": "failed",
-                "errors": [
-                    "Successful apply receipt lacks runtime_package_match.status=matched."
-                ],
-            },
-            1,
+    runtime_apply_status = None
+    if bool(getattr(args, "apply", False)):
+        runtime_apply_status = _runtime_apply_status(
+            apply_payload_result or {}
         )
+        if runtime_apply_status is None:
+            return _finish(
+                out,
+                "failed",
+                {
+                    **(
+                        apply_payload_result
+                        if isinstance(apply_payload_result, dict)
+                        else {}
+                    ),
+                    "stage": "apply",
+                    "status": "failed",
+                    "errors": ["configure_apply_status_invalid"],
+                },
+                1,
+            )
 
     acceptance_summary = _build_acceptance_summary(
         operator_summary=operator_summary,
@@ -786,13 +1046,6 @@ def _execute_configure_namespace(
             ),
             "research_path": str(research_dir),
             "package_path": str(package_dir),
-            "source_bundle_path": str(source_bundle_path),
-            "source_evidence_closure_path": str(source_evidence_closure_path),
-            "source_closure_intake_receipt_path": (
-                str(source_closure_intake_receipt_path)
-                if source_closure_intake_receipt_path
-                else None
-            ),
             "source_backed_status": operator_summary.get("source_backed_status"),
             "source_status_reason": _first_source_status_reason(operator_summary),
             "source_status_reasons": list(
@@ -818,8 +1071,9 @@ def _execute_configure_namespace(
             "apply_decision": apply_decision_payload(apply_decision),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
-            "runtime_package_match_status": runtime_package_match_status,
-            "runtime_package_match": runtime_package_match,
+            "runtime_apply_status": runtime_apply_status,
+            "runtime_package_match_status": "not_checked",
+            "runtime_package_match": None,
     }
     try:
         invoke_configure_fault(

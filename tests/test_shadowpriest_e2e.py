@@ -3,6 +3,7 @@ from pathlib import Path
 
 from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.current_output import resolve_current_package
 from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 
 
@@ -348,12 +349,12 @@ def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_life
 
 
 def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, capsys):
-    package = tmp_path / "shadowpriest_package"
+    output_root = tmp_path / "shadowpriest_output"
     runtime = tmp_path / "runtime"
 
     build_code = main(
         [
-            "prepare",
+            "configure",
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
@@ -361,30 +362,26 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
             "--runtime-root",
             str(runtime),
             "--out",
-            str(package),
+            str(output_root),
+            "--apply",
             "--json",
         ]
     )
-    capsys.readouterr()
+    build_out = json.loads(capsys.readouterr().out)
+    package = resolve_current_package(output_root)
 
     validate_code = main(["validate", "--package", str(package), "--json"])
     validate_out = json.loads(capsys.readouterr().out)
 
-    apply_code = main(
-        [
-            "apply",
-            "--package",
-            str(package),
-            "--runtime-root",
-            str(runtime),
-            "--json",
-        ]
-    )
-    apply_out = json.loads(capsys.readouterr().out)
+    apply_out = build_out["apply_result"]
 
     reports = package / "reports"
     deck_dir = package / "CustomConfig" / "shadowpriest"
-    runtime_deck_dir = runtime / "CustomConfig" / "shadowpriest"
+    runtime_deck_dir = (
+        runtime
+        / "CustomConfig"
+        / apply_out["receipt"]["versioned_config_dir"]
+    )
     runtime_deck_config = runtime / "CustomConfig" / "deck_config.ini"
     deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
@@ -468,7 +465,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         "cards_need_condition_lowering",
         "contract_gap_not_strong_evidence",
     ]
-    assert apply_code == 0
+    assert build_out["apply_performed"] is True
+    assert build_out["apply_status"] == 0
     assert apply_out["status"] == "applied"
     assert apply_out["apply_gate"]["status"] == "allowed"
     assert apply_out["apply_gate"]["mode"] == "load_safe_apply"

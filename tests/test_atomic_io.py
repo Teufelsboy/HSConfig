@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import pytest
 
@@ -214,7 +214,7 @@ def test_atomic_write_removes_temp_after_low_level_base_exception(
     monkeypatch.setattr(
         atomic_io,
         "_open_unique_sibling_temp",
-        lambda _target: (
+        lambda _target, **_kwargs: (
             temp,
             handle,
             atomic_io._lstat_identity(temp),
@@ -232,9 +232,9 @@ def test_atomic_write_removes_temp_after_low_level_base_exception(
     monkeypatch.setattr(os, "fsync", controlled_fsync)
     if operation == "replace":
         monkeypatch.setattr(
-            os,
-            "replace",
-            lambda _source, _target: (_ for _ in ()).throw(
+            atomic_io,
+            "secure_replace",
+            lambda _source, _target, **_kwargs: (_ for _ in ()).throw(
                 InjectedBaseFault("replace")
             ),
         )
@@ -259,13 +259,12 @@ def test_atomic_write_cleanup_failures_do_not_mask_primary_base_exception(
         fail_operation="write",
         close_fails=True,
     )
-    real_unlink = Path.unlink
     unlink_attempts: list[Path] = []
 
     monkeypatch.setattr(
         atomic_io,
         "_open_unique_sibling_temp",
-        lambda _target: (
+        lambda _target, **_kwargs: (
             temp,
             handle,
             atomic_io._lstat_identity(temp),
@@ -275,15 +274,16 @@ def test_atomic_write_cleanup_failures_do_not_mask_primary_base_exception(
 
     def reject_owned_temp_cleanup(
         path: Path,
-        *args: Any,
-        **kwargs: Any,
+        **_kwargs: object,
     ) -> None:
-        if path == temp:
-            unlink_attempts.append(path)
-            raise CleanupFault("secondary-unlink")
-        real_unlink(path, *args, **kwargs)
+        unlink_attempts.append(path)
+        raise CleanupFault("secondary-unlink")
 
-    monkeypatch.setattr(Path, "unlink", reject_owned_temp_cleanup)
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_unlink",
+        reject_owned_temp_cleanup,
+    )
     try:
         with pytest.raises(InjectedBaseFault, match="write") as caught:
             atomic_write_bytes(target, b"new")
@@ -295,7 +295,7 @@ def test_atomic_write_cleanup_failures_do_not_mask_primary_base_exception(
         assert any("secondary-close" in note for note in notes)
         assert any("secondary-unlink" in note for note in notes)
     finally:
-        real_unlink(temp, missing_ok=True)
+        temp.unlink(missing_ok=True)
 
 
 def test_hostile_add_note_never_masks_primary_atomic_failure(
@@ -306,23 +306,26 @@ def test_hostile_add_note_never_masks_primary_atomic_failure(
     target.write_bytes(b"old")
     identifier = type("Identifier", (), {"hex": "owned"})()
     temp = tmp_path / ".state.bin.owned.tmp"
-    real_unlink = Path.unlink
+    real_secure_unlink = atomic_io.secure_unlink
     monkeypatch.setattr(atomic_io.uuid, "uuid4", lambda: identifier)
 
     def reject_owned_temp_cleanup(
         path: Path,
-        *args: Any,
         **kwargs: Any,
     ) -> None:
         if path == temp:
             raise CleanupFault("secondary-unlink")
-        real_unlink(path, *args, **kwargs)
+        real_secure_unlink(path, **kwargs)
 
     def interrupt_before_replace(stage: str) -> None:
         if stage == "before_replace":
             raise HostilePrimary("primary")
 
-    monkeypatch.setattr(Path, "unlink", reject_owned_temp_cleanup)
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_unlink",
+        reject_owned_temp_cleanup,
+    )
     try:
         with pytest.raises(HostilePrimary, match="primary"):
             atomic_write_bytes(
@@ -331,7 +334,7 @@ def test_hostile_add_note_never_masks_primary_atomic_failure(
                 fault_hook=interrupt_before_replace,
             )
     finally:
-        real_unlink(temp, missing_ok=True)
+        temp.unlink(missing_ok=True)
 
 
 def test_fstat_base_exception_does_not_leak_exclusive_created_temp(
@@ -456,21 +459,31 @@ def test_atomic_write_uses_exclusive_unique_sibling_without_overwriting_collisio
             type("Identifier", (), {"hex": "unique"})(),
         )
     )
-    real_path_open = Path.open
+    real_secure_open = atomic_io.secure_open_file_descriptor
     attempted_temps: list[Path] = []
 
     def record_exclusive_open(
         path: Path,
-        *args: Any,
-        **kwargs: Any,
-    ):
-        mode = args[0] if args else kwargs.get("mode", "r")
-        if mode == "xb":
+        *,
+        create: bool,
+        write: bool,
+        expected_parent_identity: tuple[int, int, int] | None = None,
+    ) -> int:
+        if create:
             attempted_temps.append(path)
-        return real_path_open(path, *args, **kwargs)
+        return real_secure_open(
+            path,
+            create=create,
+            write=write,
+            expected_parent_identity=expected_parent_identity,
+        )
 
     monkeypatch.setattr(atomic_io.uuid, "uuid4", lambda: next(identifiers))
-    monkeypatch.setattr(Path, "open", record_exclusive_open)
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_open_file_descriptor",
+        record_exclusive_open,
+    )
 
     atomic_write_bytes(target, b"new")
 
@@ -551,10 +564,18 @@ def test_replace_base_exception_keeps_old_or_missing_target_and_no_owned_temp(
     if target_exists:
         target.write_bytes(b"old")
 
-    def reject_replace(_source: Path, _target: Path) -> None:
+    def reject_replace(
+        _source: Path,
+        _target: Path,
+        **_kwargs: object,
+    ) -> None:
         raise InjectedBaseFault("replace")
 
-    monkeypatch.setattr(os, "replace", reject_replace)
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_replace",
+        reject_replace,
+    )
 
     with pytest.raises(InjectedBaseFault, match="replace"):
         atomic_write_bytes(target, b"new")
@@ -616,11 +637,12 @@ def test_atomic_write_durability_operations_have_strict_commit_order(
             self.closed = True
 
     handle = OrderedHandle()
-    real_replace = os.replace
+    real_replace = atomic_io.secure_replace
+    real_close = os.close
     monkeypatch.setattr(
         atomic_io,
         "_open_unique_sibling_temp",
-        lambda _target: (
+        lambda _target, **_kwargs: (
             temp,
             handle,
             atomic_io._lstat_identity(temp),
@@ -635,20 +657,30 @@ def test_atomic_write_durability_operations_have_strict_commit_order(
             else "parent_fsync"
         )
 
-    def record_replace(source: Path, destination: Path) -> None:
+    def record_replace(
+        source: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
         events.append("replace")
-        real_replace(source, destination)
+        real_replace(source, destination, **kwargs)
 
     def record_parent_open(_path: Path, _flags: int) -> int:
         events.append("parent_open")
         return directory_descriptor
 
     def record_parent_close(descriptor: int) -> None:
-        assert descriptor == directory_descriptor
-        events.append("parent_close")
+        if descriptor == directory_descriptor:
+            events.append("parent_close")
+        else:
+            real_close(descriptor)
 
     monkeypatch.setattr(os, "fsync", record_fsync)
-    monkeypatch.setattr(os, "replace", record_replace)
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_replace",
+        record_replace,
+    )
     monkeypatch.setattr(os, "open", record_parent_open)
     monkeypatch.setattr(os, "close", record_parent_close)
 
@@ -699,7 +731,10 @@ def test_atomic_write_rejects_parent_symlink_retarget_before_replace(
             os.symlink(alternate, parent, target_is_directory=True)
 
     try:
-        with pytest.raises(RuntimeError, match="parent directory changed"):
+        with pytest.raises(
+            (RuntimeError, ValueError),
+            match="parent directory changed|filesystem_directory_invalid",
+        ):
             atomic_write_bytes(target, b"new", fault_hook=retarget_parent)
 
         assert (first / "state.bin").read_bytes() == b"first-old"
@@ -742,16 +777,25 @@ def test_atomic_write_rejects_resolved_parent_swap_with_unchanged_symlink(
         (moved_first / temp_name).replace(first / temp_name)
 
     try:
-        with pytest.raises(RuntimeError, match="resolved parent changed"):
+        with pytest.raises(
+            (RuntimeError, ValueError),
+            match="resolved parent changed|filesystem_directory_invalid",
+        ):
             atomic_write_bytes(
                 target,
                 b"new",
                 fault_hook=swap_resolved_parent_and_carry_owned_temp,
-            )
+        )
 
         assert parent.lstat().st_ino == lexical_identity.st_ino
-        assert (moved_first / "state.bin").read_bytes() == b"first-old"
-        assert (first / "state.bin").read_bytes() == b"alternate-old"
+        if moved_first.exists():
+            assert (moved_first / "state.bin").read_bytes() == b"first-old"
+            assert (first / "state.bin").read_bytes() == b"alternate-old"
+        else:
+            assert (first / "state.bin").read_bytes() == b"first-old"
+            assert (alternate / "state.bin").read_bytes() == (
+                b"alternate-old"
+            )
     finally:
         if parent.is_symlink():
             parent.unlink()
@@ -821,3 +865,367 @@ def test_flush_file_flushes_an_existing_file_without_changing_its_bytes(
     flush_file(target)
 
     assert target.read_bytes() == content
+
+
+@pytest.mark.parametrize(
+    ("changed_probe", "message"),
+    (
+        ("parent", "parent directory changed"),
+        ("resolved_parent", "resolved parent changed"),
+        ("temp", "owned temp identity changed"),
+    ),
+)
+def test_atomic_write_rejects_identity_changes_before_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_probe: str,
+    message: str,
+) -> None:
+    target = tmp_path / "state.bin"
+    target.write_bytes(b"old")
+    real_lstat = atomic_io._lstat_identity
+    real_stat = atomic_io._stat_identity
+    parent_probes = 0
+    temp_probes = 0
+    resolved_parent_probes = 0
+
+    def probe_lstat(path: Path) -> tuple[int, int, int]:
+        nonlocal parent_probes, temp_probes
+        identity = real_lstat(path)
+        if path == tmp_path:
+            parent_probes += 1
+            if changed_probe == "parent" and parent_probes == 2:
+                return (identity[0], identity[1] + 1, identity[2])
+        elif path.name.endswith(".tmp"):
+            temp_probes += 1
+            if changed_probe == "temp" and temp_probes == 3:
+                return (identity[0], identity[1] + 1, identity[2])
+        return identity
+
+    def probe_stat(path: Path) -> tuple[int, int, int]:
+        nonlocal resolved_parent_probes
+        identity = real_stat(path)
+        if path == tmp_path:
+            resolved_parent_probes += 1
+            if (
+                changed_probe == "resolved_parent"
+                and resolved_parent_probes == 2
+            ):
+                return (identity[0], identity[1] + 1, identity[2])
+        return identity
+
+    monkeypatch.setattr(atomic_io, "_lstat_identity", probe_lstat)
+    monkeypatch.setattr(atomic_io, "_stat_identity", probe_stat)
+
+    with pytest.raises(atomic_io.AtomicWriteConflictError, match=message):
+        atomic_write_bytes(target, b"new")
+
+    assert target.read_bytes() == b"old"
+    assert not any(path.name.endswith(".tmp") for path in tmp_path.iterdir())
+
+
+def test_atomic_write_cleans_distinct_resolved_owned_temp_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "state.bin"
+    target.write_bytes(b"old")
+    lexical = tmp_path / ".state.bin.lexical.tmp"
+    resolved = tmp_path / ".state.bin.resolved.tmp"
+    lexical.write_bytes(b"partial")
+    resolved.write_bytes(b"partial")
+    identity = atomic_io._lstat_identity(lexical)
+    resolved_identity = atomic_io._lstat_identity(resolved)
+    monkeypatch.setattr(
+        atomic_io,
+        "_open_unique_sibling_temp",
+        lambda *_args, **_kwargs: (
+            lexical,
+            ControlledTempHandle(fail_operation="write"),
+            identity,
+            resolved,
+        ),
+    )
+    real_lstat = atomic_io._lstat_identity
+    monkeypatch.setattr(
+        atomic_io,
+        "_lstat_identity",
+        lambda path: identity if path == resolved else real_lstat(path),
+    )
+
+    with pytest.raises(InjectedBaseFault, match="write"):
+        atomic_write_bytes(target, b"new")
+
+    assert not lexical.exists()
+    assert resolved.exists() is False or resolved_identity != identity
+
+
+def test_open_lock_file_closes_descriptor_when_fdopen_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descriptor = os.open(tmp_path / "lock", os.O_CREAT | os.O_RDWR)
+    closes: list[int] = []
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_open_file_descriptor",
+        lambda *_args, **_kwargs: descriptor,
+    )
+    monkeypatch.setattr(
+        atomic_io.os,
+        "fdopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            InjectedBaseFault("fdopen")
+        ),
+    )
+    real_close = os.close
+    monkeypatch.setattr(atomic_io.os, "close", closes.append)
+
+    with pytest.raises(InjectedBaseFault, match="fdopen"):
+        atomic_io._open_lock_file(
+            tmp_path / "lock",
+            create=False,
+            expected_parent_identity=atomic_io._lstat_identity(tmp_path),
+        )
+
+    assert closes == [descriptor]
+    real_close(descriptor)
+
+
+def test_unique_temp_exhausts_collision_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_open_file_descriptor",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileExistsError()),
+    )
+
+    with pytest.raises(FileExistsError, match="Unable to create"):
+        atomic_io._open_unique_sibling_temp(
+            tmp_path / "target",
+            expected_parent_identity=atomic_io._lstat_identity(tmp_path),
+        )
+
+
+@pytest.mark.parametrize("changed_probe", ("lexical", "resolved"))
+def test_unique_temp_rejects_created_identity_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_probe: str,
+) -> None:
+    target = tmp_path / "target"
+    real_lstat = atomic_io._lstat_identity
+    real_fstat = atomic_io._fstat_identity
+
+    def changed_lstat(path: Path) -> tuple[int, int, int]:
+        identity = real_lstat(path)
+        if changed_probe == "lexical" and path.name.endswith(".tmp"):
+            return (identity[0], identity[1] + 1, identity[2])
+        return identity
+
+    fstat_calls = 0
+
+    def changed_fstat(handle: BinaryIO) -> tuple[int, int, int]:
+        nonlocal fstat_calls
+        identity = real_fstat(handle)
+        fstat_calls += 1
+        if changed_probe == "resolved" and fstat_calls == 1:
+            return (identity[0], identity[1] + 1, identity[2])
+        return identity
+
+    monkeypatch.setattr(atomic_io, "_lstat_identity", changed_lstat)
+    monkeypatch.setattr(atomic_io, "_fstat_identity", changed_fstat)
+
+    with pytest.raises(atomic_io.AtomicWriteConflictError):
+        atomic_io._open_unique_sibling_temp(
+            target,
+            expected_parent_identity=real_lstat(tmp_path),
+        )
+
+    owned_candidates = [
+        path for path in tmp_path.iterdir() if path.name.endswith(".tmp")
+    ]
+    assert len(owned_candidates) == 1
+
+
+class _UnprintableCleanupError(RuntimeError):
+    def __str__(self) -> str:
+        raise InjectedBaseFault("stringify")
+
+
+def test_cleanup_note_falls_back_when_cleanup_error_cannot_be_rendered() -> None:
+    primary = RuntimeError("primary")
+
+    atomic_io._add_cleanup_note(
+        primary,
+        "cleanup operation",
+        _UnprintableCleanupError(),
+    )
+
+    assert primary.__notes__ == [
+        "cleanup operation: cleanup failure detail unavailable"
+    ]
+
+
+@pytest.mark.parametrize("failure", (FileNotFoundError(), OSError("probe")))
+def test_owned_temp_cleanup_handles_identity_probe_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: BaseException,
+) -> None:
+    primary = RuntimeError("primary")
+    monkeypatch.setattr(
+        atomic_io,
+        "_lstat_identity",
+        lambda _path: (_ for _ in ()).throw(failure),
+    )
+
+    atomic_io._unlink_owned_temp_without_masking(
+        tmp_path / "temp",
+        (1, 2, 3),
+        primary,
+    )
+
+    if isinstance(failure, FileNotFoundError):
+        assert getattr(primary, "__notes__", []) == []
+    else:
+        assert "identity cleanup check failed" in primary.__notes__[0]
+
+
+def test_owned_temp_cleanup_preserves_replaced_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unlink_calls: list[Path] = []
+    monkeypatch.setattr(atomic_io, "_lstat_identity", lambda _path: (1, 3, 3))
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_unlink",
+        lambda path, **_kwargs: unlink_calls.append(path),
+    )
+
+    atomic_io._unlink_owned_temp_without_masking(
+        tmp_path / "temp",
+        (1, 2, 3),
+        RuntimeError("primary"),
+    )
+
+    assert unlink_calls == []
+
+
+@pytest.mark.parametrize("failure", (FileNotFoundError(), OSError("unlink")))
+def test_owned_temp_cleanup_handles_unlink_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: BaseException,
+) -> None:
+    primary = RuntimeError("primary")
+    monkeypatch.setattr(atomic_io, "_lstat_identity", lambda _path: (1, 2, 3))
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_unlink",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failure),
+    )
+
+    atomic_io._unlink_owned_temp_without_masking(
+        tmp_path / "temp",
+        (1, 2, 3),
+        primary,
+    )
+
+    if isinstance(failure, FileNotFoundError):
+        assert getattr(primary, "__notes__", []) == []
+    else:
+        assert "owned temp cleanup failed" in primary.__notes__[0]
+
+
+def test_unique_temp_recovers_cleanup_identity_failure_as_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "target"
+    parent_identity = atomic_io._lstat_identity(tmp_path)
+    primary = InjectedBaseFault("candidate-lstat")
+    monkeypatch.setattr(
+        atomic_io,
+        "_lstat_identity",
+        lambda _path: (_ for _ in ()).throw(primary),
+    )
+    monkeypatch.setattr(
+        atomic_io,
+        "_fstat_identity",
+        lambda _handle: (_ for _ in ()).throw(CleanupFault("recovery-fstat")),
+    )
+
+    with pytest.raises(InjectedBaseFault, match="candidate-lstat") as caught:
+        atomic_io._open_unique_sibling_temp(
+            target,
+            expected_parent_identity=parent_identity,
+        )
+
+    assert any(
+        "owned temp identity recovery failed" in note
+        for note in caught.value.__notes__
+    )
+
+
+def test_unique_temp_cleans_distinct_resolved_path_after_validation_conflict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "target"
+    resolved = tmp_path / "resolved-temp"
+    real_resolve = Path.resolve
+    real_lstat = atomic_io._lstat_identity
+    candidate: Path | None = None
+    resolved_probes = 0
+
+    def resolve_to_distinct(path: Path, *, strict: bool = False) -> Path:
+        nonlocal candidate
+        if path.name.endswith(".tmp"):
+            candidate = path
+            return resolved
+        return real_resolve(path, strict=strict)
+
+    def probe_identity(path: Path) -> tuple[int, int, int]:
+        nonlocal resolved_probes
+        if path == resolved:
+            assert candidate is not None
+            identity = real_lstat(candidate)
+            resolved_probes += 1
+            if resolved_probes == 1:
+                return (identity[0], identity[1] + 1, identity[2])
+            return identity
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "resolve", resolve_to_distinct)
+    monkeypatch.setattr(atomic_io, "_lstat_identity", probe_identity)
+
+    with pytest.raises(
+        atomic_io.AtomicWriteConflictError,
+        match="resolved owned temp identity changed",
+    ):
+        atomic_io._open_unique_sibling_temp(
+            target,
+            expected_parent_identity=real_lstat(tmp_path),
+        )
+
+    assert candidate is not None
+    assert not candidate.exists()
+
+
+def test_release_lock_cleanup_failure_adds_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = RuntimeError("primary")
+    monkeypatch.setattr(
+        atomic_io,
+        "_release_platform_lock",
+        lambda _handle: (_ for _ in ()).throw(CleanupFault("release")),
+    )
+
+    atomic_io._release_lock_without_masking(object(), primary)  # type: ignore[arg-type]
+
+    assert "acquisition cleanup release failed" in primary.__notes__[0]

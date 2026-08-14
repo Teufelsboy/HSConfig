@@ -2,6 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.sync_installed_skill import sync_skill
 from hsconfig.skill_sync_status import build_installed_skill_sync_status
 
 
@@ -22,6 +23,20 @@ SEMANTIC_SAFETY_WAVE_SENTINELS = [
     "`reports/operator_summary.json` remains the only normal apply authority.",
     "`semantic_handoff_status` is diagnostic and never creates a second apply gate.",
 ]
+
+
+def test_sync_skill_uses_the_explicit_repository_authority(tmp_path: Path) -> None:
+    repository = tmp_path / "bound repository"
+    source_skill = repository / ".agents" / "skills" / "hsconfig"
+    source_skill.mkdir(parents=True)
+    source_bytes = b"# Bound skill\r\n\r\nWindows checkout authority.\r\n"
+    (source_skill / "SKILL.md").write_bytes(source_bytes)
+    install_root = tmp_path / "codex" / "skills"
+
+    installed = sync_skill(install_root, repo_root=repository)
+
+    assert installed == install_root / "hsconfig"
+    assert (installed / "SKILL.md").read_bytes() == source_bytes
 
 
 def test_skill_sync_check_passes_when_installed_copy_matches(tmp_path: Path):

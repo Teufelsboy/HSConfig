@@ -22,7 +22,8 @@ def folders_match(left: Path, right: Path) -> bool:
     return bool(folder_diff(left, right).get("matches"))
 
 
-def sync_skill(install_root: Path) -> Path:
+def sync_skill(install_root: Path, *, repo_root: Path = REPO_ROOT) -> Path:
+    source_skill = repo_root / ".agents" / "skills" / "hsconfig"
     target = install_root / "hsconfig"
     install_root.mkdir(parents=True, exist_ok=True)
     if target.exists():
@@ -30,7 +31,7 @@ def sync_skill(install_root: Path) -> Path:
             shutil.rmtree(target)
         else:
             target.unlink()
-    shutil.copytree(SOURCE_SKILL, target)
+    shutil.copytree(source_skill, target)
     return target
 
 

@@ -11,6 +11,7 @@ from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.cli_parser import build_parser
+from hsconfig.current_output import resolve_current_package
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 from hsconfig.package_builder import _filter_globalvalues_authority_matrix
 from hsconfig.source_document_model import globalvalues_claim_signature
@@ -813,7 +814,7 @@ def test_configure_keeps_unverified_cards_diagnostic_but_blocks_apply_before_wri
         ]
     )
     diagnostic_payload = json.loads(capsys.readouterr().out)
-    package = diagnostic_out / "04_package"
+    package = resolve_current_package(diagnostic_out)
     manifest = json.loads(
         (package / "reports" / "input_manifest.json").read_text(encoding="utf-8")
     )

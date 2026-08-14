@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from hsconfig.package_assembler import PackageModel
+from hsconfig.configure_run_stage_contract import (
+    configure_summary_bytes,
+    validate_configure_run_stage_files,
+)
 from hsconfig.package_domain import _ImmutableAuthorityNode
 from hsconfig.package_model import content_root_sha256
 from hsconfig.package_render_authority import (
     AuthorityArtifact,
     render_package_authority,
+)
+from hsconfig.run_manifest import (
+    MANIFEST_PATH,
+    build_tree_manifest_from_artifacts,
+    validate_run_paths,
+    write_tree_manifest,
 )
 
 
@@ -52,8 +61,16 @@ class ConfigureRunModel(_ImmutableAuthorityNode):
         )
         if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
             raise ValueError("configure_run_stage_artifacts_not_unique_sorted")
-        _validate_required_stages(paths)
+        validate_configure_run_stage_files(
+            deck_name=self.deck_name,
+            deck_fingerprint=self.deck_fingerprint,
+            stage_files={
+                artifact.relative_path: artifact.content
+                for artifact in self.stage_artifacts
+            },
+        )
         _validate_no_file_ancestor_collisions(paths)
+        _validate_unambiguous_run_paths(paths)
 
 
 @dataclass(frozen=True, init=False)
@@ -83,8 +100,36 @@ class RenderedConfigureRun(_ImmutableAuthorityNode):
         if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
             raise ValueError("rendered_configure_run_artifacts_invalid")
         _validate_no_file_ancestor_collisions(paths)
-        if content_root_sha256(self.artifacts) != self.content_root_sha256:
+        _validate_unambiguous_run_paths(paths)
+        content_artifacts = _configure_run_content_artifacts(
+            self.artifacts
+        )
+        if content_artifacts != _render_content_artifacts(self.model):
+            raise ValueError(
+                "rendered_configure_run_model_artifacts_mismatch"
+            )
+        if (
+            content_root_sha256(content_artifacts)
+            != self.content_root_sha256
+        ):
             raise ValueError("rendered_configure_run_content_root_mismatch")
+        manifest_artifacts = tuple(
+            artifact
+            for artifact in self.artifacts
+            if artifact.relative_path == MANIFEST_PATH
+        )
+        if (
+            len(manifest_artifacts) != 1
+            or manifest_artifacts[0].content
+            != write_tree_manifest(
+                build_tree_manifest_from_artifacts(
+                    deck_name=self.model.deck_name,
+                    deck_fingerprint=self.model.deck_fingerprint,
+                    artifacts=content_artifacts,
+                )
+            )
+        ):
+            raise ValueError("rendered_configure_run_manifest_mismatch")
 
 
 def create_configure_run_model(
@@ -95,17 +140,16 @@ def create_configure_run_model(
     if not isinstance(package, PackageModel):
         raise TypeError("package_model_required")
     stage_files = dict(stage_artifacts)
-    if "configure_summary.json" not in stage_files:
-        stage_files["configure_summary.json"] = _json_bytes(
-            {
-                "schema_version": 1,
-                "deck_name": package.compiled.deck_name,
-                "deck_fingerprint": package.compiled.deck_fingerprint,
-                "unavailable_stages": _unavailable_stages(
-                    tuple(sorted(stage_files))
-                ),
-            }
-        )
+    if any(
+        path.casefold() == "configure_summary.json"
+        for path in stage_files
+    ):
+        raise ValueError("configure_run_reserved_path")
+    stage_files["configure_summary.json"] = configure_summary_bytes(
+        deck_name=package.compiled.deck_name,
+        deck_fingerprint=package.compiled.deck_fingerprint,
+        paths=tuple(sorted(stage_files)),
+    )
     artifacts = tuple(
         AuthorityArtifact.from_content(
             relative_path=relative_path,
@@ -124,6 +168,27 @@ def create_configure_run_model(
 def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun:
     if not isinstance(model, ConfigureRunModel):
         raise TypeError("configure_run_model_required")
+    content_artifacts = _render_content_artifacts(model)
+    content_root = content_root_sha256(content_artifacts)
+    manifest_artifact = _render_manifest_artifact(
+        model=model,
+        content_artifacts=content_artifacts,
+    )
+    return RenderedConfigureRun(
+        model=model,
+        artifacts=tuple(
+            sorted(
+                (*content_artifacts, manifest_artifact),
+                key=lambda artifact: artifact.relative_path,
+            )
+        ),
+        content_root_sha256=content_root,
+    )
+
+
+def _render_content_artifacts(
+    model: ConfigureRunModel,
+) -> tuple[AuthorityArtifact, ...]:
     package = render_package_authority(model.package)
     package_artifacts = tuple(
         AuthorityArtifact.from_content(
@@ -132,19 +197,32 @@ def render_configure_run_model(model: ConfigureRunModel) -> RenderedConfigureRun
         )
         for artifact in package.artifacts
     )
-    artifacts = tuple(
+    content_artifacts = tuple(
         sorted(
             (*model.stage_artifacts, *package_artifacts),
             key=lambda artifact: artifact.relative_path,
         )
     )
     _validate_no_file_ancestor_collisions(
-        tuple(artifact.relative_path for artifact in artifacts)
+        tuple(artifact.relative_path for artifact in content_artifacts)
     )
-    return RenderedConfigureRun(
-        model=model,
-        artifacts=artifacts,
-        content_root_sha256=content_root_sha256(artifacts),
+    return content_artifacts
+
+
+def _render_manifest_artifact(
+    *,
+    model: ConfigureRunModel,
+    content_artifacts: tuple[AuthorityArtifact, ...],
+) -> AuthorityArtifact:
+    return AuthorityArtifact.from_content(
+        relative_path=MANIFEST_PATH,
+        content=write_tree_manifest(
+            build_tree_manifest_from_artifacts(
+                deck_name=model.deck_name,
+                deck_fingerprint=model.deck_fingerprint,
+                artifacts=content_artifacts,
+            )
+        ),
     )
 
 
@@ -159,50 +237,29 @@ def write_rendered_configure_run(
     ):
         raise ValueError("destination_must_be_empty")
     destination.mkdir(parents=True, exist_ok=True)
-    for artifact in rendered.artifacts:
+    content_artifacts = _configure_run_content_artifacts(
+        rendered.artifacts
+    )
+    manifest_artifacts = tuple(
+        artifact
+        for artifact in rendered.artifacts
+        if artifact.relative_path == MANIFEST_PATH
+    )
+    if len(manifest_artifacts) != 1:
+        raise ValueError("rendered_configure_run_manifest_missing")
+    for artifact in (*content_artifacts, *manifest_artifacts):
         target = destination / artifact.relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(artifact.content)
         if target.read_bytes() != artifact.content:
             raise ValueError("written_artifact_verification_failed")
-    if content_root_sha256(rendered.artifacts) != rendered.content_root_sha256:
-        raise ValueError("written_content_root_verification_failed")
-
-
-def _validate_required_stages(paths: tuple[str, ...]) -> None:
-    if any(
-        path == "04_package"
-        or path.startswith("04_package/")
-        or path.startswith("configure_summary.json/")
-        for path in paths
-    ):
-        raise ValueError("configure_run_reserved_path")
-    required = ("01_manifest/", "03_research/")
-    if any(
-        not any(path.startswith(prefix) for path in paths)
-        for prefix in required
-    ):
-        raise ValueError("configure_run_required_stage_missing")
-    source_paths = any(
-        path.startswith("02_source_documents/") for path in paths
-    )
-    acquisition_paths = any(
-        path.startswith("02_source_acquisition/") for path in paths
-    )
-    if source_paths == acquisition_paths:
-        raise ValueError("configure_run_source_stage_invalid")
-    autopilot_02 = any(
-        path.startswith("02_source_autopilot/") for path in paths
-    )
-    autopilot_03 = any(
-        path.startswith("03_source_autopilot/") for path in paths
-    )
     if (
-        (autopilot_02 and autopilot_03)
-        or (source_paths and autopilot_03)
-        or (acquisition_paths and autopilot_02)
+        content_root_sha256(
+            _configure_run_content_artifacts(rendered.artifacts)
+        )
+        != rendered.content_root_sha256
     ):
-        raise ValueError("configure_run_autopilot_stage_invalid")
+        raise ValueError("written_content_root_verification_failed")
 
 
 def _validate_no_file_ancestor_collisions(paths: tuple[str, ...]) -> None:
@@ -216,40 +273,20 @@ def _validate_no_file_ancestor_collisions(paths: tuple[str, ...]) -> None:
             raise ValueError("configure_run_artifact_path_collision")
 
 
-def _unavailable_stages(paths: tuple[str, ...]) -> dict[str, str]:
-    documents = any(
-        path.startswith("02_source_documents/") for path in paths
+def _configure_run_content_artifacts(
+    artifacts: tuple[AuthorityArtifact, ...],
+) -> tuple[AuthorityArtifact, ...]:
+    return tuple(
+        artifact
+        for artifact in artifacts
+        if artifact.relative_path != MANIFEST_PATH
     )
-    acquisition = any(
-        path.startswith("02_source_acquisition/") for path in paths
-    )
-    unavailable: dict[str, str] = {}
-    if documents:
-        unavailable["02_source_acquisition"] = "02_source_documents_selected"
-    elif acquisition:
-        unavailable["02_source_documents"] = "02_source_acquisition_selected"
-    else:
-        unavailable["02_source_documents"] = "not_requested"
-        unavailable["02_source_acquisition"] = "not_requested"
-    autopilot_02 = any(
-        path.startswith("02_source_autopilot/") for path in paths
-    )
-    autopilot_03 = any(
-        path.startswith("03_source_autopilot/") for path in paths
-    )
-    if not autopilot_02 and not autopilot_03:
-        unavailable["02_source_autopilot"] = "not_requested"
-        unavailable["03_source_autopilot"] = "not_requested"
-    elif autopilot_02:
-        unavailable["03_source_autopilot"] = "02_source_autopilot_selected"
-    else:
-        unavailable["02_source_autopilot"] = "03_source_autopilot_selected"
-    return dict(sorted(unavailable.items()))
 
 
-def _json_bytes(value: object) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
-        .encode("utf-8")
-        + b"\n"
-    )
+def _validate_unambiguous_run_paths(paths: tuple[str, ...]) -> None:
+    try:
+        validate_run_paths(paths)
+    except ValueError as error:
+        raise ValueError(
+            "configure_run_artifact_path_ambiguous"
+        ) from error

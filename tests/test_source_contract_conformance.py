@@ -1,10 +1,307 @@
 from __future__ import annotations
 
+import pytest
+
+from hsconfig import source_contract_conformance
 from hsconfig.source_contract_conformance import (
     build_source_contract_conformance_snapshot,
     render_source_contract_conformance_markdown,
 )
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+
+
+def test_contract_spine_projection_skips_invalid_rows_and_defaults_lifecycle() -> None:
+    rows = source_contract_conformance._contract_spine_rows(
+        {
+            "ignored": "not-a-row",
+            "claim": {
+                "semantic_lane": "diagnostic",
+                "required_fields": ["cards"],
+                "runtime_lowerable": True,
+                "lifecycle": "not-a-mapping",
+            },
+        }
+    )
+
+    assert rows == [
+        {
+            "claim_kind": "claim",
+            "policy_lane": "",
+            "semantic_lane": "diagnostic",
+            "allowed_surfaces": [],
+            "required_fields": ["cards"],
+            "runtime_lowerable": True,
+            "surface_gate_status": "",
+            "builder_status": "",
+            "final_runtime_effect": "",
+            "default_suppression_reason": "",
+            "operator_gate_impact": "diagnostic_only",
+        }
+    ]
+
+
+def test_surface_and_builder_statuses_name_missing_and_complete_states() -> None:
+    assert source_contract_conformance._surface_gate_status(
+        {"allowed_surfaces": []}
+    ) == "no_allowed_surface"
+    assert source_contract_conformance._surface_gate_status(
+        {"allowed_surfaces": ["combo"], "surface_gates": []}
+    ) == "missing_surface_gates"
+    assert source_contract_conformance._surface_gate_status(
+        {"allowed_surfaces": ["combo"], "surface_gates": {"combo": []}}
+    ) == "combo:missing"
+    assert source_contract_conformance._surface_gate_status(
+        {
+            "allowed_surfaces": ["combo", "cardid"],
+            "surface_gates": {
+                "combo": {"decision": "allowed"},
+                "cardid": {"decision": "rejected"},
+            },
+        }
+    ) == "combo:allowed; cardid:rejected"
+
+    assert source_contract_conformance._builder_status([]) == "no_builder_router"
+    assert source_contract_conformance._builder_status(
+        {"runner": "combo", "complete": []}
+    ) == "combo:missing_complete_exemplar"
+    assert source_contract_conformance._builder_status(
+        {
+            "runner": "combo",
+            "complete": {"outcome": "emitted"},
+            "incomplete": {"outcome": "suppressed", "reason": "sequence_missing"},
+        }
+    ) == "combo:emitted; incomplete:suppressed:sequence_missing"
+    assert source_contract_conformance._builder_status(
+        {
+            "runner": "cardid",
+            "complete": {"outcome": "suppressed", "reason": "missing_card"},
+        }
+    ) == "cardid:suppressed:missing_card"
+
+
+def test_final_runtime_effect_maps_every_runtime_surface_and_suppression() -> None:
+    assert source_contract_conformance._final_runtime_effect(
+        {"claim_kind": "globalvalue_numeric_tuning"}
+    ) == "suppressed_until_runtime_evidence"
+    for claim_kind in ("archetype", "tech_slot", "replacement_option"):
+        assert source_contract_conformance._final_runtime_effect(
+            {"claim_kind": claim_kind}
+        ) == "report_only_no_runtime_row"
+    assert source_contract_conformance._final_runtime_effect(
+        {"claim_kind": "card_role", "builder_router": []}
+    ) == "unknown_runtime_effect"
+    assert source_contract_conformance._final_runtime_effect(
+        {
+            "claim_kind": "card_role",
+            "builder_router": {"surface": "cardid", "complete": []},
+        }
+    ) == "unknown_runtime_effect"
+    assert source_contract_conformance._final_runtime_effect(
+        {
+            "claim_kind": "card_role",
+            "builder_router": {
+                "surface": "cardid",
+                "complete": {"outcome": "suppressed", "reason": "missing_card"},
+            },
+        }
+    ) == "suppressed:missing_card"
+    expected = {
+        "mulligan": "emits_mulligan_runtime_row",
+        "globalvalues": "emits_globalvalues_posture_overlay",
+        "cardid": "emits_cardid_runtime_row",
+        "combo": "emits_combo_runtime_row",
+        "unknown": "report_only_no_runtime_row",
+    }
+    assert {
+        surface: source_contract_conformance._final_runtime_effect(
+            {
+                "claim_kind": "card_role",
+                "builder_router": {
+                    "surface": surface,
+                    "complete": {"outcome": "emitted"},
+                },
+            }
+        )
+        for surface in expected
+    } == expected
+
+
+def test_conformance_diagnostics_report_real_policy_builder_disagreements() -> None:
+    rows = {
+        "ignored": "not-a-row",
+        "claim": {
+            "allowed_surfaces": ["combo"],
+            "surface_gates": {
+                "mulligan": [],
+                "combo": {"decision": "rejected", "reason": "unexpected"},
+                "cardid": {"decision": "allowed", "reason": "allowed"},
+            },
+            "builder_router": {
+                "surface": "cardid",
+                "complete": {
+                    "expected_outcome": "emitted",
+                    "outcome": "suppressed",
+                    "reason": "missing_card",
+                },
+                "incomplete": {
+                    "expected_outcome": "suppressed",
+                    "outcome": "suppressed",
+                },
+            },
+        },
+        "invalid-containers": {
+            "surface_gates": [],
+            "builder_router": [],
+        },
+    }
+    policy = source_contract_conformance._policy_gate_mismatches(rows)
+    assert [(row["surface"], row["policy_allowed"]) for row in policy] == [
+        ("cardid", False),
+        ("combo", True),
+    ]
+    builder = source_contract_conformance._builder_expectation_mismatches(rows)
+    assert builder == [
+        {
+            "claim_kind": "claim",
+            "exemplar": "complete",
+            "expected_outcome": "emitted",
+            "builder_outcome": "suppressed",
+            "reason": "missing_card",
+        }
+    ]
+
+
+def test_builder_prerequisite_gaps_require_allowed_gate_and_suppressed_exemplar() -> None:
+    rows = {
+        "ignored": "invalid",
+        "claim": {
+            "surface_gates": {"combo": {"decision": "allowed"}},
+            "builder_router": {
+                "surface": "combo",
+                "complete": {"outcome": "emitted"},
+                "incomplete": {"outcome": "suppressed", "reason": "sequence_missing"},
+            },
+        },
+        "invalid-router": {"builder_router": []},
+        "invalid-gates": {"builder_router": {"surface": 3}, "surface_gates": []},
+    }
+    gaps = source_contract_conformance._builder_prerequisite_gaps(rows)
+    assert len(gaps) == 1
+    assert gaps[0]["claim_kind"] == "claim"
+    assert gaps[0]["surface"] == "combo"
+    assert gaps[0]["builder_outcome"] == "suppressed"
+    assert gaps[0]["reason"] == "sequence_missing"
+
+
+def test_gate_and_builder_summaries_ignore_malformed_rows() -> None:
+    assert source_contract_conformance._gate_summary([]) == ""
+    assert source_contract_conformance._gate_summary(
+        {
+            "mulligan": [],
+            "cardid": {"decision": "allowed", "reason": "allowed"},
+        }
+    ) == (
+        "globalvalues:None:None; cardid:allowed:allowed; combo:None:None"
+    )
+    assert source_contract_conformance._builder_outcome_summary([]) == "-"
+    assert source_contract_conformance._builder_outcome_summary(
+        {"outcome": "emitted", "reason": "emitted"}
+    ) == "emitted"
+    assert source_contract_conformance._builder_outcome_summary(
+        {"outcome": "suppressed", "reason": "missing_card"}
+    ) == "suppressed: missing_card"
+
+
+def test_conformance_markdown_ignores_malformed_optional_sections() -> None:
+    markdown = render_source_contract_conformance_markdown(
+        {
+            "claim_kind_rows": {
+                "invalid": "not-a-row",
+                "invalid-router": {"builder_router": "not-a-router"},
+                "invalid-lifecycle": {"lifecycle": "not-a-lifecycle"},
+            },
+            "summary": "not-a-summary",
+            "contract_spine_rows": [
+                "invalid",
+                {
+                    "claim_kind": "claim|one",
+                    "policy_lane": "diagnostic",
+                    "surface_gate_status": "none",
+                    "builder_status": "none",
+                    "final_runtime_effect": "none",
+                    "operator_gate_impact": "diagnostic_only",
+                },
+            ],
+            "start_of_game_mulligan_suppression": "invalid",
+        }
+    )
+
+    assert "| claim\\|one | diagnostic | none | none | none | diagnostic_only |" in markdown
+    assert "| none | none | none | none | none |" in markdown
+    assert "## Start-of-Game Mulligan Boundary" not in markdown
+
+
+def test_conformance_builder_adapter_recognizes_each_success_shape(monkeypatch) -> None:
+    class MulliganPlan:
+        def to_report(self) -> dict[str, object]:
+            return {
+                "rules": [{"source_claim_ids": ["claim"]}],
+                "suppressed_rules": [],
+            }
+
+    monkeypatch.setattr(
+        source_contract_conformance,
+        "build_combo_plan",
+        lambda **_kwargs: {"combos": [{"claim_id": "claim"}], "suppressed": []},
+    )
+    monkeypatch.setattr(
+        source_contract_conformance,
+        "build_mulligan_plan",
+        lambda **_kwargs: MulliganPlan(),
+    )
+    monkeypatch.setattr(
+        source_contract_conformance,
+        "build_globalvalues_authority_matrix",
+        lambda **_kwargs: {
+            "allowed_step1_overlays": [{"claim_refs": ["claim"]}],
+            "blocked_until_runtime_evidence": [],
+        },
+    )
+    monkeypatch.setattr(
+        source_contract_conformance,
+        "route_card_behavior_surfaces",
+        lambda *_args, **_kwargs: {
+            "rows": [{"claim_id": "claim"}],
+            "suppressed": [],
+        },
+    )
+
+    cases = [
+        ("combo_sequence", "build_combo_plan"),
+        ("mulligan_keep", "build_mulligan_plan"),
+        ("gameplan_posture", "build_globalvalues_authority_matrix"),
+        ("card_role", "route_card_behavior_surfaces"),
+    ]
+    for claim_kind, runner in cases:
+        claim = {
+            "claim_id": "claim",
+            "claim_kind": claim_kind,
+            "cards": ["CARD_001", "CARD_002"],
+        }
+        assert source_contract_conformance._builder_runner_result(
+            claim_kind,
+            claim,
+            {"runner": runner},
+        ) == {"outcome": "emitted", "reason": "emitted"}
+
+
+def test_conformance_builder_adapter_rejects_unknown_runner() -> None:
+    with pytest.raises(RuntimeError, match="Unsupported conformance runner: unknown"):
+        source_contract_conformance._builder_runner_result(
+            "card_role",
+            {"claim_id": "claim", "cards": ["CARD_001"]},
+            {"runner": "unknown"},
+        )
 
 
 def test_conformance_snapshot_covers_every_supported_claim_kind():

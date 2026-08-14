@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.current_output import resolve_current_package
 
 
 SHADOWPRIEST_DECK_NAME = "ShadowPriest"
@@ -74,7 +75,7 @@ def test_shadowpriest_configure_path_real_deck_loop_uses_operator_summary_withou
     )
     payload = json.loads(capsys.readouterr().out)
 
-    package = out / "04_package"
+    package = resolve_current_package(out)
     reports = package / "reports"
     operator = _json(reports / "operator_summary.json")
     source_contract_audit = _json(reports / "source_contract_audit.json")

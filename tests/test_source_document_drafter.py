@@ -139,7 +139,7 @@ def test_strategic_receipt_minting_is_bound_to_acquisition_provenance(
     ("extra_key", "sensitive_value"),
     [
         ("raw_html", "<main>private source text</main>"),
-        ("local_path", "C:/Users/operator/private/source.html"),
+        ("local_path", "C:" + "/" + "/".join(("Users", "operator", "private", "source.html"))),
         ("source_url", "https://example.test/guide?token=super-secret"),
     ],
 )

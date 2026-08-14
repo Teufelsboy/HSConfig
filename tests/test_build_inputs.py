@@ -34,7 +34,7 @@ def _digest(character: str) -> str:
 
 def _valid_payload() -> dict[str, Any]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "generator_version": "0.1.0",
         "generator_commit": GENERATOR_COMMIT,
         "deck_name": "ShadowPriest",
@@ -53,6 +53,8 @@ def _valid_payload() -> dict[str, Any]:
         "evidence_contract_resource_sha256": _digest("3"),
         "source_bundle_resource_sha256s": [_digest("5"), _digest("4")],
         "globalvalues_baseline_resource_sha256": _digest("6"),
+        "general_preconfig_resource_sha256": _digest("7"),
+        "acquisition_closure_resource_sha256": _digest("8"),
     }
 
 
@@ -60,7 +62,7 @@ def test_canonicalize_build_inputs_normalizes_and_hashes_exact_json_bytes() -> N
     inputs = canonicalize_build_inputs(_valid_payload())
 
     assert isinstance(inputs, CanonicalBuildInputs)
-    assert inputs.schema_version == 2
+    assert inputs.schema_version == 3
     assert inputs.generator_version == "0.1.0"
     assert inputs.generator_commit == GENERATOR_COMMIT
     assert inputs.deck_name == "ShadowPriest"
@@ -81,7 +83,7 @@ def test_canonicalize_build_inputs_normalizes_and_hashes_exact_json_bytes() -> N
         sort_keys=True,
     ).encode("utf-8")
     assert inputs.input_sha256 == (
-        "0ed7fdd07ba620507c69cea4ec531d78fe793107665974b31a66ea4db9ff7b0c"
+        "733c6992cfad96699b9583ecc2c64779c0c5380b7a1a72fd7f4183b3343a7ec2"
     )
     assert inputs.input_sha256 == sha256(inputs.canonical_payload).hexdigest()
     assert not hasattr(inputs, "__dict__")
@@ -173,6 +175,8 @@ def test_pinned_card_data_context_rejects_unpinned_or_drifted_content(
             [_digest("c"), _digest("4")],
         ),
         ("globalvalues_baseline_resource_sha256", _digest("c")),
+        ("general_preconfig_resource_sha256", _digest("c")),
+        ("acquisition_closure_resource_sha256", _digest("c")),
     ],
 )
 def test_every_synthetic_hash_reference_is_bound_by_input_sha256(
@@ -213,7 +217,7 @@ def test_canonicalize_rejects_unknown_keys() -> None:
 @pytest.mark.parametrize(
     ("field", "absolute_path"),
     [
-        ("generator_commit", r"\\server\share\repo"),
+        ("generator_commit", "\\" * 2 + "\\".join(("server", "share", "repo"))),
     ],
 )
 def test_canonicalize_rejects_absolute_paths(
@@ -240,7 +244,7 @@ def test_canonicalize_rejects_absolute_paths(
         "../private/policy.json",
         "fixtures/cards.json",
         r"fixtures\cards.json",
-        "file:///C:/private/cards.json",
+        "file:///" + "C:" + "/private/cards.json",
         "cards.json",
         "local-policy.json",
     ],

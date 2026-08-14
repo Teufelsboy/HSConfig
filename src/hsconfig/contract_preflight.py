@@ -384,7 +384,8 @@ def _configure_acceptance_route_visible(combined: str) -> bool:
     return all(
         term in combined
         for term in (
-            "<out>/configure_summary.json.acceptance_summary",
+            "<out>/current.json",
+            "<current-revision>/configure_summary.json.acceptance_summary",
             "acceptance_summary",
             "use_config_now",
             "technical_status",
@@ -392,7 +393,7 @@ def _configure_acceptance_route_visible(combined: str) -> bool:
             "source_strength",
             "default_only_clean",
             "next_report_to_open",
-            "<out>/configure_summary.json.config_quality_summary",
+            "<current-revision>/configure_summary.json.config_quality_summary",
             "config_quality_summary",
             NORMAL_APPLY_AUTHORITY,
         )
@@ -404,7 +405,7 @@ def _pre_run_config_contract_receipt_visible(combined: str) -> bool:
         term in combined
         for term in (
             "pre-run config contract receipt",
-            "configure_summary.json.handoff_contract",
+            "<current-revision>/configure_summary.json.handoff_contract",
             "diagnostic-only handoff proof",
             "single authority",
             "no-default-only status",
@@ -442,7 +443,7 @@ def _configure_acceptance_projection_not_gate_visible(combined: str) -> bool:
 
 def _config_quality_summary_diagnostic_only_visible(combined: str) -> bool:
     return (
-        "<out>/configure_summary.json.config_quality_summary" in combined
+        "<current-revision>/configure_summary.json.config_quality_summary" in combined
         and "config_quality_summary" in combined
         and "diagnostic-only" in combined
         and "non-blocking" in combined

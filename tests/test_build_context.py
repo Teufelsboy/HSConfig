@@ -91,6 +91,8 @@ def _memory_store(inputs: CanonicalBuildInputs, store: Any) -> _MemoryStore:
         inputs.policy_profile_resource_sha256,
         inputs.evidence_contract_resource_sha256,
         inputs.globalvalues_baseline_resource_sha256,
+        inputs.general_preconfig_resource_sha256,
+        inputs.acquisition_closure_resource_sha256,
         *inputs.source_bundle_resource_sha256s,
     }
     return _MemoryStore(
@@ -797,6 +799,51 @@ def test_resolved_context_is_detached_from_later_store_mutation() -> None:
 
     assert context.deck_cards_canonical_json == expected
     assert type(context.deck_cards_canonical_json) is bytes
+
+
+def test_resolver_requires_frozen_general_preconfig_resource() -> None:
+    audited, store = _loaded()
+    inputs = audited.builds[0]
+    context = resolve_build_context(inputs, resources=store)
+
+    assert type(context.general_preconfig_canonical_json) is bytes
+    assert context.general_preconfig_canonical_json == store.read_by_sha256(
+        inputs.general_preconfig_resource_sha256
+    )
+
+    payload = json.loads(inputs.canonical_payload)
+    payload["general_preconfig_resource_sha256"] = "sha256:" + ("f" * 64)
+    changed = canonicalize_build_inputs(payload)
+    memory = _memory_store(inputs, store)
+    memory.values[changed.general_preconfig_resource_sha256] = b"{}"
+    with pytest.raises(
+        ValueError,
+        match="general_preconfig_resource_(?:sha256_mismatch|schema_invalid)",
+    ):
+        resolve_build_context(changed, resources=memory)
+
+
+def test_resolver_requires_deck_bound_frozen_acquisition_closure() -> None:
+    audited, store = _loaded()
+    inputs = audited.builds[0]
+    context = resolve_build_context(inputs, resources=store)
+
+    assert context.acquisition_closure_canonical_json == store.read_by_sha256(
+        inputs.acquisition_closure_resource_sha256
+    )
+    closure = json.loads(context.acquisition_closure_canonical_json)
+    closure["deck_fingerprint"] = audited.builds[1].deck_fingerprint
+    changed, memory = _replace_resource(
+        inputs,
+        store,
+        field="acquisition_closure_resource_sha256",
+        document=closure,
+    )
+    with pytest.raises(
+        ValueError,
+        match="acquisition_closure_resource_binding_invalid",
+    ):
+        resolve_build_context(changed, resources=memory)
 
 
 def test_resolver_touches_no_ambient_authority(

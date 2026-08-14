@@ -14,6 +14,7 @@ from typing import BinaryIO
 import pytest
 
 import hsconfig.atomic_io as atomic_io
+import hsconfig.package_io as package_io
 from hsconfig.atomic_io import ExclusiveFileLock, LockTimeoutError
 
 
@@ -257,18 +258,27 @@ def _tracking_handle(
 ) -> tuple[Path, BinaryIO]:
     lock_path = tmp_path / "publisher.lock"
     handle = lock_path.open("a+b")
-    real_path_open = Path.open
+    real_open_lock_file = atomic_io._open_lock_file
 
     def return_tracking_handle(
         path: Path,
-        *args: object,
-        **kwargs: object,
+        *,
+        create: bool,
+        expected_parent_identity: tuple[int, int, int],
     ):
         if path == lock_path:
             return handle
-        return real_path_open(path, *args, **kwargs)
+        return real_open_lock_file(
+            path,
+            create=create,
+            expected_parent_identity=expected_parent_identity,
+        )
 
-    monkeypatch.setattr(Path, "open", return_tracking_handle)
+    monkeypatch.setattr(
+        atomic_io,
+        "_open_lock_file",
+        return_tracking_handle,
+    )
     return lock_path, handle
 
 
@@ -319,6 +329,164 @@ def test_exclusive_file_lock_can_be_reacquired_after_holder_is_hard_killed(
             cleanup_problem = _release_and_reap(holder, release_path)
 
     assert cleanup_problem is None
+
+
+def test_windows_lock_inode_cannot_be_renamed_while_lock_is_held(
+    tmp_path: Path,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("Windows lock-handle share-mode regression")
+    lock_path = tmp_path / "publisher.lock"
+    moved_path = tmp_path / "publisher.lock.moved"
+
+    with ExclusiveFileLock(lock_path, timeout_seconds=0.5):
+        with pytest.raises(PermissionError):
+            lock_path.rename(moved_path)
+        assert lock_path.is_file()
+        assert not moved_path.exists()
+
+    lock_path.rename(moved_path)
+    assert moved_path.is_file()
+    assert not lock_path.exists()
+
+
+def test_lock_swap_to_dangling_symlink_never_creates_external_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    external_target = tmp_path / "external-target"
+    symlink_probe = tmp_path / "symlink-probe"
+    try:
+        os.symlink(external_target, symlink_probe)
+    except OSError:
+        pytest.skip("file symlinks unavailable")
+    symlink_probe.unlink()
+    lock_path.write_bytes(b"")
+    real_path_open = Path.open
+    real_os_open = os.open
+    real_child_open = package_io._open_windows_child_file_descriptor
+    swapped = False
+
+    def swap_lock_path() -> None:
+        nonlocal swapped
+        if swapped:
+            return
+        swapped = True
+        lock_path.unlink()
+        os.symlink(external_target, lock_path)
+
+    def hostile_path_open(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ):
+        if path == lock_path:
+            swap_lock_path()
+        return real_path_open(path, *args, **kwargs)
+
+    def hostile_os_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if Path(path) == lock_path:
+            swap_lock_path()
+        return real_os_open(path, flags, mode, dir_fd=dir_fd)
+
+    def hostile_child_open(
+        path: Path,
+        *,
+        create: bool,
+        write: bool,
+    ) -> int:
+        if path == lock_path:
+            swap_lock_path()
+        return real_child_open(path, create=create, write=write)
+
+    monkeypatch.setattr(Path, "open", hostile_path_open)
+    monkeypatch.setattr(os, "open", hostile_os_open)
+    monkeypatch.setattr(
+        package_io,
+        "_open_windows_child_file_descriptor",
+        hostile_child_open,
+    )
+
+    with pytest.raises(
+        (OSError, ValueError, atomic_io.AtomicWriteConflictError)
+    ):
+        with ExclusiveFileLock(lock_path, timeout_seconds=0.1):
+            pytest.fail("swapped lock unexpectedly acquired")
+
+    assert swapped
+    assert not external_target.exists()
+
+
+def test_lock_parent_swap_cannot_create_external_lock_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "deck"
+    parent.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    moved = tmp_path / "deck-owned-moved"
+    lock_path = parent / ".publish.lock"
+    original_open = os.open
+    original_child_open = package_io._open_windows_child_file_descriptor
+    swapped = False
+
+    def swap_then_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == lock_path:
+            swapped = True
+            parent.rename(moved)
+            os.symlink(external, parent, target_is_directory=True)
+        return original_open(
+            path,
+            flags,
+            mode,
+            **({"dir_fd": dir_fd} if dir_fd is not None else {}),
+        )
+
+    def swap_then_child_open(
+        path: Path,
+        *,
+        create: bool,
+        write: bool,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and path == lock_path:
+            swapped = True
+            parent.rename(moved)
+            os.symlink(external, parent, target_is_directory=True)
+        return original_child_open(
+            path,
+            create=create,
+            write=write,
+        )
+
+    monkeypatch.setattr(os, "open", swap_then_open)
+    monkeypatch.setattr(
+        package_io,
+        "_open_windows_child_file_descriptor",
+        swap_then_child_open,
+    )
+
+    with pytest.raises((OSError, ValueError)):
+        with ExclusiveFileLock(lock_path):
+            pytest.fail("parent-swapped lock unexpectedly acquired")
+
+    assert swapped
+    assert not (external / ".publish.lock").exists()
 
 
 def test_noninherited_lock_handle_allows_probe_while_descendant_is_alive(
@@ -681,3 +849,300 @@ def test_windows_adapter_locks_byte_zero_without_growing_empty_file(
             atomic_io._release_platform_lock(handle)
 
     assert lock_path.read_bytes() == b""
+
+
+class _CountingPathGuard:
+    def __init__(self, *, fail_at: int | None = None) -> None:
+        self.calls = 0
+        self.fail_at = fail_at
+
+    def validate(self) -> None:
+        self.calls += 1
+        if self.calls == self.fail_at:
+            raise InjectedBaseFault("guard")
+
+
+def test_lock_rejects_reentry_and_exit_without_handle_is_a_noop(
+    tmp_path: Path,
+) -> None:
+    lock = ExclusiveFileLock(tmp_path / "publisher.lock")
+    lock.__exit__(None, None, None)
+    with lock:
+        with pytest.raises(RuntimeError, match="already acquired"):
+            lock.__enter__()
+
+
+def test_lock_validates_guard_through_acquisition(
+    tmp_path: Path,
+) -> None:
+    guard = _CountingPathGuard()
+    with ExclusiveFileLock(
+        tmp_path / "publisher.lock",
+        path_guard=guard,  # type: ignore[arg-type]
+    ):
+        pass
+
+    assert guard.calls == 6
+
+
+def test_lock_releases_when_final_guard_validation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard = _CountingPathGuard(fail_at=6)
+    releases: list[BinaryIO] = []
+    real_release = atomic_io._release_platform_lock
+    monkeypatch.setattr(
+        atomic_io,
+        "_release_platform_lock",
+        lambda handle: (releases.append(handle), real_release(handle))[1],
+    )
+
+    with pytest.raises(InjectedBaseFault, match="guard"):
+        ExclusiveFileLock(
+            tmp_path / "publisher.lock",
+            path_guard=guard,  # type: ignore[arg-type]
+        ).__enter__()
+
+    assert len(releases) == 1
+
+
+def test_lock_rejects_expected_parent_identity_mismatch(tmp_path: Path) -> None:
+    identity = atomic_io._lstat_identity(tmp_path)
+    changed = (identity[0], identity[1] + 1, identity[2])
+
+    with pytest.raises(ValueError, match="filesystem_path_identity_changed"):
+        ExclusiveFileLock(
+            tmp_path / "publisher.lock",
+            expected_parent_identity=changed,
+        ).__enter__()
+
+
+def test_lock_rejects_reparse_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(atomic_io, "_status_is_reparse", lambda _status: True)
+
+    with pytest.raises(ValueError, match="parent is a reparse point"):
+        ExclusiveFileLock(tmp_path / "publisher.lock").__enter__()
+
+
+def test_lock_does_not_create_missing_path_when_disabled(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        ExclusiveFileLock(
+            tmp_path / "missing.lock",
+            create_if_missing=False,
+        ).__enter__()
+
+
+def test_lock_retries_create_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_open = atomic_io._open_lock_file
+    calls = 0
+
+    def collide_once(*args: object, **kwargs: object) -> BinaryIO:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise FileExistsError()
+        return real_open(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(atomic_io, "_open_lock_file", collide_once)
+
+    with ExclusiveFileLock(tmp_path / "publisher.lock"):
+        pass
+
+    assert calls == 2
+
+
+def test_lock_retries_existing_path_that_disappears_while_opening(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    lock_path.touch()
+    real_open = atomic_io._open_lock_file
+    calls = 0
+
+    def disappear_once(*args: object, **kwargs: object) -> BinaryIO:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise FileNotFoundError()
+        return real_open(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(atomic_io, "_open_lock_file", disappear_once)
+
+    with ExclusiveFileLock(lock_path):
+        pass
+
+    assert calls == 2
+
+
+def test_lock_exhausts_unstable_open_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    lock_path.touch()
+    monkeypatch.setattr(
+        atomic_io,
+        "_open_lock_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    with pytest.raises(
+        atomic_io.AtomicWriteConflictError,
+        match="did not stabilize",
+    ):
+        ExclusiveFileLock(lock_path).__enter__()
+
+
+def test_lock_rejects_non_plain_existing_path(tmp_path: Path) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    lock_path.mkdir()
+
+    with pytest.raises(ValueError, match="not a plain file"):
+        ExclusiveFileLock(lock_path).__enter__()
+
+
+def test_lock_rejects_identity_change_while_opening(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    lock_path.touch()
+    real_fstat = atomic_io._fstat_identity
+    monkeypatch.setattr(
+        atomic_io,
+        "_fstat_identity",
+        lambda handle: (
+            lambda identity: (identity[0], identity[1] + 1, identity[2])
+        )(real_fstat(handle)),
+    )
+
+    with pytest.raises(
+        atomic_io.AtomicWriteConflictError,
+        match="changed while opening",
+    ):
+        ExclusiveFileLock(lock_path).__enter__()
+
+
+def test_lock_rejects_identity_change_after_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    real_lstat = atomic_io._lstat_identity
+    def changed_after_acquire(path: Path) -> tuple[int, int, int]:
+        identity = real_lstat(path)
+        if path == lock_path:
+            return (identity[0], identity[1] + 1, identity[2])
+        return identity
+
+    monkeypatch.setattr(atomic_io, "_lstat_identity", changed_after_acquire)
+
+    with pytest.raises(
+        atomic_io.AtomicWriteConflictError,
+        match="changed after acquisition",
+    ):
+        ExclusiveFileLock(lock_path).__enter__()
+
+
+class _ExitHandle:
+    def __init__(self, *, close_error: BaseException | None = None) -> None:
+        self.close_error = close_error
+
+    def close(self) -> None:
+        if self.close_error is not None:
+            raise self.close_error
+
+
+@pytest.mark.parametrize(
+    ("body_error", "release_error", "expected_error", "note_fragment"),
+    (
+        (InjectedBaseFault("body"), None, InjectedBaseFault, "handle close"),
+        (None, CleanupFault("release"), CleanupFault, "handle close"),
+        (None, None, CleanupFault, None),
+    ),
+)
+def test_lock_exit_routes_close_failure_without_masking_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    body_error: BaseException | None,
+    release_error: BaseException | None,
+    expected_error: type[BaseException],
+    note_fragment: str | None,
+) -> None:
+    lock = ExclusiveFileLock(tmp_path / "publisher.lock")
+    handle = _ExitHandle(close_error=CleanupFault("close"))
+    lock._handle = handle  # type: ignore[assignment]
+    if release_error is not None:
+        monkeypatch.setattr(
+            atomic_io,
+            "_release_platform_lock",
+            lambda _handle: (_ for _ in ()).throw(release_error),
+        )
+    else:
+        monkeypatch.setattr(atomic_io, "_release_platform_lock", lambda _handle: None)
+
+    if body_error is not None:
+        lock.__exit__(type(body_error), body_error, None)
+        caught = body_error
+    else:
+        with pytest.raises(expected_error) as result:
+            lock.__exit__(None, None, None)
+        caught = result.value
+
+    if note_fragment is not None:
+        assert any(
+            note_fragment in note
+            for note in getattr(caught, "__notes__", [])
+        )
+
+
+def test_posix_lock_adapter_uses_flock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int, int]] = []
+
+    class FakeFcntl:
+        LOCK_EX = 1
+        LOCK_NB = 2
+        LOCK_UN = 4
+
+        @staticmethod
+        def flock(descriptor: int, operation: int) -> None:
+            calls.append((descriptor, operation))
+
+    monkeypatch.setattr(atomic_io.os, "name", "posix")
+    monkeypatch.setitem(sys.modules, "fcntl", FakeFcntl())
+    with (tmp_path / "lock").open("a+b") as handle:
+        atomic_io._acquire_platform_lock(handle)
+        atomic_io._release_platform_lock(handle)
+        descriptor = handle.fileno()
+
+    assert calls == [(descriptor, 3), (descriptor, 4)]
+
+
+def test_lock_propagates_disappearance_when_creation_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "publisher.lock"
+    lock_path.touch()
+    monkeypatch.setattr(
+        atomic_io,
+        "_open_lock_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    with pytest.raises(FileNotFoundError):
+        ExclusiveFileLock(
+            lock_path,
+            create_if_missing=False,
+        ).__enter__()

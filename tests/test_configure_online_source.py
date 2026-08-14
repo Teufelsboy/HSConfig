@@ -7,6 +7,7 @@ import pytest
 
 from hsconfig.cli import main
 from hsconfig.commands import configure as configure_command
+from hsconfig.current_output import resolve_current_package
 from hsconfig.source_candidate_registry import SourceCandidate
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
@@ -71,7 +72,19 @@ def _write_fixture_map(path: Path, url: str, page_name: str) -> None:
     path.write_text(json.dumps({url: str(page)}), encoding="utf-8")
 
 
-def run_configure_with_fixture_online_source(tmp_path: Path, monkeypatch) -> dict:
+def _current_run_root(output_root: Path) -> Path:
+    return resolve_current_package(output_root).parent
+
+
+def _cli_summary(capsys: pytest.CaptureFixture[str]) -> dict:
+    return json.loads(capsys.readouterr().out)
+
+
+def run_configure_with_fixture_online_source(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+) -> dict:
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
     _write_shadow_cards_json(cards_json)
@@ -109,35 +122,34 @@ def run_configure_with_fixture_online_source(tmp_path: Path, monkeypatch) -> dic
     )
 
     assert status == 0
-    return _read_json(out / "configure_summary.json")
+    return _cli_summary(capsys)
 
 
-def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkeypatch):
-    result = run_configure_with_fixture_online_source(tmp_path, monkeypatch)
-    bundle_path = Path(result["source_bundle_path"])
-    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+def test_configure_publishes_typed_source_closure_for_online_source(
+    tmp_path: Path,
+    monkeypatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    result = run_configure_with_fixture_online_source(tmp_path, monkeypatch, capsys)
     package = Path(result["package_path"])
     operator = _read_json(package / "reports" / "operator_summary.json")
-    source_evidence_closure_path = Path(result["source_evidence_closure_path"])
-    receipt_path = (
-        package
-        / "reports"
-        / "02_source_acquisition"
-        / "source_closure_intake_receipt.json"
+    source_evidence_closure = _read_json(
+        package / "reports" / "source_evidence_closure.json"
     )
-    receipt = _read_json(receipt_path)
     source_closure_receipt = result["source_closure_receipt"]
 
-    assert bundle["schema_version"] == 1
-    assert bundle["promotion"]["source_backed_status"] == operator[
+    assert "source_bundle_path" not in result
+    assert "source_evidence_closure_path" not in result
+    assert "source_closure_intake_receipt_path" not in result
+    assert source_evidence_closure["schema_version"] == 1
+    assert source_evidence_closure["authority"] == "diagnostic_only"
+    assert source_evidence_closure["source_backed_status"] == operator[
         "source_backed_status"
     ]
-    assert bundle["promotion"]["semantic_status"] == operator["source_backed_status"]
-    assert bundle["promotion"]["first_missing_source_action"] == operator[
+    assert source_evidence_closure["semantic_status"] == operator["semantic_status"]
+    assert source_evidence_closure["first_missing_source_action"] == operator[
         "first_missing_source_action"
     ]
-    assert source_evidence_closure_path == package / "reports" / "source_evidence_closure.json"
-    assert source_evidence_closure_path.is_file()
     assert result["source_backed_status"] == operator["source_backed_status"]
     assert result["source_status_reasons"] == operator["source_status_reasons"]
     assert result["source_status_apply_blocking"] is False
@@ -146,37 +158,17 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     assert result["default_only_runtime_surfaces"] == operator[
         "default_only_runtime_surfaces"
     ]
-    assert result["source_closure_intake_receipt_path"] == str(receipt_path)
-    assert receipt["authority"] == "diagnostic_only"
-    assert receipt["source_status_apply_blocking"] is False
-    assert receipt["first_missing_source_action"] == "none"
-    assert receipt["promotion_eligible_seed_count"] >= 1
-    assert receipt["fetched_record_count"] >= 1
     assert source_closure_receipt["authority"] == "diagnostic_only"
     assert source_closure_receipt["source_candidate_url_count"] == len(
         result["source_candidate_urls"]
     )
     assert source_closure_receipt["source_url_count"] == len(result["source_urls"])
-    assert source_closure_receipt["source_intake_candidate_count"] == receipt[
-        "candidate_count"
-    ]
-    assert source_closure_receipt["fetched_record_count"] == receipt[
-        "fetched_record_count"
-    ]
+    assert source_closure_receipt["source_intake_candidate_count"] >= 1
+    assert source_closure_receipt["fetched_record_count"] >= 1
     assert source_closure_receipt["source_status_apply_blocking"] is False
     assert source_closure_receipt["normal_apply_authority"] == (
         "reports/operator_summary.json"
     )
-    assert operator["source_closure_intake"] == {
-        "authority": "diagnostic_only",
-        "candidate_count": receipt["candidate_count"],
-        "promotion_eligible_seed_count": receipt["promotion_eligible_seed_count"],
-        "first_missing_source_action": receipt["first_missing_source_action"],
-        "source_status_apply_blocking": False,
-        "receipt_path": (
-            "reports/02_source_acquisition/source_closure_intake_receipt.json"
-        ),
-    }
     assert operator["source_status_apply_blocking"] is False
     assert operator["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
@@ -185,28 +177,18 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
     ownership_rows = {row["file"]: row for row in ownership["files"]}
 
-    assert "reports/source_bundle.json" in operator["generated_files"]
-    assert (
-        "reports/02_source_acquisition/source_closure_intake_receipt.json"
-        in operator["generated_files"]
+    assert "reports/source_bundle.json" not in operator["generated_files"]
+    assert "reports/02_source_acquisition/source_closure_intake_receipt.json" not in (
+        operator["generated_files"]
     )
     assert any(
-        row["file"] == "reports/source_bundle.json"
+        row["file"] == "reports/source_evidence_closure.json"
         and row["classification"] == "diagnostic"
         for row in operator["report_ownership"]
     )
-    assert any(
-        row["file"]
-        == "reports/02_source_acquisition/source_closure_intake_receipt.json"
-        and row["classification"] == "diagnostic"
-        for row in operator["report_ownership"]
-    )
-    assert ownership_rows["reports/source_bundle.json"]["diagnostic_only"] is True
-    receipt_ownership = ownership_rows[
-        "reports/02_source_acquisition/source_closure_intake_receipt.json"
-    ]
-    assert receipt_ownership["diagnostic_only"] is True
-    assert receipt_ownership["can_block_apply"] is False
+    closure_ownership = ownership_rows["reports/source_evidence_closure.json"]
+    assert closure_ownership["diagnostic_only"] is True
+    assert closure_ownership["can_block_apply"] is False
 
 
 def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
@@ -272,6 +254,7 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
     )
 
     assert status == 0
+    out = _current_run_root(out)
     acquisition = _read_json(out / "02_source_acquisition" / "source_search_results.json")
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
@@ -293,8 +276,9 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
 def test_configure_online_source_builds_source_backed_shadowpriest_package(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
-    summary = run_configure_with_fixture_online_source(tmp_path, monkeypatch)
+    summary = run_configure_with_fixture_online_source(tmp_path, monkeypatch, capsys)
     out = Path(summary["package_path"]).parent
     acquisition = _read_json(out / "02_source_acquisition" / "source_search_results.json")
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
@@ -422,6 +406,7 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
 def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -459,7 +444,8 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _cli_summary(capsys)
+    out = _current_run_root(out)
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
 
@@ -481,6 +467,7 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
 def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -514,9 +501,10 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
         ]
     )
 
+    summary = _cli_summary(capsys)
+    out = _current_run_root(out)
     acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
-    summary = _read_json(out / "configure_summary.json")
     preview = summary["source_readiness_preview"]
 
     assert status == 0
@@ -540,6 +528,7 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
 def test_candidate_registry_url_does_not_promote_without_full_text_claims(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -593,7 +582,8 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _cli_summary(capsys)
+    out = _current_run_root(out)
     acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
@@ -612,6 +602,7 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
 def test_configure_online_source_uses_explicit_urls_before_registry_urls(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -675,7 +666,8 @@ def test_configure_online_source_uses_explicit_urls_before_registry_urls(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _cli_summary(capsys)
+    out = _current_run_root(out)
 
     assert status == 0
     assert summary["source_candidate_urls"] == [registry_url, explicit_url]
@@ -695,6 +687,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
     tmp_path: Path,
     monkeypatch,
     broken_plan: str,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -808,7 +801,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _cli_summary(capsys)
 
     assert status == 0
     assert acquire_calls == [[explicit_url, registry_url]]
@@ -822,6 +815,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
 def test_configure_online_source_filters_invalid_explicit_source_url_before_acquisition(
     tmp_path: Path,
     monkeypatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
@@ -887,7 +881,7 @@ def test_configure_online_source_filters_invalid_explicit_source_url_before_acqu
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    summary = _cli_summary(capsys)
 
     assert status == 0
     assert acquire_calls == [[registry_url]]

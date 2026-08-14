@@ -257,9 +257,10 @@ def test_skill_names_configure_normal_workflow():
         "research-deck -> prepare -> validate -> apply`."
     ) in text
     assert (
-        "3. After `configure`, read "
-        "`<out>/configure_summary.json.acceptance_summary` first; use "
-        "`reports/operator_summary.json` as the apply authority."
+        "3. After `configure`, resolve `<out>/current.json`, read "
+        "`<current-revision>/configure_summary.json.acceptance_summary` "
+        "first, and use `<current-package>/reports/operator_summary.json` "
+        "as the apply authority."
     ) in text
     assert "`hsconfig configure --auto-source --source-search-results-json ...`" in active_docs
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in active_docs
@@ -296,13 +297,13 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     )[0]
     combined = f"{operator_fragment}\n{active_docs}"
 
-    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "<current-revision>/configure_summary.json.acceptance_summary" in combined
     assert "acceptance_summary" in combined
     assert "use_config_now" in combined
     assert "next_report_to_open" in combined
-    assert "<out>/configure_summary.json.config_quality_summary" in combined
+    assert "<current-revision>/configure_summary.json.config_quality_summary" in combined
     assert "config_quality_summary" in combined
-    assert "<out>/configure_summary.json.config_proof_summary" in combined
+    assert "<current-revision>/configure_summary.json.config_proof_summary" in combined
     assert "diagnostic-only config proof" in combined
     assert "not another apply gate" in combined
     assert "does not replace `reports/operator_summary.json`" in combined
@@ -319,7 +320,7 @@ def test_docs_skill_and_workflow_route_configure_acceptance_summary_first() -> N
     )
     combined = f"{operator_docs}\n{_active_skill_docs_text()}"
 
-    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "<current-revision>/configure_summary.json.acceptance_summary" in combined
     assert "use_config_now" in combined
     assert "next_report_to_open" in combined
     assert "operator projection" in combined
@@ -627,31 +628,42 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
     assert "Concede.json" in docs
 
 
-def test_skill_sources_document_runtime_apply_mode_as_descriptive():
+def test_skill_sources_require_standalone_runtime_match_after_apply():
     skill = _skill_entrypoint_text()
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
     operator = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
         encoding="utf-8"
     )
     combined = f"{workflow}\n{operator}"
+    runtime_match_command = (
+        "`hsconfig runtime-match --package <package> "
+        "--runtime-root <HearthRangerRoot> --json`"
+    )
 
     assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in skill
     assert "Runtime apply is guarded" in skill
-    assert "receipt.runtime_package_match.status" in skill
-    assert "This is an install-integrity check, not a source/semantic apply gate." in skill
     assert "runtime_apply_mode" in combined
     assert "runtime_apply_allowed" in combined
     assert "ALLOWED_WITH_WARNINGS" in combined
     assert "ALLOWED_WITH_WARNINGS as runtime write permission" not in combined
+
+    for text in (skill, workflow):
+        assert (
+            "After every `hsconfig apply` or `hsconfig configure --apply`"
+        ) in text
+        assert "exact package that was applied" in text
+        assert runtime_match_command in text
+        assert "report has `status=matched`" in text
+        assert "install-integrity-only" in text
+        assert "does not grant apply permission" in text
+        assert "never writes runtime files" in text
+        assert "receipt.runtime_package_match.status" not in text
 
     assert "runtime_apply_mode" in workflow
     assert "human-readable write mode" in workflow
     assert "hsconfig apply" in workflow
     assert "apply_package()" in workflow
     assert "re-evaluate the operator gate before writing" in workflow
-    assert "receipt.runtime_package_match.status" in workflow
-    assert "runtime-match --package <package> --runtime-root <runtime> --json" in workflow
-    assert "This is an install-integrity check, not a source/semantic apply gate." in workflow
 
 
 def test_readme_documents_installed_skill_sync():

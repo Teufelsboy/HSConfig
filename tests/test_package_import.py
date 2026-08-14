@@ -1,7 +1,9 @@
 def test_package_imports():
     import hsconfig
+    from hsconfig.version import __version__
 
-    assert hsconfig.__version__ == "0.1.0"
+    assert __version__ == "1.0.0"
+    assert hsconfig.__version__ == __version__
 
 
 def test_python_m_hsconfig_help_works():

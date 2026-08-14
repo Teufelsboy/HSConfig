@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import errno
 from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
+import hsconfig.package_io as package_io
 from hsconfig.operator_summary import build_operator_summary_from_inputs
 from hsconfig.operator_summary_inputs import load_operator_summary_inputs
 from hsconfig.package_assembler import assemble_package
@@ -30,6 +33,52 @@ from tests.helpers.audited_package_request import audited_request
 
 
 FIXTURE_PATH = Path("tests/fixtures/package-byte-contract-v1.json")
+_DIRECTORY_SYMLINK_UNAVAILABLE_ERRNOS = {
+    errno.EPERM,
+    errno.ENOSYS,
+    errno.ENOTSUP,
+    errno.EOPNOTSUPP,
+}
+_WINDOWS_PRIVILEGE_NOT_HELD = 1314
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "changed_field", "states_are_equal"),
+    (
+        ("nt", "st_ctime_ns", True),
+        ("nt", "st_mtime_ns", False),
+        ("nt", "st_size", False),
+        ("nt", "st_ino", False),
+        ("posix", "st_ctime_ns", False),
+    ),
+)
+def test_cross_stat_file_state_compares_only_portable_windows_fields(
+    platform_name: str,
+    changed_field: str,
+    states_are_equal: bool,
+) -> None:
+    fields = {
+        "st_dev": 1,
+        "st_ino": 2,
+        "st_mode": 3,
+        "st_size": 4,
+        "st_mtime_ns": 5,
+        "st_ctime_ns": 6,
+        "st_nlink": 1,
+        "st_file_attributes": 0,
+    }
+    changed_fields = {**fields, changed_field: fields[changed_field] + 1}
+
+    before = package_io._file_state(
+        SimpleNamespace(**fields),
+        platform_name=platform_name,
+    )
+    after = package_io._file_state(
+        SimpleNamespace(**changed_fields),
+        platform_name=platform_name,
+    )
+
+    assert (before == after) is states_are_equal
 
 
 def _rendered(tmp_path: Path, deck_name: str = "ShadowPriest"):
@@ -41,6 +90,72 @@ def _rendered(tmp_path: Path, deck_name: str = "ShadowPriest"):
     return render_package_authority(
         assemble_package(compile_package(request))
     )
+
+
+def _make_directory_symlink(target: Path, link: Path) -> None:
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except OSError as error:
+        if (
+            getattr(error, "winerror", None)
+            == _WINDOWS_PRIVILEGE_NOT_HELD
+            or error.errno in _DIRECTORY_SYMLINK_UNAVAILABLE_ERRNOS
+        ):
+            pytest.skip(f"directory symlinks unavailable: {error}")
+        raise
+
+
+@pytest.mark.parametrize(
+    ("error_number", "winerror"),
+    (
+        (errno.EPERM, None),
+        (errno.ENOTSUP, None),
+        (errno.EINVAL, 1314),
+    ),
+)
+def test_directory_symlink_helper_skips_only_unavailable_platform_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_number: int,
+    winerror: int | None,
+) -> None:
+    unavailable = OSError(error_number, "directory symlink unavailable")
+    if winerror is not None:
+        unavailable.winerror = winerror
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unavailable
+
+    monkeypatch.setattr(os, "symlink", fail_symlink)
+
+    with pytest.raises(
+        pytest.skip.Exception,
+        match="directory symlinks unavailable",
+    ):
+        _make_directory_symlink(
+            tmp_path / "target",
+            tmp_path / "link",
+        )
+
+
+def test_directory_symlink_helper_reraises_other_os_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unexpected = OSError(errno.ENOENT, "unexpected symlink failure")
+
+    def fail_symlink(*_args: object, **_kwargs: object) -> None:
+        raise unexpected
+
+    monkeypatch.setattr(os, "symlink", fail_symlink)
+
+    with pytest.raises(OSError) as raised:
+        _make_directory_symlink(
+            tmp_path / "target",
+            tmp_path / "link",
+        )
+
+    assert raised.value is unexpected
 
 
 def test_publication_writes_exact_bytes_then_reloads_all_authorities(
@@ -381,10 +496,9 @@ def test_after_commit_rollback_never_follows_a_directory_symlink_parent(
         if point is PublicationFaultPoint.AFTER_COMMIT:
             reports = destination / "reports"
             reports.rename(destination / "reports-publisher-original")
-            os.symlink(
+            _make_directory_symlink(
                 external,
                 reports,
-                target_is_directory=True,
             )
             raise RuntimeError("fault:reports-parent-reparse")
 
@@ -415,10 +529,9 @@ def test_after_commit_root_symlink_to_the_exact_tree_is_rejected_without_followi
     ) -> None:
         if point is PublicationFaultPoint.AFTER_COMMIT:
             destination.rename(moved)
-            os.symlink(
+            _make_directory_symlink(
                 moved,
                 destination,
-                target_is_directory=True,
             )
 
     with pytest.raises(
@@ -452,10 +565,9 @@ def test_staging_created_root_symlink_is_rejected_before_external_writes(
     ) -> None:
         if point is PublicationFaultPoint.STAGING_CREATED:
             active.rmdir()
-            os.symlink(
+            _make_directory_symlink(
                 external,
                 active,
-                target_is_directory=True,
             )
 
     with pytest.raises(
@@ -488,10 +600,9 @@ def test_staging_created_nested_symlink_is_rejected_before_external_writes(
         active: Path,
     ) -> None:
         if point is PublicationFaultPoint.STAGING_CREATED:
-            os.symlink(
+            _make_directory_symlink(
                 external,
                 active / "reports",
-                target_is_directory=True,
             )
 
     with pytest.raises(
@@ -526,10 +637,9 @@ def test_before_commit_nested_directory_swap_never_traverses_external_target(
         if point is PublicationFaultPoint.BEFORE_COMMIT:
             original = active / "reports-publisher-original"
             (active / "reports").rename(original)
-            os.symlink(
+            _make_directory_symlink(
                 external,
                 active / "reports",
-                target_is_directory=True,
             )
             captured["staging"] = active
             captured["original"] = original
@@ -592,7 +702,7 @@ def test_mkdtemp_parent_symlink_swap_is_rejected_before_external_package_writes(
 
     def swap_parent_then_create(*args: object, **kwargs: object) -> str:
         parent.rename(moved)
-        os.symlink(external, parent, target_is_directory=True)
+        _make_directory_symlink(external, parent)
         return real_mkdtemp(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -739,7 +849,7 @@ def test_destination_preflight_rejects_a_directory_symlink_ancestor(
     external = tmp_path / "symlink-target"
     external.mkdir()
     ancestor = tmp_path / "parent-reparse"
-    os.symlink(external, ancestor, target_is_directory=True)
+    _make_directory_symlink(external, ancestor)
     destination = ancestor / "nested" / "published"
 
     with pytest.raises(ValueError, match="publication_parent_invalid"):

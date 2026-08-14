@@ -57,7 +57,7 @@ def test_hsconfig_skill_entrypoint_keeps_only_hard_runtime_boundaries() -> None:
         "`Combo.json` only for exact ordered combo evidence.",
         "Effect semantics are not opening-hand mulligan keeps.",
         "Darkbishop Benedictus / `SW_448` hero-power-transform semantics, but do not emit a Mulligan keep without explicit opening-hand source text.",
-        "`<out>/configure_summary.json.config_proof_summary` and `<out>/configure_summary.json.config_quality_summary` only as diagnostic proof.",
+        "`<current-revision>/configure_summary.json.config_proof_summary` and `<current-revision>/configure_summary.json.config_quality_summary` only as diagnostic proof.",
         "Card-intent taxonomy is diagnostic-only.",
         "Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.",
     ]

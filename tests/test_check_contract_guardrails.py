@@ -83,6 +83,8 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
         "-m",
         "hsconfig.cli",
         "contract-spine-sentinel",
+        "--repo-root",
+        str(repo_root),
         "--json",
     )
     assert commands[2].argv[:3] == (sys.executable, "-m", "pytest")
@@ -94,6 +96,19 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
     assert "tests/test_validate_package.py" in commands[2].argv
     assert "tests/test_apply_gate.py" in commands[2].argv
     assert "tests/test_runtime_apply.py" in commands[2].argv
+
+
+def test_focused_guardrail_pytest_disables_checkout_cacheprovider(tmp_path):
+    commands = guardrail_commands(tmp_path, tmp_path / "skills")
+
+    assert commands[2].argv[:6] == (
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+    )
 
 
 def test_run_guardrails_stops_at_first_failure(tmp_path, capsys):

@@ -71,11 +71,10 @@ def test_operator_docs_name_configure_as_preferred_normal_path():
         'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
         '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json'
     ) in text
-    assert (
-        "This command runs the lower-level pre-run chain, writes a validated "
-        "package, and leaves the final decision in "
-        "`outputs/<DeckName>/04_package/reports/operator_summary.json`."
-    ) in text
+    assert "`outputs/<DeckName>/current.json`" in text
+    assert "`revisions/sha256-<digest>/04_package/reports/operator_summary.json`" in text
+    assert "`outputs/<DeckName>/04_package/reports/operator_summary.json`" not in text
+    assert "`<out>/configure_summary.json" not in text
     assert "For staged inspection, use the Lower-Level Inspected Path below." in text
     assert (
         "source-manifest -> source-autopilot or draft-source-documents -> "

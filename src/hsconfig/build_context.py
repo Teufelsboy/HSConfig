@@ -49,40 +49,40 @@ _APPROVED_GLOBALVALUES_BASELINE_RESOURCE_SHA256 = (
 # resource at resolution time.
 _APPROVED_INPUT_SHA256_BY_DECK: Mapping[str, str] = MappingProxyType({
     "ShadowPriest": (
-        "7e892dad9887a8ec8bea0a33b0ad7ba738249d8aee6b9cf4c40bfb2ad01ea9a5"
+        "bb3ff862653564814e076b5bede1b7b2d4911f4083ebb314b796429c4e6209ea"
     ),
     "CtAPaladin": (
-        "711328fbdbfae465af863e92217c91f26a240e5f22f4dabb63c3058a837f8b9a"
+        "85c6b557da5236d32eea976311314ed6a1ebc70ea9876f24b1352b8cce071eb3"
     ),
     "PirateRogue": (
-        "9a11419b87ce646181e5232d3b4f2be14d87f3ab1fffa9f4bf80ff8deb30a706"
+        "ef784f689f92216cc41d7382ac33e5615d4035aef3735731857b7fdabe54bf7a"
     ),
     "BigShaman": (
-        "8158133655efee58204f07bf28539e7d7f9d15bd29e5e1ee55be9046026d4904"
+        "b26a54d37c607c0a5fb47d19e7a269ea45a6c01145b81552b9a0196d120d953d"
     ),
     "Discolock": (
-        "68f3afe57fcd471eb829bc4e9326ad1aa633643f2eba0181e26eeb5184e971e1"
+        "6403f95d54daf32a1d7704cd9486c611da6aaea6c582ab482ccc1bb3ff593ca9"
     ),
     "TreantDruid": (
-        "587f6da63e44b7900be17252dd338deb2fb25bb5325d851dbcd9cadc0cc3069d"
+        "282f7fc62f967e2f630656b08ece1adf3103a77626b78fd7d64b50582cf059d4"
     ),
     "ImbueMage": (
-        "392ecd26553f3ff0d1a1de85aa62cb705841f80e4e4f5d704fc1daf2adffac6a"
+        "581761384f6b3106e457f8745a5df45a46671fef8a29ceef586554ce579c712c"
     ),
     "MechPala": (
-        "892114e3c380551f1260b7858dc9d4f084dcf0e6180cbf62f25a18742a61aa97"
+        "6e688036beff562b78fc0bd40e628a174fb28eac7a667da509f1190fadef46bc"
     ),
     "Kingslayer": (
-        "078791cce886587f3ec2628a1f9c9d89626612ca25514164760b297c9c2e9b60"
+        "d7e5a58f29386d336526b70879f8b2ed6681ac083887577cd622372a650bf346"
     ),
     "Boarlock": (
-        "7641dd84a462cbc61599b4601015c1fdb2f00437099b656a016cb31143f1e106"
+        "fd7db0556218180dd073af37b10743ee5464033840e8464056e4b24138135b08"
     ),
     "PirateDH": (
-        "de6d5e0869c05a8fe0cfc1c0f36e64f3ef5a708dcf85f572e0020e6dfcfb4f7c"
+        "a06d67252e9ac4b23d210fd6156a241d7a52d7bc86925a85670b675c35466d54"
     ),
     "CuteWarrior": (
-        "c2a6e57db6118a250d16531b8b23fdf88fc8993f7fe6459b75d6d1ba761fbed5"
+        "5a8ea644fc1800dbaeaf07ad13265cfa21296445a18b9c5dcdea2b8889851951"
     ),
 })
 _GLOBALVALUES_KEYS = frozenset(
@@ -258,6 +258,8 @@ class ResolvedBuildContext(_ImmutableAuthorityNode):
     evidence_contract_canonical_json: bytes
     source_bundle_canonical_json: tuple[bytes, ...]
     globalvalues_baseline_canonical_json: bytes
+    general_preconfig_canonical_json: bytes
+    acquisition_closure_canonical_json: bytes
 
     @classmethod
     def _normalize_authority_values(
@@ -311,6 +313,16 @@ class ResolvedBuildContext(_ImmutableAuthorityNode):
                 "globalvalues_baseline",
                 "globalvalues_baseline_canonical_json",
                 canonical_inputs.globalvalues_baseline_resource_sha256,
+            ),
+            (
+                "general_preconfig",
+                "general_preconfig_canonical_json",
+                canonical_inputs.general_preconfig_resource_sha256,
+            ),
+            (
+                "acquisition_closure",
+                "acquisition_closure_canonical_json",
+                canonical_inputs.acquisition_closure_resource_sha256,
             ),
         )
         for label, field_name, expected_sha256 in resource_fields:
@@ -394,6 +406,16 @@ class ResolvedBuildContext(_ImmutableAuthorityNode):
                 "globalvalues_baseline",
                 "globalvalues_baseline_canonical_json",
                 canonical_inputs.globalvalues_baseline_resource_sha256,
+            ),
+            (
+                "general_preconfig",
+                "general_preconfig_canonical_json",
+                canonical_inputs.general_preconfig_resource_sha256,
+            ),
+            (
+                "acquisition_closure",
+                "acquisition_closure_canonical_json",
+                canonical_inputs.acquisition_closure_resource_sha256,
             ),
         )
         for label, field_name, expected_sha256 in resource_fields:
@@ -487,6 +509,16 @@ def resolve_build_context(
         inputs.globalvalues_baseline_resource_sha256,
         error="globalvalues_baseline",
     )
+    preconfig_bytes, preconfig = _resource(
+        resources,
+        inputs.general_preconfig_resource_sha256,
+        error="general_preconfig",
+    )
+    closure_bytes, closure = _resource(
+        resources,
+        inputs.acquisition_closure_resource_sha256,
+        error="acquisition_closure",
+    )
 
     snapshot_card_ids = _validate_card_snapshot(snapshot, inputs=inputs)
     claim_ids = _validate_deck_resource(
@@ -512,6 +544,12 @@ def resolve_build_context(
         resource_sha256=inputs.globalvalues_baseline_resource_sha256,
         expected_keys=deck["globalvalues_decisions"],
     )
+    _validate_general_preconfig(preconfig_bytes, preconfig)
+    _validate_acquisition_closure_resource(
+        closure_bytes,
+        closure,
+        deck_fingerprint=inputs.deck_fingerprint,
+    )
     _validate_approved_inputs(inputs)
 
     return ResolvedBuildContext(
@@ -524,11 +562,13 @@ def resolve_build_context(
             value for value, _document in source_pairs
         ),
         globalvalues_baseline_canonical_json=baseline_bytes,
+        general_preconfig_canonical_json=preconfig_bytes,
+        acquisition_closure_canonical_json=closure_bytes,
     )
 
 
 def _validate_inputs(inputs: CanonicalBuildInputs) -> None:
-    if not isinstance(inputs, CanonicalBuildInputs) or inputs.schema_version != 2:
+    if not isinstance(inputs, CanonicalBuildInputs) or inputs.schema_version != 3:
         raise ValueError("resolved_build_inputs_schema_invalid")
     if sha256(inputs.canonical_payload).hexdigest() != inputs.input_sha256:
         raise ValueError("resolved_build_inputs_hash_stale")
@@ -1105,6 +1145,40 @@ def _validate_globalvalues_baseline(
             or not isinstance(value["values"][0].get("value"), str)
         ):
             raise ValueError("globalvalues_baseline_value_invalid")
+
+
+def _validate_general_preconfig(raw: bytes, document: Any) -> None:
+    try:
+        from hsconfig.package_request import GeneralPreconfigSnapshot
+
+        snapshot = GeneralPreconfigSnapshot.from_value(document)
+    except (TypeError, ValueError) as error:
+        raise ValueError("general_preconfig_resource_schema_invalid") from error
+    if snapshot.canonical_json != raw:
+        raise ValueError("general_preconfig_resource_schema_invalid")
+
+
+def _validate_acquisition_closure_resource(
+    raw: bytes,
+    document: Any,
+    *,
+    deck_fingerprint: str,
+) -> None:
+    try:
+        from hsconfig.package_request import AcquisitionClosureInput
+
+        closure = AcquisitionClosureInput.from_value(document)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "acquisition_closure_resource_schema_invalid"
+        ) from error
+    value = closure.to_value()
+    if (
+        closure.canonical_json != raw
+        or value.get("deck_fingerprint") != deck_fingerprint
+        or value.get("policy_id") not in {None, _APPROVED_POLICY_ID}
+    ):
+        raise ValueError("acquisition_closure_resource_binding_invalid")
 
 
 def _canonical_document(raw: bytes, *, error: str) -> Any:

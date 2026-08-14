@@ -217,7 +217,7 @@ def test_runtime_match_is_post_apply_install_integrity_only() -> None:
 
     assert "### Runtime package match" in text
     assert "semantically matches the validated package" in text
-    assert "runtime-match --package <package> --runtime-root C:\\Users\\darbo\\Desktop\\HS --json" in text
+    assert "runtime-match --package <package> --runtime-root <HearthRangerRoot> --json" in text
     assert "`runtime-match` does not grant apply permission and never writes runtime files." in text
     assert "Apply permission still comes only from `reports/operator_summary.json`." in text
 
@@ -804,7 +804,7 @@ def test_docs_and_skill_route_configure_source_closure_receipt_without_second_ga
     assert "source_closure_receipt remains the normal apply authority" not in active_text.lower()
 
 
-def test_skill_workflow_routes_configure_source_closure_receipt_with_out_prefix():
+def test_skill_workflow_routes_configure_source_closure_receipt_via_current():
     text = (
         ROOT
         / ".agents"
@@ -814,7 +814,11 @@ def test_skill_workflow_routes_configure_source_closure_receipt_with_out_prefix(
         / "workflow.md"
     ).read_text(encoding="utf-8")
 
-    assert "`<out>/configure_summary.json.source_closure_receipt`" in text
+    assert "`<out>/current.json`" in text
+    assert (
+        "`<current-revision>/configure_summary.json.source_closure_receipt`"
+        in text
+    )
 
 
 def test_skill_normal_workflow_routes_generated_receipts_in_order():
@@ -823,9 +827,9 @@ def test_skill_normal_workflow_routes_generated_receipts_in_order():
     ).read_text(encoding="utf-8")
     normal_workflow = _line_containing(workflow, "Normal workflow:")
     routes = [
-        "`<out>/configure_summary.json.acceptance_summary`",
-        "`<out>/configure_summary.json.handoff_contract`",
-        "`<out>/configure_summary.json.source_closure_receipt`",
+        "`<current-revision>/configure_summary.json.acceptance_summary`",
+        "`<current-revision>/configure_summary.json.handoff_contract`",
+        "`<current-revision>/configure_summary.json.source_closure_receipt`",
     ]
 
     for route in routes:
@@ -834,7 +838,11 @@ def test_skill_normal_workflow_routes_generated_receipts_in_order():
     assert normal_workflow.index(routes[1]) < normal_workflow.index(routes[2])
     assert "when source depth is the question" in normal_workflow
     assert "diagnostic-only" in normal_workflow
-    assert "use `reports/operator_summary.json` as the apply authority" in normal_workflow
+    assert (
+        "use `<current-package>/reports/operator_summary.json` as the apply "
+        "authority"
+        in normal_workflow
+    )
     assert "source_closure_receipt remains the normal apply authority" not in _compact(
         normal_workflow
     )
@@ -843,9 +851,11 @@ def test_skill_normal_workflow_routes_generated_receipts_in_order():
 def test_real_deck_loop_routes_source_receipt_without_new_gate():
     text = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
     loop = _section(text, "## Real-Deck Usage Loop")
-    acceptance = "`<out>/configure_summary.json.acceptance_summary`"
-    handoff = "`<out>/configure_summary.json.handoff_contract`"
-    source_receipt = "`<out>/configure_summary.json.source_closure_receipt`"
+    acceptance = "`<current-revision>/configure_summary.json.acceptance_summary`"
+    handoff = "`<current-revision>/configure_summary.json.handoff_contract`"
+    source_receipt = (
+        "`<current-revision>/configure_summary.json.source_closure_receipt`"
+    )
 
     assert acceptance in loop
     assert handoff in loop
@@ -861,7 +871,7 @@ def test_real_deck_loop_routes_source_receipt_without_new_gate():
     assert f"{source_receipt} as the apply authority" not in loop
 
 
-def test_source_closure_receipt_explanatory_paragraph_uses_out_prefix():
+def test_source_closure_receipt_explanatory_paragraph_uses_current_revision():
     text = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
     paragraph = _line_containing(
         text,
@@ -869,8 +879,20 @@ def test_source_closure_receipt_explanatory_paragraph_uses_out_prefix():
     )
 
     assert paragraph.startswith(
-        "`<out>/configure_summary.json.source_closure_receipt`"
+        "`<current-revision>/configure_summary.json.source_closure_receipt`"
     )
+
+
+def test_operator_docs_state_runtime_commit_recovery_without_rollback() -> None:
+    text = (ROOT / "docs/operator/README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Before the INI\ncommit point" in text
+    assert "leaves the previous complete config selected" in text
+    assert "the new verified config remains selected" in text
+    assert "recovery\ncompletes advisory state or receipt work" in text
+    assert "the apply is rolled back" not in text
 
 
 def test_exact_guide_mulligan_gate_is_machine_readable_and_fail_closed() -> None:

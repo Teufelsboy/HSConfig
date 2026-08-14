@@ -12,9 +12,7 @@ from yaml.tokens import AliasToken, AnchorToken, KeyToken, ScalarToken, ValueTok
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_WORKFLOWS = (
-    "contract-guardrails.yml",
-    "contract-spine.yml",
-    "full-test-suite.yml",
+    "ci.yml",
 )
 DEPENDABOT_VERSION_UPDATE_CONFIGS = (
     ROOT / ".github" / "dependabot.yml",
@@ -228,20 +226,43 @@ def test_ruff_uses_the_declared_baseline_rules():
     assert project["tool"]["ruff"]["lint"]["select"] == ["E4", "E7", "E9", "F"]
 
 
-def test_full_suite_updates_audited_packaging_tools():
+def test_consolidated_ci_routes_full_tests_through_the_locked_bootstrap():
     workflow = yaml.safe_load(
-        (ROOT / ".github" / "workflows" / "full-test-suite.yml").read_text(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(
             encoding="utf-8"
         )
     )
-    commands = "\n".join(
-        step["run"]
-        for job in workflow["jobs"].values()
-        for step in job["steps"]
+    test_job = workflow["jobs"]["test"]
+    commands = [
+        step["run"].strip()
+        for step in test_job["steps"]
         if isinstance(step, dict) and isinstance(step.get("run"), str)
-    ).lower()
+    ]
 
-    assert "python -m pip install --upgrade pip setuptools" in commands
+    initializer = next(
+        step
+        for step in test_job["steps"]
+        if step.get("name") == "Initialize runner-scoped environment"
+    )
+    assert initializer["env"] == {
+        "HSCONFIG_RUNNER_TEMP": "${{ runner.temp }}",
+    }
+    assert "HYPOTHESIS_STORAGE_DIRECTORY" in initializer["run"]
+    assert (
+        "python scripts/check_release_gate.py --repo . --outputs outputs "
+        "--tree-mode working-pre-cutover --locked-check full-tests-and-coverage "
+        "--json"
+    ) in commands
+
+
+def test_docs_describe_the_single_locked_ci_workflow_without_promising_final_governance():
+    for relative in ("README.md", "docs/operator/README.md"):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        normalized = " ".join(source.split())
+        assert "local Clean-OID producer/verifier" in normalized
+        assert "single locked `ci` workflow" in normalized
+        assert "`contract`, `test`, `package`, and `security`" in normalized
+        assert "claims final GitHub governance" not in normalized
 
 
 def test_python_workflow_jobs_disable_bytecode_cache():
@@ -259,9 +280,9 @@ def test_ci_runs_lint_full_suite_and_contract_sentinels():
     workflows = "\n".join(_workflow_commands()).lower()
 
     assert "ruff check --no-cache src tests scripts" in workflows
-    assert "python -m pytest -p no:cacheprovider" in workflows
     assert "check_contract_guardrails.py" in workflows
     assert "contract-spine-sentinel --json" in workflows
+    assert "--locked-check full-tests-and-coverage" in workflows
 
 
 def test_external_workflow_actions_use_immutable_sha_with_version_comment():
