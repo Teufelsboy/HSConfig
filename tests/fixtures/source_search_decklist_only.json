@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "deck_name": "ThinDeck",
+  "records": [
+    {
+      "source_url": "https://example.com/thin-decklist",
+      "source_title": "Thin Decklist",
+      "source_family": "decklist",
+      "retrieved_at": "2026-07-15T00:00:00Z",
+      "deck_match": {
+        "deck_name": "ThinDeck",
+        "archetype": "unknown",
+        "matched_card_ids": ["CARD_001"]
+      },
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["CARD_001"],
+          "stance": "listed_card",
+          "evidence_text_short": "The card appears in the decklist.",
+          "source_confidence": "medium"
+        }
+      ]
+    }
+  ]
+}

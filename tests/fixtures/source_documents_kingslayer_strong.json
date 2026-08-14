@@ -1,0 +1,140 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+      "source_title": "Legend 1478 Kingsbane Rogue",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Kingslayer",
+      "deck_match_scope": "archetype_matched_not_exact_list",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "weapon_pressure",
+          "evidence_text_short": "Kingslayer plays for weapon pressure, pirate tempo, and repeated hero attack turns.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["DEEP_014", "VAC_701", "TIME_875t1"],
+          "mechanic": "weapon",
+          "stance": "weapon_sequence",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Quick Pick, Swarthy Swordshiner, and The Kingslayers define the weapon sequencing package for repeated attack turns.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CFM_637", "DRG_056", "TOY_505", "TOY_518"],
+          "stance": "pirate_weapon_support",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Patches the Pirate, Parachute Brigand, Toy Boat, and Treasure Distributor are the on-board pirate snowball shell around the weapon turns.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["EDR_846"],
+          "stance": "top_end_spell_followup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "6",
+          "evidence_text_short": "Shaladrassil is the lone high-cost spell in the exact Kingslayer list and serves as a late follow-up resource for the same pressure shell.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["NX2_006", "VAC_938"],
+          "stance": "pirate_attack_followup",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Jolly Roger and Hozen Roughhouser are the pirate attack follow-up pieces that reward committing to repeated face swings.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["DEEP_014"],
+          "selector": "DEEP_014",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Report-only gap: the linked Kingsbane mulligan text supports Kingsbane, Kingsbane tutors, and Silverleaf Poison, not Quick Pick.",
+          "source_confidence": "low",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/"
+          ]
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["TIME_875t1", "CS2_146"],
+          "stance": "prefer_enemy_hero",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
+          "runtime_value": "8",
+          "evidence_text_short": "Weapon and charge attack pressure should prefer enemy hero damage when survival trades are not required.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        },
+        {
+          "claim_kind": "known_bad_pattern",
+          "cards": ["VAC_701", "CS2_073"],
+          "stance": "avoid_empty_weapon_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Do not spend weapon attack sequencing pieces before a useful weapon or attack line is available.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+            "https://www.hsguru.com/deck/36087994"
+          ]
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Kingslayer",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["CORE_RLK_567"],
+          "stance": "spell_copy_followup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Each time you cast a spell, transform this into a copy of it.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

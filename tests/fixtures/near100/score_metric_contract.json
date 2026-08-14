@@ -1,0 +1,18 @@
+{
+  "metric_ids": [
+    "static_contract_safety",
+    "safe_visionai_lowering",
+    "testability_and_assurance",
+    "semantic_disposition_closure",
+    "layered_pre_run_source_coverage",
+    "architecture_and_maintainability",
+    "slimness_and_coherence",
+    "github_repository_polish",
+    "workspace_hygiene"
+  ],
+  "minimums": [99, 99, 98, 100, 98, 96, 98, 98, 100],
+  "overall_minimum": 98,
+  "gameplay_quality": "not_applicable",
+  "open_p0_maximum": 0,
+  "open_p1_maximum": 0
+}

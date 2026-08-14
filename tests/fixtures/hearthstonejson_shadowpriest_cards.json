@@ -1,0 +1,34 @@
+[
+  {
+    "id": "SW_448",
+    "dbfId": 64443,
+    "name": "Darkbishop Benedictus",
+    "type": "MINION",
+    "cardClass": "PRIEST",
+    "cost": 5,
+    "set": "STORMWIND",
+    "collectible": true,
+    "referencedTags": ["START_OF_GAME_KEYWORD"],
+    "text": "<b>Start of Game:</b> If the spells in your deck are all Shadow, enter Shadowform."
+  },
+  {
+    "id": "EX1_625t",
+    "dbfId": 1622,
+    "name": "Mind Spike",
+    "type": "HERO_POWER",
+    "cardClass": "PRIEST",
+    "cost": 2,
+    "set": "EXPERT1",
+    "text": "Deal $2 damage."
+  },
+  {
+    "id": "BOM_05_Xyrella_006p2",
+    "dbfId": 76557,
+    "name": "Mind Spike",
+    "type": "HERO_POWER",
+    "cardClass": "PRIEST",
+    "cost": 2,
+    "set": "STORMWIND",
+    "text": "Deal $3 damage."
+  }
+]

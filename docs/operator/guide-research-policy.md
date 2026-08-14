@@ -1,0 +1,734 @@
+# Guide Research Policy
+
+HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig, then normalizes that research with `hsconfig research-deck`.
+
+For the normal operator entry point, start at `docs/operator/README.md`.
+
+## Accepted Sources
+
+- official card text
+- HearthstoneJSON metadata
+- current archetype guides
+- current matchup guides
+- current mulligan guides
+- card-specific gameplay discussions
+
+## Rejected Sources
+
+- vague tier-list blurbs
+- non-card-specific advice
+- stale claims that contradict current card text
+- claims that cannot be mapped to a documented runtime surface or report-only note
+
+## Source Lanes
+
+- `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
+- `deck_matched_public_guide`: explicit public guide whose decoded deck fingerprint matches the target list.
+- `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
+- `evergreen_wild_archetype`: full-text public Wild deck or archetype guide for an evergreen archetype pattern, with explicit deck/archetype match and concrete card overlap.
+- `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
+- `decklist_only`: deck list or deck-code page without explicit guide claim text.
+- `policy_fallback`: internal autonomous rule used to keep packages useful.
+- `default_runtime`: generated default row with no source claim.
+
+Promotion is claim-kind-specific. Deterministic identity, role, and mechanical
+effect claims may use `deck_matched_public_guide` or
+`source_backed_static_semantics`. Strategic claims can satisfy Strong only
+through `deck_matched_public_guide` with a verified strategic receipt.
+`decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets,
+`default_runtime`, and runtime examples must not prove
+`SOURCE_BACKED_STRONG`.
+
+Static semantics are surface-scoped. Official or HearthstoneJSON static records may support deterministic CardID/effect rows such as `hero_power_transform`, but they do not prove deck-specific mulligan, combo, targeting, or gameplan posture without public guide evidence. Source-autopilot is preflight only; runtime default-only truth is read from `reports/operator_summary.json`.
+
+## Strategic Acquisition Authority
+
+Only `live_http` plus `live_verified` provenance can mint a canonical strategic source receipt.
+Captured, fixture, manual, and legacy inputs remain diagnostic-only for strategic authority.
+Content equality does not upgrade an unverified acquisition mode.
+
+The same provenance boundary governs runtime apply globally. Packages that
+consume captured, fixture, manual, or legacy source rows can still build,
+validate, and preflight, but cannot write runtime configuration. The stable
+apply-gate reason is `diagnostic_source_not_apply_eligible`; the gate derives it
+from receipt-bound package data rather than trusting a summary field.
+
+| Mode | Authority | Strategic receipt |
+| --- | --- | --- |
+| `live_http` | `live_verified` | eligible after all exact guide gates |
+| `captured_record` | `captured_unverified` | no; diagnostic-only |
+| `manual_evidence` | `manual_unverified` | no; diagnostic-only |
+| `fixture_map` | `fixture_only` | no; diagnostic-only |
+| `legacy_claims_json` | `legacy_unverified` | no; diagnostic-only |
+
+This authority is narrow: live provenance is necessary but does not replace
+public-guide identity, exact deck fingerprint equality, complete bounded
+evidence, promotion eligibility, full-text visibility, the
+`deck_matched_public_guide` lane, or the matching receipt signature.
+
+## Evergreen Wild Guide Rule
+
+`evergreen_wild_archetype` evidence remains useful strategic context, but it
+cannot mint exact strategic receipts or satisfy strategic Strong authority.
+The evergreen lane exists for stable Wild archetypes where a current exact-list
+guide may be unavailable; concrete card-level or package-level advice stays
+visible for diagnostics and source follow-up.
+A full-text public Wild guide with explicit card overlap can therefore inform
+the next source action without becoming an exact strategic receipt.
+
+Current deck-matched guide evidence should still win when available; old non-Wild guides, snippets, decklists, HSReplay/HSGuru aggregate stats, and static card databases are support or diagnostic evidence. They must not prove strategic runtime surfaces by themselves, including opening-hand Mulligan keeps, combo order, targeting posture, or gameplan posture, and they must not promote `SOURCE_BACKED_STRONG` without a matching guide claim.
+
+HearthstoneJSON and other static records may support deterministic CardID/effect rows like `hero_power_transform`, identity, or card-text semantics. They must not create opening-hand Mulligan keeps without an explicit mulligan claim from a qualifying guide source. operator_summary.json remains the only normal apply authority.
+
+## Exact Source Authority
+
+`exact_deck_matched` requires a decoded canonical deck fingerprint match. The
+guide must expose a deckstring, decoding must succeed, and the decoded canonical
+main-deck multiset fingerprint must equal the target
+`deck_identity["deck_fingerprint"]`. When both sides expose them, hero, format,
+main-deck card count, and sideboard count must also match.
+
+Deck name, archetype name, or card-name overlap without fingerprint equality is
+only `archetype_matched`. It remains useful context, but it cannot authorize
+exact guide-backed Mulligan rows, exact `SOURCE_BACKED_STRONG` closure, or an
+exact deckwide `gameplan_posture`. In particular, a guide for a 40-card list
+does not become exact authority for a 30-card target deck.
+
+### Exact Public-Guide Mulligan Gate
+
+Guide-backed Mulligan claims require canonical exact-deck source authority. All
+checks must pass:
+
+| Check | Required value | Failure outcome |
+| --- | --- | --- |
+| `public_guide_identity` | all populated document and claim identity signals are guide | suppress with visible reason |
+| `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
+| `target_deck_fingerprint` | present and equal to `matched_deck_fingerprint` | suppress with visible reason |
+| `exact_deck_evidence` | `matched=true`; both counts `>=1`; non-empty code-hash list | suppress with visible reason |
+| `source_receipt` | matching `claim_id`, claim signature, target fingerprint, and `live_http` / `live_verified` provenance | suppress with visible reason |
+| `promotion_eligible` | `true` | suppress with visible reason |
+| `source_visibility` | `full_text` | suppress with visible reason |
+| `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
+
+Failed public-guide keeps and discards remain visible with their stable
+suppression reasons. They do not authorize a heuristic replacement row. A
+physical fallback row requires a separate explicit deterministic Lane-D claim
+bound to the packaged `versioned_internal_policy`; otherwise Lane E records a
+`bot_delegated` disposition with zero generated Mulligan runtime rows.
+
+The same canonical exact-source fields gate `gameplan_posture` before it can
+authorize a GlobalValues posture overlay. Archetype-only posture claims remain
+visible with a stable suppression reason and leave validated baseline posture
+values unchanged. The receipt is produced only by the canonical source builder
+and binds the normalized claim signature to complete decoded exact-deck evidence
+and the current target fingerprint. Claim fields, synthetic legacy
+`--claims-json` documents, and imported lifecycle or plan reports cannot create
+this authority. A missing receipt, incomplete evidence, or missing target
+fingerprint fails closed.
+One shared `parse_strict_nonnegative_int` parser is used by
+`source_document_drafter`, `source_autopilot`, and `source_document_builder`.
+Decimal strings are ASCII digits only after surrounding whitespace is trimmed;
+signs, decimal points, and exponents are rejected. Count rejection preserves a
+load-safe package with `SOURCE_BACKED_PARTIAL`, exposes the exact-source gap,
+and mints no receipt.
+
+All populated source identity fields are evaluated together. An explicit
+official, static, statistical, or otherwise non-guide identity vetoes public
+guide authority even when another field says `public_guide`.
+
+## GlobalValues Plan Trust Boundary
+
+The effective legacy claim kind is inferred before authority-bearing fields are
+stripped. Therefore untyped `aggressive`, `aggro`, `burn`, or `pressure` prose
+is treated as posture before a synthetic source document is built and cannot
+carry self-asserted exact-match, promotion, visibility, lane, or provenance
+authority into a source receipt.
+
+Document-level and claim-level source identities are additive evidence, not
+override aliases. The normalized claim keeps all identity signals for the
+receipt gate, so one claim-local `public_guide` value cannot hide an explicit
+official, static, statistical, or otherwise non-guide document signal.
+
+The canonical non-plan `guide_claim_bundle.json`, its verified receipts, claim
+lifecycle, and `source_contract_audit.json` remain package truth. A
+`--plan-reports-dir` bundle, its claims, rows, and receipts are preserved only
+as `plan_input_diagnostics` with `runtime_gate_impact=none`; its
+`imported_claims`, `imported_rows`, and `imported_source_receipts` fields cannot
+replace or manufacture package authority.
+
+Every imported GlobalValues plan row is revalidated against the canonical
+lifecycle, current target fingerprint, verified source receipts, and rebuilt
+canonical matrix. A canonical positive row lowers without a false
+missing-receipt suppression. A noncanonical row remains suppressed with its
+key, operation, overlay, value, `claim_id`, and `claim_refs`, so an attempt such
+as `GlobalHeroHealth set:999` stays reconstructible.
+
+Exact-deck `candidate_count` and `decoded_candidate_count` evidence accepts
+non-negative integers only. Booleans, negative values, containers, and
+malformed strings fail closed: baseline GlobalValues remain unchanged and a
+visible suppression explains the missing verified receipt.
+
+## Structured Source Format
+
+Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.
+
+```json
+[
+  {
+    "source_url": "https://example.invalid/deck-guide",
+    "source_title": "Deck Guide",
+    "source_family": "guide",
+    "retrieved_at": "2026-07-06T12:00:00Z",
+    "deck_name": "Example Deck",
+    "archetype": "aggro_burn",
+    "claims": [
+      {
+        "claim_kind": "mulligan_keep",
+        "cards": ["CARD_ID"],
+        "selector": "CARD_ID",
+        "selector_kind": "card",
+        "stance": "keep",
+        "evidence_text_short": "Keep this card because it enables the deck plan.",
+        "source_confidence": "high"
+      }
+    ]
+  }
+]
+```
+
+## Source Autopilot
+
+`hsconfig source-autopilot` consumes compact public source-search records and writes ranked sources, source evidence rows, strict `source_documents.json`, and `source_autopilot_report.json`. The normal bridge is:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
+```
+
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts. Supported official static effect semantics may contribute only to deterministic non-strategic claim families. operator_summary.json remains the only normal apply authority.
+
+`source_autopilot_report.json` should stay compact and machine-readable:
+`runtime_apply_authority` must remain `reports/operator_summary.json`,
+`default_only_runtime_surfaces` must expose hidden default-only risk, and
+`source_backed_strong_closure.closed` is only an evidence-quality summary.
+`card_rows` and `surface_rows` use diagnostic lanes such as `lowered`,
+`suppressed`, `source_gap`, `static_only`, and `emitted`; they explain source
+closure and do not create another apply gate. Strong closure returns empty
+first-missing maps, while partial closure lists only the first missing card or
+surface links.
+`card_closure_lanes` and `surface_closure_lanes` are compact aliases for those
+rows so automation can read lane status without parsing the detailed tables.
+
+Source-backed strong operator invariants:
+
+- Source-candidate registries are acquisition seeds only, not promotion authority.
+- Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
+- No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
+- `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
+- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
+- Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
+- Profile-aware closure and first-missing maps by card/surface are diagnostics.
+- No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
+
+## Online Source Acquisition
+
+When public guide URLs are known, HSConfig can acquire bounded public source text before `source-autopilot`:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
+```
+
+`configure --online-source` also consults the compact source candidate registry
+before acquisition. Registry URLs are public-guide candidates only; they are
+deduplicated with explicit `--source-url` values and shown in
+`configure_summary.json.source_candidate_urls`,
+`configure_summary.json.source_urls`, and
+`02_source_acquisition/source_acquisition_report.json.candidate_registry_url_count`.
+The registry is a starting point, not authority: the fetched page still has to
+pass public-URL validation, deck/card matching, visibility, freshness, claim
+extraction, and source-autopilot closure before it can contribute to
+`SOURCE_BACKED_STRONG`.
+Registry `strength_ceiling` values are source-search ceilings only. They are
+not evidence fields and cannot promote a fetched decklist, snippet, stale page,
+or failed fetch.
+
+When no URL is known, use Codex/web research to find current public guide URLs,
+then pass each useful URL with repeated `--source-url`. If research finds only
+thin or weak sources, continue with the package and keep the missing source
+actions visible in operator reports.
+
+Online source acquisition promotion rule:
+
+- Public guide pages can promote `mulligan_keep`, `mulligan_discard`, `targeting_rule`, `card_role`, `known_bad_pattern`, and exact `combo_sequence` only when the claim is explicit and deck-matching.
+- Official/static card data can promote deterministic identity and supported effect lanes such as `hero_power_transform`, but cannot prove opening-hand keeps or exact combo order by itself.
+- Decklists, meta pages, snippets, and fetch failures remain source-informed or diagnostic. They do not count as `SOURCE_BACKED_STRONG`.
+- A valid deck must never fail only because public source acquisition is weak.
+
+## Source Truth Is Not Runtime Authority
+
+Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may
+lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
+`Combo.json`. `operator_summary.json` remains the only normal apply authority.
+
+The canonical claim lifecycle is the single diagnostic chain from source
+evidence to runtime eligibility: source claim -> normalized `claim_kind` ->
+semantic qualifiers -> conflict quarantine -> surface gate -> builder/router
+outcome -> emitted runtime row or suppression reason. source_contract_audit.json is diagnostic; operator_summary.json remains the only normal apply authority.
+Quarantined claims suppress unsafe runtime rows, stay visible in reports, and do
+not block load-safe valid packages.
+
+Semantic handoff safety:
+
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
+
+`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+
+Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
+
+## Single Apply Authority
+
+reports/operator_summary.json remains the only normal apply authority.
+diagnostic reports must not become apply gates: `source_contract_audit.json`,
+`source_to_runtime_explainability.json`, `source_evidence_closure.json`,
+mechanic visibility reports, source quality reports, and claim lifecycle
+projections explain what happened but do not allow or block runtime writes.
+default-only runtime surfaces must be visible, not silent: a valid load-safe
+package may proceed with warnings, but the reports must show whether a card is
+runtime-backed, source-action-needed, diagnostic-only, or baseline-only-visible.
+No hidden default-only runtime is allowed: every expected surface must be
+emitted, explicitly suppressed, or reported as a gap or source action.
+`source_to_runtime_explainability.json` includes per-card closure rows, and
+`default_only_runtime_surface_details` summarizes default-only risk in
+`operator_summary.json`; both remain diagnostic because operator_summary.json
+remains the only normal apply authority.
+`source_evidence_closure.json` is also diagnostic-only: it is a compact package
+quality summary of source-to-runtime closure, default-only risk, next report,
+and first missing source actions.
+`hsconfig source-closure-optimizer` is a diagnostic-only closure view for
+freshly prepared packages. It does not apply runtime files, does not promote
+candidate URLs to `SOURCE_BACKED_STRONG`, does not replace
+`reports/operator_summary.json`, and keeps source-depth gaps non-blocking with
+`source_status_apply_blocking=false`.
+
+Closure freshness is diagnostic-only. `operator_summary.json remains the only normal apply authority`; `closure_schema_current`, `cards_missing_closure`, `closure_lane_counts`, and `default_only_runtime_surface_details` explain whether a freshly generated package exposes every card's source-to-runtime state. They must not become a second runtime-write gate.
+`operator_summary.json.source_backed_strong_closure` and `operator_summary.json.no_default_only_runtime_status` are compact diagnostic-only summaries. They summarize honest Strong closure and visible no-default-only runtime status for operators. They must not become apply gates, grant runtime-write permission, or replace `reports/operator_summary.json` authority.
+
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
+the normal HSConfig path. The normal runtime path remains `Mulligan.json`,
+`GlobalValues.json`, `Combo.json`, and per-card `CARDID.json`.
+
+## Source-To-Runtime Boundary
+
+HSConfig separates technical load safety from source richness. A package may be
+load-safe and apply-ready even when some guide claims remain diagnostic.
+`reports/operator_summary.json` is the only apply authority.
+
+`SOURCE_BACKED_STRONG` is a source-confidence label, not an apply gate.
+`versioned_internal_policy` Lane-D rows and `bot_delegated` Lane-E dispositions
+do not convert a claim into source-backed evidence.
+
+Never lower these into runtime config unless the specific runtime surface is
+documented and identity is resolved:
+
+- start-of-game or deckbuilding effects as opening-hand mulligan keeps
+- hero-power-transform effects as opening-hand mulligan keeps
+- generated random pools as deterministic per-card behavior
+- Discover or Choose One preference without exact option identity
+- numeric GlobalValues tuning without runtime evidence
+
+HSConfig still attempts to generate a load-safe valid package for any valid deck
+code. Weak source depth is non-blocking quality debt, and operator/source action
+fields must expose the next missing evidence or surface link.
+
+No-silent-default-only contract: a valid package must not hide baseline-only runtime behavior. Default-only surfaces are reported as visible quality debt through `operator_summary.json`, `default_only_runtime_surface_details`, and `source_to_runtime_explainability.json`; they are not an apply blocker unless the technical package is invalid. operator_summary.json remains the only normal apply authority.
+
+The first compact check is `operator_summary.json.surface_status_ledger`. Every listed surface must expose whether it is source-backed, policy-backed, static-semantics-backed, warning-only, suppressed, or default-only. `default_only_runtime_surfaces` remains the compatibility list, but the ledger is the preferred operator view because it shows every surface, including non-default surfaces. Ledger rows are diagnostic-only and must keep `apply_blocking=false`.
+
+## Source-To-Runtime Decision Rule
+
+Source truth becomes runtime config only through `claim_kind`, the source contract matrix, and the surface gate for the target runtime file. Guide importance, archetype value, or effect relevance do not bypass this chain.
+
+When the chain is incomplete, HSConfig should keep the claim visible in reports and still produce a load-safe package when the package is technically valid.
+
+## Claim Family Guardrail
+
+Every supported `claim_kind` has exactly one policy lane, one allowed runtime
+surface set, one negative-boundary rule, and one diagnostic conflict family.
+Changing a claim kind means updating the claim-family registry, the source
+contract matrix, the runtime surface gate, the builder/router tests, and the
+contract-spine sentinel together.
+
+The guardrail is diagnostic only. It protects the source-to-runtime contract,
+but it does not create another apply gate. reports/operator_summary.json
+remains the only normal apply authority.
+
+`source_advisory_gate` is warning/advisory only. It can explain source quality
+or missing evidence, but it never grants, denies, or replaces runtime apply
+authority.
+
+## Semantic Qualifiers
+
+Semantic qualifiers refine existing source claims. They do not create a second
+apply path and they do not bypass `claim_kind` or surface gates.
+
+Supported qualifier families:
+
+- `timing`: `mulligan`, `start_of_game`, `on_play`, `delayed`, `ongoing`, `death`, `trigger`
+- `zone_scope`: `hand`, `deck`, `board`, `secret`, `location`, `generated`, `graveyard`
+- `target_scope`: `enemy_hero`, `friendly_minion`, `enemy_minion`, `any_minion`, `no_target`
+- `option_surface`: `discover`, `choose_one`, `generated_choice`
+- `state_requirements`: deck, hand, board, weapon, mana, overload, duplicate, or mechanic constraints
+- `generation_scope`: `generated`, `random_pool`, `discovered`, `copied`, `transformed`, `shuffled`
+- `deck_evaluation`: `highlander`, `odd`, `even`, `deck_size`, `start_in_deck`, `all_shadow_spells`
+
+When source text says an effect matters but does not explicitly say opening
+hand or mulligan, HSConfig must preserve effect semantics without turning the
+card into a `Mulligan.json` keep.
+
+Examples:
+
+- Darkbishop Benedictus can preserve the Shadowform / Mind Spike effect through
+  `hero_power_transform` and CardID behavior, but this does not become a mulligan keep unless a separate current mulligan source explicitly says to
+  keep the card in the opening hand.
+- `globalvalue_numeric_tuning` is valid source evidence for future tuning, but
+  Step 1 requires runtime evidence before numeric GlobalValues changes.
+- Discover and Choose One claims require exact option identity before lowering.
+
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
+Accepted source document fields:
+
+- `source_url`: stable URL or local source identifier.
+- `source_title`: human-readable title for operator reports.
+- `source_family`: source type such as `guide`, `mulligan_guide`, `card_text`, or `metadata`.
+- `retrieved_at`: ISO timestamp used for claim freshness checks.
+- `deck_name`: optional deck label used for candidate archetype matching.
+- `archetype`: optional source-stated archetype or posture.
+- `claims`: list of atomic claims.
+
+Accepted atomic claim fields:
+
+- `claim_kind`: one of the supported atomic claim kinds below.
+- `cards`: concrete CardIDs affected by the claim.
+- `scope`, `stance`, `selector`, `selector_kind`, `condition`, and `reason`: optional claim context.
+- `evidence_text_short`: short source quote or paraphrase for reports.
+- `source_confidence`: `high`, `medium`, or `low`.
+- `runtime_block`, `runtime_value`: optional CardID behavior lowering hints.
+- `sequence`, `timing_kind`, `operator`, and `values`: optional Combo timing fields.
+- `semantic_qualifiers`, or top-level qualifier fields such as `timing`, `zone_scope`, `state_requirements`, `generation_scope`, and `deck_evaluation`: optional claim context that must stay visible through source-document drafting and surface gates.
+
+A `runtime_block` or `runtime_value` hint never overrides `claim_kind`.
+Runtime lowering is surface-gated: `Mulligan.json` only lowers explicit
+`mulligan_keep` or `mulligan_discard`; `GlobalValues.json` only lowers
+runtime-lowerable `gameplan_posture`; `Combo.json` only lowers complete
+`combo_sequence`; and per-card `<CARDID>.json` only lowers CardID behavior
+claim kinds. Wrong-surface claims stay suppressed or report-only with explicit
+reasons.
+
+`policy_lane` is static source policy, not runtime emission. Use
+`source_contract_audit.json.claim_lifecycle_rows` for the generated trace from
+source -> policy -> surface gate -> builder/router -> emitted/suppressed. A
+no-block deck can still include suppressed diagnostics when a source claim has
+no documented runtime surface; readiness and apply authority remain in
+`operator_summary.json`.
+
+### Claim Lifecycle End States
+
+`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only. Each source
+claim should end in one visible state:
+
+- `emitted`: a source claim reached a runtime file.
+- `suppressed`: a source claim was intentionally not emitted because the source,
+  confidence, runtime evidence, or VisionAI surface did not allow it.
+- `not_seen_by_builder`: the source and surface gate allowed a claim, but no
+  builder/router emitted it. Treat this as implementation debt, not an operator
+  apply block.
+
+Use `operator_summary.json` for normal readiness and apply decisions. Do not use
+`source_contract_audit.json` as an apply gate.
+
+### Contract Conformance Snapshot
+
+The contract conformance snapshot is documentation-as-code for the source
+contract. It proves that each supported `claim_kind` has one policy lane,
+surface-gate outcome, and diagnostic operator impact. It does not create a
+second operator gate: `source_contract_audit.json` stays diagnostic and
+operator_summary.json remains the normal apply authority.
+
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+
+`operator_summary.json` remains the only normal apply authority.
+`source_contract_audit.json` explains why each claim did or did not lower.
+`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
+The snapshot separates unexpected contract drift from expected builder
+prerequisite gaps. Unexpected contract drift means the policy matrix, surface
+gate, or builder expectation disagrees and should be fixed. A builder
+prerequisite gap means the surface is allowed, but the concrete row is still
+missing required structure, such as a complete `Combo.json` sequence. These
+gaps support no-block package generation by staying visible without becoming a
+additional runtime-write gate.
+
+For CardID behavior claims, prefer source-backed `runtime_block` when the guide
+or card text clearly maps to a documented VisionAI block. Examples:
+
+- face pressure or play timing: `BeforePlayCardBonus`
+- targeted Battlecry: `BeforeBattlecryTargetBonus`
+- Hero Power use: `BeforeUseHeroPowerBonus`
+- attack or weapon posture: `BeforePhysicalAttackBonus`
+- Overkill payoff: `BeforeOverkilledBonus`
+- Discover option preference: `OnDiscoverCardBonus`
+
+Do not request undocumented blocks. Unsupported blocks are suppressed into
+reports and do not become runtime JSON.
+
+Supported source claim kinds for normal Step1 routing are `archetype`,
+`mulligan_keep`, `mulligan_discard`, `card_role`, `targeting_rule`,
+`combo_sequence`, `gameplan_posture`, `hero_power_transform`,
+`mechanic_usage`, `known_bad_pattern`, `tech_slot`, `replacement_option`,
+`discover_choice`, and `choose_one_choice`.
+
+`globalvalue_numeric_tuning` is accepted source evidence for explicit numeric
+GlobalValues recommendations, but it is not Step1 runtime-lowerable. It must
+stay report-visible with `requires_runtime_evidence` until HSTuner or another
+runtime-evidence workflow owns the change. Do not introduce wildcard
+`globalvalue_*` claim kinds.
+
+Additional supported choice-claim requirements:
+
+- `discover_choice`: exact card-specific Discover option preference; requires `option_card_id` or `option_card` plus source-backed option identity.
+- `choose_one_choice`: exact card-specific Choose One option preference; requires `choice_card_id` or `choice_card` plus source-backed option identity.
+
+Claim freshness and conflicts:
+
+- Treat `retrieved_at` as the claim freshness anchor. Prefer current guide claims over older guide claims when both map to the same card and behavior.
+- Do not use stale claims that contradict current card text or HearthstoneJSON metadata.
+- Opposing atomic claims, such as keep versus discard for the same selector, must be reported in `claim_conflict_report.json`.
+- Conflict reports block strong readiness until the operator resolves the source documents.
+
+Mulligan selector support:
+
+- Use concrete CardIDs for direct keeps or discards.
+- Use `DROPn` selectors for documented curve or cost-based keeps.
+- Use plus-combo selectors when the source says a keep depends on a partner card.
+- Use wildcard selectors only when the source applies broadly to a known hand class.
+- Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
+- Cost-band discard text such as `do not keep any 4-cost or higher cards` may
+  emit `mulligan_discard` for every matching deck card, including
+  start-of-game enablers like Darkbishop Benedictus. This still must not create
+  `mulligan_keep`.
+
+### Explicit Lane-D policy and Lane-E bot delegation
+
+If no exact live-guide keep can be emitted, HSConfig does not construct a keep
+set from mana curve, card roles, pressure, draw, setup, or class-plan
+heuristics. A physical policy row requires a separate explicit deterministic
+claim bound to the packaged `versioned_internal_policy` profile (Lane D).
+
+Cards without Lane-B or Lane-D authority receive explicit `bot_delegated`
+dispositions (Lane E). Lane E leaves the decision to HearthRanger's native
+pre-run bot and emits zero Mulligan runtime rows. Both lanes remain weaker than
+source-backed guide evidence and do not promote a deck to
+`SOURCE_BACKED_STRONG`.
+
+Start-of-game, deckbuilding, highlander, odd/even, hero-power-transform, and
+other non-hand effects stay out of opening-hand keeps unless exact opening-hand
+authority exists. Darkbishop Benedictus remains the reference case.
+
+### Effect semantics are not opening-hand mulligan keeps
+
+Start-of-game, deckbuilding, and hero-power-transform effects can be important
+runtime semantics without being cards to keep in the opening hand. Darkbishop
+Benedictus is the reference case: the Shadowform / Mind Spike behavior belongs
+in card behavior semantics, but the card itself must not become a Mulligan.json
+hold unless a source explicitly describes opening-hand mulligan intent.
+If the same source gives explicit discard intent or a cost-band discard rule,
+that discard is a Mulligan claim and may be lowered separately; the effect row
+remains in per-card runtime semantics.
+
+This split also applies to odd/even, highlander, deck-size, starting-health,
+and start-in-deck effects. These effects may create CardID behavior, source
+diagnostics, or report-visible expectations. They do not create mulligan keeps
+from generic card importance, start-of-game text, or deckbuilding text.
+
+Effect-only source truth is not opening-hand truth. Static or guide evidence
+that a card changes the hero power, modifies deckbuilding, starts in deck, or
+applies before the mulligan can lower to supported CardID/effect surfaces, but
+it must not create `mulligan_keep` unless the source explicitly says the card
+should be kept in the opening hand.
+
+operator_summary.json remains the normal apply authority.
+
+Do not infer `mulligan_keep` from card importance, start-of-game effects,
+deckbuilding effects, hero-power-transform text, or generic "keep" wording.
+Preserve those effects as `hero_power_transform`, CardID behavior, or
+report-visible contract evidence. Emit a Mulligan keep only when a current
+mulligan source explicitly says the card should be kept in the opening hand.
+
+Exact `mulligan_keep` claims should describe opening-hand intent. If the evidence
+only describes a start-of-game effect, hero-power transform, deckbuilding rule, or
+broad card importance, HSConfig may warn about a suspicious exact keep. That
+warning is diagnostic only; it does not block a load-safe package.
+
+Combo timing support:
+
+- `combo_sequence` claims must include explicit `sequence`, `timing_kind`, `operator`, and `values` before runtime `Combo.json` emission.
+- Claims without explicit order or timing stay in reports and do not become runtime rows.
+
+GlobalValues key authority:
+
+- `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
+- `globalvalues_profile.json` records every key with `authority_category` and `board_value_component`.
+- Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
+- `globalvalue_numeric_tuning` is a valid source claim kind for explicit numeric GlobalValues recommendations. It is report-visible but Step1 runtime-blocked with `requires_runtime_evidence` until HSTuner or another runtime-evidence workflow owns the change.
+- `copy_baseline` keys are copied and profiled, not tuned.
+- `step1_posture_overlay_allowed` keys may change only when source posture supports them.
+- Imported plan GlobalValues rows never define authority. HSConfig rebuilds the
+  canonical matrix from the non-plan source receipt and suppresses any imported
+  row whose key, operation, overlay, normalized value, reason, authority, and
+  claim binding do not match that rebuilt matrix.
+- Imported plan bundles and receipts remain input diagnostics only; the
+  canonical package bundle, lifecycle, and source audit always come from the
+  non-plan source-document path.
+- Suppression preserves the attempted key, operation, overlay, value, and claim
+  references. Malformed exact-evidence counts fail closed to baseline plus
+  visible suppression rather than aborting the build.
+- `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
+
+## Claim-Kind Change Checklist
+
+Changing or adding a `claim_kind` is a contract change, not a local parser tweak.
+Every such change must update all of these surfaces in the same pull request:
+
+- `SUPPORTED_ATOMIC_CLAIM_KINDS` in `src/hsconfig/source_document_model.py`
+- the policy row and policy details in `src/hsconfig/source_contract_matrix.py`
+- the matching surface gate in `src/hsconfig/source_document_model.py`
+- the builder, router, or diagnostic path that owns the final runtime effect
+- conformance and freeze coverage in `tests/test_source_contract_spine_freeze.py`
+- runtime contract coverage in `tests/test_claim_kind_runtime_contract.py`
+
+Diagnostics may explain a claim, but they must not grant or deny runtime apply.
+`reports/operator_summary.json` remains the normal apply authority.
+
+## Adding A New Claim Kind
+
+New claim kinds must follow the same compact spine:
+
+1. Add the atomic claim kind to `SUPPORTED_ATOMIC_CLAIM_KINDS`.
+2. Add exactly one policy row in `source_contract_matrix.py`.
+3. Decide the allowed surface: `mulligan`, `globalvalues`, `cardid`, `combo`, or none.
+4. Add or update the matching surface-gate test.
+5. Add builder/router coverage only when the VisionAI surface is documented and syntax-safe.
+6. Keep report-only, runtime-evidence-required, unresolved-identity, and warning-only mechanics non-blocking.
+7. Keep `operator_summary.json` as the only normal apply authority.
+
+New claim kinds must not create an additional runtime-write gate or bypass or
+replace the apply authority.
+
+Do not add broad wildcard claim kinds such as `globalvalue_*` or prose-driven
+claims that bypass the surface gates.
+
+## Per-Card Depth Rule
+
+For representative archetype breadth, use `docs/operator/archetype-fixture-matrix.json`.
+Core source-backed controls remain ShadowPriest, BigShaman, and ImbueMage.
+Boarlock and Kingslayer are durable preserved source-informed controls with
+explicit stop conditions. The current actionable source-informed closure
+targets are CtAPaladin, Discolock, TreantDruid, and PirateDH; close those
+visible partial rows before broadening to more representative decks.
+
+Before normal `hsconfig prepare`, Codex should try to give every deck card at
+least one structured expectation. The preferred order is card-specific guide
+claim, current card text/static semantics, archetype-inferred role, then
+`generic_low_confidence` as the last visible fallback.
+
+The every-card coverage rule is: every card must land in a visible lane, and
+only guide-backed or source-backed static semantics can support strong guide
+depth.
+
+Claim readiness lanes:
+
+- `guide_backed`: current source claim maps to one or more concrete deck cards.
+- `source_backed_static_semantics`: card text or metadata supports a deterministic static expectation.
+- `archetype_inferred`: deck-scoped posture without card-specific source support.
+- `explicit_low_confidence`: source is current but weak or low confidence.
+- `generic_low_confidence`: no useful source or static semantic support exists.
+- `contract_gap`: the claim could not be made specific enough for the config contract.
+
+For Strong readiness, `guide_backed` strategic claims additionally require the
+exact live-verified receipt path. `source_backed_static_semantics` contributes
+only to deterministic identity, role, and mechanical effect families.
+
+For each card, prefer claims that answer at least one of these questions:
+
+- keep, discard, or situational mulligan
+- face, trade, friendly target, discover, weapon, location, or Hero Power usage
+- combo sequence or synergy partner
+- board-value posture or GlobalValues effect
+- known bad pattern
+
+## Reports
+
+- `operator_summary.json`: operator-facing technical and semantic readiness.
+- `operator_summary.json.guide_strength_summary`: compact counts for why a valid package is or is not guide-strong.
+- `operator_summary.json.semantic_blockers`: grouped blocker reasons such as missing guide claims, runtime-surface gaps, combo-sequence gaps, or conflicts that keep a package at `VALID_BUT_NOT_GUIDE_STRONG`.
+
+### Source Claim Quality Summary
+
+`operator_summary.json.source_claim_quality_summary` is a compact source-depth
+visibility block. It counts every-card lanes, generic-low-confidence cards,
+contract-gap cards, and the next useful claim kinds. It is non-blocking:
+source-quality debt explains what to improve next, but it does not replace
+`operator_summary.json` as the apply authority and does not create a second
+apply path. `source_contract_audit.json` remains diagnostic-only detail for
+the source-to-runtime explanation.
+`source_to_runtime_explainability.json` is the operator-readable projection of
+the same diagnostic chain. It summarizes emitted runtime files, missing runtime
+files, first missing links, and next source actions per claim/card. Its
+`operator_summary.json.source_to_runtime_explainability_summary` block is
+non-blocking and never grants apply permission.
+`source_evidence_closure.json` is the compact diagnostic closure summary for
+the same evidence; it mirrors package-quality status and never grants apply
+permission.
+
+Use `source_to_runtime_explainability.json` as the primary card-readable repair map. It is the first place to inspect emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. `source_claim_gap_report.json` is secondary diagnostic evidence for source-depth history and must not be treated as an apply gate.
+
+- `guide_builder_receipt.json`: guide-source normalization status and source counts.
+- `candidate_archetypes.json`: primary and fallback archetype candidates.
+- `deck_fingerprint.json`: deck multiset identity used by research normalization.
+- `identity_graph_report.json`: main deck, sideboard, hero, and metadata identity.
+- `guide_claim_bundle.json`: canonical normalized non-plan claims and verified
+  receipts used by the build; imported plan bundles cannot replace it.
+- `plan_input_diagnostics.json`: when plan reports are imported,
+  `imported_claims`, `imported_rows`, and `imported_source_receipts` keep their
+  input visible with `runtime_gate_impact=none`; it is never source or apply
+  authority.
+- `guide_claim_bundle.json`: canonical guide/source bundle, including the source-level evidence index.
+- `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
+- `unsupported_claims_report.json`: rejected source claims with reasons.
+- `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.
+- `source_to_runtime_explainability.json`: claim/card projection that names emitted files, missing files, first missing links, and next source actions; diagnostic only.
+- `source_evidence_closure.json`: compact package-quality closure summary; diagnostic only.
+- `source_claim_gap_report.json`: secondary diagnostic evidence for card/source gap history.
+- `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
+- `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.
+- `card_behavior_plan_report.json`: CardID routing and suppression reasons.
+- `combo_plan_report.json`: exact ordered combos and suppressed combo claims.
+- `global_values_authority_matrix.json`: Step1 GlobalValues overlays and runtime-only blocked changes.
+- `per_card_config_readiness_report.json`: card-level lane, runtime surfaces, and first missing link.
+- `guide_source_depth_report.json`: source-depth status, source families, claim kinds, and research warnings.
+
+HSConfig does not prove gameplay improvement. It creates the best available initial config from current source claims and card semantics. HSTuner remains the post-game analysis and tuning tool.
+
+## Next-Wave Source Autonomy
+
+See `docs/operator/autonomous-source-builder-next.md` for the source-acquisition contract that should feed `research-deck` before future deck-only autonomy work. This document is intentionally a contract, not an implementation of web browsing or scraping.

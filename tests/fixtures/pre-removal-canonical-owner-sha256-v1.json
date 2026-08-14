@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "purpose": "immutable pre-removal canonical-owner SHA256 baseline",
+  "decks": {
+    "ShadowPriest": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b",
+      "reports/card_behavior_plan_report.json": "f483503da2fbfaef0aa92863c37c9635eefd7808d03e3e14a06afd44fbd574d6",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "9bd8bc3af3f2e597edbed062634f2d75e8ea823f6b0f49dbc0c311549357e0b9"
+    },
+    "CtAPaladin": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b",
+      "reports/card_behavior_plan_report.json": "b887dcf53908a5e511265a1edfe38bde981ab919ff7adc8746b7f03e018d984e",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "dbe9f6c7003f28b06242a970d6ef933572dddf3a4103db8aab2cb9779999bf13"
+    },
+    "PirateRogue": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "88836bd168568625a1b9dc6589bc9012af2a1d2f9d63d7b96972f7d76664684a",
+      "reports/card_behavior_plan_report.json": "7996a55dbf0ac019bc9b71df28d9fc5313bc75cb01ace2a0f04b83874067c6f3",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "d0b18ae897d509783931b356addcbe1c7dd20aaa6a74791944661a217fe36a9d"
+    },
+    "BigShaman": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "e0934e01dbcb5f78ee6057806b3c597a92d36d340e511df775be0b80bdca85f2",
+      "reports/card_behavior_plan_report.json": "5f24b1b489010592703c0abb816e15d95c5dcca5211e1cbbba18c3c0a932bfe8",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "6b321a63c930ea214eff9a348490ccb04724b8a9dac4a4530a3f3c95b29c341c"
+    },
+    "Discolock": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "ce3a4b47960bfca23054f23ce770858c3559bf691cc25250de4017d40cdafcd9",
+      "reports/card_behavior_plan_report.json": "40999f9f670011e8bb9e365446ce120b79d04787200d9896f1eab9305c05865a",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "79e841270086d8e735b048405844ce69e05e3add988e2312bbf0fc3fa204bc21"
+    },
+    "TreantDruid": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "ba9882c0f62d9e41b3bae1d20ebc4f1171b7c23452e60bfda4aa947767235ead",
+      "reports/card_behavior_plan_report.json": "6d10afbfac9efd520bbd184b93dd59967a7016f02443e8dc66d1b2ece9f90c15",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "ec81ec420271253b3bd545e11f3d0656c2dd77757e88223281c72b7376634c70"
+    },
+    "ImbueMage": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "1f79f6f18a42ebcf607af47f2280c43c728a19b154ba502b6dd617dfe9b5f84b",
+      "reports/card_behavior_plan_report.json": "42ad0594ca76884c76fbea57d664e4859050299899cefab58b02c4239a53bd1b",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "25eeaceb5b7573a946cbe07fc2ce98d3cccdd2a77034c5c1a4a1fbbe5f810964"
+    },
+    "MechPala": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "c38807f2a37b80bcc9d3227dd5bea2f99b78a6c5cf66b9c65cbf5bc5efeb0f0a",
+      "reports/card_behavior_plan_report.json": "2bb709bfb73cdee2d238338139731e7f906c5e04057fe47dccf99bbde2adb66f",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "b5a0301d7f3af28dab03a36b57af55837ce78d4dc5a6736de81d7259240c0256"
+    },
+    "Kingslayer": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "a0fb8d6374fb7676a856f36ae980833823fba659a1e04f8f7e3e86c1b8911250",
+      "reports/card_behavior_plan_report.json": "7ea12caf18bf9a3ce666cda38cf41e10efe80126288ed62f037d72c8d15e9c2b",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "a0329b19d8cbe7035216b3210dd75015a5fb3d98d29726a9d3da034bf7416369"
+    },
+    "Boarlock": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "c49a1f682d528877c7561fc54204f1378683360f6207520829e0f0b7c5513d87",
+      "reports/card_behavior_plan_report.json": "36a8cfb5acb382c4ef3b2623551a0015de1ebbfaf8245525a199849ebc265a27",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "0e78ee8f91ec3c17d9588237810d4d504e47ace0187124f6acd61259ca062e05"
+    },
+    "PirateDH": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "d0ab88157da94c2d7ee10128fb6dcc72bf5ae22ce81bf9ec292ddd2c085e4280",
+      "reports/card_behavior_plan_report.json": "5dd5f1709cef622459b28cc431539e0631c150ac1d35fdffb57b429842f1b5a2",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "3dbf68557ca00db4cd69e02e3be783a488d12111b82dcdccb8709d1699510f22"
+    },
+    "CuteWarrior": {
+      "reports/globalvalues_profile.json": "c986f6cd8066701ae231a7cde6c7874b3d82de2fdc9c706fcf5c5ce59b6bd084",
+      "reports/global_values_authority_matrix.json": "028271e597ea5217f36e15f2efe3e450ba4de3a6142f14689b6b26e6e3464f4d",
+      "reports/card_behavior_plan_report.json": "fbefa6f0d74eb33e73498af13d88a34ff5b4e2b6a7c161f0f5af49a0f01f3198",
+      "reports/combo_plan_report.json": "75eb71f7b46d64e79fa0e5cb81c97969085b3e612ccfb933eb100c1714155995",
+      "reports/guide_claim_bundle.json": "9346f1a55ec45eaeef51d441dd741725bdf1dc56aa99632384218b05daa0cad2"
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "GameCardId": "GlobalValues",
+  "ConfigComment": "Default GlobalValues fixture",
+  "FirstTurnValueWeight": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "0"
+      }
+    ]
+  },
+  "SecondTurnValueWeight": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1"
+      }
+    ]
+  },
+  "GlobalDivineShield": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "2.74"
+      }
+    ]
+  },
+  "GlobalTaunt": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.25"
+      }
+    ]
+  },
+  "GlobalWindfury": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "2.50"
+      }
+    ]
+  },
+  "GlobalRush": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.85"
+      }
+    ]
+  },
+  "GlobalCharge": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "3.25"
+      }
+    ]
+  },
+  "GlobalLifesteal": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.70"
+      }
+    ]
+  },
+  "MyHeroPowerValue": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.00"
+      }
+    ]
+  },
+  "EnemyHeroPowerValue": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.00"
+      }
+    ]
+  },
+  "MyWeaponValue": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.00"
+      }
+    ]
+  },
+  "EnemyWeaponValue": {
+    "values": [
+      {
+        "condition": "*",
+        "value": "1.00"
+      }
+    ]
+  }
+}

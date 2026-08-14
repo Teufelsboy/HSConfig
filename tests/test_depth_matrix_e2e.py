@@ -1,0 +1,276 @@
+import json
+from pathlib import Path
+
+from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.io import read_json, write_json
+
+
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+MECHPALA_CODE = (
+    "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/"
+    "AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA=="
+)
+
+
+def test_depth_matrix_shadowpriest_primary_surface_contract(tmp_path: Path):
+    out = tmp_path / "shadowpriest"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_depth.json",
+            "--json",
+        ]
+    )
+
+    reports = out / "reports"
+    deck_dir = out / "CustomConfig" / "shadowpriest"
+    operator = read_json(reports / "operator_summary.json")
+    gameplan = read_json(reports / "gameplan_contract.json")
+    globalvalues_profile = read_json(reports / "globalvalues_profile.json")
+    authority = read_json(reports / "global_values_authority_matrix.json")
+
+    assert code == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
+    assert operator["semantic_blockers"]
+    assert (deck_dir / "GlobalValues.json").exists()
+    assert (deck_dir / "Mulligan.json").exists()
+    assert any(path.name.endswith(".json") for path in deck_dir.glob("SW_*.json"))
+    assert not (deck_dir / "Presume.json").exists()
+    assert not (deck_dir / "Concede.json").exists()
+    assert gameplan["cards"]["SW_448"]["linked_entities"]
+    assert any(
+        effect["target_card_id"] == "EX1_625t"
+        for effect in gameplan["deckwide_effects"]
+    )
+    assert authority["posture"] == "baseline"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row["key"] == "gameplan_posture"
+        and row["authority"] == "source_contract_suppressed"
+        and row["reason"] == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert "MyHeroPowerValue" not in globalvalues_profile["keys"]
+
+
+def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
+    fixture = json.loads(
+        Path("tests/fixtures/source_documents_multiarchetype.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source_path = tmp_path / "mechpala_sources.json"
+    write_json(source_path, fixture["MechPala"])
+    out = tmp_path / "mechpala"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "MechPala",
+            "--deck-code",
+            MECHPALA_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            str(source_path),
+            "--json",
+        ]
+    )
+
+    operator = read_json(out / "reports" / "operator_summary.json")
+    authority = read_json(out / "reports" / "global_values_authority_matrix.json")
+    allowed = {row["key"] for row in authority["allowed_step1_overlays"]}
+
+    assert code == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
+    assert authority["posture"] == "baseline"
+    assert allowed == {"baseline"}
+    assert any(
+        row["key"] == "gameplan_posture"
+        and row["authority"] == "source_contract_suppressed"
+        and row["reason"] == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+
+
+def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [
+            {
+                "id": "EX1_001",
+                "dbf_id": 1,
+                "name": "Discover Card",
+                "type": "MINION",
+                "text": "Discover a spell.",
+                "entourage": ["EX1_002"],
+            },
+            {
+                "id": "EX1_002",
+                "dbf_id": 2,
+                "name": "Option Alpha",
+                "type": "SPELL",
+                "text": "Deal damage.",
+            },
+            {
+                "id": "EX1_003",
+                "dbf_id": 3,
+                "name": "Combo A",
+                "type": "SPELL",
+                "text": "First combo card.",
+            },
+            {
+                "id": "EX1_004",
+                "dbf_id": 4,
+                "name": "Second combo card.",
+                "type": "SPELL",
+                "text": "Second combo card.",
+            },
+        ],
+    )
+    cards_json = tmp_path / "cards.json"
+    write_json(
+        cards_json,
+        {
+            "cards": [
+                {
+                    "card_id": "EX1_001",
+                    "dbf_id": 1,
+                    "count": 2,
+                    "name": "Discover Card",
+                },
+                {"card_id": "EX1_003", "dbf_id": 3, "count": 2, "name": "Combo A"},
+                {"card_id": "EX1_004", "dbf_id": 4, "count": 2, "name": "Combo B"},
+            ]
+        },
+    )
+    target_fingerprint = stable_deck_fingerprint(
+        [("EX1_001", 2), ("EX1_003", 2), ("EX1_004", 2)]
+    )
+    source_documents = tmp_path / "source_documents.json"
+    write_json(
+        source_documents,
+        {
+            "source_documents": [
+                {
+                    "source_url": "https://example.invalid/depth-matrix",
+                    "source_title": "Depth Matrix Fixture",
+                    "source_family": "guide",
+                    "source_type": "public_guide",
+                    "retrieved_at": "2026-07-07T00:00:00Z",
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "candidate_count": 1,
+                            "decoded_candidate_count": 1,
+                            "matched": True,
+                            "matched_deck_fingerprint": target_fingerprint,
+                            "candidate_deck_code_hashes": [
+                                "sha256:depth-matrix-combo-source"
+                            ],
+                        }
+                    },
+                    "claims": [
+                        {
+                            "claim_kind": "discover_choice",
+                            "cards": ["EX1_001"],
+                            "option_card_id": "EX1_002",
+                            "stance": "pick_option_alpha",
+                            "evidence_text_short": "Prefer Option Alpha from this discover pool.",
+                            "source_confidence": "high",
+                        },
+                        {
+                            "claim_kind": "combo_sequence",
+                            "cards": ["EX1_003", "EX1_004"],
+                            "sequence": ["EX1_003", "EX1_004"],
+                            "timing_kind": "same_turn",
+                            "operator": ">>",
+                            "values": ["8", "14"],
+                            "evidence_text_short": "Play Combo A into Combo B on the same turn.",
+                            "source_confidence": "high",
+                            "promotion_eligible": True,
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+    out = tmp_path / "linked_combo"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Linked Combo",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    deck_dir = out / "CustomConfig" / "linked_combo"
+    reports = out / "reports"
+    card_behavior = read_json(reports / "card_behavior_plan_report.json")
+    suppression = card_behavior["suppressed"]
+    source_audit = read_json(reports / "source_contract_audit.json")
+    discover = read_json(deck_dir / "EX1_001.json")
+
+    assert code == 0
+    assert not (deck_dir / "Combo.json").exists()
+    assert any(
+        row["claim_kind"] == "combo_sequence"
+        and row["surfaces"]["combo"]["reason"]
+        == "strategic_provenance_not_live_verified"
+        for row in source_audit["claim_rows"].values()
+    )
+    assert card_behavior["option_resolution"][0]["status"] == "resolved"
+    assert [
+        {
+            key: row[key]
+            for key in ("claim_id", "claim_kind", "cards", "reason")
+        }
+        for row in suppression
+    ] == [
+        {
+            "claim_id": suppression[0]["claim_id"],
+            "claim_kind": "mechanic_usage",
+            "cards": ["EX1_001"],
+            "reason": "covered_by_resolved_choice_surface",
+        }
+    ]
+    assert all(row["source_claim_ids"] for row in suppression)
+    assert all(row["source_refs"] for row in suppression)
+    assert "OnDiscoverCardBonus" in discover
+    assert "source_claim_ids" not in json.dumps(discover)

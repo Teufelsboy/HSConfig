@@ -1,0 +1,822 @@
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any, Iterable, Mapping
+
+from hsconfig.card_metadata import analysis_cards_from_deck_identity
+from hsconfig.disposition_ledger import disposition_projection
+from hsconfig.mechanic_support import (
+    support_for_roles,
+    summarize_mechanic_support,
+    summarize_mechanic_visibility,
+)
+from hsconfig.package_domain import (
+    DispositionLedger,
+    DualClosureStatus,
+    deep_freeze_definition,
+)
+from hsconfig.io import slugify_deck_name
+from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
+from hsconfig.visionai_registry import (
+    CARDID_SURFACE_ALIASES,
+    CARDID_SURFACE_FAMILY,
+    COMBO_RUNTIME_FILE,
+    GLOBALVALUES_RUNTIME_FILE,
+    MULLIGAN_RUNTIME_FILE,
+    is_supported_card_behavior_block,
+)
+
+LANES = (
+    "runtime_emitted",
+    "linked_runtime_source",
+    "mulligan_only",
+    "globalvalues_only",
+    "report_only_supported",
+    "archetype_inferred",
+    "generic_low_confidence",
+)
+MISSING_LINKS = (
+    "none",
+    "needs_guide_claim",
+    "needs_runtime_surface",
+    "needs_mulligan_claim",
+    "needs_combo_sequence",
+    "needs_condition_lowering",
+    "needs_target_scope",
+    "needs_invalid_target_scope",
+    "needs_target_surface",
+    "needs_mechanic_lowering",
+    "semantic_surface_not_expressible",
+)
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
+    "none": "closed",
+    "needs_guide_claim": "source_claim_gap",
+    "needs_runtime_surface": "runtime_surface_gap",
+    "needs_mulligan_claim": "mulligan_claim_gap",
+    "needs_combo_sequence": "combo_sequence_gap",
+    "needs_condition_lowering": "condition_lowering_gap",
+    "needs_target_scope": "target_scope_gap",
+    "needs_invalid_target_scope": "invalid_target_scope_gap",
+    "needs_target_surface": "target_surface_gap",
+    "needs_mechanic_lowering": "mechanic_lowering_gap",
+    "semantic_surface_not_expressible": "semantic_surface_not_expressible",
+}
+REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS = {
+    "semantic_surface_not_expressible": "semantic_surface_not_expressible",
+    "reciprocal_burn_report_only": "semantic_surface_not_expressible",
+}
+SEMANTIC_SUPPRESSION_MISSING_LINKS = {
+    "unsupported_condition": "needs_condition_lowering",
+    "variable_cost_condition_not_encoded": "needs_condition_lowering",
+    "symmetric_board_condition_not_encoded": "needs_condition_lowering",
+    "shatter_state_not_encoded": "needs_condition_lowering",
+    "combo_target_condition_not_encoded": "needs_condition_lowering",
+    "combo_count_condition_not_encoded": "needs_condition_lowering",
+    "combo_condition_not_encoded": "needs_condition_lowering",
+    "hand_position_condition_not_encoded": "needs_condition_lowering",
+    "symmetric_summon_condition_not_encoded": "needs_condition_lowering",
+    "health_cost_condition_not_encoded": "needs_condition_lowering",
+    "imbue_condition_not_encoded": "needs_condition_lowering",
+    "outcast_condition_not_encoded": "needs_condition_lowering",
+    "discover_condition_not_encoded": "needs_condition_lowering",
+    "dredge_condition_not_encoded": "needs_condition_lowering",
+    "choose_one_condition_not_encoded": "needs_condition_lowering",
+    "discard_trigger_not_manual_play": "needs_condition_lowering",
+    "missing_target_scope": "needs_target_scope",
+    "no_target_scope": "needs_target_scope",
+    "buff_target_owner_mismatch": "needs_target_scope",
+    "invalid_target_scope": "needs_invalid_target_scope",
+    "target_scope_not_encoded": "needs_target_surface",
+    "linked_runtime_entity_unresolved": "needs_runtime_surface",
+    "spell_cannot_use_battlecry_target": "semantic_surface_not_expressible",
+    "spell_cannot_own_on_board": "semantic_surface_not_expressible",
+    "attack_owner_not_proven": "semantic_surface_not_expressible",
+    "trigger_owner_does_not_attack": "semantic_surface_not_expressible",
+    "battlecry_owner_does_not_attack": "semantic_surface_not_expressible",
+    **REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS,
+}
+GUIDE_BACKED_COVERAGE_STATUSES = {
+    "guide_backed",
+    "source_backed",
+    "source_backed_static_semantics",
+}
+MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = {
+    "mulligan_requires_public_guide_source",
+    "mulligan_requires_exact_deck_match",
+    "mulligan_requires_target_deck_fingerprint",
+    "mulligan_requires_verified_exact_deck_evidence",
+    "mulligan_exact_deck_fingerprint_mismatch",
+    "mulligan_requires_complete_exact_deck_evidence",
+    "mulligan_requires_verified_source_receipt",
+    "mulligan_requires_promotion_eligible_source",
+    "mulligan_requires_full_text_source",
+    "mulligan_requires_deck_matched_public_guide_lane",
+}
+GLOBALVALUES_SUFFICIENT_ROLES = {"hero_power_transform"}
+READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = {"role", "support_bucket"}
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = deep_freeze_definition(
+    SOURCE_DEPTH_LANE_BY_MISSING_LINK
+)
+REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS = deep_freeze_definition(
+    REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS
+)
+SEMANTIC_SUPPRESSION_MISSING_LINKS = deep_freeze_definition(
+    SEMANTIC_SUPPRESSION_MISSING_LINKS
+)
+GUIDE_BACKED_COVERAGE_STATUSES = deep_freeze_definition(
+    GUIDE_BACKED_COVERAGE_STATUSES
+)
+MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = deep_freeze_definition(
+    MULLIGAN_AUTHORITY_SUPPRESSION_REASONS
+)
+GLOBALVALUES_SUFFICIENT_ROLES = deep_freeze_definition(
+    GLOBALVALUES_SUFFICIENT_ROLES
+)
+READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = deep_freeze_definition(
+    READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS
+)
+
+
+def build_config_readiness_report(
+    *,
+    deck_identity: dict[str, Any],
+    claim_coverage: dict[str, Any],
+    gameplan_contract: dict[str, Any],
+    mulligan_plan: dict[str, Any],
+    card_behavior_plan: dict[str, Any],
+    combo_plan: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ) = None,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    accepted_behavior_rows, owner_collisions = (
+        partition_runtime_entity_owner_rows(
+            row
+            for row in card_behavior_plan.get("rows", [])
+            if isinstance(row, Mapping)
+        )
+    )
+    card_behavior_plan = {
+        **card_behavior_plan,
+        "rows": accepted_behavior_rows,
+    }
+    cards = _cards_from_deck(deck_identity, gameplan_contract)
+    uncovered = {str(card) for card in claim_coverage.get("uncovered_cards", [])}
+    all_cardid_cards = _cards_from_any_card_behavior(card_behavior_plan)
+    concrete_cardid_cards = _cards_from_card_behavior(card_behavior_plan)
+    emitted_cardid_file_map, meaningful_emitted_cardids = _emitted_cardid_file_map(
+        emitted_cardid_files,
+        fallback_cardids=all_cardid_cards,
+    )
+    emitted_cardid_cards = meaningful_emitted_cardids
+    linked_runtime_entities = _linked_runtime_entity_readiness(
+        card_behavior_plan,
+        emitted_cardid_files=emitted_cardid_files,
+        emitted_cardid_file_map=emitted_cardid_file_map,
+        meaningful_emitted_cardids=meaningful_emitted_cardids,
+    )
+    linked_runtime_sources = {
+        str(row["source_card_id"]): str(row["runtime_surface"])
+        for row in linked_runtime_entities.values()
+    }
+    ledger_cards = (
+        runtime_surface_ledger.get("cards", {})
+        if isinstance(runtime_surface_ledger, Mapping)
+        and isinstance(runtime_surface_ledger.get("cards"), Mapping)
+        else {}
+    )
+    ledger_links = (
+        runtime_surface_ledger.get("linked_runtime_entities", {})
+        if isinstance(runtime_surface_ledger, Mapping)
+        and isinstance(runtime_surface_ledger.get("linked_runtime_entities"), Mapping)
+        else {}
+    )
+    ledger_authoritative = isinstance(runtime_surface_ledger, Mapping)
+    semantic_suppression_missing_links = _cards_from_semantic_suppression(
+        card_behavior_plan
+    )
+    mulligan_cards = _cards_from_mulligan(mulligan_plan)
+    suppressed_mulligan_cards = _cards_from_suppressed_mulligan(
+        mulligan_plan,
+        reasons={"claim_not_runtime_lowerable"},
+    )
+    mulligan_authority_gap_cards = _cards_from_suppressed_mulligan(
+        mulligan_plan,
+        reasons=MULLIGAN_AUTHORITY_SUPPRESSION_REASONS,
+    )
+    combo_cards = _cards_from_combos(combo_plan)
+    globalvalue_cards = _cards_from_globalvalues(
+        gameplan_contract,
+        global_values_authority_matrix,
+    )
+
+    rows: dict[str, dict[str, Any]] = {}
+    lane_counter: Counter[str] = Counter()
+    missing_counter: Counter[str] = Counter()
+    counted_rows: list[dict[str, Any]] = []
+
+    for card_id, card in sorted(cards.items()):
+        mechanic_support = _readiness_mechanic_support(card.get("roles", []))
+        runtime_eligible = card.get("runtime_eligible", True) is True
+        if runtime_eligible:
+            runtime_surfaces = _runtime_surfaces(
+                card_id=card_id,
+                emitted_cardid_file_map=emitted_cardid_file_map,
+                linked_runtime_sources=linked_runtime_sources,
+                mulligan_cards=mulligan_cards,
+                combo_cards=combo_cards,
+                globalvalue_cards=globalvalue_cards,
+            )
+            lane, missing = _lane_and_missing_link(
+                card_id=card_id,
+                card=card,
+                uncovered=uncovered,
+                concrete_cardid_cards=concrete_cardid_cards,
+                emitted_cardid_cards=emitted_cardid_cards,
+                semantic_suppression_missing_links=semantic_suppression_missing_links,
+                mulligan_cards=mulligan_cards,
+                suppressed_mulligan_cards=suppressed_mulligan_cards,
+                mulligan_authority_gap_cards=mulligan_authority_gap_cards,
+                combo_cards=combo_cards,
+                globalvalue_cards=globalvalue_cards,
+                linked_runtime_source_cards=set(linked_runtime_sources),
+            )
+            ledger_record = ledger_cards.get(card_id)
+            if ledger_authoritative:
+                runtime_surfaces = [
+                    str(surface)
+                    for surface in (
+                        ledger_record.get("runtime_surfaces", [])
+                        if isinstance(ledger_record, Mapping)
+                        else []
+                    )
+                ]
+                lane, missing = _physical_lane(
+                    card_id=card_id,
+                    runtime_surfaces=runtime_surfaces,
+                    linked_runtime_entities=ledger_links,
+                    semantic_suppression=semantic_suppression_missing_links.get(
+                        card_id
+                    ),
+                )
+        else:
+            runtime_surfaces = []
+            lane, missing = "report_only_supported", "none"
+
+        row = {
+            "card_id": card_id,
+            "name": str(card.get("name", card_id)),
+            "count": int(card.get("count", 1)),
+            "coverage_status": str(card.get("coverage_status", card.get("confidence", ""))),
+            "roles": [str(role) for role in card.get("roles", [])],
+            "source_claim_ids": [str(item) for item in card.get("source_claim_ids", [])],
+            "mechanic_support": mechanic_support,
+            "deck_zone": str(card.get("deck_zone", "main")),
+            "sideboard_owner_card_id": card.get("sideboard_owner_card_id"),
+            "sideboard_owner_card_ids": [
+                str(owner) for owner in card.get("sideboard_owner_card_ids", [])
+            ],
+            "sideboard_memberships": [
+                dict(membership)
+                for membership in card.get("sideboard_memberships", [])
+                if isinstance(membership, Mapping)
+            ],
+            "runtime_eligible": runtime_eligible,
+            "runtime_surfaces": runtime_surfaces,
+            "readiness_lane": lane,
+            "first_missing_link": missing,
+            "source_depth_lane": _source_depth_lane(missing),
+        }
+        rows[card_id] = row
+        if runtime_eligible:
+            counted_rows.append(row)
+            lane_counter[lane] += 1
+            if missing != "none":
+                missing_counter[missing] += 1
+
+    deck_name = str(deck_identity.get("deck_name", gameplan_contract.get("deck_name", "Deck")))
+    deck_slug = str(
+        deck_identity.get(
+            "deck_slug",
+            gameplan_contract.get("deck_slug", slugify_deck_name(deck_name)),
+        )
+    )
+    return {
+        "deck_name": deck_name,
+        "deck_slug": deck_slug,
+        "summary": {
+            **_summary(
+                total_cards=len(counted_rows),
+                lane_counter=lane_counter,
+                missing_counter=missing_counter,
+                rows=counted_rows,
+            ),
+            "analysis_only_sideboard_cards": len(rows) - len(counted_rows),
+            "linked_runtime_entity": sum(
+                1
+                for row in linked_runtime_entities.values()
+                if row["runtime_emitted"]
+            ),
+        },
+        "cards": rows,
+        "linked_runtime_entities": linked_runtime_entities,
+        "runtime_entity_owner_collisions": owner_collisions,
+        "surface_ledger_sha256": (
+            str(runtime_surface_ledger.get("surface_ledger_sha256", ""))
+            if isinstance(runtime_surface_ledger, Mapping)
+            else ""
+        ),
+    }
+
+
+def project_config_readiness_from_dispositions(
+    report: Mapping[str, Any],
+    *,
+    dispositions: DispositionLedger,
+    dual_closure: DualClosureStatus,
+) -> dict[str, Any]:
+    """Project canonical card outcomes without adding an apply gate."""
+
+    disposition_by_card = {
+        row.composite_card_key.rsplit(":", 1)[-1]: row
+        for row in dispositions.cards
+    }
+    cards: dict[str, dict[str, Any]] = {}
+    for card_id, raw_row in report.get("cards", {}).items():
+        if not isinstance(raw_row, Mapping):
+            continue
+        row = disposition_by_card.get(str(card_id))
+        cards[str(card_id)] = {
+            **dict(raw_row),
+            **(
+                {
+                    "final_disposition": row.disposition.value,
+                    "disposition_reason_code": row.reason_code,
+                    "disposition_runtime_paths": list(row.runtime_paths),
+                    "composite_card_key": row.composite_card_key,
+                }
+                if row is not None
+                else {}
+            ),
+        }
+    projection = disposition_projection(
+        dispositions=dispositions,
+        dual_closure=dual_closure,
+    )
+    return {
+        **dict(report),
+        "summary": {
+            **dict(report.get("summary", {})),
+            "final_card_disposition_counts": projection[
+                "card_disposition_counts"
+            ],
+            "pre_run_contract_status": projection[
+                "pre_run_contract_status"
+            ],
+            "strategy_authority_status": projection[
+                "strategy_authority_status"
+            ],
+        },
+        "cards": cards,
+        "disposition_projection": projection,
+    }
+
+
+def _physical_lane(
+    *,
+    card_id: str,
+    runtime_surfaces: list[str],
+    linked_runtime_entities: Mapping[str, Any],
+    semantic_suppression: tuple[str, str] | None,
+) -> tuple[str, str]:
+    # A ledger is the authority for what was emitted.  Plan rows describe
+    # intent only and cannot promote an empty physical surface to a runtime
+    # lane.  A real mulligan keep is intentionally sufficient even if a
+    # separate CardID lowering was suppressed.
+    if MULLIGAN_RUNTIME_FILE in runtime_surfaces:
+        return "mulligan_only", "none"
+    # A physical CardID file does not erase a known semantic suppression for
+    # that CardID lowering.  This keeps the suppression visible while never
+    # borrowing a plan-derived runtime-emitted status.
+    if semantic_suppression is not None:
+        return "report_only_supported", semantic_suppression[0]
+    if any(surface.endswith(".json") and surface not in {
+        MULLIGAN_RUNTIME_FILE,
+        COMBO_RUNTIME_FILE,
+        GLOBALVALUES_RUNTIME_FILE,
+    } for surface in runtime_surfaces):
+        return "runtime_emitted", "none"
+    if any(
+        isinstance(row, Mapping)
+        and str(row.get("source_card_id", "")) == card_id
+        and row.get("runtime_emitted") is True
+        for row in linked_runtime_entities.values()
+    ):
+        return "linked_runtime_source", "none"
+    if COMBO_RUNTIME_FILE in runtime_surfaces:
+        return "runtime_emitted", "none"
+    return "report_only_supported", "needs_runtime_surface"
+
+
+def _cards_from_deck(
+    deck_identity: dict[str, Any],
+    gameplan_contract: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    cards: dict[str, dict[str, Any]] = {}
+    for card in analysis_cards_from_deck_identity(deck_identity):
+        if not isinstance(card, dict) or not card.get("card_id"):
+            continue
+        card_id = str(card["card_id"])
+        cards[card_id] = {"card_id": card_id, **dict(card)}
+
+    contract_cards = gameplan_contract.get("cards", {})
+    if isinstance(contract_cards, dict):
+        for card_id, card in contract_cards.items():
+            if not isinstance(card, dict):
+                continue
+            normalized_id = str(card.get("card_id", card_id))
+            cards[normalized_id] = {**cards.get(normalized_id, {}), **dict(card)}
+            cards[normalized_id]["card_id"] = normalized_id
+
+    return cards
+
+
+def _readiness_mechanic_support(roles: Iterable[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in support_for_roles(roles):
+        rows.append(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS
+            }
+        )
+    return rows
+
+
+def _cards_from_any_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
+    return {
+        str(row["card_id"])
+        for row in card_behavior_plan.get("rows", [])
+        if _is_cardid_runtime_row(row)
+    }
+
+
+def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
+    return {
+        str(row.get("source_card_id") or row["card_id"])
+        for row in card_behavior_plan.get("rows", [])
+        if _is_meaningful_cardid_runtime_row(row)
+        and str(row.get("runtime_card_id") or row["card_id"])
+        == str(row.get("source_card_id") or row["card_id"])
+    }
+
+
+def _is_meaningful_cardid_runtime_row(row: Any) -> bool:
+    return (
+        _is_cardid_runtime_row(row)
+        and row.get("meaningful_runtime_surface") is True
+        and bool(row.get("behavior_block"))
+    )
+
+
+def _emitted_cardid_file_map(
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ),
+    *,
+    fallback_cardids: set[str],
+) -> tuple[dict[str, str], set[str]]:
+    if emitted_cardid_files is None:
+        file_map = {card_id: f"{card_id}.json" for card_id in fallback_cardids}
+        return file_map, set()
+
+    file_map: dict[str, str] = {}
+    meaningful_cardids: set[str] = set()
+    payloads = emitted_cardid_files if isinstance(emitted_cardid_files, Mapping) else None
+    for emitted_file in emitted_cardid_files:
+        filename = str(emitted_file).replace("\\", "/").rsplit("/", 1)[-1]
+        if not filename.endswith(".json"):
+            continue
+        card_id = filename.removesuffix(".json")
+        if not card_id:
+            continue
+        file_map[card_id] = filename
+        if payloads is not None and _has_runtime_effect_rows(payloads[emitted_file]):
+            meaningful_cardids.add(card_id)
+    return file_map, meaningful_cardids
+
+
+def _has_runtime_effect_rows(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    for block, block_payload in payload.items():
+        if not is_supported_card_behavior_block(str(block)):
+            continue
+        if not isinstance(block_payload, Mapping):
+            continue
+        values = block_payload.get("values", [])
+        if isinstance(values, list) and values:
+            return True
+    return False
+
+
+def _linked_runtime_entity_readiness(
+    card_behavior_plan: dict[str, Any],
+    *,
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ),
+    emitted_cardid_file_map: dict[str, str],
+    meaningful_emitted_cardids: set[str],
+) -> dict[str, dict[str, Any]]:
+    payloads_by_card_id: dict[str, Any] = {}
+    if isinstance(emitted_cardid_files, Mapping):
+        for emitted_file, payload in emitted_cardid_files.items():
+            filename = str(emitted_file).replace("\\", "/").rsplit("/", 1)[-1]
+            if filename.endswith(".json"):
+                payloads_by_card_id[filename.removesuffix(".json")] = payload
+
+    rows: dict[str, dict[str, Any]] = {}
+    for row in card_behavior_plan.get("rows", []):
+        if not _is_meaningful_cardid_runtime_row(row):
+            continue
+        source_card_id = str(row.get("source_card_id") or row["card_id"])
+        runtime_card_id = str(row.get("runtime_card_id") or row["card_id"])
+        link_kind = str(row.get("link_kind") or "self")
+        if runtime_card_id == source_card_id or link_kind == "self":
+            continue
+
+        runtime_surface = emitted_cardid_file_map.get(
+            runtime_card_id,
+            f"{runtime_card_id}.json",
+        )
+        payload = payloads_by_card_id.get(runtime_card_id)
+        filename_game_card_id_match = (
+            runtime_surface == f"{runtime_card_id}.json"
+            and isinstance(payload, Mapping)
+            and str(payload.get("GameCardId", "")) == runtime_card_id
+        )
+        rows[runtime_card_id] = {
+            "readiness_category": "linked_runtime_entity",
+            "source_card_id": source_card_id,
+            "runtime_card_id": runtime_card_id,
+            "link_kind": link_kind,
+            "runtime_surface": runtime_surface,
+            "runtime_emitted": (
+                runtime_card_id in meaningful_emitted_cardids
+                and filename_game_card_id_match
+            ),
+            "filename_game_card_id_match": filename_game_card_id_match,
+        }
+    return dict(sorted(rows.items()))
+
+
+def _is_cardid_runtime_row(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and bool(row.get("card_id"))
+        and (
+            row.get("surface_family") == CARDID_SURFACE_FAMILY
+            or row.get("surface") in CARDID_SURFACE_ALIASES
+        )
+    )
+
+
+def _cards_from_semantic_suppression(
+    card_behavior_plan: dict[str, Any],
+) -> dict[str, tuple[str, str]]:
+    missing_links: dict[str, tuple[str, str]] = {}
+    for row in card_behavior_plan.get("suppressed", []):
+        if not isinstance(row, dict):
+            continue
+        reason = str(row.get("reason", ""))
+        missing_link = SEMANTIC_SUPPRESSION_MISSING_LINKS.get(reason)
+        if missing_link is None:
+            continue
+        cards: set[str] = set()
+        for key in ("card_id", "card"):
+            if row.get(key):
+                cards.add(str(row[key]))
+        suppressed_cards = row.get("cards", [])
+        if isinstance(suppressed_cards, str):
+            suppressed_cards = [suppressed_cards]
+        cards.update(str(card) for card in suppressed_cards if str(card))
+        for card_id in cards:
+            existing = missing_links.get(card_id)
+            if existing is None or (
+                existing[1] == "unsupported_condition"
+                and reason != "unsupported_condition"
+            ):
+                missing_links[card_id] = (missing_link, reason)
+    return missing_links
+
+
+def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
+    cards: set[str] = set()
+    for row in mulligan_plan.get("rules", []):
+        if not isinstance(row, dict):
+            continue
+        selector_cards = _normalize_card_list(row.get("selector_cards", row.get("cards", [])))
+        if selector_cards:
+            cards.update(card for card in selector_cards if card != "*")
+            continue
+        if row.get("card") and str(row["card"]) != "*":
+            cards.add(str(row["card"]))
+    return cards
+
+
+def _cards_from_suppressed_mulligan(
+    mulligan_plan: dict[str, Any],
+    *,
+    reasons: set[str],
+) -> set[str]:
+    cards: set[str] = set()
+    for row in mulligan_plan.get("suppressed_rules", []):
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("reason", "")) not in reasons:
+            continue
+        selector_cards = _normalize_card_list(row.get("selector_cards", row.get("cards", [])))
+        if selector_cards:
+            cards.update(card for card in selector_cards if card != "*")
+            continue
+        if row.get("card") and str(row["card"]) != "*":
+            cards.add(str(row["card"]))
+    return cards
+
+
+def _normalize_card_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    return [str(card) for card in value if str(card)]
+
+
+def _cards_from_combos(combo_plan: dict[str, Any]) -> set[str]:
+    cards: set[str] = set()
+    for combo in combo_plan.get("combos", []):
+        if not isinstance(combo, dict):
+            continue
+        combo_cards = combo.get("cards", [])
+        if isinstance(combo_cards, str):
+            combo_cards = [combo_cards]
+        cards.update(str(card) for card in combo_cards if str(card))
+    return cards
+
+
+def _cards_from_globalvalues(
+    gameplan_contract: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+) -> set[str]:
+    allowed_overlays = [
+        row
+        for row in global_values_authority_matrix.get("allowed_step1_overlays", [])
+        if isinstance(row, dict) and row.get("key") != "baseline"
+    ]
+    if not allowed_overlays:
+        return set()
+
+    cards: set[str] = set()
+    for effect in gameplan_contract.get("deckwide_effects", []):
+        if isinstance(effect, dict) and effect.get("source_card_id"):
+            cards.add(str(effect["source_card_id"]))
+    for expectation in gameplan_contract.get("hero_power_expectations", []):
+        if isinstance(expectation, dict) and expectation.get("source_card_id"):
+            cards.add(str(expectation["source_card_id"]))
+    return cards
+
+
+def _runtime_surfaces(
+    *,
+    card_id: str,
+    emitted_cardid_file_map: dict[str, str],
+    linked_runtime_sources: Mapping[str, str],
+    mulligan_cards: set[str],
+    combo_cards: set[str],
+    globalvalue_cards: set[str],
+) -> list[str]:
+    surfaces = []
+    if card_id in emitted_cardid_file_map:
+        surfaces.append(emitted_cardid_file_map[card_id])
+    if card_id in linked_runtime_sources:
+        surfaces.append(linked_runtime_sources[card_id])
+    if card_id in mulligan_cards:
+        surfaces.append(MULLIGAN_RUNTIME_FILE)
+    if card_id in combo_cards:
+        surfaces.append(COMBO_RUNTIME_FILE)
+    if card_id in globalvalue_cards:
+        surfaces.append(GLOBALVALUES_RUNTIME_FILE)
+    return surfaces
+
+
+def _lane_and_missing_link(
+    *,
+    card_id: str,
+    card: dict[str, Any],
+    uncovered: set[str],
+    concrete_cardid_cards: set[str],
+    emitted_cardid_cards: set[str],
+    semantic_suppression_missing_links: dict[str, tuple[str, str]],
+    mulligan_cards: set[str],
+    suppressed_mulligan_cards: set[str],
+    mulligan_authority_gap_cards: set[str],
+    combo_cards: set[str],
+    globalvalue_cards: set[str],
+    linked_runtime_source_cards: set[str],
+) -> tuple[str, str]:
+    coverage = str(card.get("coverage_status", card.get("confidence", ""))).lower()
+    roles = {str(role).lower() for role in card.get("roles", [])}
+    is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
+
+    has_generic_coverage_gap = (
+        card_id in uncovered or coverage == "generic_low_confidence"
+    )
+    semantic_suppression = semantic_suppression_missing_links.get(card_id)
+    if semantic_suppression is not None and semantic_suppression[1] != "unsupported_condition":
+        return "report_only_supported", semantic_suppression[0]
+    if card_id in mulligan_authority_gap_cards and has_generic_coverage_gap:
+        return "report_only_supported", "needs_mulligan_claim"
+    if has_generic_coverage_gap:
+        return "generic_low_confidence", "needs_guide_claim"
+    if coverage == "archetype_inferred":
+        return "archetype_inferred", "needs_guide_claim"
+    if is_guide_backed and card_id in suppressed_mulligan_cards:
+        return "report_only_supported", "needs_mulligan_claim"
+    if card_id in concrete_cardid_cards and card_id not in emitted_cardid_cards:
+        return "report_only_supported", "needs_runtime_surface"
+    if card_id in emitted_cardid_cards or card_id in combo_cards:
+        return "runtime_emitted", "none"
+    if card_id in linked_runtime_source_cards:
+        return "linked_runtime_source", "none"
+    if semantic_suppression is not None:
+        return "report_only_supported", semantic_suppression[0]
+    if card_id in mulligan_cards:
+        if is_guide_backed and _has_source_claim_ids(card):
+            return "mulligan_only", "none"
+        return "mulligan_only", "needs_runtime_surface"
+    if card_id in globalvalue_cards:
+        if is_guide_backed and roles and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
+            return "globalvalues_only", "none"
+        return "globalvalues_only", "needs_runtime_surface"
+    if is_guide_backed and "mulligan_anchor" in roles:
+        return "report_only_supported", "needs_mulligan_claim"
+    if is_guide_backed and "combo_piece" in roles:
+        return "report_only_supported", "needs_combo_sequence"
+    if _roles_need_mechanic_lowering(roles):
+        return "report_only_supported", "needs_mechanic_lowering"
+    if card_id in emitted_cardid_cards:
+        return "report_only_supported", "none"
+    return "report_only_supported", "needs_runtime_surface"
+
+
+def _roles_need_mechanic_lowering(roles: set[str]) -> bool:
+    for support in support_for_roles(roles):
+        lowering = support.get("lowering", {})
+        if not isinstance(lowering, dict):
+            continue
+        if lowering.get("policy") == "report_only":
+            continue
+        if lowering.get("default_block") is not None:
+            return True
+    return False
+
+
+def _has_source_claim_ids(card: Mapping[str, Any]) -> bool:
+    value = card.get("source_claim_ids", [])
+    if isinstance(value, str):
+        return bool(value.strip())
+    return isinstance(value, list) and any(str(item).strip() for item in value)
+
+
+def _source_depth_lane(first_missing_link: str) -> str:
+    return SOURCE_DEPTH_LANE_BY_MISSING_LINK.get(first_missing_link, "inspect_card_gap")
+
+
+def _summary(
+    *,
+    total_cards: int,
+    lane_counter: Counter[str],
+    missing_counter: Counter[str],
+    rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "total_cards": total_cards,
+        **{lane: lane_counter[lane] for lane in LANES},
+        "cards_needing_guide_claims": missing_counter["needs_guide_claim"],
+        "cards_needing_runtime_surface": missing_counter["needs_runtime_surface"],
+        "cards_needing_mulligan_claims": missing_counter["needs_mulligan_claim"],
+        "cards_needing_combo_sequence": missing_counter["needs_combo_sequence"],
+        "cards_needing_condition_lowering": missing_counter["needs_condition_lowering"],
+        "cards_needing_target_scope": missing_counter["needs_target_scope"],
+        "cards_needing_invalid_target_scope": missing_counter[
+            "needs_invalid_target_scope"
+        ],
+        "cards_needing_target_surface": missing_counter["needs_target_surface"],
+        "cards_needing_mechanic_lowering": missing_counter["needs_mechanic_lowering"],
+        "mechanic_support": summarize_mechanic_support(rows),
+        "mechanic_visibility": summarize_mechanic_visibility(rows),
+    }

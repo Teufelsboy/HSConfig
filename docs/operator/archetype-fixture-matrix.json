@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "purpose": "Representative HSConfig source-backed archetype fixture matrix for diagnostic load-safe pre-game CustomConfig coverage; current package apply authority remains with reports/operator_summary.json.",
+  "identity_catalog": "audited-deck-catalog.json",
+  "decks": [
+    {
+      "deck_name": "ShadowPriest",
+      "archetype_bucket": "aggro_burn_hero_power_transform",
+      "primary_mechanics": ["aggro", "burn", "shadow_hero_power"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "aggro_burn_hero_power",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard"], ["targeting_rule", "hero_power_transform", "card_role"]],
+      "closure_profile_first_missing_link": "none",
+      "expected_semantic_status": "SOURCE_BACKED_STRONG",
+      "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
+      "decision_families_proven": ["aggro_burn_targeting", "hero_power_transform"],
+      "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_discover_chains"]
+    },
+    {
+      "deck_name": "CtAPaladin",
+      "archetype_bucket": "recruit_board_flood",
+      "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "board_flood_recruit",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:mulligan_keep|mulligan_discard|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/"
+      ],
+      "reason": "Archetype-level Boogie Down and CtA Paladin discussion supports board-flood identity and a candidate keep, but not exact-list strong runtime evidence.",
+      "first_missing_source_action": "add_current_cta_paladin_mulligan_keep_source",
+      "why_not_strong": "Archetype discussion is useful, but exact current-list mulligan and runtime guidance are not public-guide-backed.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_explicit_mulligan_source",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 3,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
+      },
+      "decision_families_proven": ["recruit_board_flood", "aura_pressure"],
+      "known_coverage_limits": ["does_not_cover_reactive_control"]
+    },
+    {
+      "deck_name": "PirateRogue",
+      "archetype_bucket": "pirate_tempo_weapon_pressure",
+      "primary_mechanics": ["pirate", "tempo", "weapon_pressure"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "weapon_pressure",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["targeting_rule", "mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "none",
+      "fixture_stage": "core_source_backed_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_STRONG",
+      "first_missing_source_action": "none",
+      "why_not_strong": "Conditional row: exact current guide/list evidence is strong, but archetype-only or decklist-only Pirate Rogue evidence must remain partial.",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
+      "decision_families_proven": ["pirate_tempo", "weapon_pressure"],
+      "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_exact_combo"]
+    },
+    {
+      "deck_name": "BigShaman",
+      "archetype_bucket": "big_recruit_deathrattle_cheat",
+      "primary_mechanics": ["big_minion", "recruit", "deathrattle", "cheat"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "cheat_recruit_big",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["mechanic_usage", "combo_sequence", "card_role"]],
+      "closure_profile_first_missing_link": "none",
+      "expected_semantic_status": "SOURCE_BACKED_STRONG",
+      "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
+      "decision_families_proven": ["big_minion_cheat", "recruit", "deathrattle"],
+      "known_coverage_limits": ["does_not_cover_discover_chains", "does_not_cover_reactive_control"]
+    },
+    {
+      "deck_name": "Discolock",
+      "archetype_bucket": "discard_hand_mutation",
+      "primary_mechanics": ["discard", "hand_mutation", "payoff_summon"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "discard_pressure",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["mechanic_usage", "known_bad_pattern", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:mulligan_keep|mulligan_discard|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+        "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide"
+      ],
+      "reason": "Public sources support Discolock discard identity and payoff cards, but exact current mulligan and discard sequencing are still partial.",
+      "first_missing_source_action": "add_current_discolock_mulligan_keep_source",
+      "why_not_strong": "Deck identity and discard package evidence are present, but exact current mulligan and discard sequencing are not fully public-guide-backed.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_explicit_mulligan_source",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence", "source_evidence_warnings"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 4,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
+      },
+      "decision_families_proven": ["discard_payoff", "hand_mutation"],
+      "known_coverage_limits": ["does_not_cover_exact_combo"]
+    },
+    {
+      "deck_name": "TreantDruid",
+      "archetype_bucket": "token_board_snowball",
+      "primary_mechanics": ["token_board", "treant", "board_buff"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "board_flood_recruit",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:mulligan_keep|mulligan_discard|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+      ],
+      "reason": "Public sources support Treant/token board identity, but exact representative-list mulligan and runtime card-role claims remain partial.",
+      "first_missing_source_action": "add_treant_card_role_or_mulligan_source",
+      "why_not_strong": "Token-board identity is sourced, but exact current mulligan and card-specific runtime claims remain partial.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_card_specific_source_claim",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "generic_low_confidence_not_strong_evidence", "policy_claim_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 5,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
+      },
+      "decision_families_proven": ["token_board", "board_buff"],
+      "known_coverage_limits": ["does_not_cover_single_target_removal"]
+    },
+    {
+      "deck_name": "ImbueMage",
+      "archetype_bucket": "hero_power_spell_generation",
+      "primary_mechanics": ["hero_power", "imbue", "spell_generation"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "hero_power_imbue",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["hero_power_transform", "mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "none",
+      "expected_semantic_status": "SOURCE_BACKED_STRONG",
+      "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
+      "decision_families_proven": ["hero_power", "spell_generation"],
+      "known_coverage_limits": ["does_not_cover_discover_chains"]
+    },
+    {
+      "deck_name": "MechPala",
+      "archetype_bucket": "mech_board_scaling",
+      "primary_mechanics": ["mech", "magnetic", "board_scaling"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "board_flood_recruit",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "none",
+      "expected_semantic_status": "SOURCE_BACKED_STRONG",
+      "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
+      "decision_families_proven": ["mech_board_scaling", "magnetic"],
+      "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_exact_combo"]
+    },
+    {
+      "deck_name": "Kingslayer",
+      "archetype_bucket": "weapon_sequence_pressure",
+      "primary_mechanics": ["weapon", "pirate", "attack_sequence"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "weapon_pressure",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["targeting_rule", "mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:mulligan_keep|mulligan_discard|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+        "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+        "https://www.hsguru.com/deck/36087994"
+      ],
+      "reason": "Weapon-pressure sources support the archetype, but exact Quick Pick mulligan evidence remains unavailable.",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "first_missing_source_action": "add_quick_pick_mulligan_keep_or_discard_source",
+      "why_not_strong": "Weapon-pressure sources support the archetype, but exact current-list Quick Pick mulligan evidence remains unavailable.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 2,
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "stop_condition": "exact_kingslayer_quick_pick_mulligan_source_unavailable"
+      },
+      "decision_families_proven": ["weapon_sequence", "attack_pressure"],
+      "known_coverage_limits": ["first_missing_chain:DEEP_014:Quick Pick:needs_mulligan_claim", "does_not_cover_reactive_control"]
+    },
+    {
+      "deck_name": "Boarlock",
+      "archetype_bucket": "combo_control_resource",
+      "primary_mechanics": ["combo", "control", "resource_setup"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json", "Combo.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "combo_setup",
+      "closure_profile_required_claims": [["gameplan_posture"], ["combo_sequence", "card_role"], ["mulligan_keep", "mulligan_discard", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:combo_sequence|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "https://www.hsguru.com/deck/34322767"
+      ],
+      "reason": "Combo identity and static combo sequencing are documented, but the Fracking mulligan row is generic low-confidence card-draw advice.",
+      "first_missing_source_action": "add_fracking_mulligan_keep_or_discard_source",
+      "why_not_strong": "Combo identity and static sequencing are documented, but the Fracking mulligan row remains generic low-confidence evidence.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_mulligan_claim_for_fracking",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 1,
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable"
+      },
+      "decision_families_proven": ["combo_control", "resource_setup"],
+      "known_coverage_limits": ["first_missing_chain:WW_092:Fracking:needs_mulligan_claim", "single_combo_fixture_only"]
+    },
+    {
+      "deck_name": "PirateDH",
+      "archetype_bucket": "pirate_hero_attack_pressure",
+      "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
+      "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "default_only_runtime_surfaces": [],
+      "closure_profile": "weapon_pressure",
+      "closure_profile_required_claims": [["gameplan_posture"], ["mulligan_keep", "mulligan_discard", "card_role"], ["targeting_rule", "mechanic_usage", "card_role"]],
+      "closure_profile_first_missing_link": "missing_claim_group:mulligan_keep|mulligan_discard|card_role",
+      "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+        "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+      ],
+      "reason": "Public sources support fast Pirate Demon Hunter identity but not exact mulligan or runtime sequencing.",
+      "first_missing_source_action": "add_pirate_dh_card_role_or_mulligan_source",
+      "why_not_strong": "Decklist and archetype identity are present, but exact current mulligan and runtime sequencing are not public-guide-backed.",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_card_specific_source_claim",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "generic_low_confidence_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 6,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
+      },
+      "decision_families_proven": ["pirate_tempo", "hero_attack"],
+      "known_coverage_limits": ["does_not_cover_reactive_control"]
+    }
+  ]
+}

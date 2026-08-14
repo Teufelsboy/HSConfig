@@ -1,0 +1,205 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+      "source_title": "Two Tier Lists - High Legend and The Climb : r/wildhearthstone",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "deck_match_scope": "archetype_matched_not_exact_list",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "aggro_board_flood",
+          "evidence_text_short": "Boogie Down Paladin is the second best aggro deck in the format.",
+          "source_confidence": "low",
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Archetype-level tier-list evidence supports board-flood identity only; it is not exact list-matched runtime evidence."
+        }
+      ]
+    },
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+      "source_title": "Any help with cta paladin mulligan : r/wildhearthstone",
+      "source_family": "mulligan_guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "deck_match_scope": "archetype_matched_not_exact_list",
+      "claims": [
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["ETC_318"],
+          "selector": "ETC_318",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "The more accurate title of the deck is Boogie Down Paladin (which tells you what card to actually mulligan for).",
+          "source_confidence": "low",
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "The source gives archetype-level Boogie Down advice, not exact-list CtA Paladin strong evidence."
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["LOOT_093"],
+          "stance": "recruit_board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "9",
+          "evidence_text_short": "Recruit 3 minions that cost (2) or less.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["LOOT_093"],
+          "mechanic": "recruit",
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "9",
+          "evidence_text_short": "Recruit 3 minions that cost (2) or less.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["LEG_TTN_908"],
+          "stance": "aura_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Whenever a friendly minion attacks, give it +2/+1. Lasts 3 turns.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["ETC_318"],
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Summon two 1-Cost minions from your deck. Finale: Summon another.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CORE_ICC_038"],
+          "stance": "aura_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Sticky Divine Shield taunt helps the recruit board hold buffs and aura pressure.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["AV_137"],
+          "stance": "early_board_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "After your opponent casts a spell, summon another Irondeep Trogg.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CATA_479"],
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Shatter. Summon two 4/2 Drakes. Give your minions +1 Attack and Divine Shield.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["RLK_924"],
+          "stance": "aura_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "After you summon a minion with less Attack than this, give it Divine Shield and Rush.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_336"],
+          "stance": "enemy_board_reset",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Deal 3 damage to all enemies. Costs (1) less for each enemy minion.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_391"],
+          "stance": "board_refill",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "6",
+          "evidence_text_short": "At the end of your turn, draw a card.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_051"],
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Both players summon three 3/3 Outlaws. Give yours Rush.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["YOP_031"],
+          "stance": "wide_board_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Rush and Windfury make Crabrider a premium aura and buff payoff on a wide board.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        }
+      ]
+    }
+  ]
+}

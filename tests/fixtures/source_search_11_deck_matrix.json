@@ -1,0 +1,566 @@
+{
+  "schema_version": 1,
+  "records_by_deck": {
+    "ShadowPriest": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+        "source_title": "ShadowPriest Current Wild Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2026-07-01T00:00:00Z",
+        "publication_year": 2026,
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "ShadowPriest current wild guide with mulligan and runtime card priorities.",
+        "deck_match": {
+          "deck_name": "ShadowPriest",
+          "archetype": "aggro_burn_hero_power_transform",
+          "matched_card_ids": ["SW_448", "TOY_381", "SCH_514"]
+        },
+        "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "aggro_burn_hero_power_transform",
+            "evidence_text_short": "Current guide presents ShadowPriest as an aggressive burn deck around the Shadow hero power plan.",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "hero_power_transform",
+            "cards": ["SW_448"],
+            "timing": "start_of_game",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "mulligan_keep",
+            "cards": ["TOY_381"],
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_381"],
+            "source_confidence": "high",
+            "runtime_block": "BeforeUseHeroPowerBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["SCH_514"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          }
+        ]
+      }
+    ],
+    "CtAPaladin": [
+      {
+        "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+        "source_title": "CtAPaladin Decklist Discussion",
+        "source_family": "decklist",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "source_visibility": "decklist_only",
+        "source_record_strength": "partial",
+        "deck_match_scope": "archetype_matched_not_exact_list",
+        "normalized_text": "CtAPaladin decklist identity without exact current mulligan guidance.",
+        "deck_match": {
+          "deck_name": "CtAPaladin",
+          "archetype": "recruit_board_flood",
+          "matched_card_ids": ["AV_137"]
+        },
+        "claims": [
+          {
+            "claim_kind": "card_role",
+            "cards": ["AV_137"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ],
+    "PirateRogue": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1462111-wild-pirate-rogue-current-guide",
+        "source_title": "PirateRogue Current Wild Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2026-07-03T00:00:00Z",
+        "publication_year": 2026,
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "PirateRogue current wild guide with weapon pressure and exact card roles.",
+        "deck_match": {
+          "deck_name": "PirateRogue",
+          "archetype": "pirate_tempo_weapon_pressure",
+          "matched_card_ids": ["NX2_006", "CFM_637", "TSC_086", "CS2_073", "VAC_938"]
+        },
+        "mulligan": {
+          "keep_card_ids": ["TSC_086"],
+          "evidence_text_short": "Current Pirate Rogue guide keeps Tuskarrrr Trawler as the exact early pirate/weapon setup anchor."
+        },
+        "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "pirate_tempo_weapon_pressure",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "mulligan_keep",
+            "cards": ["TSC_086"],
+            "selector": "TSC_086",
+            "selector_kind": "card",
+            "stance": "keep",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "targeting_rule",
+            "cards": ["NX2_006"],
+            "stance": "prefer_enemy_hero",
+            "source_confidence": "high",
+            "runtime_block": "BeforePhysicalAttackBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TSC_086"],
+            "stance": "weapon_pressure",
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["CFM_637"],
+            "stance": "pirate_followup_summon",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["CORE_NEW1_027"],
+            "stance": "pirate_board_buff",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["CS2_073"],
+            "stance": "burst_attack_buff",
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "targeting_rule",
+            "cards": ["DMF_519"],
+            "stance": "prefer_enemy_minion",
+            "source_confidence": "high",
+            "runtime_block": "BeforeBattlecryTargetBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["DRG_056"],
+            "stance": "pirate_hand_summon",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_505"],
+            "stance": "pirate_draw_engine",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_518"],
+            "stance": "pirate_attack_buff",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TTN_922"],
+            "stance": "hand_refill",
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "7",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["VAC_938"],
+            "stance": "pirate_attack_scaling",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["GVG_075"],
+            "stance": "pirate_tempo_damage",
+            "source_confidence": "high",
+            "runtime_block": "OnBoardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          }
+        ]
+      }
+    ],
+    "BigShaman": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1462112-wild-big-shaman-current-guide",
+        "source_title": "BigShaman Current Wild Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2026-07-02T00:00:00Z",
+        "publication_year": 2026,
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "BigShaman current wild guide with recruit, big minion, and card behavior guidance.",
+        "deck_match": {
+          "deck_name": "BigShaman",
+          "archetype": "big_recruit_deathrattle_cheat",
+          "matched_card_ids": ["WW_382", "TOY_507", "TSC_637", "JAM_013", "CFM_696", "EDR_031", "GVG_029", "TOY_877", "WON_335"]
+        },
+        "mulligan": {
+          "keep_card_ids": ["TSC_637", "JAM_013"],
+          "evidence_text_short": "Current guide keeps the early pressure and setup cards for Big Shaman."
+        },
+        "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "big_recruit_deathrattle_cheat",
+            "evidence_text_short": "Current guide presents BigShaman as a big recruit and deathrattle cheat strategy.",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["WW_382"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "9",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["CFM_696"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "7",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["EDR_031"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "7",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["GVG_029"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_877"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["WON_335"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "7",
+            "condition": "*"
+          }
+        ]
+      }
+    ],
+    "Discolock": [
+      {
+        "source_url": "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+        "source_title": "Discolock Decklist Identity",
+        "source_family": "decklist",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "source_visibility": "decklist_only",
+        "source_record_strength": "partial",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "Discolock decklist identity and discard package without exact current runtime sequencing.",
+        "deck_match": {
+          "deck_name": "Discolock",
+          "archetype": "discard_hand_mutation",
+          "matched_card_ids": ["BT_300"]
+        },
+        "claims": [
+          {
+            "claim_kind": "card_role",
+            "cards": ["BT_300"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ],
+    "TreantDruid": [
+      {
+        "source_url": "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend",
+        "source_title": "TreantDruid Decklist Identity",
+        "source_family": "decklist",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "source_visibility": "decklist_only",
+        "source_record_strength": "partial",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "TreantDruid token board decklist identity without exact current mulligan guidance.",
+        "deck_match": {
+          "deck_name": "TreantDruid",
+          "archetype": "token_board_snowball",
+          "matched_card_ids": ["CFM_614"]
+        },
+        "claims": [
+          {
+            "claim_kind": "card_role",
+            "cards": ["CFM_614"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ],
+    "ImbueMage": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1462113-wild-imbue-mage-current-guide",
+        "source_title": "ImbueMage Current Wild Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2026-07-05T00:00:00Z",
+        "publication_year": 2026,
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "ImbueMage current wild guide with hero power and spell generation runtime priorities.",
+        "deck_match": {
+          "deck_name": "ImbueMage",
+          "archetype": "hero_power_spell_generation",
+          "matched_card_ids": ["EDR_852", "EDR_800", "EDR_804", "FIR_911", "ULD_726", "LOE_077", "TOY_528"]
+        },
+        "mulligan": {
+          "keep_card_ids": ["EDR_804", "FIR_911", "ULD_726"],
+          "evidence_text_short": "Current guide keeps the draw and setup cards for Imbue Mage."
+        },
+        "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "hero_power_spell_generation",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "mechanic_usage",
+            "cards": ["EDR_852"],
+            "mechanic": "spell_generation",
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "7",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["LOE_077"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_528"],
+            "source_confidence": "high",
+            "runtime_block": "BeforeUseHeroPowerBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          }
+        ]
+      }
+    ],
+    "MechPala": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1462114-wild-mech-paladin-current-guide",
+        "source_title": "MechPala Current Wild Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2026-07-04T00:00:00Z",
+        "publication_year": 2026,
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "MechPala current wild guide with mech board scaling and targeting rules.",
+        "deck_match": {
+          "deck_name": "MechPala",
+          "archetype": "mech_board_scaling",
+          "matched_card_ids": ["TSC_059", "BOT_020", "TOY_330", "LEG_TTN_908", "BOT_906"]
+        },
+        "mulligan": {
+          "keep_card_ids": ["TOY_330"],
+          "evidence_text_short": "Current guide keeps Zilliax Deluxe 3000 as the exact low-curve mech anchor."
+        },
+        "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "mech_board_scaling",
+            "evidence_text_short": "Current guide presents MechPala as a mech board-scaling strategy.",
+            "source_confidence": "high"
+          },
+          {
+            "claim_kind": "targeting_rule",
+            "cards": ["TSC_059"],
+            "stance": "prefer_friendly_mech",
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["TOY_330"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["LEG_TTN_908"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          },
+          {
+            "claim_kind": "card_role",
+            "cards": ["BOT_906"],
+            "source_confidence": "high",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*"
+          }
+        ]
+      }
+    ],
+    "Kingslayer": [
+      {
+        "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+        "source_title": "Kingslayer Archetype Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2025-12-12T00:00:00Z",
+        "publication_year": 2025,
+        "source_visibility": "full_text",
+        "source_record_strength": "partial",
+        "deck_match_scope": "archetype_matched_not_exact_list",
+        "normalized_text": "Kingslayer weapon-pressure archetype source without exact current Quick Pick mulligan evidence.",
+        "deck_match": {
+          "deck_name": "Kingslayer",
+          "archetype": "weapon_sequence_pressure",
+          "matched_card_ids": ["DEEP_014", "NX2_006"]
+        },
+        "claims": [
+          {
+            "claim_kind": "card_role",
+            "cards": ["DEEP_014"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ],
+    "Boarlock": [
+      {
+        "source_url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "source_title": "Boarlock Combo Source",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "published_at": "2025-11-20T00:00:00Z",
+        "publication_year": 2025,
+        "source_visibility": "full_text",
+        "source_record_strength": "partial",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "normalized_text": "Boarlock combo source documents the combo identity but not exact current Fracking mulligan guidance.",
+        "deck_match": {
+          "deck_name": "Boarlock",
+          "archetype": "combo_control_resource",
+          "matched_card_ids": ["WW_092", "SW_075"]
+        },
+        "claims": [
+          {
+            "claim_kind": "combo_sequence",
+            "cards": ["SW_075"],
+            "sequence": ["SW_075", "UNG_832", "DINO_402", "ULD_717"],
+            "timing_kind": "same_turn",
+            "operator": ">>",
+            "values": ["1", "1", "1", "1"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ],
+    "PirateDH": [
+      {
+        "source_url": "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+        "source_title": "PirateDH Decklist Identity",
+        "source_family": "decklist",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "source_visibility": "decklist_only",
+        "source_record_strength": "partial",
+        "deck_match_scope": "archetype_matched_not_exact_list",
+        "normalized_text": "PirateDH decklist identity without exact current mulligan or runtime sequencing.",
+        "deck_match": {
+          "deck_name": "PirateDH",
+          "archetype": "pirate_hero_attack_pressure",
+          "matched_card_ids": ["AV_661"]
+        },
+        "claims": [
+          {
+            "claim_kind": "card_role",
+            "cards": ["AV_661"],
+            "source_confidence": "medium",
+            "promotion_eligible": false
+          }
+        ]
+      }
+    ]
+  }
+}

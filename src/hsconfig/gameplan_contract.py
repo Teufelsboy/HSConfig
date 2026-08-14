@@ -1,0 +1,601 @@
+from __future__ import annotations
+
+from typing import Any
+
+from hsconfig.guide_research import normalize_source_claims
+from hsconfig.io import slugify_deck_name
+from hsconfig.role_tokens import (
+    has_explicit_opening_hand_mulligan_intent,
+    has_start_of_game_non_hand_effect,
+)
+from hsconfig.source_document_model import runtime_claim_kind
+
+
+NEGATIVE_KEEP_MARKERS = (
+    "never keep",
+    "do not keep",
+    "don't keep",
+    "dont keep",
+    "avoid keeping",
+    "avoid keep",
+)
+
+
+def build_gameplan_contract(
+    deck_identity: dict[str, Any] | None = None,
+    card_metadata: dict[str, Any] | list[dict[str, Any]] | None = None,
+    source_claims: dict[str, Any] | list[dict[str, Any]] | None = None,
+    *,
+    deck_name: str | None = None,
+    cards: list[dict[str, Any]] | None = None,
+    claims: dict[str, Any] | list[dict[str, Any]] | None = None,
+    research_bundle: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if deck_identity is None:
+        deck_identity = {"deck_name": deck_name or "Deck", "cards": cards or []}
+    if card_metadata is None:
+        card_metadata = {"cards": cards or deck_identity.get("cards", [])}
+    if source_claims is None:
+        source_claims = claims
+
+    deck_cards = _deck_cards(deck_identity)
+    metadata_by_card = _metadata_by_card(card_metadata)
+    normalized_claims = _coerce_source_claims(source_claims)
+    claim_rows = normalized_claims["claims"]
+    claims_by_card = _claims_by_card(claim_rows)
+    research_roles = _research_card_role_map(research_bundle)
+    research_mulligan = _research_map(research_bundle, "mulligan_anchor_map")
+    research_usage = _research_map(research_bundle, "card_usage_expectations")
+
+    card_map: dict[str, dict[str, Any]] = {}
+    role_rows: list[dict[str, Any]] = []
+    usage_expectations: dict[str, dict[str, Any]] = {}
+    mulligan_anchors: list[dict[str, Any]] = []
+    known_bad_patterns: list[dict[str, Any]] = []
+
+    for deck_card in deck_cards:
+        card_id = str(deck_card["card_id"])
+        metadata = metadata_by_card.get(card_id, {})
+        related_claims = claims_by_card.get(card_id, [])
+        research_card = research_roles.get(card_id, {})
+        mechanic_families = sorted(
+            {
+                str(item)
+                for item in metadata.get(
+                    "mechanic_families", deck_card.get("mechanic_families", [])
+                )
+            }
+        )
+        semantic_families = sorted(
+            {
+                *mechanic_families,
+                *[str(item) for item in metadata.get("semantic_families", [])],
+                *[str(item) for item in research_card.get("semantic_families", [])],
+            }
+        )
+        roles = sorted(
+            {
+                *_infer_roles(semantic_families, related_claims),
+                *[str(role) for role in research_card.get("roles", [])],
+            }
+        )
+        if not _roles_allow_mulligan_anchor(roles, related_claims):
+            roles = [role for role in roles if role != "mulligan_anchor"]
+        coverage_status = str(
+            research_card.get("confidence") or _coverage_status(related_claims, semantic_families)
+        )
+        source_claim_ids = _merge_source_claim_ids(
+            [str(claim["claim_id"]) for claim in related_claims],
+            research_card.get("source_claim_ids", []),
+        )
+        card_record = {
+            "card_id": card_id,
+            "name": metadata.get("name", deck_card.get("name", card_id)),
+            "count": int(deck_card.get("count", metadata.get("count", 1))),
+            "mechanic_families": mechanic_families,
+            "semantic_families": semantic_families,
+            "linked_entities": _research_or_metadata_linked_entities(research_card, metadata),
+            "roles": roles,
+            "coverage_status": coverage_status,
+            "confidence": coverage_status,
+            "source_claim_ids": source_claim_ids,
+        }
+        card_map[card_id] = card_record
+        role_rows.append(card_record)
+
+        research_expectation = research_usage.get(card_id, {})
+        expectation = {
+            "card_id": card_id,
+            "expected_use": research_expectation.get(
+                "expected_use", _infer_expected_use(roles, related_claims)
+            ),
+            "coverage_status": coverage_status,
+            "source_claim_ids": source_claim_ids,
+        }
+        usage_expectations[card_id] = expectation
+
+        research_mulligan_row = research_mulligan.get(card_id, {})
+        if research_mulligan_row.get("intent") == "hold" and _roles_allow_mulligan_anchor(
+            roles,
+            related_claims,
+        ):
+            mulligan_anchors.append(
+                {
+                    "card_id": card_id,
+                    "intent": "hold",
+                    "condition": research_mulligan_row.get("condition", "*"),
+                    "confidence": research_mulligan_row.get("confidence", coverage_status),
+                    "source_claim_ids": _merge_source_claim_ids(
+                        source_claim_ids, research_mulligan_row.get("source_claim_ids", [])
+                    ),
+                }
+            )
+        elif "mulligan_anchor" in roles and _roles_allow_mulligan_anchor(
+            roles,
+            related_claims,
+        ):
+            mulligan_anchors.append(
+                {
+                    "card_id": card_id,
+                    "intent": "hold",
+                    "condition": "*",
+                    "confidence": coverage_status,
+                    "source_claim_ids": source_claim_ids,
+                }
+            )
+
+        for claim in related_claims:
+            if _is_bad_pattern(claim):
+                known_bad_patterns.append(
+                    {
+                        "card_id": card_id,
+                        "claim_id": claim["claim_id"],
+                        "pattern": claim["claim"],
+                        "source_claim_ids": [claim["claim_id"]],
+                    }
+                )
+
+    combos, combo_suppression_report = _infer_combos(claim_rows, set(card_map))
+    policies = _infer_policies(claim_rows)
+    confidence_label = _confidence_label(card_map, claim_rows)
+    deckwide_effects = _deckwide_effects(card_map, metadata_by_card)
+    global_value_overlays, global_value_overlay_reasons = _global_value_overlay_profile_from_research(
+        research_bundle, card_map, deckwide_effects
+    )
+    guide_claim_bundle = research_bundle.get("guide_claim_bundle", {}) if isinstance(research_bundle, dict) else {}
+    source_backed_actions = [
+        claim
+        for claim in claim_rows
+        if str(claim.get("support_status", "")) in {"source_backed", "static_semantics"}
+    ]
+    static_semantic_actions = [
+        claim
+        for claim in claim_rows
+        if str(claim.get("source_family", "")) == "hearthstonejson_static_semantics"
+    ]
+
+    return {
+        "deck_name": str(deck_identity.get("deck_name", deck_name or "Deck")),
+        "deck_slug": str(
+            deck_identity.get(
+                "deck_slug",
+                slugify_deck_name(str(deck_identity.get("deck_name", deck_name or "Deck"))),
+            )
+        ),
+        "archetype": "aggressive_gameplan",
+        "aggression_profile": {
+            "speed": "aggro",
+            "pressure_bias": "high",
+            "global_value_overlays": global_value_overlays,
+            "global_value_overlay_reasons": global_value_overlay_reasons,
+        },
+        "deckwide_effects": deckwide_effects,
+        "cards": card_map,
+        "card_role_map": role_rows,
+        "mulligan_anchors": sorted(mulligan_anchors, key=lambda row: row["card_id"]),
+        "card_expectations": usage_expectations,
+        "hero_power_expectations": _hero_power_expectations(deckwide_effects),
+        "card_usage_expectations": usage_expectations,
+        "card_usage_expectation_rows": [
+            usage_expectations[card_id] for card_id in sorted(usage_expectations)
+        ],
+        "known_bad_patterns": sorted(
+            _research_known_bad_patterns(research_bundle, known_bad_patterns),
+            key=lambda row: (row["card_id"], row["claim_id"]),
+        ),
+        "combos": combos,
+        "combo_suppression_report": combo_suppression_report,
+        "policies": policies,
+        "confidence_label": confidence_label,
+        "source_claims": claim_rows,
+        "source_backed_actions": source_backed_actions,
+        "static_semantic_actions": static_semantic_actions,
+        "unsupported_or_review_only_claims": guide_claim_bundle.get("unsupported_claims", []),
+    }
+
+
+def _deck_cards(deck_identity: dict[str, Any]) -> list[dict[str, Any]]:
+    cards = deck_identity.get("cards", [])
+    return sorted((dict(card) for card in cards), key=lambda card: str(card["card_id"]))
+
+
+def _metadata_by_card(
+    card_metadata: dict[str, Any] | list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    rows = card_metadata.get("cards", []) if isinstance(card_metadata, dict) else card_metadata
+    return {str(row["card_id"]): dict(row) for row in rows}
+
+
+def _research_card_role_map(research_bundle: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    return _research_map(research_bundle, "card_role_map")
+
+
+def _research_map(research_bundle: dict[str, Any] | None, key: str) -> dict[str, dict[str, Any]]:
+    if not isinstance(research_bundle, dict):
+        return {}
+    rows = research_bundle.get(key, {})
+    if not isinstance(rows, dict):
+        return {}
+    return {str(card_id): dict(row) for card_id, row in rows.items() if isinstance(row, dict)}
+
+
+def _merge_source_claim_ids(first: list[str], second: Any) -> list[str]:
+    values = [*first]
+    if isinstance(second, list):
+        values.extend(str(item) for item in second)
+    return list(dict.fromkeys(values))
+
+
+def _roles_allow_mulligan_anchor(
+    roles: list[str],
+    claims: list[dict[str, Any]] | None = None,
+) -> bool:
+    if not has_start_of_game_non_hand_effect(roles):
+        return True
+    return has_explicit_opening_hand_mulligan_intent(claims or [])
+
+
+def _research_or_metadata_linked_entities(
+    research_card: dict[str, Any],
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    linked_entities = research_card.get("linked_entities")
+    if isinstance(linked_entities, list) and linked_entities:
+        return [dict(entity) for entity in linked_entities if isinstance(entity, dict)]
+    return list(metadata.get("linked_entities", []))
+
+
+def _coerce_source_claims(
+    source_claims: dict[str, Any] | list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    if source_claims is None:
+        return {"claims": [], "claim_count": 0}
+    if isinstance(source_claims, list):
+        return normalize_source_claims(source_claims)
+    claims = [dict(claim) for claim in source_claims.get("claims", [])]
+    if not all("claim_id" in claim for claim in claims):
+        return normalize_source_claims(claims)
+    for claim in claims:
+        claim.setdefault("cards", [])
+        claim["cards"] = list(dict.fromkeys(str(card) for card in claim.get("cards", [])))
+        claim.setdefault("claim_type", "general")
+        claim.setdefault("confidence", "source_backed")
+        claim.setdefault("source_claim_ids", [claim["claim_id"]])
+    claims.sort(key=lambda claim: str(claim["claim_id"]))
+    return {"claims": claims, "claim_count": len(claims)}
+
+
+def _claims_by_card(claims: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    by_card: dict[str, list[dict[str, Any]]] = {}
+    for claim in claims:
+        for card_id in claim.get("cards", []):
+            by_card.setdefault(str(card_id), []).append(claim)
+    return by_card
+
+
+def _infer_roles(mechanic_families: list[str], claims: list[dict[str, Any]]) -> list[str]:
+    text = _claim_text(claims)
+    claim_types = {str(claim.get("claim_type", "")).lower() for claim in claims}
+    claim_kinds = {runtime_claim_kind(claim) for claim in claims}
+    roles = set(mechanic_families)
+    if "mulligan_keep" in claim_kinds and not _has_negative_keep(text):
+        roles.add("mulligan_anchor")
+    if any(marker in text for marker in ("face", "damage", "pressure", "push", "burst")):
+        roles.add("pressure")
+    if "combo" in claim_types or "combo" in text:
+        roles.add("combo_piece")
+    return sorted(roles) or ["deck_card"]
+
+
+def _infer_expected_use(roles: list[str], claims: list[dict[str, Any]]) -> str:
+    text = _claim_text(claims)
+    if "mulligan_anchor" in roles and "pressure" in roles:
+        return "keep_and_pressure"
+    if "mulligan_anchor" in roles:
+        return "keep_and_play_on_plan"
+    if "hero_power_transform" in roles and "hero_power_pressure" in roles:
+        return "start_of_game_shadowform_enables_hero_power_pressure"
+    if "combo_piece" in roles:
+        return "hold_for_combo_window"
+    if _has_negative_keep(text):
+        return "avoid_low_value_timing"
+    if "pressure" in roles:
+        return "prioritize_for_pressure"
+    return "follow_archetype_plan"
+
+
+def _is_bad_pattern(claim: dict[str, Any]) -> bool:
+    claim_type = str(claim.get("claim_type", "")).lower()
+    text = str(claim.get("claim", "")).lower()
+    return claim_type in {"bad_pattern", "known_bad_pattern"} or any(
+        marker in text for marker in ("never", "avoid", "do not", "don't", "dont")
+    )
+
+
+def _infer_combos(
+    claims: list[dict[str, Any]], deck_card_ids: set[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    combos = []
+    suppressions = []
+    for claim in claims:
+        cards = [str(card) for card in claim.get("cards", [])]
+        claim_type = str(claim.get("claim_type", "")).lower()
+        if len(cards) < 2 or ("combo" not in claim_type and "combo" not in str(claim.get("claim", "")).lower()):
+            continue
+        missing_cards = [card for card in cards if card not in deck_card_ids]
+        if missing_cards:
+            suppressions.append(
+                {
+                    "claim_id": claim["claim_id"],
+                    "cards": cards,
+                    "missing_cards": missing_cards,
+                    "reason": "card_not_in_deck",
+                }
+            )
+            continue
+        values = claim.get("values")
+        if not isinstance(values, list) or len(values) != len(cards):
+            values = ["10" for _ in cards]
+        combo = {
+            "rule_id": f"{claim['claim_id']}_combo",
+            "cards": cards,
+            "operator": str(claim.get("operator", ">>")),
+            "values": [str(value) for value in values],
+            "source_claim_ids": [claim["claim_id"]],
+            "confidence": claim.get("confidence", "source_backed"),
+        }
+        for field in (
+            "timing",
+            "timing_kind",
+            "sequence_timing",
+            "semantic_qualifiers",
+        ):
+            if field in claim:
+                combo[field] = claim[field]
+        combos.append(combo)
+    return sorted(combos, key=lambda row: row["rule_id"]), sorted(
+        suppressions, key=lambda row: row["claim_id"]
+    )
+
+
+def _infer_policies(claims: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    policies: dict[str, list[dict[str, Any]]] = {}
+    for claim in claims:
+        claim_type = str(claim.get("claim_type", "")).lower()
+        if claim_type not in {"presume", "concede"}:
+            continue
+        policies.setdefault(claim_type, []).append(
+            {
+                "rule_id": f"{claim['claim_id']}_{claim_type}",
+                "condition": claim.get("condition", "*"),
+                "value": claim.get("policy", claim.get("claim", claim_type)),
+                "source_claim_ids": [claim["claim_id"]],
+                "confidence": claim.get("confidence", "source_backed"),
+            }
+        )
+    return {key: sorted(value, key=lambda row: row["rule_id"]) for key, value in policies.items()}
+
+
+def _confidence_label(card_map: dict[str, dict[str, Any]], claims: list[dict[str, Any]]) -> str:
+    if not claims:
+        statuses = {card["coverage_status"] for card in card_map.values()}
+        if statuses == {"generic_low_confidence"}:
+            return "generic_low_confidence"
+        if "source_backed_static_semantics" in statuses:
+            return "source_backed_static_semantics"
+        if "archetype_inferred" in statuses:
+            return "archetype_inferred"
+        return "generic_low_confidence"
+    statuses = {card["coverage_status"] for card in card_map.values()}
+    if statuses == {"guide_backed"}:
+        return "guide_backed"
+    if statuses == {"source_backed"}:
+        return "source_backed"
+    if statuses <= {"source_backed", "guide_backed"}:
+        return "source_backed"
+    return "mixed"
+
+
+def _coverage_status(claims: list[dict[str, Any]], semantic_families: list[str]) -> str:
+    if claims:
+        if any(_is_guide_claim(claim) for claim in claims):
+            return "guide_backed"
+        if all(_is_static_semantic_claim(claim) for claim in claims):
+            return "source_backed_static_semantics"
+        if all(_is_report_only_claim(claim) for claim in claims):
+            return "generic_low_confidence"
+        return "source_backed"
+    if {"hero_power_transform", "hero_power_pressure", "start_of_game", "shadowform"} & set(
+        semantic_families
+    ):
+        return "source_backed_static_semantics"
+    if semantic_families:
+        return "archetype_inferred"
+    return "generic_low_confidence"
+
+
+def _is_guide_claim(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    if readiness:
+        return readiness == "guide_backed"
+    if _is_report_only_claim(claim):
+        return False
+    if str(claim.get("confidence")) == "guide_backed":
+        return True
+    source = str(claim.get("source", "")).lower()
+    url = str(claim.get("url", "")).lower()
+    source_title = str(claim.get("source_title", "")).lower()
+    return "guide" in source or "guide" in url or "guide" in source_title
+
+
+def _is_report_only_claim(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    return readiness in {
+        "explicit_low_confidence",
+        "generic_low_confidence",
+        "contract_gap",
+    } or str(claim.get("trust_ceiling", "")).lower() == "report_only"
+
+
+def _is_static_semantic_claim(claim: dict[str, Any]) -> bool:
+    return (
+        str(claim.get("confidence")) == "source_backed_static_semantics"
+        or str(claim.get("source_family")) == "hearthstonejson_static_semantics"
+        or str(claim.get("support_status")) == "static_semantics"
+    )
+
+
+def _research_known_bad_patterns(
+    research_bundle: dict[str, Any] | None,
+    fallback: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not isinstance(research_bundle, dict):
+        return fallback
+    rows = research_bundle.get("known_bad_patterns", [])
+    if not isinstance(rows, list):
+        return fallback
+    normalized = [dict(row) for row in rows if isinstance(row, dict)]
+    return normalized or fallback
+
+
+def _global_value_overlay_profile_from_research(
+    research_bundle: dict[str, Any] | None,
+    card_map: dict[str, dict[str, Any]],
+    deckwide_effects: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    fallback_overlays, fallback_reasons = _global_value_overlay_profile(card_map, deckwide_effects)
+    if isinstance(research_bundle, dict):
+        intent = research_bundle.get("globalvalue_intent", {})
+        if isinstance(intent, dict):
+            overlays = intent.get("overlays", {})
+            overlay_reasons = intent.get("overlay_reasons", {})
+            if isinstance(overlays, dict) and overlays:
+                reasons = overlay_reasons if isinstance(overlay_reasons, dict) else {}
+                merged_overlays = {
+                    **fallback_overlays,
+                    **{str(key): str(value) for key, value in overlays.items()},
+                }
+                merged_reasons = {
+                    **fallback_reasons,
+                    **{str(key): str(value) for key, value in reasons.items()},
+                }
+                return (
+                    dict(sorted(merged_overlays.items())),
+                    dict(sorted(merged_reasons.items())),
+                )
+    return fallback_overlays, fallback_reasons
+
+
+def _global_value_overlay_profile(
+    card_map: dict[str, dict[str, Any]],
+    deckwide_effects: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    overlays: dict[str, str] = {}
+    reasons: dict[str, str] = {}
+    all_roles = {role for card in card_map.values() for role in card.get("roles", [])}
+    if {"pressure", "damage", "combo_piece"} & all_roles:
+        overlays.update(
+            {
+                "GlobalMinionAttack": "increase",
+                "GlobalMinionIntrinsicValue": "increase",
+                "OppGlobalHeroHealth": "increase",
+                "OppGlobalMinionAttack": "decrease",
+                "OppGlobalMinionHealth": "decrease",
+                "OppGlobalMinionIntrinsicValue": "decrease",
+            }
+        )
+    if "divine_shield" in all_roles:
+        overlays["GlobalDivineShield"] = "increase"
+    if "charge" in all_roles:
+        overlays["GlobalCharge"] = "increase"
+    if "rush" in all_roles:
+        overlays["GlobalRush"] = "increase"
+    if "location" in all_roles:
+        overlays["GlobalLocationIntrinsicValue"] = "increase"
+        overlays["GlobalLocationHealth"] = "increase"
+    if {"hero_power", "hero_power_pressure", "hero_power_transform"} & all_roles:
+        overlays["MyHeroPowerValue"] = "increase"
+        reasons["MyHeroPowerValue"] = _hero_power_overlay_reason(deckwide_effects)
+    if "taunt" in all_roles:
+        overlays["GlobalTaunt"] = "decrease"
+    return overlays, reasons
+
+
+def _hero_power_overlay_reason(deckwide_effects: list[dict[str, Any]]) -> str:
+    for effect in deckwide_effects:
+        if effect.get("effect") == "replace_starting_hero_power":
+            return (
+                f"{effect.get('source_card_name', effect.get('source_card_id'))} "
+                f"enters Shadowform and enables {effect.get('target_name', 'the Hero Power')} "
+                "as pressure damage."
+            )
+    return "Hero Power pressure is part of this deck plan."
+
+
+def _deckwide_effects(
+    card_map: dict[str, dict[str, Any]],
+    metadata_by_card: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for card_id, card in card_map.items():
+        _metadata = metadata_by_card.get(card_id, {})
+        for linked in card.get("linked_entities", []):
+            if "hero_power_transform" not in card.get("roles", []):
+                continue
+            rows.append(
+                {
+                    "source_card_id": card_id,
+                    "source_card_name": card.get("name", card_id),
+                    "effect": "replace_starting_hero_power",
+                    "target_card_id": linked.get("card_id"),
+                    "target_name": linked.get("name"),
+                    "target_type": linked.get("type"),
+                    "reason": (
+                        f"{card.get('name', card_id)} enables "
+                        f"{linked.get('name', linked.get('card_id'))} as the deck's pressure Hero Power."
+                    ),
+                }
+            )
+    return sorted(rows, key=lambda row: (row["source_card_id"], row["effect"], str(row["target_card_id"])))
+
+
+def _hero_power_expectations(deckwide_effects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_card_id": effect.get("source_card_id"),
+            "target_card_id": effect.get("target_card_id"),
+            "target_name": effect.get("target_name"),
+            "expected_use": "pressure_hero_power_after_start_of_game_transform",
+            "reason": effect.get("reason"),
+        }
+        for effect in deckwide_effects
+        if effect.get("effect") == "replace_starting_hero_power"
+    ]
+
+
+def _claim_text(claims: list[dict[str, Any]]) -> str:
+    return " ".join(str(claim.get("claim", "")) for claim in claims).lower()
+
+
+def _has_negative_keep(text: str) -> bool:
+    return any(marker in text for marker in NEGATIVE_KEEP_MARKERS)

@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-07-17",
+  "usage": "source_candidates_only_not_runtime_authority",
+  "decks": [
+    {
+      "deck_name": "ShadowPriest",
+      "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+      "source_candidates": [
+        {
+          "url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+          "source_family": "hearthpwn",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims"
+    },
+    {
+      "deck_name": "CtAPaladin",
+      "deck_code": "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
+      "source_candidates": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+          "source_family": "reddit",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_current_cta_paladin_mulligan_keep_source"
+    },
+    {
+      "deck_name": "PirateRogue",
+      "deck_code": "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==",
+      "source_candidates": [
+        {
+          "url": "https://www.hearthpwn.com/decks/1441097-ww-pirate-rogue",
+          "source_family": "hearthpwn",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "add_current_pirate_rogue_mulligan_or_role_source"
+    },
+    {
+      "deck_name": "BigShaman",
+      "deck_code": "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
+      "source_candidates": [
+        {
+          "url": "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide",
+          "source_family": "hearthpwn",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims"
+    },
+    {
+      "deck_name": "Discolock",
+      "deck_code": "AAEBAf0GBM4Hj4ID8aEG9qEGDbW5A9XRA9DhA5iSBauSBZXKBteXB4SZB6StB8ayB9a+B9m+B8+/BwAA",
+      "source_candidates": [
+        {
+          "url": "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
+          "source_family": "reddit",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+          "source_family": "medium",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide",
+          "source_family": "hearthpwn",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_discolock_matchup_or_card_role_source"
+    },
+    {
+      "deck_name": "TreantDruid",
+      "deck_code": "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==",
+      "source_candidates": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+          "source_family": "reddit",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend",
+          "source_family": "cardsrealm",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_treant_druid_card_specific_source_claim"
+    },
+    {
+      "deck_name": "ImbueMage",
+      "deck_code": "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=",
+      "source_candidates": [
+        {
+          "url": "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
+          "source_family": "hearthpwn",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims"
+    },
+    {
+      "deck_name": "MechPala",
+      "deck_code": "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+      "source_candidates": [
+        {
+          "url": "https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
+          "source_family": "hearthstone_decks",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source"
+    },
+    {
+      "deck_name": "Kingslayer",
+      "deck_code": "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=",
+      "source_candidates": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+          "source_family": "reddit",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+          "source_family": "wiki_gg",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.hsguru.com/deck/36087994",
+          "source_family": "hsguru",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_kingslayer_quick_pick_mulligan_source"
+    },
+    {
+      "deck_name": "Boarlock",
+      "deck_code": "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA",
+      "source_candidates": [
+        {
+          "url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+          "source_family": "hearthpwn",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+          "source_family": "hearthpwn",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.hsguru.com/deck/34322767",
+          "source_family": "hsguru",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_boarlock_fracking_mulligan_source"
+    },
+    {
+      "deck_name": "PirateDH",
+      "deck_code": "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==",
+      "source_candidates": [
+        {
+          "url": "https://hearthstone-decks.net/pirate-demon-hunter-223-legend-mangekou-score-49-32/",
+          "source_family": "hearthstone_decks",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [
+        {
+          "url": "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+          "source_family": "cardsrealm",
+          "promotion_role": "context_only"
+        },
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+          "source_family": "reddit",
+          "promotion_role": "context_only"
+        }
+      ],
+      "first_missing_source_action": "add_pirate_dh_card_role_or_mulligan_source"
+    },
+    {
+      "deck_name": "CuteWarrior",
+      "deck_code": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
+      "source_candidates": [
+        {
+          "url": "https://www.reddit.com/r/wildhearthstone/comments/13e0x4w/powersliding_with_cute_warrior_to_rank_278/",
+          "source_family": "reddit",
+          "source_strength": "unfetched_acquisition_seed",
+          "promotion_role": "candidate_only_until_fetched_and_claim_normalized",
+          "classification_note": "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+        }
+      ],
+      "non_promoting_support": [],
+      "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "purpose": "Decks used as supplemental HSConfig proof inputs without widening the representative source-depth closure matrix.",
+  "identity_catalog": "audited-deck-catalog.json",
+  "policy": "Supplemental decks may prove expected load safety, command acceptance, syntax coverage, or narrow regression behavior. They are diagnostic-only fixtures, cannot authorize a current package apply, and do not replace closing existing representative source-informed rows.",
+  "decks": [
+    {
+      "deck_name": "CuteWarrior",
+      "proof_role": "supplemental_load_safe_prepare_proof",
+      "proof_scope": "supplemental_load_safe_only",
+      "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "matrix_policy": "not_representative_until_future_matrix_review_proves_missing_family",
+      "operator_action": "keep_supplemental",
+      "known_limits": [
+        "does_not_change_representative_matrix_count",
+        "does_not_close_kingslayer_quick_pick_gap",
+        "does_not_close_boarlock_fracking_gap"
+      ]
+    },
+    {
+      "deck_name": "SecretMage",
+      "deck_code": "AAEBAf0EAA/3Dde2Auu6Aoe9Ar6kA/SrA5HhA+efBMagBKPkBP7sBLztBP+SBduhBejoBQAA",
+      "source_url": "https://www.hsguru.com/deck/6999689",
+      "proof_role": "supplemental_wild_visibility_prepare_proof",
+      "proof_scope": "supplemental_visibility_only",
+      "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "primary_mechanics": ["secret", "secret_timing", "burn", "tempo"],
+      "matrix_policy": "not_representative_visibility_only",
+      "operator_action": "keep_supplemental_visibility",
+      "known_limits": [
+        "does_not_change_representative_matrix_count",
+        "does_not_close_kingslayer_quick_pick_gap",
+        "does_not_close_boarlock_fracking_gap",
+        "secret_timing_remains_warning_only"
+      ]
+    },
+    {
+      "deck_name": "HighlanderPriest",
+      "deck_code": "AAEBAa0GHvcTg7sCtbsC1cECkNMC/KMDlc0D184D+OMDn+sDrfcDvp8EhKMEi6ME5bAEx7IEmtQEhoMF4qQF/cQF5uQF44AG7YAGhY4Gw5wGxpwGzZ4G0Z4G054GvqIGAAABA9fOA/3EBfnbBP3EBcChBv3EBQAA",
+      "source_url": "https://www.hsguru.com/deck/9614974",
+      "proof_role": "supplemental_wild_visibility_prepare_proof",
+      "proof_scope": "supplemental_visibility_only",
+      "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
+      "primary_mechanics": ["highlander", "location", "silence", "destroy", "hero_power_transform"],
+      "matrix_policy": "not_representative_visibility_only",
+      "operator_action": "keep_supplemental_visibility",
+      "known_limits": [
+        "does_not_change_representative_matrix_count",
+        "does_not_close_kingslayer_quick_pick_gap",
+        "does_not_close_boarlock_fracking_gap",
+        "highlander_location_control_remains_visibility_only"
+      ]
+    }
+  ]
+}

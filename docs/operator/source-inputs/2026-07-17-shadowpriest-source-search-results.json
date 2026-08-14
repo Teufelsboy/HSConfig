@@ -1,0 +1,52 @@
+{
+  "deck_name": "ShadowPriest",
+  "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+  "retrieved_for": "2026-07-17-source-backed-strong-optimal-config-run",
+  "records": [
+    {
+      "title": "Top Legend Hearthstone Shadow Priest Decks",
+      "url": "https://hearthstone-decks.net/wild-decks/priest-wild-decks/shadow-priest-priest-wild-decks/",
+      "source_type": "deck_category_seed",
+      "source_family": "hearthstone-decks",
+      "source_visibility": "decklist_or_category",
+      "deck_match_scope": "archetype_matched",
+      "expected_strength": "acquisition_seed_only"
+    },
+    {
+      "title": "Shadow Priest Wild Deck - HSGuru",
+      "url": "https://www.hsguru.com/deck/11156421",
+      "source_type": "decklist_seed",
+      "source_family": "hsguru",
+      "source_visibility": "decklist_or_stats",
+      "deck_match_scope": "archetype_matched",
+      "expected_strength": "acquisition_seed_only"
+    },
+    {
+      "title": "Legend Shadowburst Priest - HearthPwn",
+      "url": "https://www.hearthpwn.com/decks/1395635-legend-shadowburst-priest",
+      "source_type": "public_guide_candidate",
+      "source_family": "hearthpwn",
+      "source_visibility": "full_text_candidate",
+      "deck_match_scope": "archetype_matched",
+      "expected_strength": "claim_extraction_required"
+    },
+    {
+      "title": "Team WildSide Wild Meta Report Shadow Priest",
+      "url": "https://hearthstone-decks.net/wild-meta-report-team-wildside-september-2021/",
+      "source_type": "evergreen_wild_archetype_candidate",
+      "source_family": "hearthstone-decks",
+      "source_visibility": "full_text_candidate",
+      "deck_match_scope": "archetype_matched",
+      "expected_strength": "claim_extraction_required"
+    },
+    {
+      "title": "Shadowburst Priest Wild Hearthstone Full Deck Guide",
+      "url": "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+      "source_type": "evergreen_wild_archetype_candidate",
+      "source_family": "outofgames",
+      "source_visibility": "full_text_candidate",
+      "deck_match_scope": "archetype_matched",
+      "expected_strength": "claim_extraction_required"
+    }
+  ]
+}

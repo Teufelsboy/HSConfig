@@ -1,0 +1,40 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://example.invalid/mulligan-thin",
+      "source_title": "Mulligan Thin Fixture Guide",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TEST_001"],
+          "stance": "core_plan_card",
+          "evidence_text_short": "Card A is a core plan card, but the guide does not provide mulligan advice.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["TEST_001"],
+          "stance": "prefer_enemy_hero",
+          "evidence_text_short": "Use Card A as pressure toward the enemy hero.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["TEST_002"],
+          "stance": "prefer_enemy_hero",
+          "evidence_text_short": "Use Card B as pressure toward the enemy hero.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["TEST_003"],
+          "stance": "prefer_enemy_hero",
+          "evidence_text_short": "Use Card C as pressure toward the enemy hero.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}
