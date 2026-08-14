@@ -6,6 +6,17 @@ import sys
 from scripts.check_contract_guardrails import guardrail_commands, run_guardrails
 
 
+def test_focused_guardrail_tests_are_unique_and_present() -> None:
+    from scripts.check_contract_guardrails import FOCUSED_CONTRACT_TESTS, REPO_ROOT
+
+    assert len(FOCUSED_CONTRACT_TESTS) == len(set(FOCUSED_CONTRACT_TESTS))
+    assert [
+        relative
+        for relative in FOCUSED_CONTRACT_TESTS
+        if not REPO_ROOT.joinpath(relative).is_file()
+    ] == []
+
+
 def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
     from scripts.check_contract_guardrails import FOCUSED_CONTRACT_TESTS
 
@@ -25,7 +36,7 @@ def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
         "tests/test_mechanic_support.py",
         "tests/test_source_contract_conformance.py",
         "tests/test_source_to_runtime_explainability.py",
-        "tests/test_research_current_truth_index.py",
+        "tests/test_research_result_contract_sentinel.py",
     }
 
     assert expected <= set(FOCUSED_CONTRACT_TESTS)
@@ -39,9 +50,7 @@ def test_guardrail_runner_includes_contract_invariant_closure_tests():
         "tests/test_operator_summary.py",
         "tests/test_no_default_only_semantic_archetype_matrix.py",
         "tests/test_shadowpriest_fresh_closure_proof.py",
-        "tests/test_skill_sync.py",
-        "tests/test_skill_files.py",
-        "tests/test_skill_contract_entrypoint.py",
+        "tests/test_external_skill_bundle.py",
     }
 
     assert required <= set(FOCUSED_CONTRACT_TESTS)
@@ -59,26 +68,17 @@ def test_guardrail_runner_includes_direct_validate_and_apply_boundaries():
     assert required <= set(FOCUSED_CONTRACT_TESTS)
 
 
-def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_path):
+def test_guardrail_commands_include_sentinel_and_boundary_suite(tmp_path):
     repo_root = tmp_path
-    skill_root = tmp_path / "skills"
 
-    commands = guardrail_commands(repo_root, skill_root)
+    commands = guardrail_commands(repo_root)
     names = [command.name for command in commands]
 
     assert names == [
-        "installed skill sync",
         "contract spine sentinel",
         "focused contract boundary tests",
     ]
     assert commands[0].argv == (
-        sys.executable,
-        str(repo_root / "scripts" / "sync_installed_skill.py"),
-        "--check",
-        "--install-root",
-        str(skill_root),
-    )
-    assert commands[1].argv == (
         sys.executable,
         "-m",
         "hsconfig.cli",
@@ -87,21 +87,21 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
         str(repo_root),
         "--json",
     )
-    assert commands[2].argv[:3] == (sys.executable, "-m", "pytest")
-    assert "tests/test_apply_authority_boundary.py" in commands[2].argv
-    assert "tests/test_source_claim_family_registry.py" in commands[2].argv
-    assert "tests/test_source_to_runtime_explainability.py" in commands[2].argv
-    assert "tests/test_research_current_truth_index.py" in commands[2].argv
-    assert "tests/test_skill_contract_entrypoint.py" in commands[2].argv
-    assert "tests/test_validate_package.py" in commands[2].argv
-    assert "tests/test_apply_gate.py" in commands[2].argv
-    assert "tests/test_runtime_apply.py" in commands[2].argv
+    assert commands[1].argv[:3] == (sys.executable, "-m", "pytest")
+    assert "tests/test_apply_authority_boundary.py" in commands[1].argv
+    assert "tests/test_source_claim_family_registry.py" in commands[1].argv
+    assert "tests/test_source_to_runtime_explainability.py" in commands[1].argv
+    assert "tests/test_research_result_contract_sentinel.py" in commands[1].argv
+    assert "tests/test_external_skill_bundle.py" in commands[1].argv
+    assert "tests/test_validate_package.py" in commands[1].argv
+    assert "tests/test_apply_gate.py" in commands[1].argv
+    assert "tests/test_runtime_apply.py" in commands[1].argv
 
 
 def test_focused_guardrail_pytest_disables_checkout_cacheprovider(tmp_path):
-    commands = guardrail_commands(tmp_path, tmp_path / "skills")
+    commands = guardrail_commands(tmp_path)
 
-    assert commands[2].argv[:6] == (
+    assert commands[1].argv[:6] == (
         sys.executable,
         "-m",
         "pytest",
@@ -113,19 +113,18 @@ def test_focused_guardrail_pytest_disables_checkout_cacheprovider(tmp_path):
 
 def test_run_guardrails_stops_at_first_failure(tmp_path, capsys):
     repo_root = tmp_path
-    skill_root = tmp_path / "skills"
     calls: list[tuple[str, ...]] = []
 
     def fake_runner(argv, **kwargs):
         calls.append(tuple(argv))
         return subprocess.CompletedProcess(argv, 7)
 
-    exit_code = run_guardrails(repo_root, skill_root, runner=fake_runner)
+    exit_code = run_guardrails(repo_root, runner=fake_runner)
 
     assert exit_code == 7
     assert len(calls) == 1
     captured = capsys.readouterr()
-    assert "FAILED: installed skill sync" in captured.err
+    assert "FAILED: contract spine sentinel" in captured.err
 
 
 def test_run_guardrails_rejects_production_assert_before_commands(tmp_path, capsys):
@@ -145,7 +144,6 @@ def test_run_guardrails_rejects_production_assert_before_commands(tmp_path, caps
 
     exit_code = run_guardrails(
         tmp_path,
-        tmp_path / "skills",
         runner=fake_runner,
     )
 
@@ -158,18 +156,16 @@ def test_run_guardrails_rejects_production_assert_before_commands(tmp_path, caps
 
 def test_run_guardrails_runs_all_commands_when_successful(tmp_path, capsys):
     repo_root = tmp_path
-    skill_root = tmp_path / "skills"
     calls: list[tuple[str, ...]] = []
 
     def fake_runner(argv, **kwargs):
         calls.append(tuple(argv))
         return subprocess.CompletedProcess(argv, 0)
 
-    exit_code = run_guardrails(repo_root, skill_root, runner=fake_runner)
+    exit_code = run_guardrails(repo_root, runner=fake_runner)
 
     assert exit_code == 0
-    assert len(calls) == 3
+    assert len(calls) == 2
     captured = capsys.readouterr()
-    assert "OK: installed skill sync" in captured.out
     assert "OK: contract spine sentinel" in captured.out
     assert "OK: focused contract boundary tests" in captured.out

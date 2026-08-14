@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from hsconfig.skill_sync_status import build_installed_skill_sync_status
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
 from hsconfig.visionai_registry import NORMAL_APPLY_AUTHORITY
 
 
@@ -22,9 +22,7 @@ REQUIRED_REFERENCE_FILES = (
 
 EXPECTED_CHECK_KEYS = (
     "repo_current",
-    "skill_root_present",
-    "installed_skill_sync_current",
-    "reference_files_present",
+    "embedded_skill_bundle_valid",
     "checklist_referenced_by_normal_workflow",
     "checklist_listed_in_references",
     "skill_thin_router_visible",
@@ -42,9 +40,6 @@ EXPECTED_CHECK_KEYS = (
     "darkbishop_effect_not_mulligan_visible",
     "negative_scope_visible",
     "diagnostic_only_visible",
-    "research_current_truth_index_visible",
-    "research_result_contract_sentinel_visible",
-    "historical_research_outlines_diagnostic_only",
 )
 
 
@@ -59,39 +54,6 @@ class GitPreflight:
     ahead_upstream: int | None = None
     behind_upstream: int | None = None
     origin_main_error: str | None = None
-
-
-@dataclass(frozen=True)
-class ResearchContextPreflight:
-    status: str
-    active_evidence_index_present: bool
-    active_evidence_index_path: str
-    machine_evidence_index_present: bool
-    machine_evidence_index_path: str
-    authority: str
-    operator_gate_impact: str
-    normal_apply_authority: str
-    recommended_research_entrypoint: str
-    historical_outline_count: int
-    historical_outline_paths: tuple[str, ...]
-    historical_outlines_apply_authority: bool
-    latest_research_result_contract_status: str
-    latest_research_result_contract_path: str
-    latest_research_result_contract_result_count: int
-    latest_research_result_contract_invalid_count: int
-    latest_research_result_contract_strict_invalid_count: int
-    latest_research_result_contract_contract_invalid_count: int
-    latest_research_result_contract_seed_only_count: int
-    latest_research_result_contract_strong_promoting_count: int
-    latest_research_result_contract_promotion_ready_deck_count: int
-    latest_research_result_contract_non_promoting_count: int
-    latest_research_result_contract_first_non_promoting_result: str
-    latest_research_result_contract_first_non_promoting_action: str
-    latest_research_result_contract_first_non_promoting_reason: str
-    latest_research_result_contract_freshness_missing_count: int
-    latest_research_result_contract_no_op_validation_risk: bool
-    source_status_apply_blocking: bool
-    notes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -469,18 +431,12 @@ def _config_proof_summary_visible(combined: str) -> bool:
 
 def _source_candidate_plan_contract_visible(
     operator_text: str,
-    source_builder_workflow_text: str,
     source_candidate_plan_text: str,
 ) -> bool:
     operator_terms = (
         "source-candidate plan visibility",
         "source_candidate_plan.json",
         "does not replace `reports/operator_summary.json`",
-    )
-    workflow_terms = (
-        "Queries are for Codex/operator research only",
-        "The plan cannot promote, block apply, write runtime config, "
-        "or replace `reports/operator_summary.json`.",
     )
     implementation_terms = (
         '"authority": "diagnostic_source_candidate_plan"',
@@ -493,14 +449,6 @@ def _source_candidate_plan_contract_visible(
     )
     return (
         all(term in operator_text for term in operator_terms)
-        and _has_any(
-            source_builder_workflow_text,
-            (
-                "source_candidate_plan.json is deterministic pre-acquisition guidance",
-                "`source_candidate_plan.json` is deterministic pre-acquisition guidance",
-            ),
-        )
-        and all(term in source_builder_workflow_text for term in workflow_terms)
         and all(term in source_candidate_plan_text for term in implementation_terms)
     )
 
@@ -509,7 +457,7 @@ def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
     return {
         "status": "visible" if visible else "attention",
         "authority": "diagnostic_source_candidate_plan",
-        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "documentation_path": "docs/operator/README.md",
         "operator_entrypoint_path": "docs/operator/README.md",
         "implementation_path": "src/hsconfig/source_candidate_plan.py",
         "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
@@ -588,8 +536,8 @@ def _source_readiness_preview_contract_payload(visible: bool) -> dict[str, objec
         "status": "visible" if visible else "attention",
         "authority": "diagnostic_source_readiness_preview",
         "documentation_paths": [
-            "docs/operator/source-builder-workflow.md",
-            ".agents/skills/hsconfig/references/workflow.md",
+            "docs/operator/guide-research-policy.md",
+            "embedded:references/workflow.md",
         ],
         "implementation_path": "src/hsconfig/source_readiness_preview.py",
         "configure_summary_field": "source_readiness_preview",
@@ -866,265 +814,23 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
     )
 
 
-def _latest_research_result_contract(root: Path) -> dict[str, object]:
-    research_root = root / "docs" / "research"
-    if not research_root.is_dir():
-        return {
-            "status": "not_found",
-            "path": "",
-            "result_count": 0,
-            "invalid_count": 0,
-            "strict_invalid_count": 0,
-            "contract_invalid_count": 0,
-            "seed_only_count": 0,
-            "strong_promoting_count": 0,
-            "promotion_ready_deck_count": 0,
-            "non_promoting_count": 0,
-            "first_non_promoting_result": "",
-            "first_non_promoting_action": "none",
-            "first_non_promoting_reason": "none",
-            "freshness_missing_count": 0,
-            "no_op_validation_risk": False,
-        }
-
-    candidates = sorted(path for path in research_root.iterdir() if path.is_dir())
-    if not candidates:
-        return {
-            "status": "not_found",
-            "path": "",
-            "result_count": 0,
-            "invalid_count": 0,
-            "strict_invalid_count": 0,
-            "contract_invalid_count": 0,
-            "seed_only_count": 0,
-            "strong_promoting_count": 0,
-            "promotion_ready_deck_count": 0,
-            "non_promoting_count": 0,
-            "first_non_promoting_result": "",
-            "first_non_promoting_action": "none",
-            "first_non_promoting_reason": "none",
-            "freshness_missing_count": 0,
-            "no_op_validation_risk": False,
-        }
-
-    latest = candidates[-1]
-    fields_path = latest / "fields.yaml"
-    results_dir = latest / "results"
-    if not fields_path.is_file() or not results_dir.is_dir():
-        return {
-            "status": "attention",
-            "path": _relative_posix(root, latest),
-            "result_count": 0,
-            "invalid_count": 0,
-            "strict_invalid_count": 0,
-            "contract_invalid_count": 0,
-            "seed_only_count": 0,
-            "strong_promoting_count": 0,
-            "promotion_ready_deck_count": 0,
-            "non_promoting_count": 0,
-            "first_non_promoting_result": "",
-            "first_non_promoting_action": "none",
-            "first_non_promoting_reason": "none",
-            "freshness_missing_count": 0,
-            "no_op_validation_risk": True,
-        }
-
-    try:
-        from hsconfig.research_result_contract_sentinel import (
-            build_research_result_contract_sentinel,
-        )
-
-        sentinel = build_research_result_contract_sentinel(fields_path, results_dir)
-        summary = sentinel["summary"]
-    except Exception:
-        return {
-            "status": "attention",
-            "path": _relative_posix(root, latest),
-            "result_count": 0,
-            "invalid_count": 0,
-            "strict_invalid_count": 0,
-            "contract_invalid_count": 0,
-            "seed_only_count": 0,
-            "strong_promoting_count": 0,
-            "promotion_ready_deck_count": 0,
-            "non_promoting_count": 0,
-            "first_non_promoting_result": "",
-            "first_non_promoting_action": "none",
-            "first_non_promoting_reason": "none",
-            "freshness_missing_count": 0,
-            "no_op_validation_risk": True,
-        }
-    strict_invalid_count = int(summary.get("strict_invalid_count") or 0)
-    contract_invalid_count = int(summary.get("contract_invalid_count") or 0)
-    return {
-        "status": str(summary["status"]),
-        "path": _relative_posix(root, latest),
-        "result_count": int(summary["result_count"]),
-        "invalid_count": strict_invalid_count + contract_invalid_count,
-        "strict_invalid_count": strict_invalid_count,
-        "contract_invalid_count": contract_invalid_count,
-        "seed_only_count": int(summary.get("seed_only_count") or 0),
-        "strong_promoting_count": int(summary.get("strong_promoting_count") or 0),
-        "promotion_ready_deck_count": int(
-            summary.get("promotion_ready_deck_count")
-            or summary.get("strong_promoting_count")
-            or 0
-        ),
-        "non_promoting_count": int(summary.get("non_promoting_count") or 0),
-        "first_non_promoting_result": str(
-            summary.get("first_non_promoting_result") or ""
-        ),
-        "first_non_promoting_action": str(
-            summary.get("first_non_promoting_action") or "none"
-        ),
-        "first_non_promoting_reason": str(
-            summary.get("first_non_promoting_reason") or "none"
-        ),
-        "freshness_missing_count": int(summary.get("freshness_missing_count") or 0),
-        "no_op_validation_risk": bool(summary["no_op_validation_risk"]),
-    }
-
-
-def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPreflight:
-    root = Path(repo_root).resolve()
-    current_truth_path = root / "docs" / "research" / "current-truth.md"
-    current_truth_index_path = root / "docs" / "research" / "current-truth-index.json"
-    current_truth_text = _read(current_truth_path)
-    index_text = _read(current_truth_index_path)
-    index_payload: dict[str, object] = {}
-    if index_text:
-        try:
-            parsed = json.loads(index_text)
-        except json.JSONDecodeError:
-            parsed = {}
-        if isinstance(parsed, dict):
-            index_payload = parsed
-
-    research_root = root / "docs" / "research"
-    historical_outline_paths: tuple[str, ...] = ()
-    if research_root.exists():
-        historical_outline_paths = tuple(
-            sorted(
-                _relative_posix(root, path)
-                for path in research_root.glob("*/outline.yaml")
-                if path.is_file()
-            )
-        )
-
-    active_evidence_index_present = (
-        current_truth_path.exists()
-        and current_truth_index_path.exists()
-        and "# HSConfig Current Truth Index" in current_truth_text
-        and "Research artifacts are evidence, not operator instructions."
-        in current_truth_text
-    )
-    machine_evidence_index_present = (
-        current_truth_index_path.exists()
-        and index_payload.get("authority") == "evidence_index_only"
-        and index_payload.get("operator_gate_impact") == "diagnostic_only"
-        and index_payload.get("normal_apply_authority") == NORMAL_APPLY_AUTHORITY
-    )
-    historical_outlines_apply_authority = False
-    sync_policy = index_payload.get("research_snapshot_sync_policy")
-    source_status_apply_blocking = bool(
-        sync_policy.get("source_status_apply_blocking", False)
-        if isinstance(sync_policy, dict)
-        else False
-    )
-    latest_research_contract = _latest_research_result_contract(root)
-    status = (
-        "current"
-        if active_evidence_index_present
-        and machine_evidence_index_present
-        and not historical_outlines_apply_authority
-        and not source_status_apply_blocking
-        else "attention"
-    )
-
-    return ResearchContextPreflight(
-        status=status,
-        active_evidence_index_present=active_evidence_index_present,
-        active_evidence_index_path="docs/research/current-truth.md",
-        machine_evidence_index_present=machine_evidence_index_present,
-        machine_evidence_index_path="docs/research/current-truth-index.json",
-        authority=str(index_payload.get("authority") or "missing"),
-        operator_gate_impact=str(index_payload.get("operator_gate_impact") or "missing"),
-        normal_apply_authority=str(
-            index_payload.get("normal_apply_authority")
-            or NORMAL_APPLY_AUTHORITY
-        ),
-        recommended_research_entrypoint="docs/research/current-truth.md",
-        historical_outline_count=len(historical_outline_paths),
-        historical_outline_paths=historical_outline_paths,
-        historical_outlines_apply_authority=historical_outlines_apply_authority,
-        latest_research_result_contract_status=str(
-            latest_research_contract["status"]
-        ),
-        latest_research_result_contract_path=str(latest_research_contract["path"]),
-        latest_research_result_contract_result_count=int(
-            latest_research_contract["result_count"]
-        ),
-        latest_research_result_contract_invalid_count=int(
-            latest_research_contract["invalid_count"]
-        ),
-        latest_research_result_contract_strict_invalid_count=int(
-            latest_research_contract["strict_invalid_count"]
-        ),
-        latest_research_result_contract_contract_invalid_count=int(
-            latest_research_contract["contract_invalid_count"]
-        ),
-        latest_research_result_contract_seed_only_count=int(
-            latest_research_contract["seed_only_count"]
-        ),
-        latest_research_result_contract_strong_promoting_count=int(
-            latest_research_contract["strong_promoting_count"]
-        ),
-        latest_research_result_contract_promotion_ready_deck_count=int(
-            latest_research_contract["promotion_ready_deck_count"]
-        ),
-        latest_research_result_contract_non_promoting_count=int(
-            latest_research_contract["non_promoting_count"]
-        ),
-        latest_research_result_contract_first_non_promoting_result=str(
-            latest_research_contract["first_non_promoting_result"]
-        ),
-        latest_research_result_contract_first_non_promoting_action=str(
-            latest_research_contract["first_non_promoting_action"]
-        ),
-        latest_research_result_contract_first_non_promoting_reason=str(
-            latest_research_contract["first_non_promoting_reason"]
-        ),
-        latest_research_result_contract_freshness_missing_count=int(
-            latest_research_contract["freshness_missing_count"]
-        ),
-        latest_research_result_contract_no_op_validation_risk=bool(
-            latest_research_contract["no_op_validation_risk"]
-        ),
-        source_status_apply_blocking=source_status_apply_blocking,
-        notes=(
-            "Historical research outline files are evidence only.",
-            "Use docs/research/current-truth.md before opening dated research folders.",
-            "Research context diagnostics do not replace reports/operator_summary.json.",
-        ),
-    )
-
-
 def build_contract_preflight(
     repo_root: str | Path = ".",
     *,
     git: GitPreflight | None = None,
-    skill_install_root: str | Path | None = None,
     package: str | Path | None = None,
 ) -> dict[str, object]:
     root = Path(repo_root).resolve()
     repo_root_exists = root.exists()
-    skill_root = root / ".agents" / "skills" / "hsconfig"
-    skill_text = _read(skill_root / "SKILL.md")
-    workflow_text = _read(skill_root / "references" / "workflow.md")
-    checklist_text = _read(skill_root / "references" / "contract-compiler-checklist.md")
+    skill_files = load_embedded_skill_bundle()
+    skill_text = skill_files["SKILL.md"].decode("utf-8")
+    workflow_text = skill_files["references/workflow.md"].decode("utf-8")
+    checklist_text = skill_files[
+        "references/contract-compiler-checklist.md"
+    ].decode("utf-8")
     operator_text = _read(root / "docs" / "operator" / "README.md")
-    source_builder_workflow_text = _read(
-        root / "docs" / "operator" / "source-builder-workflow.md"
+    guide_policy_text = _read(
+        root / "docs" / "operator" / "guide-research-policy.md"
     )
     source_candidate_plan_text = _read(
         root / "src" / "hsconfig" / "source_candidate_plan.py"
@@ -1145,7 +851,7 @@ def build_contract_preflight(
             workflow_text,
             checklist_text,
             operator_text,
-            source_builder_workflow_text,
+            guide_policy_text,
             source_candidate_plan_text,
             source_readiness_preview_text,
             source_autopilot_text,
@@ -1155,18 +861,15 @@ def build_contract_preflight(
     )
     references_line = _references_line(skill_text)
     git_snapshot = git or build_git_preflight(root)
-    research_context = build_research_context_preflight(root)
-    installed_skill_sync = build_installed_skill_sync_status(root, skill_install_root)
     source_candidate_plan_visible = _source_candidate_plan_contract_visible(
         operator_text,
-        source_builder_workflow_text,
         source_candidate_plan_text,
     )
     source_readiness_preview_visible = _source_readiness_preview_visible(
         source_readiness_preview_text,
         configure_workflow_text,
         source_autopilot_text,
-        source_builder_workflow_text,
+        guide_policy_text,
         workflow_text,
     )
 
@@ -1176,16 +879,10 @@ def build_contract_preflight(
             and git_snapshot.origin_main_error is None
             and git_snapshot.behind_origin_main == 0
         ),
-        "skill_root_present": skill_root.exists(),
-        "installed_skill_sync_current": (
-            installed_skill_sync.get("matches_repo_skill") is True
-            and installed_skill_sync.get("diagnostic_only") is True
-            and installed_skill_sync.get("runtime_apply_authority")
-            == NORMAL_APPLY_AUTHORITY
-        ),
-        "reference_files_present": all(
-            (skill_root / relative_path).exists()
-            for relative_path in REQUIRED_REFERENCE_FILES
+        "embedded_skill_bundle_valid": (
+            len(skill_files) == 9
+            and set(REQUIRED_REFERENCE_FILES).issubset(skill_files)
+            and "SKILL.md" in skill_files
         ),
         "checklist_referenced_by_normal_workflow": (
             "Contract compiler checklist: `references/contract-compiler-checklist.md`."
@@ -1198,18 +895,18 @@ def build_contract_preflight(
         ),
         "skill_thin_router_visible": _skill_thin_router_visible(skill_text),
         "configure_acceptance_route_visible": _configure_acceptance_route_visible(
-            combined
+            operator_text
         ),
         "pre_run_config_contract_receipt_visible": (
-            _pre_run_config_contract_receipt_visible(combined)
+            _pre_run_config_contract_receipt_visible(operator_text)
         ),
         "configure_acceptance_projection_not_gate_visible": (
-            _configure_acceptance_projection_not_gate_visible(combined)
+            _configure_acceptance_projection_not_gate_visible(operator_text)
         ),
         "config_quality_summary_diagnostic_only_visible": (
-            _config_quality_summary_diagnostic_only_visible(combined)
+            _config_quality_summary_diagnostic_only_visible(operator_text)
         ),
-        "config_proof_summary_visible": _config_proof_summary_visible(combined),
+        "config_proof_summary_visible": _config_proof_summary_visible(operator_text),
         "operator_summary_single_authority_visible": (
             "operator_summary.json remains the only normal apply authority" in combined
             or "operator_summary.json` remains the only normal apply authority"
@@ -1261,23 +958,6 @@ def build_contract_preflight(
             and "not another operator gate" in checklist_text
             and "not another runtime apply gate" in combined
         ),
-        "research_current_truth_index_visible": (
-            research_context.status == "current"
-            and research_context.active_evidence_index_present
-            and research_context.machine_evidence_index_present
-            and research_context.authority == "evidence_index_only"
-            and research_context.operator_gate_impact == "diagnostic_only"
-            and research_context.normal_apply_authority == NORMAL_APPLY_AUTHORITY
-            and research_context.source_status_apply_blocking is False
-        ),
-        "research_result_contract_sentinel_visible": (
-            research_context.latest_research_result_contract_status
-            in {"clean", "attention", "not_found"}
-            and research_context.source_status_apply_blocking is False
-        ),
-        "historical_research_outlines_diagnostic_only": (
-            research_context.historical_outlines_apply_authority is False
-        ),
     }
     package_contract = build_package_contract_preflight(package)
     if package_contract is not None:
@@ -1294,8 +974,14 @@ def build_contract_preflight(
         "git": asdict(git_snapshot),
         "checks": checks,
         "failures": failures,
-        "research_context": asdict(research_context),
-        "installed_skill_sync": installed_skill_sync,
+        "embedded_skill_bundle": {
+            "status": "valid",
+            "file_count": len(skill_files),
+            "authority": "embedded_distribution_resource",
+            "external_install_performed": False,
+            "diagnostic_only": True,
+            "runtime_apply_authority": NORMAL_APPLY_AUTHORITY,
+        },
         "source_candidate_plan_contract": _source_candidate_plan_contract_payload(
             source_candidate_plan_visible
         ),

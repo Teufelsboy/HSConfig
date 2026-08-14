@@ -10,6 +10,7 @@ from hsconfig.commands.common import emit_result, run_payload_command
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
 from hsconfig.cli_parser import build_parser
 from hsconfig.current_output import resolve_current_package
 from hsconfig.input_loading import guide_documents_from_legacy_claims
@@ -625,16 +626,13 @@ def test_cli_main_dispatches_contract_doctor_without_apply_authority(
     assert captured == {"package": str(package), "out": None, "json": True}
 
 
-def test_readme_documents_prepare_as_normal_path():
+def test_readme_documents_configure_and_embedded_diagnostic_path():
     root_readme = Path("README.md").read_text(encoding="utf-8")
     operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
-    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
-        encoding="utf-8"
-    )
+    workflow = load_embedded_skill_bundle()["references/workflow.md"].decode("utf-8")
 
     assert "docs/operator/README.md" in root_readme
-    assert "hsconfig prepare" in root_readme
-    assert "hsconfig apply" in root_readme
+    assert "hsconfig configure" in root_readme
     assert "hsconfig build" in operator_readme
     assert "reports/research" in workflow
 

@@ -9,12 +9,6 @@ from hsconfig.contract_preflight import (
     EXPECTED_CHECK_KEYS,
     GitPreflight,
     build_contract_preflight,
-    build_research_context_preflight,
-)
-from hsconfig.skill_sync_status import (
-    DEFAULT_INSTALL_ROOT,
-    build_installed_skill_sync_status,
-    installed_skill_sync_recommended_action,
 )
 
 
@@ -34,79 +28,11 @@ def _unavailable_git_payload() -> dict[str, object]:
     )
 
 
-def _unavailable_installed_skill_payload(
-    repo_root: str,
-    install_root: object,
-) -> dict[str, object]:
-    try:
-        return build_installed_skill_sync_status(repo_root, install_root)
-    except Exception as exc:
-        resolved_install_root = (
-            Path(install_root).expanduser() if install_root else DEFAULT_INSTALL_ROOT
-        )
-        return {
-            "status": "attention",
-            "source_skill_path": str(
-                Path(repo_root).resolve() / ".agents" / "skills" / "hsconfig"
-            ),
-            "installed_skill_path": str(resolved_install_root / "hsconfig"),
-            "installed_skill_present": False,
-            "matches_repo_skill": False,
-            "reason": type(exc).__name__,
-            "diffs": [],
-            "recommended_action": installed_skill_sync_recommended_action(
-                resolved_install_root
-            ),
-            "diagnostic_only": True,
-            "runtime_apply_authority": "reports/operator_summary.json",
-        }
-
-
-def _unavailable_research_context_payload(repo_root: str) -> dict[str, object]:
-    try:
-        return asdict(build_research_context_preflight(repo_root))
-    except Exception as exc:
-        root = Path(repo_root).resolve()
-        return {
-            "status": "attention",
-            "active_evidence_index_present": False,
-            "active_evidence_index_path": "docs/research/current-truth.md",
-            "machine_evidence_index_present": False,
-            "machine_evidence_index_path": "docs/research/current-truth-index.json",
-            "authority": "unavailable",
-            "operator_gate_impact": "diagnostic_only",
-            "normal_apply_authority": "reports/operator_summary.json",
-            "recommended_research_entrypoint": "docs/research/current-truth.md",
-            "historical_outline_count": 0,
-            "historical_outline_paths": [],
-            "historical_outlines_apply_authority": False,
-            "latest_research_result_contract_status": "attention",
-            "latest_research_result_contract_path": "",
-            "latest_research_result_contract_result_count": 0,
-            "latest_research_result_contract_invalid_count": 0,
-            "latest_research_result_contract_strict_invalid_count": 0,
-            "latest_research_result_contract_contract_invalid_count": 0,
-            "latest_research_result_contract_seed_only_count": 0,
-            "latest_research_result_contract_strong_promoting_count": 0,
-            "latest_research_result_contract_promotion_ready_deck_count": 0,
-            "latest_research_result_contract_non_promoting_count": 0,
-            "latest_research_result_contract_first_non_promoting_result": "",
-            "latest_research_result_contract_first_non_promoting_action": "none",
-            "latest_research_result_contract_first_non_promoting_reason": "none",
-            "latest_research_result_contract_freshness_missing_count": 0,
-            "latest_research_result_contract_no_op_validation_risk": True,
-            "source_status_apply_blocking": False,
-            "notes": [
-                f"research context preflight unavailable for {root}: {type(exc).__name__}"
-            ],
-        }
-
-
 def _unavailable_source_candidate_plan_contract_payload() -> dict[str, object]:
     return {
         "status": "attention",
         "authority": "diagnostic_source_candidate_plan",
-        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "documentation_path": "docs/operator/README.md",
         "operator_entrypoint_path": "docs/operator/README.md",
         "implementation_path": "src/hsconfig/source_candidate_plan.py",
         "runtime_apply_authority": "reports/operator_summary.json",
@@ -131,8 +57,8 @@ def _unavailable_source_readiness_preview_contract_payload() -> dict[str, object
         "status": "attention",
         "authority": "diagnostic_source_readiness_preview",
         "documentation_paths": [
-            "docs/operator/source-builder-workflow.md",
-            ".agents/skills/hsconfig/references/workflow.md",
+            "docs/operator/guide-research-policy.md",
+            "embedded:references/workflow.md",
         ],
         "implementation_path": "src/hsconfig/source_readiness_preview.py",
         "configure_summary_field": "source_readiness_preview",
@@ -160,9 +86,7 @@ def run_contract_preflight_command(args: Namespace) -> int:
     repo_root = getattr(args, "repo_root", ".")
     package = getattr(args, "package", None)
     try:
-        preflight_kwargs = {
-            "skill_install_root": getattr(args, "skill_install_root", None),
-        }
+        preflight_kwargs: dict[str, object] = {}
         if package is not None:
             preflight_kwargs["package"] = package
         payload = build_contract_preflight(repo_root, **preflight_kwargs)
@@ -177,11 +101,14 @@ def run_contract_preflight_command(args: Namespace) -> int:
             "git": _unavailable_git_payload(),
             "checks": {key: False for key in EXPECTED_CHECK_KEYS},
             "failures": list(EXPECTED_CHECK_KEYS),
-            "research_context": _unavailable_research_context_payload(repo_root),
-            "installed_skill_sync": _unavailable_installed_skill_payload(
-                repo_root,
-                getattr(args, "skill_install_root", None),
-            ),
+            "embedded_skill_bundle": {
+                "status": "attention",
+                "file_count": 0,
+                "authority": "embedded_distribution_resource",
+                "external_install_performed": False,
+                "diagnostic_only": True,
+                "runtime_apply_authority": "reports/operator_summary.json",
+            },
             "source_candidate_plan_contract": (
                 _unavailable_source_candidate_plan_contract_payload()
             ),

@@ -1,0 +1,43 @@
+name: Redacted bug report
+description: Report a reproducible HSConfig problem without private runtime evidence.
+labels:
+  - bug
+body:
+  - type: input
+    id: version
+    attributes:
+      label: HSConfig version
+      description: State the released version or commit identifier you used.
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized-reproduction
+    attributes:
+      label: Sanitized reproduction steps
+      description: Provide minimal sanitized steps that reproduce the issue. Do not include sensitive runtime evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: Describe what you expected HSConfig to do.
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: Describe what happened instead, using redacted details only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: sensitive-data-confirmation
+    attributes:
+      label: Sensitive-data confirmation
+      description: Public issue reports must contain only sanitized information.
+      options:
+        - label: I confirm this report contains no deckcodes, logs, replays, runtime XML, or unredacted packages.
+          required: true
+    validations:
+      required: true

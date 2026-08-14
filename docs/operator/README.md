@@ -4,11 +4,11 @@ HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a d
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
-Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
+Architecture and contract background live in the [architecture overview](../architecture/overview.md), [pre-run contract](../contracts/pre-run-contract.md), and [evidence and disposition contract](../contracts/evidence-and-disposition.md); return here for the normal command path.
 
-Repository history is indexed in [`docs/history/README.md`](../history/README.md).
+Release preparation is defined by the [release gate contract](../contracts/release-gate.md).
 Ignored local output maintenance follows the
-[`output retention policy`](output-retention-policy.md). Maintenance and
+[output retention policy](output-retention-policy.md). Maintenance and
 inventory are never apply authority.
 
 ## Quick Start
@@ -135,27 +135,27 @@ VisionAI surfaces, but they are outside the normal output path.
 
 ### Optional Contract Preflight
 
-Use `hsconfig contract-preflight --json` for a read-only repo and skill contract
+Use `hsconfig contract-preflight --json` for a read-only repository contract
 check before source refresh, package generation, or runtime-facing apply review.
-It checks currentness, installed-skill sync, skill reference routing,
-source-status non-blocking policy, source-candidate plan visibility,
-no-default-only visibility, supported runtime surfaces, negative-scope
-boundaries, and the research-context lock around `docs/research/current-truth.md`.
-The `source_candidate_plan.json` check is diagnostic-only and does not replace `reports/operator_summary.json`.
-The historical research outline files remain
-diagnostic-only evidence and do not replace `reports/operator_summary.json`.
+It checks currentness, source-status non-blocking policy, source-candidate plan visibility,
+no-default-only visibility, supported runtime surfaces, and
+negative-scope boundaries without writing package or runtime files.
+The `source_candidate_plan.json` check is diagnostic-only and does not replace
+`reports/operator_summary.json`; source acquisition records remain evidence
+and do not create a second operator or apply authority.
 When a package already exists, use
 `hsconfig contract-preflight --package <04_package> --json` for a single
-read-only readiness view. It combines the repo/skill preflight with package
+read-only readiness view. It combines repository preflight with package
 runtime validation and compact config-quality signals. If
 `package_contract.status=attention`, inspect `reports/operator_summary.json`
 first and then run `hsconfig contract-doctor --package <04_package> --json` for
 details. Package-mode preflight is diagnostic-only; it does not write files,
 does not replace `reports/operator_summary.json`, and does not block a
 technically load-safe package.
-Package mode also mirrors compact generated `surface_intent` diagnostics, including status, surface count, fallback rows, legacy-policy surfaces, and first attention, without changing apply authority.
-Use `--skill-install-root <path>` only when testing or checking a non-default
-Codex skill root. This preflight is diagnostic-only and does not replace
+Package mode mirrors compact generated `surface_intent` diagnostics, including
+status, surface count, fallback rows, legacy-policy surfaces, and first
+attention, without changing apply authority.
+Contract preflight is diagnostic-only and does not replace
 `reports/operator_summary.json`.
 
 Use `hsconfig configure` for normal operation:
@@ -435,8 +435,8 @@ and verifies the fake receipt in the same invocation, then writes the runtime pa
 `--from-fake-receipt` can be used when an operator wants to apply a previously generated
 matching fake receipt.
 
-For the durable no-block contract across valid Wild decks, see
-`docs/operator/universal-wild-no-block-contract.md`.
+The current no-block boundary is defined by the [pre-run contract](../contracts/pre-run-contract.md); the
+audited read-only proof is documented in the Twelve-deck read-only acceptance section below.
 
 - `technical_status=VALID_PACKAGE` means the runtime JSON shape is structurally valid and load-safe.
 - `runtime_load_safe=true` means the package passed the normal pre-run load-safety contract.
@@ -584,7 +584,7 @@ prepared when you want a compact source-depth and research freshness diagnostic.
 ```powershell
 python -m hsconfig.cli source-closure-optimizer `
   --package outputs\latest\ShadowPriest\04_package `
-  --research-results-dir docs\research\2026-07-17-hsconfig-source-contract-acceptance-loop\results `
+  --research-results-dir <external-research-results-dir> `
   --out outputs\diagnostics\source_closure_optimizer.json `
   --markdown-out outputs\diagnostics\source_closure_optimizer.md
 ```
@@ -602,12 +602,12 @@ mechanic-lowering code:
 python scripts\check_contract_guardrails.py
 ```
 
-The command checks installed-skill sync, `hsconfig contract-spine-sentinel
---json`, and the focused boundary tests. It is diagnostic only. Normal deck
-configuration still starts with `hsconfig configure`, and
-`reports/operator_summary.json` remains the only normal apply authority.
-The lower-level `hsconfig contract-preflight --json` exposes the same
-installed-skill sync class in its JSON payload for quick operator checks.
+The command checks `hsconfig contract-spine-sentinel --json` and the focused
+boundary tests. It is diagnostic only. Normal deck configuration still starts
+with `hsconfig configure`, and `reports/operator_summary.json` remains the only
+normal apply authority. The lower-level `hsconfig contract-preflight --json`
+exposes the same contract boundary in its JSON payload for quick operator
+checks without creating another gate.
 
 ## Optional Contract Doctor
 
@@ -633,8 +633,8 @@ and does not block a technically valid package.
 
 `<current-revision>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages, read after acceptance and handoff when source depth is the question. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
 
-`contract-preflight.research_context.latest_research_result_contract_*` exposes whether the latest research-deep result batch has HSConfig-valid fields and result payloads. This research-result sentinel is source-quality visibility only; it cannot promote, downgrade, block, or apply a package.
-`latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and operator_summary.json remains the only normal apply authority.
+`contract-preflight.embedded_skill_bundle` confirms that the distributed nine-file Codex skill resource is readable and valid. It never installs or compares an external user skill.
+This bundle check is diagnostic-only; it cannot promote, block, apply, or replace `reports/operator_summary.json`, which remains the only normal apply authority.
 
 Then read `<current-revision>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof. `source_to_runtime_status` reports trace health (`clean`, `attention`, or `missing`), while `currentness_status`, `closure_schema_current`, and `cards_missing_closure` report closure freshness. `forbidden_normal_surfaces_status=unknown` means legacy-surface evidence was unavailable, not clean. `runtime_surface_boundary_details` lists `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json` as unconditional; `Combo.json` is conditional on a complete source-backed combo with a matching live-verified strategic receipt. This proof is not another apply gate and does not replace `reports/operator_summary.json`.
 
@@ -661,6 +661,9 @@ twelve audited user decks. It owns each exact `deck_name`, `deck_code`, `hs_id`,
 and `hdt_deck_id`: eleven rows have the `representative` role and CuteWarrior
 has the `supplemental` role. The role manifests below reference this catalog by
 `deck_name`; do not copy audited identity fields into them.
+
+hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing
+input, and not a post-run tuning source.
 
 `docs/operator/archetype-fixture-matrix.json` is the representative 11-deck HSConfig proof set.
 

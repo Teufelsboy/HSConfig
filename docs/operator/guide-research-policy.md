@@ -2,7 +2,12 @@
 
 HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig, then normalizes that research with `hsconfig research-deck`.
 
-For the normal operator entry point, start at `docs/operator/README.md`.
+For the normal operator entry point, return to the [operator guide](README.md).
+
+`source_readiness_preview` is a diagnostic-only projection of source candidate,
+autopilot, and package readiness. It does not replace `reports/operator_summary.json`,
+cannot promote `SOURCE_BACKED_STRONG`, cannot
+block apply, and never writes runtime files.
 
 ## Accepted Sources
 
@@ -201,7 +206,7 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 `hsconfig source-autopilot` consumes compact public source-search records and writes ranked sources, source evidence rows, strict `source_documents.json`, and `source_autopilot_report.json`. The normal bridge is:
 
 ```powershell
-hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
+# Use the normal configure command from the operator guide with --auto-source.
 ```
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts. Supported official static effect semantics may contribute only to deterministic non-strategic claim families. operator_summary.json remains the only normal apply authority.
@@ -234,7 +239,7 @@ Source-backed strong operator invariants:
 When public guide URLs are known, HSConfig can acquire bounded public source text before `source-autopilot`:
 
 ```powershell
-hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
+# Use the normal configure command from the operator guide with --online-source.
 ```
 
 `configure --online-source` also consults the compact source candidate registry
@@ -731,4 +736,4 @@ HSConfig does not prove gameplay improvement. It creates the best available init
 
 ## Next-Wave Source Autonomy
 
-See `docs/operator/autonomous-source-builder-next.md` for the source-acquisition contract that should feed `research-deck` before future deck-only autonomy work. This document is intentionally a contract, not an implementation of web browsing or scraping.
+Use the active [pre-run contract](../contracts/pre-run-contract.md) together with the source-acquisition steps in this policy before deck-only research. These contracts define inputs and boundaries; they do not implement web browsing or scraping.

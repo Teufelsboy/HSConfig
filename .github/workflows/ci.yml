@@ -103,10 +103,8 @@ jobs:
           "PYTHONPATH=$buildBackendRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Run Ruff
         run: python -m ruff check --no-cache src tests scripts
-      - name: Synchronize the installed skill in runner temporary storage
-        run: python scripts/sync_installed_skill.py --install-root "$env:RUNNER_TEMP/hsconfig-skill"
       - name: Run contract guardrails
-        run: python scripts/check_contract_guardrails.py --skill-install-root "$env:RUNNER_TEMP/hsconfig-skill"
+        run: python scripts/check_contract_guardrails.py
       - name: Run optimized contract-spine sentinel
         run: python -O -m hsconfig.cli contract-spine-sentinel --json
       - name: Run canonical twelve-deck contract acceptance
@@ -122,7 +120,7 @@ jobs:
             throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
           }
           $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
-          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'pip-cache', 'hypothesis', 'security-outputs')) {
             $candidate = Join-Path $runnerTemp $name
             if (Test-Path -LiteralPath $candidate) {
               $item = Get-Item -LiteralPath $candidate -Force
@@ -196,7 +194,7 @@ jobs:
             throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
           }
           $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
-          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'pip-cache', 'hypothesis', 'security-outputs')) {
             $candidate = Join-Path $runnerTemp $name
             if (Test-Path -LiteralPath $candidate) {
               $item = Get-Item -LiteralPath $candidate -Force
@@ -326,7 +324,7 @@ jobs:
             throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
           }
           $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
-          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'pip-cache', 'hypothesis', 'security-outputs')) {
             $candidate = Join-Path $runnerTemp $name
             if (Test-Path -LiteralPath $candidate) {
               $item = Get-Item -LiteralPath $candidate -Force
@@ -444,11 +442,11 @@ jobs:
       - name: Run contract mutations
         run: python scripts/run_contract_mutations.py --json
       - name: Reconcile the canonical output inventory
-        run: python scripts/reconcile_outputs.py --outputs "${{ runner.temp }}/security-outputs" --apply --json
+        run: python scripts/reconcile_outputs.py --outputs outputs --apply --json
       - name: Scan publishable content through the canonical release bootstrap
-        run: python scripts/check_release_gate.py --repo . --outputs "${{ runner.temp }}/security-outputs" --tree-mode working-pre-cutover --internal-check publishable_path_scan --json
+        run: python scripts/check_release_gate.py --repo . --outputs outputs --tree-mode working-pre-cutover --internal-check publishable_path_scan --json
       - name: Check repository hygiene through the canonical release bootstrap
-        run: python scripts/check_release_gate.py --repo . --outputs "${{ runner.temp }}/security-outputs" --tree-mode working-pre-cutover --internal-check repository_hygiene --json
+        run: python scripts/check_release_gate.py --repo . --outputs outputs --tree-mode working-pre-cutover --internal-check repository_hygiene --json
       - name: Verify checkout residue is zero
         if: always()
         shell: pwsh
@@ -460,7 +458,7 @@ jobs:
             throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
           }
           $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
-          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'hsconfig-skill', 'pip-cache', 'hypothesis', 'security-outputs')) {
+          foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'pip-cache', 'hypothesis', 'security-outputs')) {
             $candidate = Join-Path $runnerTemp $name
             if (Test-Path -LiteralPath $candidate) {
               $item = Get-Item -LiteralPath $candidate -Force

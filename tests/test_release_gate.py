@@ -512,6 +512,7 @@ def test_bound_coverage_scan_uses_fresh_child_namespace(
     outputs = tmp_path / "outputs"
     outputs.mkdir()
     release_gate_module = sys.modules[scan_publishable_content.__module__]
+    publishable_tree_module = release_gate_module.publishable_tree_module
     cleanups: list[Any] = []
 
     def parent_reader(*args: object, **kwargs: object) -> bytes:
@@ -531,14 +532,18 @@ def test_bound_coverage_scan_uses_fresh_child_namespace(
     elif parent_mutation == "decorated-reader-helper":
         monkeypatch.setattr(release_gate_module, "_path_snapshots", parent_reader_helper)
     elif parent_mutation == "sensitive-suffix-set":
-        release_gate_module._SENSITIVE_SUFFIXES.add(".txt")
-        cleanups.append(lambda: release_gate_module._SENSITIVE_SUFFIXES.discard(".txt"))
+        publishable_tree_module._SENSITIVE_SUFFIXES.add(".txt")
+        cleanups.append(
+            lambda: publishable_tree_module._SENSITIVE_SUFFIXES.discard(".txt")
+        )
     elif parent_mutation == "runtime-name-set":
-        release_gate_module._RUNTIME_COMPACT.add("tracked")
-        cleanups.append(lambda: release_gate_module._RUNTIME_COMPACT.discard("tracked"))
+        publishable_tree_module._RUNTIME_COMPACT.add("tracked")
+        cleanups.append(
+            lambda: publishable_tree_module._RUNTIME_COMPACT.discard("tracked")
+        )
     else:
         marker_digest = hashlib.sha256(marker.encode()).hexdigest()
-        allowances = release_gate_module._EXACT_PLACEHOLDER_REFERENCE_SHA256
+        allowances = publishable_tree_module.EXACT_PLACEHOLDER_REFERENCE_SHA256
         previous = allowances.get("README.md")
         allowances["README.md"] = {1: marker_digest}
 
@@ -570,6 +575,7 @@ def test_bound_coverage_scan_uses_fresh_child_namespace(
             "current package catalog path cannot be inspected: "
             "docs/operator/audited-deck-catalog.json",
             "public_placeholder:README.md:1",
+            "unexpected_root:tracked.txt",
         ],
         "tracked_files_scanned": 2,
         "current_packages_scanned": 0,
@@ -889,6 +895,9 @@ def _repository(tmp_path: Path) -> tuple[Path, Path]:
     (root / "src" / "hsconfig" / "release_gate.py").write_bytes(
         (ROOT / "src" / "hsconfig" / "release_gate.py").read_bytes()
     )
+    (root / "src" / "hsconfig" / "publishable_tree.py").write_bytes(
+        (ROOT / "src" / "hsconfig" / "publishable_tree.py").read_bytes()
+    )
     (root / "docs" / "operator").mkdir(parents=True)
     (root / "docs" / "operator" / "README.md").write_text(
         "Canonical release gate.\n", encoding="utf-8"
@@ -1068,9 +1077,10 @@ def test_gate_uses_argument_arrays_timeouts_and_propagates_failed_check(
         return _completed(argv)
 
     monkeypatch.setattr("hsconfig.release_gate._execute_bounded", runner)
+    monkeypatch.setattr("hsconfig.release_gate._verify_module_binding", lambda *_: None)
     monkeypatch.setattr(
         "hsconfig.release_gate._validate_repository",
-        lambda repository, outputs_root, tree_mode: (
+        lambda repository, outputs_root, tree_mode, **_: (
             Path(repository).resolve(),
             Path(outputs_root).resolve(),
             "a" * 40,
@@ -1078,11 +1088,13 @@ def test_gate_uses_argument_arrays_timeouts_and_propagates_failed_check(
     )
     monkeypatch.setattr(
         "hsconfig.release_gate._capture_snapshot",
-        lambda repository, outputs_root: type(
+        lambda repository, outputs_root, **_: type(
             "Snapshot", (), {"commit_oid": "a" * 40}
         )(),
     )
-    monkeypatch.setattr("hsconfig.release_gate._assert_snapshot_unchanged", lambda *_: None)
+    monkeypatch.setattr(
+        "hsconfig.release_gate._assert_snapshot_unchanged", lambda *_, **__: None
+    )
 
     result = run_release_gate(
         repository=repository,
@@ -1114,9 +1126,10 @@ def test_gate_subprocess_environment_discards_host_python_and_pip_injection(
         return _completed(command)
 
     monkeypatch.setattr("hsconfig.release_gate._execute_bounded", runner)
+    monkeypatch.setattr("hsconfig.release_gate._verify_module_binding", lambda *_: None)
     monkeypatch.setattr(
         "hsconfig.release_gate._validate_repository",
-        lambda repository, outputs_root, tree_mode: (
+        lambda repository, outputs_root, tree_mode, **_: (
             Path(repository).resolve(),
             Path(outputs_root).resolve(),
             "a" * 40,
@@ -1128,11 +1141,13 @@ def test_gate_subprocess_environment_discards_host_python_and_pip_injection(
     )
     monkeypatch.setattr(
         "hsconfig.release_gate._capture_snapshot",
-        lambda repository, outputs_root: type(
+        lambda repository, outputs_root, **_: type(
             "Snapshot", (), {"commit_oid": "a" * 40}
         )(),
     )
-    monkeypatch.setattr("hsconfig.release_gate._assert_snapshot_unchanged", lambda *_: None)
+    monkeypatch.setattr(
+        "hsconfig.release_gate._assert_snapshot_unchanged", lambda *_, **__: None
+    )
 
     run_release_gate(
         repository=repository,
@@ -4080,6 +4095,7 @@ def test_real_reexec_uses_inventory_bound_committed_controller(
         destination = repository / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+    (repository / "outputs").mkdir(exist_ok=True)
     _initialize_full_repository_fixture(repository)
     subprocess.run(
         [
@@ -4124,7 +4140,7 @@ def test_real_reexec_uses_inventory_bound_committed_controller(
         "--repo",
         str(repository),
         "--outputs",
-        str(tmp_path / "route-outputs"),
+        str(repository / "outputs"),
         "--tree-mode",
         "working-pre-cutover",
         "--internal-check",
@@ -4591,6 +4607,7 @@ def test_real_reexec_preserves_exact_relative_public_operands(
         destination = repository / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+    (repository / "outputs").mkdir(exist_ok=True)
     _initialize_full_repository_fixture(repository)
     subprocess.run(
         [
@@ -5959,15 +5976,20 @@ def _module_binding_paths(
     tmp_path: Path,
     source: bytes,
     loaded: bytes,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     repository = tmp_path / "repository"
-    expected = repository / "src" / "hsconfig" / "release_gate.py"
-    expected.parent.mkdir(parents=True)
-    expected.write_bytes(source)
-    installed = tmp_path / "installed" / "release_gate.py"
-    installed.parent.mkdir()
-    installed.write_bytes(loaded)
-    return repository, installed
+    expected_package = repository / "src" / "hsconfig"
+    expected_package.mkdir(parents=True)
+    installed_package = tmp_path / "installed"
+    installed_package.mkdir()
+    for module_name in ("release_gate.py", "publishable_tree.py"):
+        (expected_package / module_name).write_bytes(source)
+        (installed_package / module_name).write_bytes(loaded)
+    return (
+        repository,
+        installed_package / "release_gate.py",
+        installed_package / "publishable_tree.py",
+    )
 
 
 @pytest.mark.parametrize(
@@ -5982,7 +6004,7 @@ def test_module_binding_accepts_only_global_lf_crlf_transformation(
     installed_newline: bytes,
 ) -> None:
     logical_lines = (b"from __future__ import annotations", b"VALUE = 'same'")
-    repository, installed = _module_binding_paths(
+    repository, installed, installed_publishable_tree = _module_binding_paths(
         tmp_path,
         repository_newline.join(logical_lines) + repository_newline,
         installed_newline.join(logical_lines) + installed_newline,
@@ -5990,6 +6012,11 @@ def test_module_binding_accepts_only_global_lf_crlf_transformation(
     from hsconfig import release_gate as module
 
     monkeypatch.setattr(module, "__file__", str(installed))
+    monkeypatch.setattr(
+        module.publishable_tree_module,
+        "__file__",
+        str(installed_publishable_tree),
+    )
     module._verify_module_binding(repository)
 
 
@@ -6022,10 +6049,17 @@ def test_module_binding_rejects_noncanonical_or_changed_content(
     source: bytes,
     loaded: bytes,
 ) -> None:
-    repository, installed = _module_binding_paths(tmp_path, source, loaded)
+    repository, installed, installed_publishable_tree = _module_binding_paths(
+        tmp_path, source, loaded
+    )
     from hsconfig import release_gate as module
 
     monkeypatch.setattr(module, "__file__", str(installed))
+    monkeypatch.setattr(
+        module.publishable_tree_module,
+        "__file__",
+        str(installed_publishable_tree),
+    )
     with pytest.raises(ReleaseGateError, match="module is not bound"):
         module._verify_module_binding(repository)
 
@@ -6039,7 +6073,9 @@ def test_module_binding_rejects_unsafe_file_types(
     kind: str,
 ) -> None:
     source = b"VALUE = 1\n"
-    repository, installed = _module_binding_paths(tmp_path, source, source)
+    repository, installed, installed_publishable_tree = _module_binding_paths(
+        tmp_path, source, source
+    )
     from hsconfig import release_gate as module
 
     target = repository / "src" / "hsconfig" / "release_gate.py"
@@ -6060,6 +6096,11 @@ def test_module_binding_rejects_unsafe_file_types(
             pytest.skip(f"{kind} creation is unavailable: {exc}")
 
     monkeypatch.setattr(module, "__file__", str(installed))
+    monkeypatch.setattr(
+        module.publishable_tree_module,
+        "__file__",
+        str(installed_publishable_tree),
+    )
     with pytest.raises(ReleaseGateError):
         module._verify_module_binding(repository)
 
@@ -6981,22 +7022,47 @@ def test_outputs_root_rejects_any_non_deck_entry(tmp_path: Path) -> None:
 
 
 def test_candidate_requires_detached_head_but_no_output_root_receipt(tmp_path: Path) -> None:
-    repository, outputs = _repository(tmp_path)
+    owner, outputs = _repository(tmp_path)
+    exclude = owner / ".git" / "info" / "exclude"
+    exclude.write_text(exclude.read_text(encoding="utf-8") + "\n/.cutover-candidate/\n", encoding="utf-8")
+    candidate = owner / ".cutover-candidate" / "candidate"
+    temporary_candidate = tmp_path / "candidate-clone"
+    _git(
+        owner,
+        "-c",
+        "core.autocrlf=false",
+        "clone",
+        "-q",
+        "--no-checkout",
+        str(owner),
+        str(temporary_candidate),
+    )
+    candidate.parent.mkdir()
+    temporary_candidate.rename(candidate)
+    _git(candidate, "config", "core.autocrlf", "false")
+    _git(candidate, "config", "core.longpaths", "true")
+    _git(candidate, "remote", "set-url", "origin", "https://github.com/Teufelsboy/HSConfig.git")
 
-    with pytest.raises(ReleaseGateError, match="detached"):
-        run_release_gate(repository=repository, outputs_root=outputs, tree_mode="candidate")
+    with pytest.raises(ReleaseGateError, match="owner"):
+        run_release_gate(repository=candidate, outputs_root=outputs, tree_mode="candidate")
 
-    _git(repository, "checkout", "--detach", "-q")
+    _git(candidate, "checkout", "--detach", "-q", "HEAD")
+    assert _git(candidate, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
-    root, verified_outputs, oid = _validate_repository(repository, outputs, "candidate")
+    root, verified_outputs, oid = _validate_repository(
+        candidate,
+        outputs,
+        "candidate",
+        owner_repository=owner,
+    )
 
-    assert root == repository.resolve()
+    assert root == candidate.resolve()
     assert verified_outputs == outputs.resolve()
-    assert oid == _git(repository, "rev-parse", "HEAD")
+    assert oid == _git(candidate, "rev-parse", "HEAD")
     assert {path.name for path in outputs.iterdir()} == {
         row["deck_name"]
         for row in json.loads(
-            (repository / "docs/operator/audited-deck-catalog.json").read_text(
+            (candidate / "docs/operator/audited-deck-catalog.json").read_text(
                 encoding="utf-8"
             )
         )["decks"]
@@ -7761,7 +7827,7 @@ def test_current_package_scan_rejects_hardlinked_member(tmp_path: Path) -> None:
     assert any("non_regular_or_link" in row for row in result["violations"])
 
 
-def test_publishable_scan_allows_only_exact_historical_directories_in_pre_cutover(
+def test_publishable_scan_rejects_unbound_historical_content_in_every_mode(
     tmp_path: Path,
 ) -> None:
     repository, outputs = _repository(tmp_path)
@@ -7784,9 +7850,13 @@ def test_publishable_scan_allows_only_exact_historical_directories_in_pre_cutove
         build_distributions=False,
     )
 
-    assert pre["passed"] is True
+    assert pre["passed"] is False
+    assert any(
+        row.startswith("legacy_inventory_mismatch:")
+        for row in pre["violations"]
+    )
     assert final["passed"] is False
-    assert any("docs/superpowers/plans/old.md" in row for row in final["violations"])
+    assert "legacy_path:docs/superpowers/plans/old.md" in final["violations"]
 
 
 @pytest.mark.parametrize(
@@ -9232,7 +9302,7 @@ def test_source_placeholder_allowlist_rejects_expired_version(
     _git(repository, "add", ".")
     _git(repository, "commit", "-q", "-m", "expired allowlist")
     monkeypatch.setattr(
-        "hsconfig.release_gate.SOURCE_TODO_ALLOWLIST",
+        "hsconfig.publishable_tree.SOURCE_TODO_ALLOWLIST",
         ({"file": "src/hsconfig/unfinished.py", "line": 1, "reason": "migration", "expiry_version": "1.0.0"},),
     )
 
@@ -9530,10 +9600,16 @@ def test_fixture_documents_the_clean_repository_contract() -> None:
     )
     assert tuple(fixture["check_names"]) == EXPECTED_CHECKS
     assert fixture["working_pre_cutover_excluded_prefixes"] == [
-        "docs/superpowers/plans/",
-        "docs/research/",
+        ".agents/",
+        ".superpowers/",
         "docs/history/",
+        "docs/research/",
+        "docs/superpowers/",
     ]
+    assert fixture["working_pre_cutover_legacy_file_count"] == 538
+    assert fixture["working_pre_cutover_legacy_inventory_sha256"] == (
+        "e512a342802139b4f61dc5e9a216b1c840f833fa35b924077647fcaa042f5e9d"
+    )
     assert fixture["outputs_root_contract"] == "exactly_twelve_catalog_deck_directories"
     assert fixture["evidence_transport"] == "canonical_json_stdin_envelope"
     assert fixture["evidence_files_written"] is False
@@ -10473,7 +10549,7 @@ def test_publishability_yaml_resource_limits_fail_closed(
     limit: int,
     content: str,
 ) -> None:
-    monkeypatch.setattr("hsconfig.release_gate." + limit_name, limit)
+    monkeypatch.setattr("hsconfig.publishable_tree." + limit_name, limit)
 
     violations = _text_violations(
         "config/settings.yaml",
@@ -10633,7 +10709,7 @@ def test_publishability_credential_parsers_cover_bounded_static_forms(
             public_doc=False,
         )
 
-    monkeypatch.setattr("hsconfig.release_gate._MAX_STRUCTURED_DEPTH", 0)
+    monkeypatch.setattr("hsconfig.publishable_tree._MAX_STRUCTURED_DEPTH", 0)
     assert _text_violations(
         "config/settings.json",
         json.dumps({"outer": {"value": "safe"}}).encode(),
@@ -10655,7 +10731,7 @@ def test_publishability_yaml_parser_limits_cover_documents_aliases_and_scalars(
     limit: int,
     content: str,
 ) -> None:
-    monkeypatch.setattr("hsconfig.release_gate." + limit_name, limit)
+    monkeypatch.setattr("hsconfig.publishable_tree." + limit_name, limit)
 
     assert _text_violations(
         "config/settings.yaml",
@@ -11473,6 +11549,76 @@ def test_active_local_project_rejects_schema_and_wheel_closure_boundaries(
             inventory_digest="d" * 64,
         )
 
+
+@pytest.mark.parametrize("tree_mode", ("working-pre-cutover", "final"))
+def test_non_candidate_modes_reject_owner_repository(
+    tmp_path: Path,
+    tree_mode: str,
+) -> None:
+    repository, outputs = _repository(tmp_path)
+
+    with pytest.raises(ReleaseGateError, match="owner"):
+        _validate_repository(
+            repository,
+            outputs,
+            tree_mode,
+            owner_repository=repository,
+        )
+
+
+def test_candidate_rejects_repository_outside_bound_owner_container(
+    tmp_path: Path,
+) -> None:
+    owner_fixture = tmp_path / "owner-fixture"
+    outside_fixture = tmp_path / "outside-fixture"
+    owner_fixture.mkdir()
+    outside_fixture.mkdir()
+    owner, outputs = _repository(owner_fixture)
+    outside, _outside_outputs = _repository(outside_fixture)
+    _git(outside, "checkout", "--detach", "-q")
+
+    with pytest.raises(ReleaseGateError, match="candidate.*owner|owner.*candidate"):
+        _validate_repository(
+            outside,
+            outputs,
+            "candidate",
+            owner_repository=owner,
+        )
+
+
+def test_candidate_owner_repository_is_in_every_internal_command(tmp_path: Path) -> None:
+    owner, outputs = _repository(tmp_path)
+    candidate = owner / ".cutover-candidate" / "candidate"
+
+    specs = _command_specs(
+        candidate,
+        outputs,
+        "candidate",
+        owner_repository=owner,
+    )
+
+    internal = tuple(spec for spec in specs if "--internal-check" in spec.command)
+    assert internal
+    for spec in internal:
+        assert spec.command[spec.command.index("--owner-repo") + 1] == str(owner)
+
+
+def test_candidate_snapshot_rejects_owner_ref_advance(
+    tmp_path: Path,
+) -> None:
+    owner, outputs = _repository(tmp_path)
+    snapshot = _capture_snapshot(owner, outputs, owner_repository=owner)
+    (owner / "owner-change.txt").write_text("advance\n", encoding="utf-8")
+    _git(owner, "add", "owner-change.txt")
+    _git(owner, "commit", "-q", "-m", "advance owner")
+
+    with pytest.raises(ReleaseGateError, match="owner.*changed|changed.*owner"):
+        _assert_snapshot_unchanged(
+            owner,
+            outputs,
+            snapshot,
+            owner_repository=owner,
+        )
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows process-gate semantics")
 def test_process_tree_gate_rejects_a_real_directory_as_interpreter(

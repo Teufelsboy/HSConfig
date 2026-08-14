@@ -265,3 +265,15 @@ def test_source_contract_spine_freezes_claim_kind_specific_strong_authority():
         "effect families | `deck_matched_public_guide` or "
         "`source_backed_static_semantics` |"
     ) in spine
+
+
+def test_source_contract_spine_routes_back_to_the_operator_authority() -> None:
+    spine = (
+        REPO_ROOT / "docs" / "operator" / "source-contract-spine.md"
+    ).read_text(encoding="utf-8")
+
+    assert "[Back to the operator guide](README.md)" in spine
+    assert (
+        "`reports/operator_summary.json` remains the only normal apply authority."
+        in spine
+    )

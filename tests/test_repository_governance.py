@@ -127,10 +127,12 @@ FROZEN_POLICY_TEXT = {
     "SECURITY.md": EXPECTED_SECURITY_TEXT,
 }
 FROZEN_README_PREFIX_SHA256 = (
-    "592c2f5595c21f75a897420286d1a19f0ff87516858f6a22a37b42d4ca7c4489"
+    "b48b62ec1f97eadd1211177b6d6564fcb8dd563f1cd900802cfb6edc692c4c7b"
 )
 EXPECTED_README_DOCUMENTATION_ROWS = (
     "- [Operator guide](docs/operator/README.md)",
+    "- [Architecture overview](docs/architecture/overview.md)",
+    "- [Pre-run contract](docs/contracts/pre-run-contract.md)",
     "- [Security policy](SECURITY.md)",
     "- [Contribution policy](CONTRIBUTING.md)",
 )

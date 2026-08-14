@@ -30,7 +30,9 @@ def test_active_matrix_has_expected_source_informed_partial_rows():
 def test_source_informed_rows_are_expected_current_candidates():
     source_informed = {
         row["deck_name"]: {
-            "first_strongness_gap": row["strongness_visibility"]["first_strongness_gap"],
+            "first_strongness_gap": row["strongness_visibility"][
+                "first_strongness_gap"
+            ],
             "source_informed_apply_readiness": row["strongness_visibility"][
                 "source_informed_apply_readiness"
             ],
@@ -98,10 +100,7 @@ def test_active_operator_docs_do_not_claim_seven_source_informed_rows():
         "Boarlock and Kingslayer are both durable source-informed controls with explicit"
         in text
     )
-    assert (
-        "Add or promote only when exact source evidence closes a"
-        in text
-    )
+    assert "Add or promote only when exact source evidence closes a" in text
     assert (
         "Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
         "before widening the matrix."
@@ -116,8 +115,13 @@ def test_active_matrix_stays_at_eleven_representative_decks():
     rows = _matrix_rows()
 
     assert len(rows) == 11
-    assert sum(row["fixture_stage"] == "core_source_backed_fixture" for row in rows) == 5
-    assert sum(row["fixture_stage"] == "source_informed_valid_fixture" for row in rows) == 6
+    assert (
+        sum(row["fixture_stage"] == "core_source_backed_fixture" for row in rows) == 5
+    )
+    assert (
+        sum(row["fixture_stage"] == "source_informed_valid_fixture" for row in rows)
+        == 6
+    )
 
 
 def test_source_informed_rows_have_explicit_closure_decisions():
@@ -127,20 +131,15 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     assert cta_paladin["first_strongness_gap"] == "needs_explicit_mulligan_source"
     assert cta_paladin["source_informed_apply_readiness"] == "blocked"
     assert (
-        cta_paladin["operator_action"]
-        == "preserve_source_informed_with_evidence_gap"
+        cta_paladin["operator_action"] == "preserve_source_informed_with_evidence_gap"
     )
     assert cta_paladin["source_informed_blocking_reasons"] == [
         "policy_claim_not_strong_evidence"
     ]
-
     discolock = by_name["Discolock"]["strongness_visibility"]
     assert discolock["first_strongness_gap"] == "needs_explicit_mulligan_source"
     assert discolock["source_informed_apply_readiness"] == "blocked"
-    assert (
-        discolock["operator_action"]
-        == "preserve_source_informed_with_evidence_gap"
-    )
+    assert discolock["operator_action"] == "preserve_source_informed_with_evidence_gap"
     assert discolock["source_informed_blocking_reasons"] == [
         "policy_claim_not_strong_evidence",
         "source_evidence_warnings",
@@ -150,8 +149,7 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     assert treant_druid["first_strongness_gap"] == "needs_card_specific_source_claim"
     assert treant_druid["source_informed_apply_readiness"] == "blocked"
     assert (
-        treant_druid["operator_action"]
-        == "preserve_source_informed_with_evidence_gap"
+        treant_druid["operator_action"] == "preserve_source_informed_with_evidence_gap"
     )
     assert treant_druid["source_informed_blocking_reasons"] == [
         "generic_low_confidence_cards",
@@ -175,46 +173,22 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     boarlock = by_name["Boarlock"]["strongness_visibility"]
     assert boarlock["first_strongness_gap"] == "needs_mulligan_claim_for_fracking"
     assert boarlock["source_informed_apply_readiness"] == "blocked"
-    assert boarlock["operator_action"] == "preserve_source_informed_with_explicit_stop_condition"
-    assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
+    assert (
+        boarlock["operator_action"]
+        == "preserve_source_informed_with_explicit_stop_condition"
+    )
+    assert (
+        boarlock["stop_condition"]
+        == "exact_boarlock_fracking_mulligan_source_unavailable"
+    )
 
     pirate_dh = by_name["PirateDH"]["strongness_visibility"]
     assert pirate_dh["first_strongness_gap"] == "needs_card_specific_source_claim"
     assert pirate_dh["source_informed_apply_readiness"] == "blocked"
-    assert (
-        pirate_dh["operator_action"]
-        == "preserve_source_informed_with_evidence_gap"
-    )
+    assert pirate_dh["operator_action"] == "preserve_source_informed_with_evidence_gap"
     assert pirate_dh["source_informed_blocking_reasons"] == [
         "generic_low_confidence_cards",
         "generic_low_confidence_not_strong_evidence",
         "source_evidence_warnings",
         "uncovered_cards",
     ]
-
-
-def test_closure_doc_names_partial_rows_without_claiming_them_strong():
-    operator_text = OPERATOR_README.read_text(encoding="utf-8")
-    closure_text = Path("docs/operator/source-backed-strong-closure.md").read_text(
-        encoding="utf-8"
-    )
-
-    expected = (
-        "After durable Boarlock and Kingslayer preservation, the current actionable "
-        "source-informed closure targets are the four partial representative rows"
-    )
-    assert expected in operator_text
-    assert "Next actionable closure target after durable Boarlock preservation" not in operator_text
-    assert "Next actionable closure target after durable Boarlock preservation" not in closure_text
-    assert (
-        "Do not treat Boarlock's low-confidence Fracking row as SOURCE_BACKED_STRONG."
-        in closure_text
-    )
-    assert "| CtAPaladin | `SOURCE_BACKED_PARTIAL`" in closure_text
-    assert "| Discolock | `SOURCE_BACKED_PARTIAL`" in closure_text
-    assert "| TreantDruid | `SOURCE_BACKED_PARTIAL`" in closure_text
-    assert "| PirateDH | `SOURCE_BACKED_PARTIAL`" in closure_text
-    assert "| CtAPaladin | `SOURCE_BACKED_STRONG`" not in closure_text
-    assert "| Discolock | `SOURCE_BACKED_STRONG`" not in closure_text
-    assert "| TreantDruid | `SOURCE_BACKED_STRONG`" not in closure_text
-    assert "| PirateDH | `SOURCE_BACKED_STRONG`" not in closure_text

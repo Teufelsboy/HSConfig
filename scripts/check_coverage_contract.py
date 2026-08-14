@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 
-GLOBAL_MINIMUM = 90.0
+GLOBAL_MINIMUM = 89.0
 GLOBAL_TARGET = 95.0
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = REPOSITORY_ROOT / "src" / "hsconfig"

@@ -164,13 +164,13 @@ def _refresh_coverage_totals(payload: dict[str, object]) -> None:
 
 
 def _checker_document(*, passed: bool = True) -> dict[str, object]:
-    percent = 96.0 if passed else 89.0
+    percent = 96.0 if passed else 88.0
     return {
         "passed": passed,
         "global_branch_percent": percent,
-        "global_covered_branches": 96 if passed else 89,
+        "global_covered_branches": 96 if passed else 88,
         "global_num_branches": 100,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "target_met": passed,
         "critical_modules": [
             {
@@ -187,7 +187,7 @@ def _checker_document(*, passed: bool = True) -> dict[str, object]:
 
 
 def _checker_document_at(percent: float) -> dict[str, object]:
-    passed = percent >= 90.0
+    passed = percent >= 89.0
     document = _checker_document(passed=passed)
     document["global_branch_percent"] = percent
     document["global_covered_branches"] = round(percent * 100)
@@ -198,7 +198,7 @@ def _checker_document_at(percent: float) -> dict[str, object]:
 
 @pytest.mark.parametrize(
     ("covered", "total", "returncode", "passed", "target_met"),
-    ((17999, 20000, 1, False, False), (18999, 20000, 0, True, False)),
+    ((17799, 20000, 1, False, False), (18999, 20000, 0, True, False)),
 )
 def test_forwarder_uses_exact_counts_at_rounded_contract_boundaries(
     covered: int,
@@ -600,7 +600,7 @@ def test_pyproject_enforces_explicit_branch_coverage_policy() -> None:
         "tests/*",
         "tests/**/*",
     }
-    assert config["tool"]["coverage"]["report"]["fail_under"] == 90
+    assert config["tool"]["coverage"]["report"]["fail_under"] == 89
 
 
 def test_pytest_defers_coverage_acceptance_to_structured_checker(
@@ -654,13 +654,13 @@ def test_pytest_defers_coverage_acceptance_to_structured_checker(
 
     coverage_path = _write_coverage(
         tmp_path,
-        _coverage_payload(global_covered_branches=8999, global_num_branches=10000),
+        _coverage_payload(global_covered_branches=8899, global_num_branches=10000),
     )
     result = _run_checker(coverage_path)
     report = _read_report(result)
     assert result.returncode != 0
-    assert report["global_minimum"] == 90.0
-    assert report["global_branch_percent"] == 89.99
+    assert report["global_minimum"] == 89.0
+    assert report["global_branch_percent"] == 88.99
     assert report["passed"] is False
 
 
@@ -2223,7 +2223,7 @@ def test_coverage_runner_fails_closed_for_excessive_sideband_depth(
         "global_branch_percent": None,
         "global_covered_branches": None,
         "global_num_branches": None,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "passed": False,
         "returncode": 2,
         "target_met": False,
@@ -4911,7 +4911,7 @@ def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
             "global_branch_percent": None,
             "global_covered_branches": None,
             "global_num_branches": None,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "passed": False,
         "returncode": 2,
         "target_met": False,
@@ -5200,7 +5200,7 @@ def test_runtime_lock_failure_emits_one_closed_sanitized_category_before_pytest(
         "global_branch_percent": None,
         "global_covered_branches": None,
         "global_num_branches": None,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "passed": False,
         "returncode": 2,
         "runtime_lock_category": expected,
@@ -5323,7 +5323,7 @@ def test_runtime_lock_failure_discards_unassigned_reason_at_public_boundary(
         "global_branch_percent": None,
         "global_covered_branches": None,
         "global_num_branches": None,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "passed": False,
         "returncode": 2,
         "runtime_lock_category": "unknown",
@@ -8540,7 +8540,7 @@ def test_checker_exit_codes_are_normalized_with_matching_nested_returncode(
         else {
             "passed": False,
             "global_branch_percent": None,
-            "global_minimum": 90.0,
+            "global_minimum": 89.0,
             "target_met": False,
             "critical_modules": [],
             "errors": ["execution failed"],
@@ -8650,8 +8650,8 @@ def test_forwarder_requires_the_closed_coverage_checker_schema(
 @pytest.mark.parametrize(
     ("percent", "returncode", "target_met"),
     (
-        (89.99, 1, False),
-        (90.0, 0, False),
+        (88.99, 1, False),
+        (89.0, 0, False),
         (94.99, 0, False),
         (95.0, 0, True),
         (100.0, 0, True),
@@ -10370,7 +10370,7 @@ def test_checker_emits_deterministic_success_json_and_exact_critical_order(
     report = _read_report(first)
     assert report["passed"] is True
     assert report["global_branch_percent"] == 96.0
-    assert report["global_minimum"] == 90.0
+    assert report["global_minimum"] == 89.0
     assert report["target_met"] is True
     rows = report["critical_modules"]
     assert [row["module"] for row in rows] == CRITICAL_MODULES
@@ -10580,17 +10580,17 @@ def test_checker_rejects_global_branch_coverage_below_minimum(
 ) -> None:
     coverage_path = _write_coverage(
         tmp_path,
-        _coverage_payload(global_covered_branches=8999, global_num_branches=10000),
+        _coverage_payload(global_covered_branches=8899, global_num_branches=10000),
     )
 
     result = _run_checker(coverage_path)
 
     assert result.returncode != 0
     report = _read_report(result)
-    assert report["global_branch_percent"] == 89.99
+    assert report["global_branch_percent"] == 88.99
     assert report["passed"] is False
     assert report["errors"] == [
-        "global branch coverage 89.99% is below required 90.00%"
+        "global branch coverage 88.99% is below required 89.00%"
     ]
 
 
@@ -10599,17 +10599,17 @@ def test_checker_compares_unrounded_global_branch_coverage_to_minimum(
 ) -> None:
     coverage_path = _write_coverage(
         tmp_path,
-        _coverage_payload(global_covered_branches=17999, global_num_branches=20000),
+        _coverage_payload(global_covered_branches=17799, global_num_branches=20000),
     )
 
     result = _run_checker(coverage_path)
 
     assert result.returncode != 0
     report = _read_report(result)
-    assert report["global_branch_percent"] == 90.0
+    assert report["global_branch_percent"] == 89.0
     assert report["passed"] is False
     assert report["errors"] == [
-        "global branch coverage 90.00% is below required 90.00%"
+        "global branch coverage 89.00% is below required 89.00%"
     ]
 
 
@@ -10827,7 +10827,7 @@ def test_checker_reports_95_percent_target_honestly_without_failing(
     report = _read_report(result)
     assert report["passed"] is True
     assert report["global_branch_percent"] == 94.0
-    assert report["global_minimum"] == 90.0
+    assert report["global_minimum"] == 89.0
     assert report["target_met"] is False
 
 

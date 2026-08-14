@@ -10,7 +10,6 @@ from typing import Callable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SKILL_INSTALL_ROOT = Path.home() / ".codex" / "skills"
 
 FOCUSED_CONTRACT_TESTS = (
     "tests/test_source_claim_family_registry.py",
@@ -31,9 +30,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_universal_wild_no_block_matrix.py",
     "tests/test_operator_docs_contract_policy.py",
     "tests/test_docs_active_path.py",
-    "tests/test_skill_sync.py",
-    "tests/test_skill_files.py",
-    "tests/test_skill_contract_entrypoint.py",
+    "tests/test_external_skill_bundle.py",
     "tests/test_claim_kind_runtime_contract.py",
     "tests/test_card_behavior_router.py",
     "tests/test_mechanic_support.py",
@@ -41,7 +38,6 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_source_to_runtime_explainability.py",
     "tests/test_source_contract_closure_wave.py",
     "tests/test_research_result_contract_sentinel.py",
-    "tests/test_research_current_truth_index.py",
 )
 
 
@@ -68,21 +64,8 @@ def production_assert_violations(repo_root: Path) -> tuple[str, ...]:
     return tuple(violations)
 
 
-def guardrail_commands(
-    repo_root: Path,
-    skill_install_root: Path,
-) -> tuple[GuardrailCommand, ...]:
+def guardrail_commands(repo_root: Path) -> tuple[GuardrailCommand, ...]:
     return (
-        GuardrailCommand(
-            "installed skill sync",
-            (
-                sys.executable,
-                str(repo_root / "scripts" / "sync_installed_skill.py"),
-                "--check",
-                "--install-root",
-                str(skill_install_root),
-            ),
-        ),
         GuardrailCommand(
             "contract spine sentinel",
             (
@@ -112,7 +95,6 @@ def guardrail_commands(
 
 def run_guardrails(
     repo_root: Path,
-    skill_install_root: Path,
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> int:
@@ -124,7 +106,7 @@ def run_guardrails(
         return 1
     print("OK: production assert guardrail")
 
-    for command in guardrail_commands(repo_root, skill_install_root):
+    for command in guardrail_commands(repo_root):
         result = runner(command.argv, cwd=repo_root)
         if result.returncode != 0:
             print(
@@ -138,17 +120,11 @@ def run_guardrails(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run HSConfig skill-sync and contract-spine guardrails."
+        description="Run HSConfig contract-spine guardrails."
     )
-    parser.add_argument(
-        "--skill-install-root",
-        type=Path,
-        default=DEFAULT_SKILL_INSTALL_ROOT,
-        help="Root directory that contains installed skills.",
-    )
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)
 
-    return run_guardrails(REPO_ROOT, args.skill_install_root)
+    return run_guardrails(REPO_ROOT)
 
 
 if __name__ == "__main__":

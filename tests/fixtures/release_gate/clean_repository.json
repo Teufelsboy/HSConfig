@@ -18,10 +18,14 @@
     "near100_scorecard"
   ],
   "working_pre_cutover_excluded_prefixes": [
-    "docs/superpowers/plans/",
+    ".agents/",
+    ".superpowers/",
+    "docs/history/",
     "docs/research/",
-    "docs/history/"
+    "docs/superpowers/"
   ],
+  "working_pre_cutover_legacy_file_count": 538,
+  "working_pre_cutover_legacy_inventory_sha256": "e512a342802139b4f61dc5e9a216b1c840f833fa35b924077647fcaa042f5e9d",
   "outputs_root_contract": "exactly_twelve_catalog_deck_directories",
   "evidence_transport": "canonical_json_stdin_envelope",
   "evidence_files_written": false,

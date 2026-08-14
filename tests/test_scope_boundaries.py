@@ -2,6 +2,8 @@ import ast
 import re
 from pathlib import Path
 
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
+
 
 FORBIDDEN_SRC_CONCEPTS = (
     (
@@ -39,10 +41,6 @@ FORBIDDEN_SRC_CONCEPTS = (
     ),
 )
 
-REQUIRED_DOC_PATHS = (
-    Path("docs/operator/source-builder-workflow.md"),
-    Path(".agents/skills/hsconfig/references/workflow.md"),
-)
 REQUIRED_DOC_PHRASES = (
     "hdt_deck_id is identity-only metadata",
     "not replay evidence",
@@ -181,8 +179,15 @@ def test_hsconfig_src_has_no_obsolete_mulligan_compatibility_helpers():
 
 def test_operator_docs_explain_hdt_as_identity_only():
     missing = []
-    for path in REQUIRED_DOC_PATHS:
-        text = path.read_text(encoding="utf-8")
+    documents = {
+        "docs/operator/README.md": Path("docs/operator/README.md").read_text(
+            encoding="utf-8"
+        ),
+        "embedded:references/workflow.md": load_embedded_skill_bundle()[
+            "references/workflow.md"
+        ].decode("utf-8"),
+    }
+    for path, text in documents.items():
         for phrase in REQUIRED_DOC_PHRASES:
             if phrase not in text:
                 missing.append(f"{path}:{phrase}")
@@ -191,13 +196,15 @@ def test_operator_docs_explain_hdt_as_identity_only():
 
 
 def test_active_docs_keep_hstuner_scope_as_negative_boundary():
-    active_docs = [
-        Path("README.md"),
-        Path("docs/operator/README.md"),
-        Path(".agents/skills/hsconfig/SKILL.md"),
-        Path(".agents/skills/hsconfig/references/workflow.md"),
-    ]
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_docs)
+    embedded = load_embedded_skill_bundle()
+    combined = "\n".join(
+        (
+            Path("README.md").read_text(encoding="utf-8"),
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
+            embedded["SKILL.md"].decode("utf-8"),
+            embedded["references/workflow.md"].decode("utf-8"),
+        )
+    )
 
     assert "does not parse replays" in combined
     assert "HSTuner" in combined
@@ -206,20 +213,22 @@ def test_active_docs_keep_hstuner_scope_as_negative_boundary():
 
 
 def test_active_docs_use_pre_run_boundary_wording():
-    active_docs = [
-        Path("README.md"),
-        Path("docs/operator/README.md"),
-        Path(".agents/skills/hsconfig/SKILL.md"),
-        Path(".agents/skills/hsconfig/references/workflow.md"),
-    ]
+    embedded = load_embedded_skill_bundle()
+    active_docs = {
+        "docs/operator/README.md": Path("docs/operator/README.md").read_text(
+            encoding="utf-8"
+        ),
+        "embedded:SKILL.md": embedded["SKILL.md"].decode("utf-8"),
+        "embedded:references/workflow.md": embedded[
+            "references/workflow.md"
+        ].decode("utf-8"),
+    }
     required = (
         "HSConfig is pre-run only. It does not parse replays, inspect winrate, "
         "analyze runtime logs, promote candidates, or tune after games."
     )
     missing = [
-        str(path)
-        for path in active_docs
-        if required not in path.read_text(encoding="utf-8")
+        path for path, text in active_docs.items() if required not in text
     ]
 
     assert missing == []

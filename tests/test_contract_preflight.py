@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from scripts.sync_installed_skill import sync_skill
 from hsconfig.contract_preflight import (
     GitPreflight,
     _source_readiness_preview_visible,
@@ -19,6 +18,7 @@ from hsconfig.contract_preflight import (
     build_package_contract_preflight,
 )
 from hsconfig.commands import contract_preflight as contract_preflight_command
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
 from tests.helpers.current_apply_eligible_package import (
     write_current_apply_eligible_package,
 )
@@ -41,12 +41,6 @@ def _clean_git() -> GitPreflight:
         ahead_upstream=0,
         behind_upstream=0,
     )
-
-
-def _synced_install_root(tmp_path: Path) -> Path:
-    install_root = tmp_path / "custom skill root"
-    sync_skill(install_root, repo_root=ROOT)
-    return install_root
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -256,64 +250,13 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
     )
 
 
-def test_contract_preflight_import_path_does_not_require_research_sentinel() -> None:
+def test_contract_preflight_has_no_historical_research_authority() -> None:
     source = Path("src/hsconfig/contract_preflight.py").read_text(encoding="utf-8")
-    top_level = source.split("def _latest_research_result_contract", 1)[0]
 
-    assert "from hsconfig.research_result_contract_sentinel import" not in top_level
-    assert "import yaml" not in top_level
+    assert "docs/research" not in source
+    assert "build_research_context_preflight" not in source
+    assert "research_result_contract_sentinel" not in source
 
-
-def test_contract_preflight_reports_installed_skill_sync_when_clean(
-    tmp_path: Path,
-) -> None:
-    install_root = _synced_install_root(tmp_path)
-
-    payload = build_contract_preflight(
-        Path("."),
-        git=_clean_git(),
-        skill_install_root=install_root,
-    )
-
-    assert payload["status"] == "PASS"
-    assert payload["checks"]["installed_skill_sync_current"] is True
-    assert "installed_skill_sync_current" not in payload["failures"]
-    assert payload["installed_skill_sync"]["status"] == "in_sync"
-    assert payload["installed_skill_sync"]["matches_repo_skill"] is True
-    assert payload["installed_skill_sync"]["diagnostic_only"] is True
-    assert (
-        payload["installed_skill_sync"]["runtime_apply_authority"]
-        == "reports/operator_summary.json"
-    )
-
-
-def test_contract_preflight_reports_attention_when_installed_skill_drifts(
-    tmp_path: Path,
-) -> None:
-    install_root = _synced_install_root(tmp_path)
-    installed_skill = install_root / "hsconfig" / "SKILL.md"
-    installed_skill.write_text(
-        installed_skill.read_text(encoding="utf-8") + "\n# drift\n",
-        encoding="utf-8",
-    )
-
-    payload = build_contract_preflight(
-        Path("."),
-        git=_clean_git(),
-        skill_install_root=install_root,
-    )
-
-    assert payload["status"] == "ATTENTION"
-    assert payload["checks"]["installed_skill_sync_current"] is False
-    assert "installed_skill_sync_current" in payload["failures"]
-    assert payload["installed_skill_sync"]["status"] == "attention"
-    assert payload["installed_skill_sync"]["recommended_action"] == (
-        'python scripts\\sync_installed_skill.py --install-root '
-        f'"{install_root.resolve()}"'
-    )
-    assert payload["diagnostic_only"] is True
-    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
-    assert payload["source_status_apply_blocking"] is False
 
 
 def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot(
@@ -322,7 +265,6 @@ def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["status"] == "PASS"
@@ -344,7 +286,6 @@ def test_contract_preflight_exposes_skill_thin_router_contract(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["checks"]["skill_thin_router_visible"] is True
@@ -360,7 +301,6 @@ def test_contract_preflight_checks_configure_acceptance_route_contract(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["status"] == "PASS"
@@ -380,22 +320,14 @@ def test_contract_preflight_rejects_invalid_current_pointer_route(
     clean_payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
     assert clean_payload["status"] == "PASS"
-
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
 
     operator_root = tmp_path / "docs" / "operator"
     operator_root.mkdir(parents=True)
     shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
 
-    for path in (
-        skill_root / "SKILL.md",
-        skill_root / "references" / "workflow.md",
-        operator_root / "README.md",
-    ):
+    for path in (operator_root / "README.md",):
         text = path.read_text(encoding="utf-8")
         path.write_text(
             text.replace("<out>/current.json", "<out>/invalid-pointer.json"),
@@ -414,7 +346,6 @@ def test_contract_preflight_checks_source_candidate_plan_visibility(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     contract = payload["source_candidate_plan_contract"]
@@ -425,7 +356,7 @@ def test_contract_preflight_checks_source_candidate_plan_visibility(
     assert contract == {
         "status": "visible",
         "authority": "diagnostic_source_candidate_plan",
-        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "documentation_path": "docs/operator/README.md",
         "operator_entrypoint_path": "docs/operator/README.md",
         "implementation_path": "src/hsconfig/source_candidate_plan.py",
         "runtime_apply_authority": "reports/operator_summary.json",
@@ -466,7 +397,6 @@ def test_contract_preflight_reads_preview_from_configure_workflow_producer(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     contract = payload["source_readiness_preview_contract"]
@@ -478,8 +408,8 @@ def test_contract_preflight_reads_preview_from_configure_workflow_producer(
         "status": "visible",
         "authority": "diagnostic_source_readiness_preview",
         "documentation_paths": [
-            "docs/operator/source-builder-workflow.md",
-            ".agents/skills/hsconfig/references/workflow.md",
+            "docs/operator/guide-research-policy.md",
+            "embedded:references/workflow.md",
         ],
         "implementation_path": "src/hsconfig/source_readiness_preview.py",
         "configure_summary_field": "source_readiness_preview",
@@ -513,9 +443,6 @@ def test_contract_preflight_reports_attention_when_source_readiness_preview_drif
     target_docs = tmp_path / "docs"
     shutil.copytree(source_docs, target_docs)
 
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
     source_root = tmp_path / "src" / "hsconfig"
     source_root.mkdir(parents=True)
     for filename in (
@@ -538,7 +465,7 @@ def test_contract_preflight_reports_attention_when_source_readiness_preview_drif
         source_root / "configure_workflow.py",
     )
 
-    workflow_path = target_docs / "operator" / "source-builder-workflow.md"
+    workflow_path = target_docs / "operator" / "guide-research-policy.md"
     workflow_path.write_text(
         workflow_path.read_text(encoding="utf-8").replace(
             "diagnostic-only",
@@ -560,7 +487,6 @@ def test_contract_preflight_reports_attention_when_source_readiness_preview_drif
     payload = build_contract_preflight(
         tmp_path,
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["status"] == "ATTENTION"
@@ -595,12 +521,10 @@ def test_source_readiness_preview_visibility_requires_default_only_status_fields
         (Path("src") / "hsconfig" / "source_autopilot.py").read_text(
             encoding="utf-8"
         ),
-        (Path("docs") / "operator" / "source-builder-workflow.md").read_text(
+        (Path("docs") / "operator" / "guide-research-policy.md").read_text(
             encoding="utf-8"
         ),
-        (Path(".agents") / "skills" / "hsconfig" / "references" / "workflow.md").read_text(
-            encoding="utf-8"
-        ),
+        load_embedded_skill_bundle()["references/workflow.md"].decode("utf-8"),
     ) is False
 
 
@@ -611,9 +535,6 @@ def test_contract_preflight_reports_attention_when_source_candidate_plan_visibil
     target_docs = tmp_path / "docs"
     shutil.copytree(source_docs, target_docs)
 
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
     source_root = tmp_path / "src" / "hsconfig"
     source_root.mkdir(parents=True)
     shutil.copy2(
@@ -621,12 +542,11 @@ def test_contract_preflight_reports_attention_when_source_candidate_plan_visibil
         source_root / "source_candidate_plan.py",
     )
 
-    workflow_path = target_docs / "operator" / "source-builder-workflow.md"
+    workflow_path = target_docs / "operator" / "README.md"
     workflow_path.write_text(
         workflow_path.read_text(encoding="utf-8").replace(
-            "The plan cannot promote, block apply, write runtime config, "
-            "or replace `reports/operator_summary.json`.",
-            "The plan can decide source status.",
+            "source-candidate plan visibility",
+            "source candidate overview",
         ),
         encoding="utf-8",
     )
@@ -634,7 +554,6 @@ def test_contract_preflight_reports_attention_when_source_candidate_plan_visibil
     payload = build_contract_preflight(
         tmp_path,
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["status"] == "ATTENTION"
@@ -655,7 +574,6 @@ def test_contract_preflight_checks_pre_run_config_contract_receipt_visibility(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert payload["status"] == "PASS"
@@ -666,18 +584,11 @@ def test_contract_preflight_checks_pre_run_config_contract_receipt_visibility(
 def test_contract_preflight_rejects_bare_handoff_contract_route(
     tmp_path: Path,
 ) -> None:
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
     operator_root = tmp_path / "docs" / "operator"
     operator_root.mkdir(parents=True)
     shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
 
-    for path in (
-        skill_root / "SKILL.md",
-        skill_root / "references" / "workflow.md",
-        operator_root / "README.md",
-    ):
+    for path in (operator_root / "README.md",):
         text = path.read_text(encoding="utf-8")
         path.write_text(
             text.replace(
@@ -783,8 +694,6 @@ def test_contract_preflight_cli_returns_json_attention_for_invalid_repo_root(
     assert set(payload["git"]) == set(normal_payload["git"])
     assert isinstance(payload["checks"], dict)
     assert set(payload["checks"]) == set(normal_payload["checks"])
-    assert isinstance(payload["research_context"], dict)
-    assert set(payload["research_context"]) == set(normal_payload["research_context"])
     assert "Traceback" not in result.stderr
 
 
@@ -804,7 +713,7 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
     )
 
     code = contract_preflight_command.run_contract_preflight_command(
-        Namespace(repo_root=".", skill_install_root=None, json=True)
+        Namespace(repo_root=".", json=True)
     )
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -812,7 +721,7 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
     assert payload["source_candidate_plan_contract"] == {
         "status": "attention",
         "authority": "diagnostic_source_candidate_plan",
-        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "documentation_path": "docs/operator/README.md",
         "operator_entrypoint_path": "docs/operator/README.md",
         "implementation_path": "src/hsconfig/source_candidate_plan.py",
         "runtime_apply_authority": "reports/operator_summary.json",
@@ -845,8 +754,7 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
         "source_status_apply_blocking"
     ] is False
     assert {
-        "research_context",
-        "installed_skill_sync",
+        "embedded_skill_bundle",
         "runtime_apply_authority",
         "source_status_apply_blocking",
         "diagnostic_only",
@@ -857,7 +765,6 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
         "repo_root",
     } <= set(payload)
     assert set(payload) - {"error"} == set(normal_payload)
-    assert set(payload["research_context"]) == set(normal_payload["research_context"])
     assert payload["error"]["type"] == "RuntimeError"
     assert payload["error"]["message"] == "forced preflight failure"
 
@@ -890,100 +797,6 @@ def test_contract_preflight_cli_emits_json_without_writing_files(tmp_path: Path)
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert before == after
 
-
-def test_contract_preflight_cli_reports_installed_skill_sync_without_writes(
-    tmp_path: Path,
-) -> None:
-    install_root = _synced_install_root(tmp_path)
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    before = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "hsconfig.cli",
-            "contract-preflight",
-            "--repo-root",
-            ".",
-            "--skill-install-root",
-            str(install_root),
-            "--json",
-        ],
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-    )
-    after = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout
-    payload = json.loads(result.stdout)
-
-    assert result.returncode in (0, 1)
-    assert payload["checks"]["installed_skill_sync_current"] is True
-    assert payload["installed_skill_sync"]["matches_repo_skill"] is True
-    assert payload["installed_skill_sync"]["diagnostic_only"] is True
-    assert before == after
-
-
-def test_unavailable_installed_skill_payload_expands_tilde_install_root_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    install_root = "~/.codex/custom-skills"
-
-    def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
-        raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
-
-    monkeypatch.setattr(
-        contract_preflight_command,
-        "build_installed_skill_sync_status",
-        _raise_sync_error,
-    )
-
-    payload = contract_preflight_command._unavailable_installed_skill_payload(
-        ".",
-        install_root,
-    )
-
-    assert payload["installed_skill_path"] == str(
-        Path(install_root).expanduser() / "hsconfig"
-    )
-    assert payload["recommended_action"] == (
-        'python scripts\\sync_installed_skill.py --install-root '
-        f'"{Path(install_root).expanduser().resolve()}"'
-    )
-
-
-def test_unavailable_installed_skill_payload_uses_default_root_for_empty_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
-        raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
-
-    monkeypatch.setattr(
-        contract_preflight_command,
-        "build_installed_skill_sync_status",
-        _raise_sync_error,
-    )
-
-    payload = contract_preflight_command._unavailable_installed_skill_payload(
-        ".",
-        "",
-    )
-
-    assert payload["installed_skill_path"] == str(
-        contract_preflight_command.DEFAULT_INSTALL_ROOT / "hsconfig"
-    )
-    assert payload["recommended_action"] == "python scripts\\sync_installed_skill.py"
 
 
 def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> None:
@@ -1018,26 +831,6 @@ def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> No
     assert "contract-preflight" not in configure_help.stdout
 
 
-def test_contract_preflight_reports_research_context_as_diagnostic_only() -> None:
-    payload = build_contract_preflight(Path("."), git=_clean_git())
-
-    research_context = payload["research_context"]
-
-    assert payload["checks"]["research_current_truth_index_visible"] is True
-    assert payload["checks"]["historical_research_outlines_diagnostic_only"] is True
-    assert research_context["status"] == "current"
-    assert research_context["active_evidence_index_present"] is True
-    assert research_context["active_evidence_index_path"] == "docs/research/current-truth.md"
-    assert research_context["machine_evidence_index_path"] == "docs/research/current-truth-index.json"
-    assert research_context["authority"] == "evidence_index_only"
-    assert research_context["operator_gate_impact"] == "diagnostic_only"
-    assert research_context["normal_apply_authority"] == "reports/operator_summary.json"
-    assert research_context["historical_outlines_apply_authority"] is False
-    assert research_context["recommended_research_entrypoint"] == "docs/research/current-truth.md"
-    assert research_context["historical_outline_count"] > 0
-    assert "docs/research/current-truth.md" not in research_context["historical_outline_paths"]
-
-
 def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     tmp_path: Path,
 ) -> None:
@@ -1046,7 +839,6 @@ def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1191,7 +983,6 @@ def test_contract_preflight_package_mode_surfaces_attention_surface_intent_witho
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1217,7 +1008,6 @@ def test_contract_preflight_package_mode_surfaces_missing_surface_intent_without
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1240,7 +1030,6 @@ def test_contract_preflight_omits_package_contract_without_package(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
     )
 
     assert "package_contract" not in payload
@@ -1260,7 +1049,6 @@ def test_contract_preflight_package_mode_requires_boolean_runtime_apply_allowed(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1295,7 +1083,6 @@ def test_contract_preflight_package_mode_exposes_default_only_attention_without_
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1332,7 +1119,6 @@ def test_contract_preflight_package_mode_exposes_malformed_runtime_json_attentio
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1359,7 +1145,6 @@ def test_contract_preflight_package_mode_requires_complete_runtime_files(
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1409,7 +1194,6 @@ def test_contract_preflight_package_mode_malformed_operator_summary_is_attention
     payload = build_contract_preflight(
         Path("."),
         git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
         package=package,
     )
 
@@ -1425,59 +1209,14 @@ def test_contract_preflight_package_mode_malformed_operator_summary_is_attention
     assert contract["source_status_apply_blocking"] is False
 
 
-def test_contract_preflight_research_context_attention_when_current_truth_missing(
-    tmp_path: Path,
-) -> None:
-    source_docs = Path("docs")
-    target_docs = tmp_path / "docs"
-    shutil.copytree(source_docs, target_docs)
-    shutil.rmtree(target_docs / "research")
-    (target_docs / "research").mkdir(parents=True)
-    (target_docs / "research" / "historical-audit").mkdir()
-    (target_docs / "research" / "historical-audit" / "outline.yaml").write_text(
-        "items: []\n",
-        encoding="utf-8",
-    )
-
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
-    payload = build_contract_preflight(tmp_path, git=_clean_git())
-    research_context = payload["research_context"]
-
-    assert payload["status"] == "ATTENTION"
-    assert "research_current_truth_index_visible" in payload["failures"]
-    assert payload["checks"]["research_current_truth_index_visible"] is False
-    assert payload["checks"]["historical_research_outlines_diagnostic_only"] is True
-    assert research_context["status"] == "attention"
-    assert research_context["active_evidence_index_present"] is False
-    assert research_context["historical_outline_count"] == 1
-    assert research_context["historical_outlines_apply_authority"] is False
-    assert payload["diagnostic_only"] is True
-    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
-    assert payload["source_status_apply_blocking"] is False
-
-
 def test_contract_preflight_reports_attention_when_configure_acceptance_route_drifts(
     tmp_path: Path,
 ) -> None:
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
     operator_root = tmp_path / "docs" / "operator"
     operator_root.mkdir(parents=True)
     shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
 
-    research_root = tmp_path / "docs" / "research"
-    research_root.mkdir(parents=True)
-    for filename in ("current-truth.md", "current-truth-index.json"):
-        shutil.copy2(Path("docs") / "research" / filename, research_root / filename)
-
-    for path in (
-        skill_root / "SKILL.md",
-        skill_root / "references" / "workflow.md",
-        operator_root / "README.md",
-    ):
+    for path in (operator_root / "README.md",):
         text = path.read_text(encoding="utf-8")
         text = text.replace(
             "<current-revision>/configure_summary.json.acceptance_summary",
@@ -1503,47 +1242,6 @@ def test_contract_preflight_reports_attention_when_configure_acceptance_route_dr
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert payload["source_status_apply_blocking"] is False
     assert payload["diagnostic_only"] is True
-
-
-def test_contract_preflight_cli_includes_research_context_without_writing_files() -> None:
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    before = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "hsconfig.cli",
-            "contract-preflight",
-            "--repo-root",
-            ".",
-            "--json",
-        ],
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
-    )
-    after = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout
-
-    payload = json.loads(result.stdout)
-
-    assert result.returncode in (0, 1)
-    assert "research_context" in payload
-    assert payload["research_context"]["operator_gate_impact"] == "diagnostic_only"
-    assert payload["research_context"]["normal_apply_authority"] == "reports/operator_summary.json"
-    assert payload["research_context"]["historical_outlines_apply_authority"] is False
-    assert payload["diagnostic_only"] is True
-    assert before == after
 
 
 def test_contract_preflight_cli_package_mode_does_not_write_files(
@@ -1613,7 +1311,6 @@ def test_contract_preflight_cli_package_fallback_preserves_package_contract_sche
     exit_code = contract_preflight_command.run_contract_preflight_command(
         Namespace(
             repo_root=".",
-            skill_install_root=None,
             package=str(package),
             json=True,
         )
@@ -1641,229 +1338,3 @@ def test_contract_preflight_cli_package_fallback_preserves_package_contract_sche
     assert payload["package_contract"]["package"] == str(package)
     assert payload["package_contract"]["package_contract_current"] is False
     assert payload["package_contract"]["failures"] == ["contract_preflight_exception"]
-
-
-def test_contract_preflight_exposes_research_result_contract_sentinel() -> None:
-    payload = build_contract_preflight(Path("."), git=_clean_git())
-    research_context = payload["research_context"]
-
-    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
-    assert research_context["latest_research_result_contract_status"] in {
-        "clean",
-        "attention",
-        "not_found",
-    }
-    assert research_context["latest_research_result_contract_path"].startswith(
-        "docs/research/"
-    )
-    assert isinstance(
-        research_context["latest_research_result_contract_result_count"],
-        int,
-    )
-    assert isinstance(
-        research_context["latest_research_result_contract_invalid_count"],
-        int,
-    )
-    assert research_context["source_status_apply_blocking"] is False
-    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
-
-
-def test_contract_preflight_exposes_research_freshness_missing_count() -> None:
-    payload = build_contract_preflight(".")
-    context = payload["research_context"]
-
-    assert "latest_research_result_contract_freshness_missing_count" in context
-    assert isinstance(
-        context["latest_research_result_contract_freshness_missing_count"], int
-    )
-    assert context["source_status_apply_blocking"] is False
-    assert payload["source_status_apply_blocking"] is False
-
-
-def test_contract_preflight_projects_research_contract_first_non_promoting_result(
-    tmp_path: Path,
-) -> None:
-    source_docs = Path("docs")
-    target_docs = tmp_path / "docs"
-    shutil.copytree(source_docs, target_docs)
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
-    latest = target_docs / "research" / "9999-bridge-research"
-    (latest / "results").mkdir(parents=True)
-    shutil.copy2(
-        Path("docs")
-        / "research"
-        / "2026-07-17-hsconfig-source-contract-acceptance-loop"
-        / "fields.yaml",
-        latest / "fields.yaml",
-    )
-    (latest / "results" / "PirateDH.json").write_text(
-        json.dumps(
-            {
-                "deck_name": "PirateDH",
-                "archetype": "Wild Pirate Demon Hunter",
-                "current_deck_sources": [],
-                "guide_sources": [],
-                "source_strength": "unfetched_acquisition_seed",
-                "lowerable_claim_kinds": [],
-                "non_promoting_support": [],
-                "first_missing_source_action": (
-                    "fetch_and_normalize_candidate_full_text_claims"
-                ),
-                "notes": "Seed row still needs full-text claims.",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    payload = build_contract_preflight(
-        tmp_path,
-        git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
-    )
-    research_context = payload["research_context"]
-
-    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
-    assert research_context["latest_research_result_contract_status"] == "clean"
-    assert research_context["latest_research_result_contract_result_count"] == 1
-    assert research_context["latest_research_result_contract_invalid_count"] == 0
-    assert research_context["latest_research_result_contract_strict_invalid_count"] == 0
-    assert research_context["latest_research_result_contract_contract_invalid_count"] == 0
-    assert research_context["latest_research_result_contract_seed_only_count"] == 1
-    assert research_context["latest_research_result_contract_strong_promoting_count"] == 0
-    assert (
-        research_context[
-            "latest_research_result_contract_promotion_ready_deck_count"
-        ]
-        == 0
-    )
-    assert research_context["latest_research_result_contract_non_promoting_count"] == 1
-    assert (
-        research_context[
-            "latest_research_result_contract_first_non_promoting_result"
-        ]
-        == "PirateDH"
-    )
-    assert (
-        research_context[
-            "latest_research_result_contract_first_non_promoting_action"
-        ]
-        == "fetch_and_normalize_candidate_full_text_claims"
-    )
-    assert (
-        research_context[
-            "latest_research_result_contract_first_non_promoting_reason"
-        ]
-        == "seed_only"
-    )
-    assert research_context["source_status_apply_blocking"] is False
-
-
-def test_contract_preflight_research_result_attention_is_not_apply_blocking(
-    tmp_path: Path,
-) -> None:
-    source_docs = Path("docs")
-    target_docs = tmp_path / "docs"
-    shutil.copytree(source_docs, target_docs)
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
-    latest = target_docs / "research" / "9999-invalid-research"
-    (latest / "results").mkdir(parents=True)
-    (latest / "fields.yaml").write_text("fields: []\n", encoding="utf-8")
-    (latest / "results" / "ShadowPriest.json").write_text(
-        json.dumps(
-            {
-                "deck_name": "ShadowPriest",
-                "source_strength": "SOURCE_BACKED_STRONG",
-                "first_missing_source_action": "none",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    payload = build_contract_preflight(
-        tmp_path,
-        git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
-    )
-
-    research_context = payload["research_context"]
-    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
-    assert research_context["latest_research_result_contract_status"] == "attention"
-    assert (
-        research_context["latest_research_result_contract_no_op_validation_risk"]
-        is True
-    )
-    assert research_context["source_status_apply_blocking"] is False
-    assert payload["source_status_apply_blocking"] is False
-    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
-
-
-def test_contract_preflight_latest_research_batch_is_deterministic_and_incomplete(
-    tmp_path: Path,
-) -> None:
-    source_docs = Path("docs")
-    target_docs = tmp_path / "docs"
-    shutil.copytree(source_docs, target_docs)
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
-    latest = target_docs / "research" / "9999-incomplete-research"
-    latest.mkdir(parents=True)
-
-    payload = build_contract_preflight(
-        tmp_path,
-        git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
-    )
-
-    research_context = payload["research_context"]
-    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
-    assert (
-        research_context["latest_research_result_contract_path"]
-        == "docs/research/9999-incomplete-research"
-    )
-    assert research_context["latest_research_result_contract_status"] == "attention"
-    assert (
-        research_context["latest_research_result_contract_no_op_validation_risk"]
-        is True
-    )
-    assert research_context["source_status_apply_blocking"] is False
-    assert payload["source_status_apply_blocking"] is False
-    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
-
-
-def test_contract_preflight_malformed_research_result_is_attention_not_crash(
-    tmp_path: Path,
-) -> None:
-    source_docs = Path("docs")
-    target_docs = tmp_path / "docs"
-    shutil.copytree(source_docs, target_docs)
-    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
-    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
-
-    latest = target_docs / "research" / "9999-malformed-research"
-    (latest / "results").mkdir(parents=True)
-    (latest / "fields.yaml").write_text("fields: []\n", encoding="utf-8")
-    (latest / "results" / "ShadowPriest.json").write_text(
-        "{not json",
-        encoding="utf-8",
-    )
-
-    payload = build_contract_preflight(
-        tmp_path,
-        git=_clean_git(),
-        skill_install_root=_synced_install_root(tmp_path),
-    )
-
-    research_context = payload["research_context"]
-    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
-    assert research_context["latest_research_result_contract_status"] == "attention"
-    assert (
-        research_context["latest_research_result_contract_no_op_validation_risk"]
-        is True
-    )
-    assert research_context["source_status_apply_blocking"] is False
-    assert payload["source_status_apply_blocking"] is False

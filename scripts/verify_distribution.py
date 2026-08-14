@@ -14,6 +14,7 @@ import tempfile
 import zipfile
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from email.message import Message
 from email.parser import BytesParser, Parser
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Sequence
@@ -146,6 +147,9 @@ _EXPECTED_SMOKE_PACKAGES = {
     "requests",
     "urllib3",
 }
+_SKILL_BUNDLE_PACKAGE_PATH = "hsconfig/resources/codex_skill_bundle.json"
+_SKILL_BUNDLE_SOURCE_PATH = Path("src") / _SKILL_BUNDLE_PACKAGE_PATH
+_MAX_SKILL_BUNDLE_BYTES = 1_048_576
 
 
 class DistributionVerificationError(RuntimeError):
@@ -513,16 +517,18 @@ def _validate_sdist_archive(path: Path) -> None:
     if license_payload is None:
         raise DistributionContentError("incomplete_sdist:missing=" + license_path)
     _validate_license_payload(license_payload, label="sdist")
-    _validate_pkg_info(
+    root_metadata = _validate_pkg_info(
         pkg_info_payloads[root_pkg_info_path],
         label="root",
         expected_version=version,
     )
-    _validate_pkg_info(
+    egg_metadata = _validate_pkg_info(
         pkg_info_payloads[egg_pkg_info_path],
         label="egg_info",
         expected_version=version,
     )
+    _validate_license_metadata(root_metadata, label="root")
+    _validate_license_metadata(egg_metadata, label="egg_info")
 
 
 def _read_tar_metadata(archive: tarfile.TarFile, entry: tarfile.TarInfo) -> bytes:
@@ -535,18 +541,35 @@ def _read_tar_metadata(archive: tarfile.TarFile, entry: tarfile.TarInfo) -> byte
     return payload
 
 
-def _validate_pkg_info(
-    payload: bytes,
-    *,
-    label: str,
-    expected_version: str,
-) -> None:
+def _parse_metadata(payload: bytes, *, label: str) -> Message:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise DistributionContentError(
+            f"invalid_pkg_info:{label}:invalid_utf8"
+        ) from error
+    if text.startswith("\ufeff"):
+        raise DistributionContentError(f"invalid_pkg_info:{label}:bom")
+    if "\x00" in text:
+        raise DistributionContentError(f"invalid_pkg_info:{label}:nul")
+    if re.search(r"\r(?!\n)", text):
+        raise DistributionContentError(f"invalid_pkg_info:{label}:bare_cr")
     try:
         metadata = BytesParser().parsebytes(payload)
     except (TypeError, ValueError) as error:
         raise DistributionContentError(f"invalid_pkg_info:{label}") from error
     if metadata.defects:
         raise DistributionContentError(f"invalid_pkg_info:{label}")
+    return metadata
+
+
+def _validate_pkg_info(
+    payload: bytes,
+    *,
+    label: str,
+    expected_version: str,
+) -> Message:
+    metadata = _parse_metadata(payload, label=label)
     metadata_versions = metadata.get_all("Metadata-Version", [])
     names = metadata.get_all("Name", [])
     versions = metadata.get_all("Version", [])
@@ -566,6 +589,7 @@ def _validate_pkg_info(
             "pkg_info_version_mismatch:"
             f"{label}:expected={expected_version}:actual={versions[0]}"
         )
+    return metadata
 
 
 def _validate_wheel_archive(path: Path) -> None:
@@ -613,12 +637,12 @@ def _validate_wheel_archive(path: Path) -> None:
     missing = sorted(required_members - regular_files)
     if missing:
         raise DistributionContentError("incomplete_wheel:missing=" + ",".join(missing))
-    _validate_pkg_info(
+    metadata = _validate_pkg_info(
         contract_payloads[metadata_path],
         label="wheel",
         expected_version=version,
     )
-    _validate_wheel_license_metadata(contract_payloads[metadata_path])
+    _validate_license_metadata(metadata, label="wheel")
     _validate_license_payload(contract_payloads[license_path], label="wheel")
 
 
@@ -630,20 +654,16 @@ def _read_zip_payload(archive: zipfile.ZipFile, entry: zipfile.ZipInfo) -> bytes
     return payload
 
 
-def _validate_wheel_license_metadata(payload: bytes) -> None:
-    try:
-        metadata = BytesParser().parsebytes(payload)
-    except (TypeError, ValueError) as error:
-        raise DistributionContentError("invalid_pkg_info:wheel") from error
+def _validate_license_metadata(metadata: Message, *, label: str) -> None:
     expressions = metadata.get_all("License-Expression", [])
     license_files = metadata.get_all("License-File", [])
     if expressions != [_LICENSE_EXPRESSION]:
         raise DistributionContentError(
-            "wheel_license_expression:actual=" + repr(expressions)
+            f"{label}_license_expression:actual=" + repr(expressions)
         )
     if license_files != [_LICENSE_FILENAME]:
         raise DistributionContentError(
-            "wheel_license_file:actual=" + repr(license_files)
+            f"{label}_license_file:actual=" + repr(license_files)
         )
 
 
@@ -655,6 +675,61 @@ def _select_distribution_archives(output_root: Path) -> tuple[Path, Path]:
     if len(sdists) != 1:
         raise DistributionContentError(f"sdist_count:{len(sdists)}")
     return wheels[0], sdists[0]
+
+
+def _assert_skill_bundle_parity(
+    source_root: Path,
+    wheel: Path,
+    sdist: Path,
+) -> tuple[str, str]:
+    """Require exact validated skill-resource bytes in source, sdist, and wheel."""
+    source_path = source_root / _SKILL_BUNDLE_SOURCE_PATH
+    try:
+        source_payload = source_path.read_bytes()
+    except OSError as error:
+        raise DistributionContentError(
+            "skill_bundle_source_unreadable"
+        ) from error
+    if len(source_payload) > _MAX_SKILL_BUNDLE_BYTES:
+        raise DistributionContentError("skill_bundle_source_oversize")
+
+    with zipfile.ZipFile(wheel) as archive:
+        wheel_rows = [
+            entry
+            for entry in archive.infolist()
+            if entry.filename == _SKILL_BUNDLE_PACKAGE_PATH
+        ]
+        if len(wheel_rows) != 1 or wheel_rows[0].is_dir():
+            raise DistributionContentError("skill_bundle_wheel_member_count")
+        wheel_payload = _read_zip_payload(archive, wheel_rows[0])
+
+    _sdist_name, sdist_version = _archive_identity("sdist", sdist)
+    sdist_member = (
+        f"hsconfig-{sdist_version}/src/{_SKILL_BUNDLE_PACKAGE_PATH}"
+    )
+    with tarfile.open(sdist, "r:gz") as archive:
+        sdist_rows = [
+            entry for entry in archive.getmembers() if entry.name == sdist_member
+        ]
+        if len(sdist_rows) != 1 or not sdist_rows[0].isreg():
+            raise DistributionContentError("skill_bundle_sdist_member_count")
+        sdist_payload = _read_tar_metadata(archive, sdist_rows[0])
+
+    if source_payload != sdist_payload or source_payload != wheel_payload:
+        raise DistributionContentError("skill_bundle_artifact_parity_mismatch")
+    try:
+        from hsconfig.external_skill_bundle import (
+            compute_bundle_aggregate,
+            decode_skill_bundle,
+        )
+
+        files = decode_skill_bundle(source_payload)
+    except (ImportError, ValueError, TypeError) as error:
+        raise DistributionContentError("skill_bundle_payload_invalid") from error
+    return (
+        hashlib.sha256(source_payload).hexdigest(),
+        compute_bundle_aggregate(files),
+    )
 
 
 def verify_distribution(repo_root: Path | None = None) -> DistributionVerification:
@@ -752,6 +827,11 @@ def _verify_distribution_in_temporary(
     wheel, sdist = _select_distribution_archives(output_root)
     validate_distribution_archive("wheel", wheel)
     validate_distribution_archive("sdist", sdist)
+    skill_bundle_sha256, skill_bundle_aggregate_sha256 = _assert_skill_bundle_parity(
+        source_root,
+        wheel,
+        sdist,
+    )
     version = _wheel_version(wheel)
 
     _create_venv(smoke_venv)
@@ -793,6 +873,43 @@ def _verify_distribution_in_temporary(
         Path(module_result.stdout.strip()),
         smoke_venv,
     )
+    resource_result = _run(
+        [
+            str(smoke_python),
+            "-c",
+            (
+                "import hashlib, importlib.resources, json; "
+                "from hsconfig.external_skill_bundle import "
+                "compute_bundle_aggregate, load_embedded_skill_bundle; "
+                "payload = importlib.resources.files('hsconfig').joinpath("
+                "'resources', 'codex_skill_bundle.json').read_bytes(); "
+                "files = load_embedded_skill_bundle(); "
+                "print(json.dumps({'aggregate_sha256': "
+                "compute_bundle_aggregate(files), 'file_count': len(files), "
+                "'resource_sha256': hashlib.sha256(payload).hexdigest()}, "
+                "sort_keys=True))"
+            ),
+        ],
+        cwd=temporary_root,
+    )
+    try:
+        installed_resource = json.loads(resource_result.stdout)
+    except json.JSONDecodeError as error:
+        raise DistributionVerificationError(
+            "installed_skill_bundle_resource_invalid"
+        ) from error
+    if (
+        not isinstance(installed_resource, dict)
+        or set(installed_resource)
+        != {"aggregate_sha256", "file_count", "resource_sha256"}
+        or installed_resource["file_count"] != 9
+        or installed_resource["resource_sha256"] != skill_bundle_sha256
+        or installed_resource["aggregate_sha256"]
+        != skill_bundle_aggregate_sha256
+    ):
+        raise DistributionVerificationError(
+            "installed_skill_bundle_resource_mismatch"
+        )
     hsconfig = _venv_executable(smoke_venv, "hsconfig")
     version_result = _run([str(hsconfig), "--version"], cwd=temporary_root)
     if version_result.stdout.strip() != f"hsconfig {version}":

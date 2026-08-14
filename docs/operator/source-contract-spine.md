@@ -1,5 +1,7 @@
 # Source Contract Spine
 
+[Back to the operator guide](README.md)
+
 Diagnostic reference only.
 
 `reports/operator_summary.json` remains the only normal apply authority.

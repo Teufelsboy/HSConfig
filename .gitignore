@@ -28,6 +28,7 @@ outputs/
 tmp/
 temp/
 .superpowers/
+/.cutover-candidate/
 
 # Hearthstone / HearthRanger runtime evidence
 Power.log

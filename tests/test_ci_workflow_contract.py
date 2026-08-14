@@ -178,6 +178,7 @@ def test_ci_workflow_assigns_each_required_release_boundary_to_its_job() -> None
     commands = {name: "\n".join(_runs(job)) for name, job in jobs.items()}
 
     assert "check_contract_guardrails.py" in commands["contract"]
+    assert "python scripts/check_contract_guardrails.py" in commands["contract"]
     assert "contract-spine-sentinel --json" in commands["contract"]
     assert "test_audited_deck_set_acceptance.py" in commands["contract"]
     assert "verify_distribution.py --json" in commands["package"]
@@ -185,9 +186,14 @@ def test_ci_workflow_assigns_each_required_release_boundary_to_its_job() -> None
     assert "test_version_contract.py" in commands["package"]
     assert "python -m pip_audit" in commands["security"]
     assert "run_contract_mutations.py --json" in commands["security"]
-    assert 'reconcile_outputs.py --outputs "${{ runner.temp }}/security-outputs" --apply --json' in commands["security"]
+    assert "reconcile_outputs.py --outputs outputs --apply --json" in commands["security"]
     assert "--internal-check publishable_path_scan" in commands["security"]
     assert "--internal-check repository_hygiene" in commands["security"]
+    workflow_text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert "sync_installed_skill" not in workflow_text
+    assert "--skill-install-root" not in workflow_text
+    assert "install_external_skill" not in workflow_text
+    assert "hsconfig-skill" not in workflow_text
 
 
 def test_non_test_jobs_bootstrap_the_exact_hash_bound_minor_lock_outside_checkout() -> None:
@@ -359,17 +365,17 @@ def test_every_job_binds_and_materializes_the_event_commit_before_setup_or_downl
         assert steps[3]["name"] == "Set up Python"
 
 
-def test_security_outputs_and_final_cleanup_stay_in_runner_temp() -> None:
+def test_security_materializes_and_checks_the_canonical_outputs() -> None:
     security = _workflow()["jobs"]["security"]
     commands = "\n".join(_runs(security))
 
-    assert '--outputs "${{ runner.temp }}/security-outputs"' in commands
-    assert "--outputs outputs" not in commands
+    assert "--outputs outputs" in commands
+    assert 'reconcile_outputs.py --outputs outputs --apply --json' in commands
     final = _steps(security)[-1]
     assert final["if"] == "always()"
     assert "hsconfig-ci-source-baseline" in final["run"]
     assert "unsafe_runner_temp_cleanup_target" in final["run"]
-    assert "security-outputs" in final["run"]
+    assert "checkout_dirty_after_job" in final["run"]
 
 
 def test_default_linux_shell_steps_do_not_use_powershell_environment_syntax() -> None:

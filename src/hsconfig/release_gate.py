@@ -12,7 +12,6 @@ from email.parser import Parser
 import hashlib
 import io
 import json
-import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -32,7 +31,7 @@ import zipfile
 
 from packaging.tags import parse_tag
 from packaging.utils import InvalidWheelFilename, canonicalize_name, parse_wheel_filename
-import yaml
+import hsconfig.publishable_tree as publishable_tree_module
 
 from hsconfig.near100_scorecard import (
     ATOMIC_CHECK_OWNERS,
@@ -40,11 +39,25 @@ from hsconfig.near100_scorecard import (
     SEMANTIC_CARD_MODULE_COUNT,
     SEMANTIC_CLAIM_COUNT,
 )
+from hsconfig.publishable_tree import (
+    EXACT_PLACEHOLDER_REFERENCE_SHA256,
+    PublishableTreeError,
+    SOURCE_TODO_ALLOWLIST,
+    _ABSOLUTE_USER_PATH,
+    _is_sensitive_credential_name as publishable_sensitive_credential_name,
+    _shannon_entropy as publishable_shannon_entropy,
+    contains_secret,
+    evaluate_repository_tree,
+    publishable_path_violations,
+    publishable_text_violations,
+)
 from hsconfig.semantic_inventory import canonical_semantic_claim, validate_semantic_inventory
 from hsconfig.version import __version__
 
 
 TreeMode = Literal["working-pre-cutover", "candidate", "final"]
+
+_EXACT_PLACEHOLDER_REFERENCE_SHA256 = EXACT_PLACEHOLDER_REFERENCE_SHA256
 
 CHECK_NAMES = (
     "ruff",
@@ -69,51 +82,6 @@ _HISTORICAL_PREFIXES = (
     "docs/research/",
     "docs/history/",
 )
-_PRIVATE_NAMES = re.compile(
-    r"(?i)(?:^|[/\\])(?:"
-    + "|".join(
-        re.escape(name)
-        for name in (
-            "Power" + ".log",
-            "Hearthstone" + ".log",
-            "HearthRanger" + ".log",
-        )
-    )
-    + r"|[^/\\]+\.(?:"
-    + "|".join(("hdt" + "replay", "hs" + "replay"))
-    + r")|runtime[_-]?evidence|private[_-]?runtime|runtime[_-]?exports)(?:$|[/\\])"
-)
-_ABSOLUTE_USER_PATH = re.compile(
-    r"(?i)(?:(?<![a-z])[a-z]:[\\/](?![\\/])[^\s\"'`<>]+|"
-    r"/(?:users|home)/[^/\s\"'`<>]+/|"
-    r"(?:\\\\|(?<!:)//)(?:[a-z0-9$._-]+[\\/][a-z0-9$._-]+|[?.][\\/][a-z]:[\\/])"
-    r"[^\s\"'`<>]*)"
-)
-_SECRET_PATTERNS = (
-    ("secret", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
-    ("secret", re.compile(r"gh[pousr]_[A-Za-z0-9]{30,}")),
-    ("secret", re.compile(r"AKIA[0-9A-Z]{16}")),
-    (
-        "secret",
-        re.compile(
-            r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
-        ),
-    ),
-    (
-        "secret",
-        re.compile(
-            r"(?i)\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|"
-            r"credential|private[_-]?key|auth(?:[_-]?(?:token|material))?|session)\b"
-            r"\s*[:=]\s*[\"']?[A-Za-z0-9+/=_\-.]{24,}[\"']?"
-        ),
-    ),
-)
-_RESIDUE_COMPONENT = re.compile(
-    r"(?i)(?:^|[/\\])(?:__pycache__|\.cache|\.hypothesis|\.pytest_cache|"
-    r"\.ruff_cache|\.mypy_cache|\.tox|\.nox|\.idea|\.vscode|build|dist|tmp|temp|"
-    r"\.staging[^/\\]*|\.codex-qa(?:[-_.][^/\\]+)?|staging|backup|backups|obsolete|old_generation)"
-    r"(?:$|[/\\])"
-)
 _LIVE_RESIDUE_DIRECTORY = re.compile(
     r"(?i)(?:__pycache__|\.cache|\.pytest_cache|\.ruff_cache|\.mypy_cache|\.hypothesis|"
     r"\.tox|\.nox|\.idea|\.vscode|\.codex-qa(?:[-_.][^/\\]+)?|[^/\\]+\.egg-info|build|dist|tmp|temp|"
@@ -123,36 +91,6 @@ _LIVE_RESIDUE_DIRECTORY = re.compile(
 _LIVE_RESIDUE_FILE = re.compile(
     r"(?i)(?:\.coverage(?:\..+)?|coverage\.xml|\.DS_Store|[^/\\]+\.(?:pyc|pyo|swp|swo|tmp))$"
 )
-_RESIDUE_SUFFIX = re.compile(r"(?i)(?:\.bak|\.backup|\.old|\.orig|\.pyc|\.pyo|\.swp|\.swo|\.tmp|~)$")
-_PLACEHOLDER_WORDS = ("T" + "BD", "TO" + "DO", "FIX" + "ME")
-_PLACEHOLDER = re.compile(
-    r"\b(?:" + "|".join(_PLACEHOLDER_WORDS) + r")\b", re.IGNORECASE
-)
-_EXPLICIT_PLACEHOLDER = re.compile(r"\bPLACE" + r"HOLDER\b", re.IGNORECASE)
-_ACTIVE_SOURCE_SUFFIXES = frozenset(
-    {
-        ".bat", ".c", ".cc", ".cmd", ".cpp", ".cs", ".go", ".h", ".hpp",
-        ".java", ".js", ".jsx", ".ps1", ".py", ".pyi", ".rb", ".rs", ".sh",
-        ".ts", ".tsx", ".zsh",
-    }
-)
-_PUBLIC_DOC_PREFIXES = (
-    "README.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
-    "docs/operator/",
-)
-_SENSITIVE_SUFFIXES = {".jks", ".key", ".keystore", ".p12", ".pem", ".pfx", ".ppk"}
-_SECRET_NAME = re.compile(
-    r"(?i)(?:^|[._-])(?:id_(?:dsa|ecdsa|ed25519|rsa)|api[-_]?(?:key|token)|"
-    r"auth[-_]?(?:key|token)|access[-_]?token|client[-_]?(?:key|secret|token)|"
-    r"private[-_]?key|secret|credentials?|password|passwd|token)(?:[._-]|$)"
-)
-_RUNTIME_COMPACT = {
-    "hdt" + "export", "hdt" + "replay", "hearthrangerlog", "hearthrangerlogs",
-    "hearthstonelog", "hearthstonelogs", "hs" + "replay", "power" + "log",
-    "privateruntime", "runtimeevidence", "runtimeexport", "runtimeexports",
-}
 _GITHUB_CHECK_IDS = frozenset(
     check_id
     for check_id, owner in ATOMIC_CHECK_OWNERS.items()
@@ -179,457 +117,8 @@ _SUPPORTED_CORE_METADATA_VERSIONS = frozenset(
 _FINAL_EVIDENCE_MAX_AGE_SECONDS = 300
 _SEMANTIC_REPORT_CLAIM_OCCURRENCES = 426
 
-# Every exception is deliberately reviewable and expires at a product version.
-# No source-code exceptions are currently required.
-SOURCE_TODO_ALLOWLIST: tuple[Mapping[str, Any], ...] = ()
-
-# These are permanent shipped contract references, not deferred work. Every
-# exception binds the canonical source path, the canonical one-based line
-# number, and the exact stripped-line digest. Archive members normalize back
-# to this same source path without changing line numbering.
-_EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
-    ".agents/skills/hsconfig/SKILL.md": {
-        75: "e919cd4c4fcaff88b0c1e1226a5701897e8611aeddbc52f26d1ba09fa34f55c0"
-    },
-    ".agents/skills/hsconfig/references/workflow.md": {
-        117: "b857b8d8bdb8e2a79d1974bf6d52889edd9f00785c9e17676cb3d4084bb1a1a0"
-    },
-    # Completed Task-5 security report: five historical diagnostic-contract statements.
-    ".superpowers/sdd/2026-07-26-hsconfig-post-audit-authority-hardening/task-5-report.md":
-        {
-            7:
-                "7495ad25bdcaa4580d09b2f7171a32adb5b573cd95934820198549f6f9e26ad7",
-            19:
-                "49ae9a4c5e28a3d8fb833ac4dbf7863ec616b9d2065c001dc37b35d28a3608b1",
-            108:
-                "0243f85d9d6ec32caf9e5e93698a32a3534244ac80a5afae3218b6aa8a58a859",
-            189:
-                "194f02a9232ed3a4807f6d67750c5da535164526bea4d868a2f29d8dea9f29dd",
-            208:
-                "2009530620235cfe8b22df63a0a8274d66622fcf13c4852277d41063137b0a0c",
-        },
-    # Approved design: two explicit apply-ineligible diagnostic-input statements.
-    "docs/superpowers/specs/2026-07-26-hsconfig-post-audit-authority-hardening-design.md":
-        {
-            34: "fe1552c59b642d924c8173dd6744b064bfaf25df525ca41c3638bcfd15ad1ace",
-            172:
-                "42ee3ed08885fb611c48c08e2c79a729ba7ede87449890d22b248998d7256c26",
-            227:
-                "b09e213b1b3c5de6a10c926a918910c16492926bc537286f1149ab79cf95a0b0",
-    },
-    "docs/operator/README.md": {
-        647: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
-    },
-    "src/hsconfig/cli_parser.py": {
-        61: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
-        79: "d11fe3f4881b01ce66c0f8ef09778e84f182aa2d571c42f9cd4b8fae4bf9eff7",
-        112: "ab157ec4b7902309bb5029142aca743511e43587fdf753f52668750b788101cc",
-        122: "cace9a43ddb95629998271a922872430b8e5230b0e25c2b335d910c63b08e4dd",
-        136: "c601aab16f8d343ec912c1b44d6bbba7832bc43b89a87e92536f3355c2a10e0c",
-        149: "ba0492c2907f7e3596bb82298d6eab7bd238c8197c84be310c900d5a1eaf2520",
-        167: "eb0b21eea338c4ac38770df1932764f86eb4bc334bf51f2345d7ddca3662d098",
-        188: "87078ccbe89f5d5a0aa0a0f7601ce6e71b6b4015b316ad220164abb0151cfd89",
-        202: "bc2e3a70c28a3eabbc1bd0747bf8fb7582a68cb66b0e3dc729c3c07b3a7ec78a",
-    },
-    # Shipped protocol value and the diagnostic preview producer that owns it.
-    "src/hsconfig/deck_input_verification.py": {
-        33: "c6b238e40c24b6c239e0c07fdb6857cc0cf1e11e3682d50dff5a7be65866af05"
-    },
-    "src/hsconfig/input_loading.py": {
-            54:
-            "e516377413d0908ed7d5e0cedea28b5b864dedf3257df578f923d5c6a8e7aa61",
-            388:
-            "9d7d05b9b495a5faadcdc475bb0a30a7ffda56c392e6c4959f9d14270b66b49d",
-            390:
-            "2833fa4aeaf243cd7e22b3e1cd39fa3548eaba6da868b82d7b4b64f0c9a0509b",
-    },
-    "tests/test_configure_workflow.py": {
-        114: "b9666c82127a7fa00fc8c7c9806f7b4e258fa1917994dd58ab4b7fcee842a4cd"
-    },
-    "tests/test_deck_identity.py": {
-        165: "e293c155549577185ea2407c53e0b97ae74506b9abced220ae9bae51a2ec3857"
-    },
-    "tests/test_e2e_preview.py": {
-        36: "b9666c82127a7fa00fc8c7c9806f7b4e258fa1917994dd58ab4b7fcee842a4cd"
-    },
-    "tests/test_skill_files.py": {
-        512: "792b647fcd2e76736e07f8165775795cd69324ba4d60abf63be76fc88a80ed95",
-        897: "b9666c82127a7fa00fc8c7c9806f7b4e258fa1917994dd58ab4b7fcee842a4cd",
-        912: "9d6d9fee8049da1c81a765e9e25ca22717639f52965ed88971f6c6f86f3adf22",
-    },
-}
-
-
 class ReleaseGateError(ValueError):
     """Raised when the release gate cannot safely inspect its inputs."""
-
-
-_CREDENTIAL_KEY_ASSIGNMENT = re.compile(
-    r"(?i)(?<![a-z0-9_.\-\"'])(?P<key_quote>[\"']?)"
-    r"(?P<name>[a-z][a-z0-9_.-]{0,127})(?P=key_quote)\s*[:=]\s*"
-)
-_CREDENTIAL_NAME_SUFFIXES = (
-    "password",
-    "passwd",
-    "credential",
-    "credentials",
-    "clientsecret",
-    "secret",
-    "accesstoken",
-    "token",
-    "apikey",
-    "accesskey",
-    "privatekey",
-    "authkey",
-    "authmaterial",
-    "session",
-)
-_MAX_STRUCTURED_DEPTH = 128
-_MAX_YAML_SCALAR_CHARACTERS = 4_096
-_MAX_YAML_ANCHORS = 1_024
-_MAX_YAML_DOCUMENT_CHARACTERS = 16 * 1024 * 1024
-_MAX_YAML_DOCUMENTS = 32
-_MAX_YAML_NODES = 10_000
-_MAX_YAML_EVENTS = 20_000
-_MAX_YAML_ALIASES = 1_024
-
-
-def _shannon_entropy(value: str) -> float:
-    if not value:
-        return 0.0
-    counts: dict[str, int] = {}
-    for character in value:
-        counts[character] = counts.get(character, 0) + 1
-    length = len(value)
-    return -sum((count / length) * math.log2(count / length) for count in counts.values())
-
-
-def _is_sensitive_credential_name(value: str) -> bool:
-    component = value.casefold().rsplit(".", 1)[-1]
-    compact = re.sub(r"[^a-z0-9]", "", component)
-    return any(compact.endswith(suffix) for suffix in _CREDENTIAL_NAME_SUFFIXES)
-
-
-def _credential_assignment_values(value: str) -> tuple[str, ...]:
-    candidates: list[str] = []
-    for match in _CREDENTIAL_KEY_ASSIGNMENT.finditer(value):
-        if not _is_sensitive_credential_name(match.group("name")):
-            continue
-        start = match.end()
-        if start >= len(value):
-            continue
-        quote = value[start] if value[start] in {"\"", "'"} else None
-        if quote is None:
-            token = re.match(r"\S+", value[start:])
-            if token is not None:
-                candidate = token.group(0)
-                code_expression = (
-                    "\"" in candidate
-                    or "'" in candidate
-                    or re.fullmatch(
-                        r"[A-Za-z_][A-Za-z0-9_.]*\([^\s]*\)", candidate
-                    )
-                    is not None
-                )
-                if not code_expression:
-                    candidates.append(candidate)
-            continue
-        escaped = False
-        characters: list[str] = []
-        for character in value[start + 1:]:
-            if escaped:
-                characters.append(character)
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == quote:
-                break
-            else:
-                characters.append(character)
-        candidates.append("".join(characters))
-    return tuple(candidates)
-
-
-def _python_assignment_target_names(target: ast.expr) -> tuple[str, ...]:
-    if isinstance(target, ast.Name):
-        return (target.id,)
-    if isinstance(target, ast.Attribute):
-        parts: list[str] = [target.attr]
-        current = target.value
-        while isinstance(current, ast.Attribute):
-            parts.append(current.attr)
-            current = current.value
-        if isinstance(current, ast.Name):
-            parts.append(current.id)
-        return (".".join(reversed(parts)),)
-    if isinstance(target, (ast.Tuple, ast.List)):
-        return tuple(
-            name
-            for child in target.elts
-            for name in _python_assignment_target_names(child)
-        )
-    if isinstance(target, ast.Subscript):
-        index = target.slice
-        if isinstance(index, ast.Constant) and isinstance(index.value, str):
-            return (index.value,)
-    return ()
-
-
-def _static_python_string(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Constant):
-        if isinstance(node.value, str):
-            return node.value
-        if isinstance(node.value, bytes):
-            return node.value.decode("latin-1")
-        return None
-    if isinstance(node, ast.JoinedStr) and all(
-        isinstance(part, ast.Constant) and isinstance(part.value, str)
-        for part in node.values
-    ):
-        return "".join(str(part.value) for part in node.values)
-    return None
-
-
-def _python_credential_assignment_values(value: str) -> tuple[str, ...]:
-    try:
-        tree = ast.parse(value)
-    except (SyntaxError, ValueError, MemoryError):
-        return ()
-    candidates: list[str] = []
-    for node in ast.walk(tree):
-        assignments: tuple[tuple[str, ...], ast.AST] | None = None
-        if isinstance(node, ast.Assign):
-            assignments = (
-                tuple(
-                    name
-                    for target in node.targets
-                    for name in _python_assignment_target_names(target)
-                ),
-                node.value,
-            )
-        elif isinstance(node, ast.AnnAssign):
-            assignments = (_python_assignment_target_names(node.target), node.value)
-        elif isinstance(node, ast.NamedExpr):
-            assignments = (_python_assignment_target_names(node.target), node.value)
-        if assignments is not None:
-            names, assigned = assignments
-            literal = _static_python_string(assigned)
-            if literal is not None and any(
-                _is_sensitive_credential_name(name) for name in names
-            ):
-                candidates.append(literal)
-        if isinstance(node, ast.Dict):
-            for key, assigned in zip(node.keys, node.values, strict=True):
-                if (
-                    isinstance(key, ast.Constant)
-                    and isinstance(key.value, str)
-                    and _is_sensitive_credential_name(key.value)
-                ):
-                    literal = _static_python_string(assigned)
-                    if literal is not None:
-                        candidates.append(literal)
-        if isinstance(node, ast.Call):
-            for keyword in node.keywords:
-                if keyword.arg and _is_sensitive_credential_name(keyword.arg):
-                    literal = _static_python_string(keyword.value)
-                    if literal is not None:
-                        candidates.append(literal)
-    return tuple(candidates)
-
-
-def _json_credential_assignment_values(value: str) -> tuple[str, ...]:
-    class DecodedObjectPairs(list[tuple[str, Any]]):
-        pass
-
-    try:
-        document = json.loads(value, object_pairs_hook=DecodedObjectPairs)
-    except (json.JSONDecodeError, UnicodeError, RecursionError, MemoryError) as exc:
-        raise ReleaseGateError("invalid structured JSON content") from exc
-    candidates: list[str] = []
-    pending: list[tuple[Any, int]] = [(document, 0)]
-    while pending:
-        node, depth = pending.pop()
-        if depth > _MAX_STRUCTURED_DEPTH:
-            raise ReleaseGateError("structured JSON content exceeds depth limit")
-        if isinstance(node, DecodedObjectPairs):
-            for key, child in node:
-                if (
-                    isinstance(key, str)
-                    and _is_sensitive_credential_name(key)
-                    and isinstance(child, str)
-                ):
-                    candidates.append(child)
-                pending.append((child, depth + 1))
-        elif isinstance(node, list):
-            for child in node:
-                pending.append((child, depth + 1))
-    return tuple(candidates)
-
-
-class _BoundedYamlSafeLoader(yaml.SafeLoader):
-    def __init__(self, stream: str) -> None:
-        self._yaml_documents = 0
-        self._yaml_nodes = 0
-        self._yaml_events = 0
-        self._yaml_aliases = 0
-        self._yaml_anchors = 0
-        self._yaml_depth = 0
-        super().__init__(stream)
-
-    def get_event(self) -> yaml.events.Event | None:
-        event = super().get_event()
-        if event is not None:
-            self._yaml_events += 1
-            if self._yaml_events > _MAX_YAML_EVENTS:
-                raise ReleaseGateError("structured YAML event count exceeds limit")
-        return event
-
-    def compose_document(self) -> yaml.nodes.Node:
-        self._yaml_documents += 1
-        if self._yaml_documents > _MAX_YAML_DOCUMENTS:
-            raise ReleaseGateError("structured YAML document count exceeds limit")
-        return super().compose_document()
-
-    def compose_node(
-        self,
-        parent: yaml.nodes.Node | None,
-        index: int | None,
-    ) -> yaml.nodes.Node:
-        event = self.peek_event()
-        if isinstance(event, yaml.events.AliasEvent):
-            self._yaml_aliases += 1
-            if self._yaml_aliases > _MAX_YAML_ALIASES:
-                raise ReleaseGateError("structured YAML alias count exceeds limit")
-        else:
-            self._yaml_nodes += 1
-            if self._yaml_nodes > _MAX_YAML_NODES:
-                raise ReleaseGateError("structured YAML node count exceeds limit")
-            anchor = getattr(event, "anchor", None)
-            if anchor is not None:
-                if len(anchor) > 128:
-                    raise ReleaseGateError("structured YAML anchor name exceeds limit")
-                self._yaml_anchors += 1
-                if self._yaml_anchors > _MAX_YAML_ANCHORS:
-                    raise ReleaseGateError("structured YAML anchor count exceeds limit")
-            tag = getattr(event, "tag", None)
-            if tag is not None and len(tag) > 256:
-                raise ReleaseGateError("structured YAML tag exceeds limit")
-        self._yaml_depth += 1
-        if self._yaml_depth > _MAX_STRUCTURED_DEPTH:
-            raise ReleaseGateError("structured YAML content exceeds depth limit")
-        try:
-            return super().compose_node(parent, index)
-        finally:
-            self._yaml_depth -= 1
-
-    def compose_scalar_node(self, anchor: str | None) -> yaml.nodes.ScalarNode:
-        event = self.peek_event()
-        if not isinstance(event, yaml.events.ScalarEvent):
-            raise ReleaseGateError("structured YAML scalar event is invalid")
-        if len(event.value) > _MAX_YAML_SCALAR_CHARACTERS:
-            raise ReleaseGateError("structured YAML scalar exceeds decoded size limit")
-        if any(0xD800 <= ord(character) <= 0xDFFF for character in event.value):
-            raise ReleaseGateError("structured YAML scalar has an invalid codepoint")
-        return super().compose_scalar_node(anchor)
-
-
-def _yaml_scalar_key_identity(
-    loader: _BoundedYamlSafeLoader,
-    node: yaml.nodes.ScalarNode,
-) -> tuple[str, str]:
-    tag = node.tag
-    try:
-        if tag == "tag:yaml.org,2002:str":
-            canonical = loader.construct_yaml_str(node)
-        elif tag == "tag:yaml.org,2002:null":
-            loader.construct_yaml_null(node)
-            canonical = "null"
-        elif tag == "tag:yaml.org,2002:bool":
-            canonical = "true" if loader.construct_yaml_bool(node) else "false"
-        elif tag == "tag:yaml.org,2002:int":
-            canonical = str(loader.construct_yaml_int(node))
-        elif tag == "tag:yaml.org,2002:float":
-            number = loader.construct_yaml_float(node)
-            if math.isnan(number):
-                canonical = "nan"
-            elif math.isinf(number):
-                canonical = "-inf" if number < 0 else "+inf"
-            elif number == 0.0:
-                canonical = "0x0.0p+0"
-            else:
-                canonical = number.hex()
-        else:
-            raise ReleaseGateError("structured YAML mapping key tag is unsupported")
-    except ReleaseGateError:
-        raise
-    except (KeyError, ValueError, IndexError) as exc:
-        raise ReleaseGateError("structured YAML mapping key scalar is invalid") from exc
-    return tag, canonical
-
-
-def _yaml_credential_assignment_values(value: str) -> tuple[str, ...]:
-    if len(value) > _MAX_YAML_DOCUMENT_CHARACTERS:
-        raise ReleaseGateError("structured YAML input exceeds size limit")
-    candidates: list[str] = []
-    visits = 0
-    loader = _BoundedYamlSafeLoader(value)
-    try:
-        while loader.check_node():
-            document = loader.get_node()
-            if document is None:
-                continue
-            active: set[int] = set()
-            pending: list[tuple[yaml.nodes.Node, int, bool]] = [(document, 0, False)]
-            while pending:
-                node, depth, leaving = pending.pop()
-                identity = id(node)
-                if leaving:
-                    active.remove(identity)
-                    continue
-                if depth > _MAX_STRUCTURED_DEPTH:
-                    raise ReleaseGateError("structured YAML content exceeds depth limit")
-                if identity in active:
-                    raise ReleaseGateError("structured YAML recursive alias is invalid")
-                visits += 1
-                if visits > _MAX_YAML_NODES:
-                    raise ReleaseGateError("structured YAML traversal exceeds node limit")
-                active.add(identity)
-                pending.append((node, depth, True))
-                if isinstance(node, yaml.nodes.ScalarNode):
-                    continue
-                if isinstance(node, yaml.nodes.SequenceNode):
-                    for child in reversed(node.value):
-                        pending.append((child, depth + 1, False))
-                    continue
-                if not isinstance(node, yaml.nodes.MappingNode):
-                    raise ReleaseGateError("structured YAML node kind is unsupported")
-                seen_keys: set[tuple[str, str]] = set()
-                for key_node, child in reversed(node.value):
-                    if not isinstance(key_node, yaml.nodes.ScalarNode):
-                        raise ReleaseGateError("structured YAML mapping key must be scalar")
-                    key = key_node.value
-                    if len(key) > 128:
-                        raise ReleaseGateError(
-                            "structured YAML key exceeds decoded size limit"
-                        )
-                    identity = _yaml_scalar_key_identity(loader, key_node)
-                    if identity in seen_keys:
-                        raise ReleaseGateError("structured YAML mapping key is duplicated")
-                    seen_keys.add(identity)
-                    if _is_sensitive_credential_name(key):
-                        if not isinstance(child, yaml.nodes.ScalarNode):
-                            raise ReleaseGateError(
-                                "structured YAML sensitive value must be scalar"
-                            )
-                        candidates.append(child.value)
-                    pending.append((child, depth + 1, False))
-    except ReleaseGateError:
-        raise
-    except (yaml.YAMLError, UnicodeError, RecursionError, MemoryError) as exc:
-        raise ReleaseGateError("invalid structured YAML content") from exc
-    finally:
-        loader.dispose()
-    return tuple(candidates)
 
 
 def _contains_secret(
@@ -638,19 +127,15 @@ def _contains_secret(
     python_source: bool = False,
     structured_suffix: str = "",
 ) -> bool:
-    if any(pattern.search(value) for _reason, pattern in _SECRET_PATTERNS):
-        return True
-    candidates = list(_credential_assignment_values(value))
-    if python_source:
-        candidates.extend(_python_credential_assignment_values(value))
-    if structured_suffix == ".json":
-        candidates.extend(_json_credential_assignment_values(value))
-    elif structured_suffix in {".yaml", ".yml"}:
-        candidates.extend(_yaml_credential_assignment_values(value))
-    for candidate in candidates:
-        if len(candidate) >= 40 and _shannon_entropy(candidate) >= 3.5:
-            return True
-    return False
+    return contains_secret(
+        value,
+        python_source=python_source,
+        structured_suffix=structured_suffix,
+    )
+
+
+_is_sensitive_credential_name = publishable_sensitive_credential_name
+_shannon_entropy = publishable_shannon_entropy
 
 
 def _redact_text(value: str) -> str:
@@ -701,6 +186,10 @@ class _GateSnapshot:
     repository_fingerprint: str
     outputs_inventory_sha256: str
     repository_identity: str
+    repository_path_identity: tuple[int, ...]
+    outputs_path_identity: tuple[int, ...]
+    owner_repository_snapshot: tuple[str, ...] | None
+    owner_path_identity: tuple[int, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1089,7 +578,78 @@ def _load_json_file(root: Path, relative: PurePosixPath) -> Mapping[str, Any]:
     return document
 
 
-def _validate_repository(repository: Path, outputs_root: Path, tree_mode: TreeMode) -> tuple[Path, Path, str]:
+def _canonical_origin(repository: Path) -> str:
+    origin = str(_git(repository, "remote", "get-url", "origin")).strip()
+    if not origin or any(character in origin for character in "\r\n\0"):
+        raise ReleaseGateError("repository origin is invalid")
+    if re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?", origin, re.IGNORECASE):
+        return origin.removesuffix(".git").casefold()
+    if re.fullmatch(r"git@github\.com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?", origin, re.IGNORECASE):
+        path = origin.split(":", 1)[1].removesuffix(".git")
+        return f"https://github.com/{path}".casefold()
+    raise ReleaseGateError("repository origin is not the bound GitHub repository")
+
+
+def _directory_path_identity(path: Path, *, context: str) -> tuple[int, ...]:
+    try:
+        metadata = path.lstat()
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseGateError(f"{context} identity is unavailable") from exc
+    if (
+        resolved != path
+        or not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or _is_reparse(metadata)
+    ):
+        raise ReleaseGateError(f"{context} contains a link, reparse, or redirect")
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        getattr(metadata, "st_birthtime_ns", metadata.st_ctime_ns),
+        metadata.st_mode,
+    )
+
+
+def _candidate_owner_binding(
+    candidate: Path,
+    outputs: Path,
+    owner_repository: Path | None,
+) -> Path:
+    if owner_repository is None:
+        raise ReleaseGateError("candidate mode requires --owner-repo")
+    try:
+        owner = Path(owner_repository).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseGateError("candidate owner repository is unavailable") from exc
+    _directory_path_identity(owner, context="candidate owner repository")
+    container = owner / ".cutover-candidate"
+    _directory_path_identity(container, context="candidate owner container")
+    if candidate == container or container not in candidate.parents:
+        raise ReleaseGateError("candidate repository must be strictly below owner/.cutover-candidate")
+    current = container
+    for part in candidate.relative_to(container).parts:
+        current = current / part
+        _directory_path_identity(current, context="candidate root chain")
+    if outputs != owner / "outputs":
+        raise ReleaseGateError("candidate outputs root must be the exact owner outputs directory")
+    if _canonical_origin(candidate) != _canonical_origin(owner):
+        raise ReleaseGateError("candidate and owner origins do not match")
+    owner_state, _owner_fingerprint = _dirty_tree_fingerprint(owner)
+    if owner_state != "clean":
+        raise ReleaseGateError("candidate owner repository must be clean")
+    return owner
+
+
+def _validate_repository(
+    repository: Path,
+    outputs_root: Path,
+    tree_mode: TreeMode,
+    *,
+    owner_repository: Path | None = None,
+) -> tuple[Path, Path, str]:
     root = Path(repository).resolve()
     outputs = Path(outputs_root).resolve()
     if tree_mode not in {"working-pre-cutover", "candidate", "final"}:
@@ -1098,7 +658,12 @@ def _validate_repository(repository: Path, outputs_root: Path, tree_mode: TreeMo
         raise ReleaseGateError(f"repository does not exist or is not a Git worktree: {root}")
     if not outputs.is_dir():
         raise ReleaseGateError(f"verified outputs root does not exist: {outputs}")
-    if outputs != root / "outputs":
+    owner: Path | None = None
+    if tree_mode == "candidate":
+        owner = _candidate_owner_binding(root, outputs, owner_repository)
+    elif owner_repository is not None:
+        raise ReleaseGateError("owner repository is valid only in candidate mode")
+    elif outputs != root / "outputs":
         raise ReleaseGateError("verified outputs root must be the canonical repository outputs directory")
     _validate_git_binding(root)
     status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
@@ -1112,6 +677,10 @@ def _validate_repository(repository: Path, outputs_root: Path, tree_mode: TreeMo
         if symbolic.returncode == 0:
             raise ReleaseGateError("candidate mode requires a detached candidate tree")
         _outputs_inventory_sha256(root, outputs)
+        if owner is None:
+            raise ReleaseGateError("candidate owner repository binding is unavailable")
+        if str(_git(owner, "status", "--porcelain=v1", "--untracked-files=all")).strip():
+            raise ReleaseGateError("candidate owner repository must be clean")
     return root, outputs, commit_oid
 
 
@@ -2559,13 +2128,24 @@ def _active_runtime_paths(repository: Path) -> tuple[Path, Path] | None:
         raise ReleaseGateError("active runtime binding is invalid") from exc
 
 
-def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_CommandSpec, ...]:
+def _command_specs(
+    root: Path,
+    outputs: Path,
+    tree_mode: TreeMode,
+    *,
+    owner_repository: Path | None = None,
+) -> tuple[_CommandSpec, ...]:
     python = sys.executable
     active_runtime_paths = _active_runtime_paths(root)
     script_root = active_runtime_paths[0] if active_runtime_paths is not None else root
     script = script_root / "scripts" / "check_release_gate.py"
     build_inputs = root / "src" / "hsconfig" / "resources" / "audited_build_inputs.json"
     score_mode = "pre_cutover" if tree_mode != "final" else "final"
+    owner_arguments = (
+        ("--owner-repo", str(owner_repository))
+        if owner_repository is not None
+        else ()
+    )
     common_internal = (
         python,
         str(script),
@@ -2575,6 +2155,7 @@ def _command_specs(root: Path, outputs: Path, tree_mode: TreeMode) -> tuple[_Com
         str(outputs),
         "--tree-mode",
         tree_mode,
+        *owner_arguments,
         "--json",
         "--internal-check",
     )
@@ -2651,27 +2232,36 @@ def _canonical_module_text(source: bytes) -> str:
 
 
 def _verify_module_binding(repository: Path) -> None:
-    expected = repository / "src" / "hsconfig" / "release_gate.py"
     try:
-        metadata = expected.lstat()
-        repository_source = _secure_read_bytes(
-            repository,
-            PurePosixPath("src", "hsconfig", "release_gate.py"),
-            context="repository module binding",
-        )
-        loaded_source = _secure_read_bytes(
-            Path(__file__).parent,
-            PurePosixPath(Path(__file__).name),
-            context="loaded module binding",
-        )
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or stat.S_ISLNK(metadata.st_mode)
-            or _is_reparse(metadata)
-            or _canonical_module_text(repository_source)
-            != _canonical_module_text(loaded_source)
+        for relative, loaded in (
+            (PurePosixPath("src", "hsconfig", "release_gate.py"), Path(__file__)),
+            (
+                PurePosixPath("src", "hsconfig", "publishable_tree.py"),
+                Path(publishable_tree_module.__file__ or ""),
+            ),
         ):
-            raise ReleaseGateError("release gate module is not bound to the requested repository")
+            expected = repository.joinpath(*relative.parts)
+            metadata = expected.lstat()
+            repository_source = _secure_read_bytes(
+                repository,
+                relative,
+                context="repository module binding",
+            )
+            loaded_source = _secure_read_bytes(
+                loaded.parent,
+                PurePosixPath(loaded.name),
+                context="loaded module binding",
+            )
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or _is_reparse(metadata)
+                or _canonical_module_text(repository_source)
+                != _canonical_module_text(loaded_source)
+            ):
+                raise ReleaseGateError(
+                    "release gate module is not bound to the requested repository"
+                )
     except OSError as exc:
         raise ReleaseGateError("release gate module binding cannot be verified") from exc
 
@@ -3388,7 +2978,25 @@ def _dirty_tree_fingerprint(root: Path) -> tuple[str, str]:
     return ("dirty" if status else "clean", digest.hexdigest())
 
 
-def _capture_snapshot(repository: Path, outputs_root: Path) -> _GateSnapshot:
+def _owner_repository_snapshot(owner_repository: Path) -> tuple[str, ...]:
+    state, fingerprint = _dirty_tree_fingerprint(owner_repository)
+    if state != "clean":
+        raise ReleaseGateError("candidate owner repository must remain clean")
+    return (
+        str(_git(owner_repository, "rev-parse", "HEAD")).strip(),
+        str(_git(owner_repository, "rev-parse", "HEAD^{tree}")).strip(),
+        fingerprint,
+        _repository_identity(owner_repository),
+        _canonical_origin(owner_repository),
+    )
+
+
+def _capture_snapshot(
+    repository: Path,
+    outputs_root: Path,
+    *,
+    owner_repository: Path | None = None,
+) -> _GateSnapshot:
     outputs_digest = _outputs_inventory_sha256(repository, outputs_root)
     state, fingerprint = _dirty_tree_fingerprint(repository)
     if state != "clean":
@@ -3399,17 +3007,54 @@ def _capture_snapshot(repository: Path, outputs_root: Path) -> _GateSnapshot:
         repository_fingerprint=fingerprint,
         outputs_inventory_sha256=outputs_digest,
         repository_identity=_repository_identity(repository),
+        repository_path_identity=_directory_path_identity(
+            repository,
+            context="repository root",
+        ),
+        outputs_path_identity=_directory_path_identity(
+            outputs_root,
+            context="outputs root",
+        ),
+        owner_repository_snapshot=(
+            _owner_repository_snapshot(owner_repository)
+            if owner_repository is not None
+            else None
+        ),
+        owner_path_identity=(
+            _directory_path_identity(
+                owner_repository,
+                context="candidate owner repository",
+            )
+            if owner_repository is not None
+            else None
+        ),
     )
 
 
 def _assert_snapshot_unchanged(
-    repository: Path, outputs_root: Path, expected: _GateSnapshot
+    repository: Path,
+    outputs_root: Path,
+    expected: _GateSnapshot,
+    *,
+    owner_repository: Path | None = None,
 ) -> None:
     try:
-        actual = _capture_snapshot(repository, outputs_root)
+        actual = _capture_snapshot(
+            repository,
+            outputs_root,
+            owner_repository=owner_repository,
+        )
     except ReleaseGateError as exc:
+        if owner_repository is not None:
+            raise ReleaseGateError(
+                "candidate owner, repository, or outputs changed during release gate"
+            ) from exc
         raise ReleaseGateError("repository or outputs changed during release gate") from exc
     if actual != expected:
+        if owner_repository is not None:
+            raise ReleaseGateError(
+                "candidate owner, repository, or outputs changed during release gate"
+            )
         raise ReleaseGateError("repository or outputs changed during release gate")
 
 
@@ -4769,18 +4414,43 @@ def run_release_gate(
     repository: Path,
     outputs_root: Path,
     tree_mode: TreeMode = "final",
+    owner_repository: Path | None = None,
 ) -> ReleaseGateResult:
     """Run every local release check in canonical order and fail closed."""
-    root, outputs, commit_oid = _validate_repository(repository, outputs_root, tree_mode)
+    root, outputs, commit_oid = _validate_repository(
+        repository,
+        outputs_root,
+        tree_mode,
+        owner_repository=owner_repository,
+    )
+    owner = (
+        Path(owner_repository).resolve(strict=True)
+        if owner_repository is not None
+        else None
+    )
     _verify_module_binding(root)
-    snapshot = _capture_snapshot(root, outputs)
+    snapshot = _capture_snapshot(
+        root,
+        outputs,
+        owner_repository=owner,
+    )
     if snapshot.commit_oid != commit_oid:
         raise ReleaseGateError("repository changed during release gate startup")
-    specs = _command_specs(root, outputs, tree_mode)
+    specs = _command_specs(
+        root,
+        outputs,
+        tree_mode,
+        owner_repository=owner,
+    )
     checks: list[ReleaseCheck] = []
     for spec in specs[:-1]:
         checks.append(_run_one(spec, repository=root))
-    _assert_snapshot_unchanged(root, outputs, snapshot)
+    _assert_snapshot_unchanged(
+        root,
+        outputs,
+        snapshot,
+        owner_repository=owner,
+    )
     if all(check.passed for check in checks):
         try:
             bundle = _build_base_evidence(
@@ -4827,7 +4497,12 @@ def run_release_gate(
                 details={"returncode": None, "error": "blocked_by_failed_prerequisite"},
             )
         )
-    _assert_snapshot_unchanged(root, outputs, snapshot)
+    _assert_snapshot_unchanged(
+        root,
+        outputs,
+        snapshot,
+        owner_repository=owner,
+    )
     if tuple(check.name for check in checks) != CHECK_NAMES:
         raise ReleaseGateError("release check composition drifted")
     passed = all(check.passed for check in checks)
@@ -4862,123 +4537,20 @@ def _prospective_paths(repository: Path) -> tuple[str, ...]:
     return tuple(sorted(value.decode("utf-8") for value in raw.split(b"\0") if value))
 
 
-def _version_tuple(value: str) -> tuple[int, int, int] | None:
-    match = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value)
-    return tuple(map(int, match.groups())) if match else None
-
-
-def _placeholder_allowance(relative: str, line_number: int) -> tuple[bool, bool]:
-    current = _version_tuple(__version__)
-    for entry in SOURCE_TODO_ALLOWLIST:
-        if entry.get("file") != relative or entry.get("line") != line_number:
-            continue
-        reason = entry.get("reason")
-        expiry = entry.get("expiry_version")
-        parsed = _version_tuple(expiry) if isinstance(expiry, str) else None
-        valid = isinstance(reason, str) and bool(reason.strip()) and parsed is not None
-        return valid and current is not None and parsed > current, valid
-    return False, False
-
-
-def _secret_like_component(component: str) -> bool:
-    lowered = component.casefold()
-    suffixes = {f".{part}" for part in lowered.split(".")[1:] if part}
-    compact = re.sub(r"[^a-z0-9]", "", lowered)
-    return (
-        lowered == ".env"
-        or lowered.startswith(".env.")
-        or bool(suffixes & _SENSITIVE_SUFFIXES)
-        or _SECRET_NAME.search(lowered) is not None
-        or any(token in compact for token in ("apikey", "accesstoken", "clientsecret", "privatekey"))
-    )
-
-
-def _runtime_evidence_component(component: str) -> bool:
-    lowered = component.casefold()
-    compact = re.sub(r"[^a-z0-9]", "", lowered)
-    tokens = set(re.findall(r"[a-z0-9]+", lowered))
-    return (
-        any(marker in compact for marker in _RUNTIME_COMPACT)
-        or ("hdt" in compact and "xml" in compact)
-        or ({"private", "runtime"} <= tokens)
-        or ("runtime" in tokens and bool(tokens & {"evidence", "export", "exports"}))
-    )
-
-
 def _text_violations(relative: str, data: bytes, *, public_doc: bool) -> list[str]:
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        # Publishable project surfaces are text contracts. Invalid UTF-8 must
-        # never turn the content scanner into a silent bypass for ASCII
-        # credentials embedded in an otherwise opaque byte stream.
-        raw_text = data.decode("latin-1")
-        violations = [f"non_utf8_content:{relative}"]
-        if _ABSOLUTE_USER_PATH.search(raw_text):
-            violations.append(f"absolute_path:{relative}")
-        if _contains_secret(raw_text):
-            violations.append(f"secret:{relative}")
-        return violations
-    violations: list[str] = []
-    if _ABSOLUTE_USER_PATH.search(text):
-        violations.append(f"absolute_path:{relative}")
-    if _PRIVATE_NAMES.search(relative):
-        violations.append(f"private_runtime_evidence:{relative}")
-    suffix = Path(relative).suffix.casefold()
-    try:
-        secret_found = _contains_secret(
-            text,
-            python_source=suffix in {".py", ".pyi"},
-            structured_suffix=suffix,
-        )
-    except ReleaseGateError:
-        if suffix == ".json":
-            violations.append(f"invalid_json_content:{relative}")
-        elif suffix in {".yaml", ".yml"}:
-            violations.append(f"invalid_yaml_content:{relative}")
-        else:
-            raise
-    else:
-        if secret_found:
-            violations.append(f"secret:{relative}")
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        if not (_PLACEHOLDER.search(line) or _EXPLICIT_PLACEHOLDER.search(line)):
-            continue
-        reference_path = relative
-        if "!" in reference_path:
-            reference_path = reference_path.split("!", 1)[1]
-            parts = PurePosixPath(reference_path).parts
-            if parts and re.fullmatch(r"hsconfig-[0-9]+(?:\.[0-9]+){2}", parts[0]):
-                reference_path = PurePosixPath(*parts[1:]).as_posix()
-            elif reference_path.startswith("hsconfig/"):
-                reference_path = "src/" + reference_path
-        reference_digest = hashlib.sha256(line.strip().encode("utf-8")).hexdigest()
-        if (
-            _EXACT_PLACEHOLDER_REFERENCE_SHA256.get(reference_path, {}).get(line_number)
-            == reference_digest
-        ):
-            continue
-        if public_doc:
-            violations.append(f"public_placeholder:{relative}:{line_number}")
-            continue
-        if Path(relative).suffix.casefold() in _ACTIVE_SOURCE_SUFFIXES:
-            allowed, structurally_valid = _placeholder_allowance(relative, line_number)
-            if not allowed:
-                reason = "expired_source_placeholder" if structurally_valid else "unallowlisted_source_placeholder"
-                violations.append(f"{reason}:{relative}:{line_number}")
-    return violations
+    return publishable_text_violations(
+        relative,
+        data,
+        public_doc=public_doc,
+        contains_secret_fn=_contains_secret,
+        source_todo_allowlist=SOURCE_TODO_ALLOWLIST,
+        placeholder_reference_sha256=_EXACT_PLACEHOLDER_REFERENCE_SHA256,
+        version=__version__,
+    )
 
 
 def _path_violations(relative: str) -> list[str]:
-    rows: list[str] = []
-    parts = tuple(part for part in re.split(r"[/\\]", relative) if part)
-    if _PRIVATE_NAMES.search(relative) or any(_runtime_evidence_component(part) for part in parts):
-        rows.append(f"private_runtime_evidence:{relative}")
-    if any(_secret_like_component(part) for part in parts):
-        rows.append(f"secret:{relative}")
-    if _RESIDUE_COMPONENT.search(relative) or _RESIDUE_SUFFIX.search(relative):
-        rows.append(f"residue:{relative}")
-    return rows
+    return publishable_path_violations(relative)
 
 
 def _archive_rows(path: Path) -> tuple[tuple[str, bytes], ...]:
@@ -5409,27 +4981,34 @@ def scan_publishable_content(
     outputs = Path(outputs_root).resolve()
     violations: list[str] = []
     tracked_count = 0
-    paths = _prospective_paths(root) if tree_mode == "working-pre-cutover" else _tracked_paths(root)
-    for relative in paths:
-        if tree_mode == "working-pre-cutover" and relative.startswith(_HISTORICAL_PREFIXES):
-            continue
+    read_violations: list[str] = []
+
+    def bound_read(relative: str) -> bytes:
         try:
-            data = _secure_read_bytes(
+            return _secure_read_bytes(
                 root,
                 PurePosixPath(relative),
                 context="publishable tracked source",
             )
         except ReleaseGateError as exc:
-            violations.append(f"tracked_non_regular:{relative}:{exc}")
-            continue
-        tracked_count += 1
-        violations.extend(_path_violations(relative))
-        public_doc = (
-            relative in _PUBLIC_DOC_PREFIXES
-            or relative.startswith(_PUBLIC_DOC_PREFIXES)
-            or Path(relative).suffix.casefold() in {".md", ".rst", ".toml", ".yaml", ".yml"}
+            read_violations.append(f"tracked_non_regular:{relative}:{exc}")
+            return b""
+
+    try:
+        tree_document = evaluate_repository_tree(
+            root,
+            mode=tree_mode,
+            read_bytes=bound_read,
         )
-        violations.extend(_text_violations(relative, data, public_doc=public_doc))
+    except (OSError, RuntimeError, TypeError, ValueError, PublishableTreeError) as exc:
+        tree_document = {
+            "passed": False,
+            "violations": [f"publishable_tree_invalid:{exc}"],
+            "files_scanned": 0,
+        }
+    tracked_count = int(tree_document["files_scanned"])
+    violations.extend(str(row) for row in tree_document["violations"])
+    violations.extend(read_violations)
     package_violations, package_count = _scan_current_packages(root, outputs)
     violations.extend(package_violations)
     artifact_count = 0
@@ -5454,7 +5033,7 @@ def check_repository_hygiene(repository: Path, outputs_root: Path) -> dict[str, 
     violations.extend(
         f"tracked_residue:{path}"
         for path in tracked
-        if _RESIDUE_COMPONENT.search(path) or _RESIDUE_SUFFIX.search(path)
+        if f"residue:{path}" in publishable_path_violations(path)
     )
     def inspect_workspace(directory: Path, prefix: PurePosixPath) -> None:
         try:

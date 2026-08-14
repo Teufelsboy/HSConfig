@@ -7,6 +7,7 @@ from pathlib import Path
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from tests.helpers.current_apply_eligible_package import (
     write_current_apply_eligible_package,
@@ -50,19 +51,22 @@ ACTIVE_CODE_ROOTS = (
     Path("scripts"),
 )
 ACTIVE_DOC_ROOTS = (
+    Path("docs/architecture"),
+    Path("docs/contracts"),
     Path("docs/operator"),
-    Path(".agents/skills/hsconfig"),
 )
 NEGATIVE_CONTRACT_PATH = Path(__file__).resolve()
-
-ACTIVE_DOC_PATHS = [
-    Path("docs/operator/README.md"),
-    Path("docs/operator/guide-research-policy.md"),
-    Path("docs/operator/universal-wild-no-block-contract.md"),
-    Path(".agents/skills/hsconfig/SKILL.md"),
-    Path(".agents/skills/hsconfig/references/workflow.md"),
-    Path(".agents/skills/hsconfig/references/visionai-surfaces.md"),
-]
+OBSOLETE_OPERATOR_DOCS = frozenset(
+    {
+        Path("docs/operator/autonomous-source-builder-next.md"),
+        Path("docs/operator/boarlock-fracking-source-decision.md"),
+        Path("docs/operator/git-branch-cleanup-audit-2026-07-17.md"),
+        Path("docs/operator/kingslayer-quick-pick-source-decision.md"),
+        Path("docs/operator/source-backed-strong-closure.md"),
+        Path("docs/operator/source-builder-workflow.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+    }
+)
 
 def _active_python_consumers() -> tuple[Path, ...]:
     return tuple(
@@ -81,6 +85,7 @@ def _active_markdown_documents() -> tuple[Path, ...]:
             path
             for root in ACTIVE_DOC_ROOTS
             for path in root.rglob("*.md")
+            if path not in OBSOLETE_OPERATOR_DOCS
         )
     )
 
@@ -89,10 +94,28 @@ def test_active_docs_describe_legacy_surfaces_as_non_normal_only():
     allowed_diagnostic_boundary = (
         "`semantic_handoff_status` is diagnostic and never creates a second apply gate."
     )
-    for path in ACTIVE_DOC_PATHS:
-        text = path.read_text(encoding="utf-8")
+    embedded = load_embedded_skill_bundle()
+    active_docs = {
+        "docs/operator/README.md": Path("docs/operator/README.md").read_text(
+            encoding="utf-8"
+        ),
+        "docs/operator/guide-research-policy.md": Path(
+            "docs/operator/guide-research-policy.md"
+        ).read_text(encoding="utf-8"),
+        "embedded:SKILL.md": embedded["SKILL.md"].decode("utf-8"),
+        "embedded:references/workflow.md": embedded[
+            "references/workflow.md"
+        ].decode("utf-8"),
+        "embedded:references/visionai-surfaces.md": embedded[
+            "references/visionai-surfaces.md"
+        ].decode("utf-8"),
+    }
+    for path, text in active_docs.items():
         assert "operator_summary.json" in text
-        assert "legacy/diagnostic" in text or "outside the normal HSConfig output path" in text
+        assert (
+            "legacy/diagnostic" in text
+            or "outside the normal HSConfig output path" in text
+        ), path
         assert "emit Presume.json" not in text
         assert "emit Concede.json" not in text
         assert "second apply gate" not in text.replace(

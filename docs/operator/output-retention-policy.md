@@ -1,5 +1,7 @@
 # Output Retention Policy
 
+[Back to the operator guide](README.md)
+
 `outputs/` is ignored local working state. Keep one current package per deck
 when practical. Older same-deck entries may be retained when they support an
 active comparison, but should not be mistaken for the current operator

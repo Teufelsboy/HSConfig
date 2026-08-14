@@ -4,15 +4,14 @@ from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.operator_summary import build_operator_summary
 
 
-def test_operator_docs_point_to_research_index_without_making_it_operator_path():
+def test_operator_docs_point_to_active_architecture_and_contract_routes():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
-    assert "Research artifacts are evidence, not operator instructions." in text
-    assert "docs/research/README.md" in text
-    assert (
-        "source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply"
-        in text
-    )
+    assert "../architecture/overview.md" in text
+    assert "../contracts/pre-run-contract.md" in text
+    assert "../contracts/evidence-and-disposition.md" in text
+    assert "../contracts/release-gate.md" in text
+    assert "docs/" + "research/" not in text
 
 
 def test_operator_readme_has_compact_quick_start_before_details():

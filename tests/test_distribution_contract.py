@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from email.parser import BytesParser
 from pathlib import Path
 
 import pytest
@@ -19,11 +20,16 @@ from scripts.verify_distribution import (
     _assert_installed_module_path,
     _assert_supported_sentinel_result,
     _assert_smoke_inventory,
+    _assert_skill_bundle_parity,
     _run,
     _select_distribution_archives,
     _stage_build_source,
     validate_distribution_archive,
     validate_distribution_members,
+)
+from hsconfig.external_skill_bundle import (
+    compute_bundle_aggregate,
+    decode_skill_bundle,
 )
 
 
@@ -36,10 +42,63 @@ this software except with prior written permission from the copyright owner.
 GitHub's platform terms continue to govern platform access.
 Public visibility does not make this code confidential.
 """
-_VALID_PKG_INFO = b"Metadata-Version: 2.4\nName: hsconfig\nVersion: 1.0.0\n"
-_VALID_WHEEL_METADATA = (
-    _VALID_PKG_INFO
+_VALID_CORE_METADATA = b"Metadata-Version: 2.4\nName: hsconfig\nVersion: 1.0.0\n"
+_VALID_PKG_INFO = (
+    _VALID_CORE_METADATA
     + b"License-Expression: LicenseRef-Proprietary\nLicense-File: LICENSE\n"
+)
+_VALID_WHEEL_METADATA = _VALID_PKG_INFO
+
+
+def _write_bundle_parity_archives(
+    root: Path,
+    payload: bytes,
+) -> tuple[Path, Path, Path]:
+    source_root = root / "source"
+    resource = source_root / "src/hsconfig/resources/codex_skill_bundle.json"
+    resource.parent.mkdir(parents=True)
+    resource.write_bytes(payload)
+    wheel = root / "hsconfig-1.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "hsconfig/resources/codex_skill_bundle.json",
+            payload,
+        )
+    sdist = root / "hsconfig-1.0.0.tar.gz"
+    with tarfile.open(sdist, "w:gz") as archive:
+        info = tarfile.TarInfo(
+            "hsconfig-1.0.0/src/hsconfig/resources/codex_skill_bundle.json"
+        )
+        info.size = len(payload)
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(payload))
+    return source_root, wheel, sdist
+
+
+def test_skill_bundle_has_exact_source_sdist_wheel_byte_parity(
+    tmp_path: Path,
+) -> None:
+    payload = (
+        Path("src/hsconfig/resources/codex_skill_bundle.json").read_bytes()
+    )
+    source_root, wheel, sdist = _write_bundle_parity_archives(tmp_path, payload)
+
+    assert _assert_skill_bundle_parity(source_root, wheel, sdist) == (
+        distribution.hashlib.sha256(payload).hexdigest(),
+        compute_bundle_aggregate(decode_skill_bundle(payload)),
+    )
+
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "hsconfig/resources/codex_skill_bundle.json",
+            payload + b" ",
+        )
+    with pytest.raises(DistributionContentError, match="skill_bundle.*parity"):
+        _assert_skill_bundle_parity(source_root, wheel, sdist)
+_METADATA_SURFACES = (
+    ("sdist_root", "root"),
+    ("sdist_egg_info", "egg_info"),
+    ("wheel", "wheel"),
 )
 _EGG_INFO_FILES = (
     "PKG-INFO",
@@ -132,6 +191,26 @@ def _write_complete_wheel(
                 "hsconfig-1.0.0.dist-info/licenses/LICENSE",
                 license_payload,
             )
+
+
+def _write_metadata_artifact(
+    tmp_path: Path,
+    *,
+    surface: str,
+    metadata: bytes,
+) -> tuple[str, Path]:
+    if surface == "wheel":
+        artifact = tmp_path / "hsconfig-1.0.0-py3-none-any.whl"
+        _write_complete_wheel(artifact, metadata=metadata)
+        return "wheel", artifact
+    if surface not in {"sdist_root", "sdist_egg_info"}:
+        raise AssertionError(f"unsupported metadata test surface: {surface}")
+    artifact = tmp_path / "hsconfig-1.0.0.tar.gz"
+    metadata_argument = (
+        "root_pkg_info" if surface == "sdist_root" else "egg_pkg_info"
+    )
+    _write_complete_sdist(artifact, **{metadata_argument: metadata})
+    return "sdist", artifact
 
 
 def test_distribution_members_allow_only_runtime_package_and_standard_metadata() -> (
@@ -462,6 +541,224 @@ def test_sdist_rejects_wrong_egg_info_version(tmp_path: Path) -> None:
 
     with pytest.raises(DistributionContentError, match="pkg_info_version_mismatch"):
         validate_distribution_archive("sdist", sdist)
+
+
+@pytest.mark.parametrize(
+    ("surface", "diagnostic_label"),
+    _METADATA_SURFACES,
+)
+@pytest.mark.parametrize(
+    ("valid_header", "invalid_header", "diagnostic"),
+    [
+        (
+            b"License-Expression: LicenseRef-Proprietary\n",
+            b"",
+            "license_expression",
+        ),
+        (
+            b"License-Expression: LicenseRef-Proprietary\n",
+            b"License-Expression: MIT\n",
+            "license_expression",
+        ),
+        (
+            b"License-Expression: LicenseRef-Proprietary\n",
+            b"License-Expression: LicenseRef-Proprietary\n"
+            b"lIcEnSe-ExPrEsSiOn: LicenseRef-Proprietary\n",
+            "license_expression",
+        ),
+        (
+            b"License-Expression: LicenseRef-Proprietary\n",
+            b"License-Expression: LicenseRef-\n Proprietary\n",
+            "license_expression",
+        ),
+        (b"License-File: LICENSE\n", b"", "license_file"),
+        (
+            b"License-File: LICENSE\n",
+            b"License-File: COPYING\n",
+            "license_file",
+        ),
+        (
+            b"License-File: LICENSE\n",
+            b"License-File: LICENSE\nlIcEnSe-FiLe: LICENSE\n",
+            "license_file",
+        ),
+        (
+            b"License-File: LICENSE\n",
+            b"License-File: LIC\n ENSE\n",
+            "license_file",
+        ),
+    ],
+)
+def test_distribution_metadata_records_require_exact_license_headers(
+    tmp_path: Path,
+    surface: str,
+    diagnostic_label: str,
+    valid_header: bytes,
+    invalid_header: bytes,
+    diagnostic: str,
+) -> None:
+    invalid_metadata = _VALID_PKG_INFO.replace(valid_header, invalid_header)
+    artifact_kind, artifact = _write_metadata_artifact(
+        tmp_path,
+        surface=surface,
+        metadata=invalid_metadata,
+    )
+
+    with pytest.raises(
+        DistributionContentError,
+        match=rf"{diagnostic_label}_{diagnostic}:actual=",
+    ):
+        validate_distribution_archive(artifact_kind, artifact)
+
+
+@pytest.mark.parametrize(
+    ("surface", "diagnostic_label"),
+    _METADATA_SURFACES,
+)
+@pytest.mark.parametrize(
+    ("metadata", "reason"),
+    [
+        pytest.param(
+            _VALID_PKG_INFO.replace(
+                b"License-Expression:",
+                b"X-Unrelated: \xff\nLicense-Expression:",
+            ),
+            "invalid_utf8",
+            id="invalid-utf8-unrelated-header",
+        ),
+        pytest.param(
+            _VALID_PKG_INFO + b"\nBody with invalid UTF-8: \xff\n",
+            "invalid_utf8",
+            id="invalid-utf8-body",
+        ),
+        pytest.param(
+            b"\xef\xbb\xbf" + _VALID_PKG_INFO,
+            "bom",
+            id="utf8-bom",
+        ),
+        pytest.param(
+            _VALID_PKG_INFO + b"\nBody with NUL: \x00\n",
+            "nul",
+            id="nul",
+        ),
+        pytest.param(
+            _VALID_PKG_INFO + b"\nBody with bare CR: left\rright\n",
+            "bare_cr",
+            id="bare-cr",
+        ),
+    ],
+)
+def test_distribution_metadata_records_require_strict_utf8_byte_streams(
+    tmp_path: Path,
+    surface: str,
+    diagnostic_label: str,
+    metadata: bytes,
+    reason: str,
+) -> None:
+    artifact_kind, artifact = _write_metadata_artifact(
+        tmp_path,
+        surface=surface,
+        metadata=metadata,
+    )
+
+    with pytest.raises(
+        DistributionContentError,
+        match=rf"invalid_pkg_info:{diagnostic_label}:{reason}$",
+    ):
+        validate_distribution_archive(artifact_kind, artifact)
+
+
+@pytest.mark.parametrize("surface", [item[0] for item in _METADATA_SURFACES])
+def test_distribution_metadata_accepts_utf8_crlf_and_case_insensitive_header_names(
+    tmp_path: Path,
+    surface: str,
+) -> None:
+    metadata = (
+        _VALID_PKG_INFO.replace(
+            b"License-Expression:",
+            "X-Display-Name: Grüezi\nlicense-expression:".encode(),
+        )
+        .replace(b"License-File:", b"lIcEnSe-FiLe:")
+        .replace(b"\n", b"\r\n")
+    )
+    artifact_kind, artifact = _write_metadata_artifact(
+        tmp_path,
+        surface=surface,
+        metadata=metadata,
+    )
+
+    validate_distribution_archive(artifact_kind, artifact)
+
+
+@pytest.mark.parametrize(
+    ("artifact_kind", "artifact_name", "member"),
+    [
+        ("sdist", "hsconfig-1.0.0.tar.gz", "hsconfig-1.0.0/PKG-INFO"),
+        (
+            "wheel",
+            "hsconfig-1.0.0-py3-none-any.whl",
+            "hsconfig-1.0.0.dist-info/METADATA",
+        ),
+    ],
+)
+def test_distribution_archives_reject_duplicate_metadata_members(
+    tmp_path: Path,
+    artifact_kind: str,
+    artifact_name: str,
+    member: str,
+) -> None:
+    artifact = tmp_path / artifact_name
+    if artifact_kind == "sdist":
+        with tarfile.open(artifact, "w:gz") as archive:
+            _add_tar_file(archive, member, _VALID_PKG_INFO)
+            _add_tar_file(archive, member, _VALID_PKG_INFO)
+    else:
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            with zipfile.ZipFile(artifact, "w") as archive:
+                archive.writestr(member, _VALID_PKG_INFO)
+                archive.writestr(member, _VALID_PKG_INFO)
+
+    with pytest.raises(DistributionContentError, match="duplicate_archive_member"):
+        validate_distribution_archive(artifact_kind, artifact)
+
+
+def test_sdist_and_wheel_metadata_records_have_exact_license_header_parity(
+    tmp_path: Path,
+) -> None:
+    sdist = tmp_path / "hsconfig-1.0.0.tar.gz"
+    wheel = tmp_path / "hsconfig-1.0.0-py3-none-any.whl"
+    _write_complete_sdist(sdist)
+    _write_complete_wheel(wheel)
+
+    validate_distribution_archive("sdist", sdist)
+    validate_distribution_archive("wheel", wheel)
+
+    with tarfile.open(sdist, "r:gz") as archive:
+        root_pkg_info = archive.extractfile("hsconfig-1.0.0/PKG-INFO")
+        egg_pkg_info = archive.extractfile(
+            "hsconfig-1.0.0/src/hsconfig.egg-info/PKG-INFO"
+        )
+        assert root_pkg_info is not None
+        assert egg_pkg_info is not None
+        root_payload = root_pkg_info.read()
+        egg_payload = egg_pkg_info.read()
+    with zipfile.ZipFile(wheel) as archive:
+        wheel_payload = archive.read("hsconfig-1.0.0.dist-info/METADATA")
+
+    def license_headers(payload: bytes) -> tuple[list[str], list[str]]:
+        metadata = BytesParser().parsebytes(payload)
+        return (
+            metadata.get_all("License-Expression", []),
+            metadata.get_all("License-File", []),
+        )
+
+    root_headers = license_headers(root_payload)
+    egg_headers = license_headers(egg_payload)
+    wheel_headers = license_headers(wheel_payload)
+    assert root_headers == egg_headers == wheel_headers == (
+        ["LicenseRef-Proprietary"],
+        ["LICENSE"],
+    )
 
 
 @pytest.mark.parametrize(
@@ -1069,6 +1366,8 @@ def test_distribution_smoke_uses_installed_cli_for_isolation_and_explicit_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[list[str], Path, tuple[int, ...]]] = []
+    skill_bundle_sha256 = "a" * 64
+    skill_bundle_aggregate_sha256 = "b" * 64
     temporary_root = tmp_path / "verification"
     temporary_root.mkdir()
 
@@ -1103,6 +1402,14 @@ def test_distribution_smoke_uses_installed_cli_for_isolation_and_explicit_root(
                 / "hsconfig"
                 / "__init__.py"
             )
+        elif "importlib.resources" in " ".join(rendered):
+            stdout = json.dumps(
+                {
+                    "aggregate_sha256": skill_bundle_aggregate_sha256,
+                    "file_count": 9,
+                    "resource_sha256": skill_bundle_sha256,
+                }
+            )
         elif rendered[-1:] == ["--version"]:
             stdout = "hsconfig 1.0.0\n"
         elif rendered[-1:] == ["--help"]:
@@ -1132,6 +1439,14 @@ def test_distribution_smoke_uses_installed_cli_for_isolation_and_explicit_root(
         lambda output: (output / "hsconfig-1.0.0.whl", output / "hsconfig-1.0.0.tar.gz"),
     )
     monkeypatch.setattr(distribution, "validate_distribution_archive", lambda *_args: None)
+    monkeypatch.setattr(
+        distribution,
+        "_assert_skill_bundle_parity",
+        lambda *_args: (
+            skill_bundle_sha256,
+            skill_bundle_aggregate_sha256,
+        ),
+    )
     monkeypatch.setattr(distribution, "_wheel_version", lambda _wheel: "1.0.0")
     monkeypatch.setattr(distribution, "_assert_smoke_inventory", lambda _packages: None)
     monkeypatch.setattr(distribution, "_assert_installed_module_path", lambda *_args: None)
@@ -1154,6 +1469,9 @@ def test_distribution_smoke_uses_installed_cli_for_isolation_and_explicit_root(
     )
     source_root = str(temporary_root / "source")
     assert result.wheel_smoke_passed is True
+    assert len(
+        [call for call in calls if "importlib.resources" in " ".join(call[0])]
+    ) == 1
     assert [call for call in calls if "contract-spine-sentinel" in call[0]] == [
         (
             [installed_cli, "contract-spine-sentinel", "--json"],

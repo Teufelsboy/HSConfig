@@ -29,6 +29,8 @@ REQUIRED_HEADINGS = (
 )
 EXPECTED_LINKS = (
     "docs/operator/README.md",
+    "docs/architecture/overview.md",
+    "docs/contracts/pre-run-contract.md",
     "SECURITY.md",
     "CONTRIBUTING.md",
 )
@@ -36,31 +38,15 @@ NORMAL_CONFIGURE_COMMAND = (
     'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
     '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json'
 )
-LOWER_LEVEL_CHAIN = (
-    "source-manifest -> source-autopilot or draft-source-documents -> "
-    "research-deck -> prepare -> validate -> apply"
-)
 PRESERVED_ANCHORS = (
     "Preferred normal path: `hsconfig configure`.",
-    "Lower-level inspected path:",
-    "hsconfig source-manifest",
-    "hsconfig prepare",
-    "hsconfig apply",
     "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.",
     "docs/operator/README.md",
-    "python scripts/sync_installed_skill.py --check",
     "local Clean-OID producer/verifier",
     "single locked `ci` workflow",
     "`contract`, `test`, `package`, and `security`",
 )
-PRESERVED_ANCHOR_EXACT_COUNTS = {
-    anchor: (
-        2
-        if anchor in {"hsconfig apply", "docs/operator/README.md"}
-        else 1
-    )
-    for anchor in PRESERVED_ANCHORS
-}
+PRESERVED_ANCHOR_EXACT_COUNTS = {anchor: 1 for anchor in PRESERVED_ANCHORS}
 
 
 def _copy_readme_context(destination: Path) -> Path:
@@ -69,6 +55,8 @@ def _copy_readme_context(destination: Path) -> Path:
         Path("SECURITY.md"),
         Path("CONTRIBUTING.md"),
         Path("docs/operator/README.md"),
+        Path("docs/architecture/overview.md"),
+        Path("docs/contracts/pre-run-contract.md"),
     ):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -219,10 +207,18 @@ def _readme_contract_errors(root: Path) -> list[str]:
             errors.append(f"readme_missing_anchor:{anchor}")
         if anchor_count != PRESERVED_ANCHOR_EXACT_COUNTS[anchor]:
             errors.append(f"readme_anchor_count:{anchor}")
-    if prose_text.count(LOWER_LEVEL_CHAIN) != 1:
-        errors.append("readme_lower_level_chain_count")
-    if "docs/research/" in prose_text:
-        errors.append("readme_research_route")
+    forbidden_routes = (
+        "docs/research/",
+        "docs/history/",
+        "docs/superpowers/",
+        ".agents/",
+        "sync_installed_skill",
+        "--skill-install-root",
+        "Lower-level inspected path:",
+    )
+    for route in forbidden_routes:
+        if route in prose_text:
+            errors.append(f"readme_forbidden_route:{route}")
 
     targets = [token.target or "" for token in document.links]
     if targets != list(EXPECTED_LINKS):
@@ -779,8 +775,12 @@ def test_readme_round11_counts_visible_inline_configure_command_duplicates(
             "Preferred normal path: **`hsconfig configure`**.",
             PRESERVED_ANCHORS[0],
         ),
-        ("hsconfig *source-manifest*", PRESERVED_ANCHORS[2]),
-        ("**Lower-level inspected path:**", PRESERVED_ANCHORS[1]),
+        (
+            "Runtime writes happen only through **`hsconfig apply`** or "
+            "**`hsconfig configure --apply`**.",
+            PRESERVED_ANCHORS[1],
+        ),
+        ("**docs/operator/README.md**", PRESERVED_ANCHORS[2]),
     ),
 )
 def test_readme_round11_counts_visible_formatted_anchor_duplicates(
@@ -810,7 +810,7 @@ def test_readme_round12_presentation_uses_only_the_visible_link_label() -> None:
 @pytest.mark.parametrize(
     ("payload", "anchor"),
     (
-        ("hsconfig source&#45;manifest", PRESERVED_ANCHORS[2]),
+        ("docs/operator/README&#46;md", PRESERVED_ANCHORS[2]),
         (
             "Preferred normal path&#58; **`hsconfig configure`**.",
             PRESERVED_ANCHORS[0],

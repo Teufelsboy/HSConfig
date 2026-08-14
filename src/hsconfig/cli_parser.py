@@ -253,21 +253,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     contract_preflight = subparsers.add_parser(
         "contract-preflight",
-        help="read-only repo and skill contract preflight",
+        help="read-only repository contract preflight",
         description=(
-            "Read-only repo and skill contract preflight. Checks currentness, "
-            "installed-skill sync, skill/reference routing, source-status "
+            "Read-only repository contract preflight. Checks currentness, "
+            "the embedded skill bundle, source-status "
             "non-blocking policy, no-default-only visibility, runtime surface "
             "boundary, and negative scope wording. "
             "This command does not grant apply permission and never writes runtime files."
         ),
     )
     contract_preflight.add_argument("--repo-root", default=".")
-    contract_preflight.add_argument(
-        "--skill-install-root",
-        default=None,
-        help="Root directory that contains installed Codex skills.",
-    )
     contract_preflight.add_argument(
         "--package",
         help=(

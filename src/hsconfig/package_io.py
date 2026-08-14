@@ -10,9 +10,12 @@ and mutation is outside the contract.
 
 from __future__ import annotations
 
+import errno
+import hashlib
 import json
 import os
 import stat
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +38,34 @@ MAX_FILESYSTEM_ENTRIES_PER_DIRECTORY = 10_000
 MAX_FILESYSTEM_NODES = 110_000
 _REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 PathIdentity = tuple[int, int, int]
+_QUARANTINED_WINDOWS_HANDLES: list[_WindowsNativeHandleLease] = []
+
+
+class _WindowsNativeHandleLease:
+    __slots__ = ("handle", "quarantined")
+
+    def __init__(self) -> None:
+        import ctypes
+
+        self.handle = ctypes.c_void_p()
+        self.quarantined = False
+
+    @property
+    def value(self) -> int:
+        value = self.handle.value
+        if value is None:
+            raise ValueError("filesystem_windows_handle_unavailable")
+        return int(value)
+
+
+@dataclass(frozen=True, slots=True)
+class _WindowsHandleState:
+    volume_serial: int
+    file_index: int
+    attributes: int
+    size: int
+    links: int
+    last_write: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,6 +420,203 @@ def secure_unlink(
         return True
 
 
+def secure_unlink_verified(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    expected_size: int,
+    expected_sha256: str,
+) -> None:
+    if (
+        type(expected_size) is not int
+        or expected_size < 0
+        or expected_size > MAX_RUN_TOTAL_BYTES
+        or not isinstance(expected_sha256, str)
+        or len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        raise ValueError("filesystem_verified_unlink_contract_invalid")
+    if os.name != "nt":
+        raise OSError(
+            errno.ENOTSUP,
+            "filesystem_verified_unlink_unsupported",
+            str(path),
+        )
+    child = Path(path)
+    with hold_plain_directory(
+        child.parent,
+        expected_identity=expected_parent_identity,
+    ) as parent:
+        status = parent.child_status(child.name)
+        if (
+            path_identity_from_status(status) != expected_identity
+            or not stat.S_ISREG(status.st_mode)
+            or status_is_reparse(status)
+            or status.st_nlink != 1
+            or status.st_size != expected_size
+        ):
+            raise ValueError("filesystem_verified_unlink_content_changed")
+        parent.validate()
+        with _hold_windows_owned_child_handle(
+            parent,
+            child.name,
+            expected_identity=expected_identity,
+            directory=False,
+            content_read=True,
+            deny_write_share=True,
+        ) as lease:
+            opened = _windows_native_handle_state(lease.value)
+            digest = _windows_native_handle_sha256(lease.value, expected_size)
+            after = _windows_native_handle_state(lease.value)
+            current = parent.child_status(child.name)
+            if (
+                digest != expected_sha256
+                or after != opened
+                or (after.volume_serial, after.file_index) != expected_identity[:2]
+                or path_identity_from_status(current) != expected_identity
+                or after.attributes & 0x00000010
+                or after.attributes & _REPARSE_ATTRIBUTE
+                or status_is_reparse(current)
+                or not stat.S_ISREG(current.st_mode)
+                or after.links != 1
+                or current.st_nlink != 1
+                or after.size != expected_size
+                or current.st_size != expected_size
+            ):
+                raise ValueError("filesystem_verified_unlink_content_changed")
+            parent.validate()
+            if _windows_native_handle_streams(lease.value) != (
+                ("::$DATA", expected_size),
+            ):
+                raise ValueError("filesystem_verified_unlink_stream_invalid")
+            commit_authorized = False
+            primary_error: BaseException | None = None
+            try:
+                _set_windows_native_handle_delete(lease.value, delete=True)
+                pending = _windows_native_handle_state(lease.value)
+                if (
+                    (pending.volume_serial, pending.file_index) != expected_identity[:2]
+                    or pending.attributes != after.attributes
+                    or pending.size != expected_size
+                    or pending.links != 0
+                    or pending.last_write != after.last_write
+                ):
+                    raise ValueError("filesystem_verified_unlink_content_changed")
+                if _windows_native_handle_streams(lease.value) != (
+                    ("::$DATA", expected_size),
+                ):
+                    raise ValueError("filesystem_verified_unlink_stream_invalid")
+                commit_authorized = True
+            except BaseException as error:
+                primary_error = error
+                raise
+            finally:
+                if not commit_authorized:
+                    try:
+                        _clear_windows_native_handle_delete(lease.value)
+                    except BaseException as cleanup_error:
+                        _quarantine_windows_native_handle(lease)
+                        if primary_error is not None:
+                            primary_error.add_note(
+                                "failed to cancel verified unlink disposition: "
+                                f"{type(cleanup_error).__name__}"
+                            )
+                        else:
+                            raise
+        parent.validate()
+
+
+def secure_rmdir_verified(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+) -> None:
+    if os.name != "nt":
+        raise OSError(
+            errno.ENOTSUP,
+            "filesystem_verified_rmdir_unsupported",
+            str(path),
+        )
+    child = Path(path)
+    with hold_plain_directory(
+        child.parent,
+        expected_identity=expected_parent_identity,
+    ) as parent:
+        status = parent.child_status(child.name)
+        if (
+            path_identity_from_status(status) != expected_identity
+            or not stat.S_ISDIR(status.st_mode)
+            or status_is_reparse(status)
+        ):
+            raise ValueError("filesystem_verified_rmdir_content_changed")
+        parent.validate()
+        with _hold_windows_owned_child_handle(
+            parent,
+            child.name,
+            expected_identity=expected_identity,
+            directory=True,
+            deny_write_share=True,
+        ) as lease:
+            if _windows_native_handle_streams(lease.value):
+                raise ValueError("filesystem_verified_rmdir_stream_invalid")
+            commit_authorized = False
+            primary_error: BaseException | None = None
+            try:
+                _set_windows_native_handle_delete(lease.value, delete=True)
+                if _windows_native_handle_streams(lease.value):
+                    raise ValueError("filesystem_verified_rmdir_stream_invalid")
+                commit_authorized = True
+            except BaseException as error:
+                primary_error = error
+                raise
+            finally:
+                if not commit_authorized:
+                    try:
+                        _clear_windows_native_handle_delete(lease.value)
+                    except BaseException as cleanup_error:
+                        _quarantine_windows_native_handle(lease)
+                        if primary_error is not None:
+                            primary_error.add_note(
+                                "failed to cancel verified rmdir disposition: "
+                                f"{type(cleanup_error).__name__}"
+                            )
+                        else:
+                            raise
+        parent.validate()
+
+
+def require_no_alternate_data_streams(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    directory: bool,
+    expected_size: int | None = None,
+) -> None:
+    if os.name != "nt":
+        return
+    child = Path(path)
+    with hold_plain_directory(
+        child.parent,
+        expected_identity=expected_parent_identity,
+    ) as parent:
+        with _hold_windows_owned_child_handle(
+            parent,
+            child.name,
+            expected_identity=expected_identity,
+            directory=directory,
+            content_read=False,
+            deny_write_share=True,
+        ) as lease:
+            streams = _windows_native_handle_streams(lease.value)
+            expected = () if directory else (("::$DATA", expected_size),)
+            if streams != expected:
+                raise ValueError("filesystem_alternate_data_stream_forbidden")
+        parent.validate()
+
+
 def secure_rmdir(
     path: Path,
     *,
@@ -564,71 +792,120 @@ def _open_windows_child_file_descriptor(
         raise
 
 
-def _open_windows_owned_child_descriptor(
+@contextmanager
+def _hold_windows_owned_child_handle(
     parent: PlainDirectoryMutationGuard,
     name: str,
     *,
     expected_identity: PathIdentity,
     directory: bool,
-) -> int:
+    content_read: bool = False,
+    deny_write_share: bool = False,
+) -> Iterator[_WindowsNativeHandleLease]:
     import ctypes
     import msvcrt
+    from ctypes import wintypes
+
+    class UnicodeString(ctypes.Structure):
+        _fields_ = (
+            ("length", wintypes.USHORT),
+            ("maximum_length", wintypes.USHORT),
+            ("buffer", ctypes.c_void_p),
+        )
+
+    class ObjectAttributes(ctypes.Structure):
+        _fields_ = (
+            ("length", wintypes.ULONG),
+            ("root_directory", wintypes.HANDLE),
+            ("object_name", ctypes.POINTER(UnicodeString)),
+            ("attributes", wintypes.ULONG),
+            ("security_descriptor", ctypes.c_void_p),
+            ("security_quality_of_service", ctypes.c_void_p),
+        )
+
+    class IoStatusBlock(ctypes.Structure):
+        _fields_ = (
+            ("status", ctypes.c_void_p),
+            ("information", ctypes.c_size_t),
+        )
 
     _require_child_name(name)
     parent.validate()
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    create_file = kernel32.CreateFileW
-    create_file.argtypes = (
-        ctypes.c_wchar_p,
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_void_p,
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_void_p,
+    name_buffer = ctypes.create_unicode_buffer(name)
+    encoded_length = len(name.encode("utf-16-le"))
+    unicode_name = UnicodeString(
+        encoded_length,
+        encoded_length + 2,
+        ctypes.cast(name_buffer, ctypes.c_void_p),
     )
-    create_file.restype = ctypes.c_void_p
-    handle = create_file(
-        str(parent.path / name),
-        0x00010000 | 0x00000080 | 0x00100000,
-        0x00000001 | 0x00000002,
+    attributes = ObjectAttributes(
+        ctypes.sizeof(ObjectAttributes),
+        msvcrt.get_osfhandle(parent.descriptor),
+        ctypes.pointer(unicode_name),
+        0x00000040 | 0x00001000,
         None,
-        3,
-        0x00200000 | (0x02000000 if directory else 0),
         None,
     )
-    invalid_handle = ctypes.c_void_p(-1).value
-    if handle == invalid_handle:
-        error = ctypes.get_last_error()
-        raise OSError(
-            error,
-            ctypes.FormatError(error),
-            str(parent.path / name),
-        )
+    io_status = IoStatusBlock()
+    lease = _WindowsNativeHandleLease()
+    ntdll = ctypes.WinDLL("ntdll")
+    open_file = ntdll.NtOpenFile
+    open_file.argtypes = (
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.ULONG,
+        ctypes.POINTER(ObjectAttributes),
+        ctypes.POINTER(IoStatusBlock),
+        wintypes.ULONG,
+        wintypes.ULONG,
+    )
+    open_file.restype = ctypes.c_long
     try:
-        descriptor = msvcrt.open_osfhandle(
-            handle,
-            os.O_RDONLY | getattr(os, "O_NOINHERIT", 0),
+        desired_access = 0x00010000 | 0x00000080 | 0x00100000
+        if content_read:
+            desired_access |= 0x00000001
+        share_mode = 0x00000001
+        if not deny_write_share:
+            share_mode |= 0x00000002
+        options = 0x00200000 | 0x00000020
+        options |= 0x00000001 if directory else 0x00000040
+        status = open_file(
+            ctypes.byref(lease.handle),
+            desired_access,
+            ctypes.byref(attributes),
+            ctypes.byref(io_status),
+            share_mode,
+            options,
         )
-    except BaseException:
-        kernel32.CloseHandle(ctypes.c_void_p(handle))
-        raise
-    try:
-        opened = os.fstat(descriptor)
+        if status < 0:
+            rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+            rtl_status_to_dos_error.argtypes = (ctypes.c_long,)
+            rtl_status_to_dos_error.restype = wintypes.ULONG
+            error = rtl_status_to_dos_error(status)
+            raise OSError(
+                error,
+                ctypes.FormatError(error),
+                str(parent.path / name),
+            )
+        native_handle = lease.value
+        opened = _windows_native_handle_state(native_handle)
         current = parent.child_status(name)
+        expected_directory = bool(opened.attributes & 0x00000010)
         if (
-            path_identity_from_status(opened) != expected_identity
+            (opened.volume_serial, opened.file_index) != expected_identity[:2]
             or path_identity_from_status(current) != expected_identity
-            or status_is_reparse(opened)
+            or bool(opened.attributes & _REPARSE_ATTRIBUTE)
             or status_is_reparse(current)
-            or stat.S_ISDIR(opened.st_mode) != directory
+            or expected_directory != directory
+            or stat.S_ISDIR(current.st_mode) != directory
         ):
             raise ValueError("filesystem_path_identity_changed")
         parent.validate()
-        return descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
+        yield lease
+    finally:
+        if lease.handle.value and not lease.quarantined:
+            native_handle = lease.value
+            lease.handle.value = None
+            _close_windows_native_handle(native_handle)
 
 
 def _create_windows_child_directory_descriptor(
@@ -747,21 +1024,18 @@ def _replace_windows_owned_child(
     directory: bool,
     replace_if_exists: bool,
 ) -> None:
-    descriptor = _open_windows_owned_child_descriptor(
+    with _hold_windows_owned_child_handle(
         source_parent,
         source_name,
         expected_identity=expected_identity,
         directory=directory,
-    )
-    try:
+    ) as lease:
         _set_windows_handle_name(
-            descriptor,
+            lease.value,
             target_parent.path / target_name,
             target_parent_descriptor=target_parent.descriptor,
             replace_if_exists=replace_if_exists,
         )
-    finally:
-        os.close(descriptor)
 
 
 def _delete_windows_owned_child(
@@ -771,20 +1045,17 @@ def _delete_windows_owned_child(
     expected_identity: PathIdentity,
     directory: bool,
 ) -> None:
-    descriptor = _open_windows_owned_child_descriptor(
+    with _hold_windows_owned_child_handle(
         parent,
         name,
         expected_identity=expected_identity,
         directory=directory,
-    )
-    try:
-        _set_windows_handle_delete(descriptor)
-    finally:
-        os.close(descriptor)
+    ) as lease:
+        _set_windows_handle_delete(lease.value)
 
 
-def _set_windows_handle_name(
-    descriptor: int,
+def _set_windows_native_handle_name(
+    native_handle: int,
     target: Path,
     *,
     target_parent_descriptor: int,
@@ -834,7 +1105,7 @@ def _set_windows_handle_name(
         FileRenameInfo.file_name.offset + info.file_name_length,
     )
     status = set_information(
-        msvcrt.get_osfhandle(descriptor),
+        native_handle,
         ctypes.byref(io_status),
         ctypes.byref(info),
         information_size,
@@ -852,21 +1123,371 @@ def _set_windows_handle_name(
         )
 
 
-def _set_windows_handle_delete(descriptor: int) -> None:
+def _windows_native_handle_state(native_handle: int) -> _WindowsHandleState:
     import ctypes
+    from ctypes import wintypes
+
+    class FileId128(ctypes.Structure):
+        _fields_ = (("identifier", ctypes.c_ubyte * 16),)
+
+    class FileIdInfo(ctypes.Structure):
+        _fields_ = (
+            ("volume_serial", ctypes.c_ulonglong),
+            ("file_id", FileId128),
+        )
+
+    class FileTime(ctypes.Structure):
+        _fields_ = (("low", wintypes.DWORD), ("high", wintypes.DWORD))
+
+    class ByHandleFileInformation(ctypes.Structure):
+        _fields_ = (
+            ("attributes", wintypes.DWORD),
+            ("creation_time", FileTime),
+            ("last_access_time", FileTime),
+            ("last_write_time", FileTime),
+            ("volume_serial", wintypes.DWORD),
+            ("size_high", wintypes.DWORD),
+            ("size_low", wintypes.DWORD),
+            ("links", wintypes.DWORD),
+            ("file_index_high", wintypes.DWORD),
+            ("file_index_low", wintypes.DWORD),
+        )
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_information = kernel32.GetFileInformationByHandle
+    get_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(ByHandleFileInformation),
+    )
+    get_information.restype = wintypes.BOOL
+    information = ByHandleFileInformation()
+    if not get_information(native_handle, ctypes.byref(information)):
+        error = ctypes.get_last_error()
+        raise OSError(error, ctypes.FormatError(error))
+
+    volume_serial = int(information.volume_serial)
+    file_index = (information.file_index_high << 32) | information.file_index_low
+    if sys.version_info >= (3, 12):
+        get_information_ex = kernel32.GetFileInformationByHandleEx
+        get_information_ex.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        )
+        get_information_ex.restype = wintypes.BOOL
+        full_information = FileIdInfo()
+        if not get_information_ex(
+            native_handle,
+            18,
+            ctypes.byref(full_information),
+            ctypes.sizeof(full_information),
+        ):
+            error = ctypes.get_last_error()
+            raise OSError(error, ctypes.FormatError(error))
+        volume_serial = int(full_information.volume_serial)
+        file_index = int.from_bytes(
+            bytes(full_information.file_id.identifier),
+            "little",
+        )
+    return _WindowsHandleState(
+        volume_serial=volume_serial,
+        file_index=file_index,
+        attributes=information.attributes,
+        size=(information.size_high << 32) | information.size_low,
+        links=information.links,
+        last_write=(information.last_write_time.high << 32)
+        | information.last_write_time.low,
+    )
+
+
+def _set_windows_handle_name(
+    native_handle: int,
+    target: Path,
+    *,
+    target_parent_descriptor: int,
+    replace_if_exists: bool = True,
+) -> None:
+    _set_windows_native_handle_name(
+        native_handle,
+        target,
+        target_parent_descriptor=target_parent_descriptor,
+        replace_if_exists=replace_if_exists,
+    )
+
+
+def _windows_native_handle_sha256(native_handle: int, expected_size: int) -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    set_pointer = kernel32.SetFilePointerEx
+    set_pointer.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_longlong),
+        wintypes.DWORD,
+    )
+    set_pointer.restype = wintypes.BOOL
+    if not set_pointer(native_handle, 0, None, 0):
+        error = ctypes.get_last_error()
+        raise OSError(error, ctypes.FormatError(error))
+    read_file = kernel32.ReadFile
+    read_file.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    )
+    read_file.restype = wintypes.BOOL
+    digest = hashlib.sha256()
+    remaining = expected_size
+    while remaining:
+        requested = min(1024 * 1024, remaining)
+        buffer = ctypes.create_string_buffer(requested)
+        read = wintypes.DWORD()
+        if not read_file(
+            native_handle,
+            buffer,
+            requested,
+            ctypes.byref(read),
+            None,
+        ):
+            error = ctypes.get_last_error()
+            raise OSError(error, ctypes.FormatError(error))
+        if read.value == 0:
+            raise ValueError("filesystem_verified_unlink_content_changed")
+        digest.update(buffer.raw[: read.value])
+        remaining -= read.value
+    extra = ctypes.create_string_buffer(1)
+    read = wintypes.DWORD()
+    if not read_file(native_handle, extra, 1, ctypes.byref(read), None):
+        error = ctypes.get_last_error()
+        raise OSError(error, ctypes.FormatError(error))
+    if read.value:
+        raise ValueError("filesystem_verified_unlink_content_changed")
+    return digest.hexdigest()
+
+
+def _windows_handle_streams(descriptor: int) -> tuple[tuple[str, int], ...]:
     import msvcrt
+
+    return _windows_native_handle_streams(msvcrt.get_osfhandle(descriptor))
+
+
+def _windows_native_handle_streams(
+    native_handle: int,
+) -> tuple[tuple[str, int], ...]:
+    import ctypes
+    import struct
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_information = kernel32.GetFileInformationByHandleEx
+    get_information.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+    )
+    get_information.restype = ctypes.c_int
+    size = 4096
+    while True:
+        buffer = ctypes.create_string_buffer(size)
+        if get_information(
+            native_handle,
+            7,
+            buffer,
+            size,
+        ):
+            break
+        error = ctypes.get_last_error()
+        if error == 38:
+            return ()
+        if error not in {122, 234} or size >= 1024 * 1024:
+            raise OSError(
+                error,
+                "filesystem_stream_inventory_unavailable",
+            )
+        size *= 2
+
+    payload = memoryview(buffer).cast("B")
+    rows: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    offset = 0
+    while True:
+        if offset % 8 or offset + 24 > size:
+            raise ValueError("filesystem_stream_inventory_invalid")
+        next_offset, name_length = struct.unpack_from("<II", payload, offset)
+        stream_size = struct.unpack_from("<q", payload, offset + 8)[0]
+        if (
+            name_length == 0
+            or name_length % 2
+            or name_length > 64 * 1024
+            or offset + 24 + name_length > size
+            or stream_size < 0
+            or stream_size > MAX_RUN_TOTAL_BYTES
+        ):
+            raise ValueError("filesystem_stream_inventory_invalid")
+        try:
+            name = bytes(payload[offset + 24 : offset + 24 + name_length]).decode(
+                "utf-16-le",
+                errors="strict",
+            )
+        except UnicodeDecodeError as error:
+            raise ValueError("filesystem_stream_inventory_invalid") from error
+        folded = name.casefold()
+        if "\0" in name or folded in seen:
+            raise ValueError("filesystem_stream_inventory_invalid")
+        seen.add(folded)
+        rows.append((name, stream_size))
+        if next_offset == 0:
+            return tuple(rows)
+        minimum = (24 + name_length + 7) & ~7
+        if next_offset < minimum or next_offset % 8 or offset + next_offset >= size:
+            raise ValueError("filesystem_stream_inventory_invalid")
+        offset += next_offset
+
+
+def _set_windows_handle_delete(descriptor: int, *, delete: bool = True) -> None:
+    _set_windows_native_handle_delete(descriptor, delete=delete)
+
+
+def _set_windows_native_handle_delete(
+    native_handle: int,
+    *,
+    delete: bool,
+) -> None:
+    import ctypes
     from ctypes import wintypes
 
     class FileDispositionInfo(ctypes.Structure):
         _fields_ = (("delete_file", wintypes.BOOLEAN),)
 
-    info = FileDispositionInfo(1)
+    info = FileDispositionInfo(1 if delete else 0)
     _set_windows_file_information(
-        msvcrt.get_osfhandle(descriptor),
+        native_handle,
         4,
         ctypes.byref(info),
         ctypes.sizeof(info),
     )
+
+
+def _clear_windows_native_handle_delete(native_handle: int) -> None:
+    last_error: OSError | None = None
+    for _attempt in range(3):
+        try:
+            _set_windows_native_handle_delete(native_handle, delete=False)
+            return
+        except OSError as error:
+            last_error = error
+    if last_error is None:
+        raise OSError(errno.EIO, "filesystem_delete_cancel_failed")
+    try:
+        _set_windows_native_handle_delete_nt(native_handle, delete=False)
+    except OSError as fallback_error:
+        last_error.add_note(
+            "NtSetInformationFile cancellation fallback failed: "
+            f"{fallback_error!r}"
+        )
+        raise last_error
+
+
+def _clear_windows_handle_delete(descriptor: int) -> None:
+    _clear_windows_native_handle_delete(descriptor)
+
+
+def _set_windows_native_handle_delete_nt(
+    native_handle: int,
+    *,
+    delete: bool,
+) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    class IoStatusBlock(ctypes.Structure):
+        _fields_ = (
+            ("status", ctypes.c_void_p),
+            ("information", ctypes.c_size_t),
+        )
+
+    class FileDispositionInformation(ctypes.Structure):
+        _fields_ = (("delete_file", wintypes.BOOLEAN),)
+
+    io_status = IoStatusBlock()
+    information = FileDispositionInformation(1 if delete else 0)
+    ntdll = ctypes.WinDLL("ntdll")
+    set_information = ntdll.NtSetInformationFile
+    set_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(IoStatusBlock),
+        ctypes.c_void_p,
+        wintypes.ULONG,
+        ctypes.c_int,
+    )
+    set_information.restype = ctypes.c_long
+    status = set_information(
+        native_handle,
+        ctypes.byref(io_status),
+        ctypes.byref(information),
+        ctypes.sizeof(information),
+        13,
+    )
+    if status < 0:
+        rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+        rtl_status_to_dos_error.argtypes = (ctypes.c_long,)
+        rtl_status_to_dos_error.restype = wintypes.ULONG
+        error = rtl_status_to_dos_error(status)
+        raise OSError(error, ctypes.FormatError(error))
+
+
+def _close_windows_native_handle(native_handle: int) -> None:
+    try:
+        _close_windows_handle_primary(native_handle)
+        return
+    except OSError as primary:
+        try:
+            _close_windows_handle_nt(native_handle)
+            return
+        except OSError as fallback:
+            primary.add_note(f"NtClose fallback failed: {fallback!r}")
+            raise
+
+
+def _close_windows_handle_primary(native_handle: int) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    if close_handle(native_handle):
+        return
+    error = ctypes.get_last_error()
+    raise OSError(error, ctypes.FormatError(error))
+
+
+def _close_windows_handle_nt(native_handle: int) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    ntdll = ctypes.WinDLL("ntdll")
+    nt_close = ntdll.NtClose
+    nt_close.argtypes = (wintypes.HANDLE,)
+    nt_close.restype = ctypes.c_long
+    status = nt_close(native_handle)
+    if status >= 0:
+        return
+    rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+    rtl_status_to_dos_error.argtypes = (ctypes.c_long,)
+    rtl_status_to_dos_error.restype = wintypes.ULONG
+    error = rtl_status_to_dos_error(status)
+    raise OSError(error, ctypes.FormatError(error))
+
+
+def _quarantine_windows_native_handle(lease: _WindowsNativeHandleLease) -> None:
+    lease.quarantined = True
+    _QUARANTINED_WINDOWS_HANDLES.append(lease)
 
 
 def _set_windows_file_information(

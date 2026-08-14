@@ -125,6 +125,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = _JsonArgumentParser(description="Run the canonical local release gate.")
     parser.add_argument("--repo", required=True, type=Path)
     parser.add_argument("--outputs", required=True, type=Path)
+    parser.add_argument("--owner-repo", type=Path)
     parser.add_argument(
         "--tree-mode",
         choices=("working-pre-cutover", "candidate", "final"),
@@ -591,6 +592,7 @@ def _failure(version: str, message: str) -> dict[str, Any]:
         "commit_oid": "",
         "checks": [],
         "errors": [safe_message],
+        "diagnostic_id": hashlib.sha256(message.encode("utf-8")).hexdigest()[:16],
     }
 
 
@@ -2142,12 +2144,19 @@ def _child_main(args: argparse.Namespace) -> int:
         return run_coverage_gate.main()
 
     from hsconfig.release_gate import (  # noqa: PLC0415
+        _validate_repository,
         check_repository_hygiene,
         run_release_gate,
         scan_publishable_content,
     )
 
     if args.internal_check == "publishable_path_scan":
+        _validate_repository(
+            args.repo,
+            args.outputs,
+            args.tree_mode,
+            owner_repository=args.owner_repo,
+        )
         document = scan_publishable_content(
             repository=args.repo,
             outputs_root=args.outputs,
@@ -2156,6 +2165,12 @@ def _child_main(args: argparse.Namespace) -> int:
         _emit(document)
         return 0 if document["passed"] else 1
     if args.internal_check == "repository_hygiene":
+        _validate_repository(
+            args.repo,
+            args.outputs,
+            args.tree_mode,
+            owner_repository=args.owner_repo,
+        )
         document = check_repository_hygiene(args.repo, args.outputs)
         _emit(document)
         return 0 if document["passed"] else 1
@@ -2163,6 +2178,7 @@ def _child_main(args: argparse.Namespace) -> int:
         repository=args.repo,
         outputs_root=args.outputs,
         tree_mode=args.tree_mode,
+        owner_repository=args.owner_repo,
     )
     _emit(result.to_document())
     return 0 if result.passed else 1
@@ -2684,6 +2700,8 @@ def _bootstrap_and_reexec(
             runtime_binding.sentinel,
             allow_locked_coverage_exit_two=(
                 args.locked_check == "full-tests-and-coverage"
+                or args.internal_check is not None
+                or args.tree_mode == "candidate"
             ),
         )
         return result

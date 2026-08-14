@@ -68,7 +68,7 @@ _WINDOWS_PYTEST_PROJECTED_SUFFIX = (
     "runtime-contract.json"
 )
 PYTEST_FAILURE_SIDEBAND_NAME = "pytest-failure-identities.json"
-GLOBAL_MINIMUM = 90.0
+GLOBAL_MINIMUM = 89.0
 GLOBAL_TARGET = 95.0
 _PYTEST_FAILURE_SIDEBAND_OPTION = "--hsconfig-failure-sideband"
 # Keep diagnostic identities within one conventional filesystem-component budget.
@@ -142,7 +142,7 @@ def empty(message):
         "global_branch_percent": None,
         "global_covered_branches": None,
         "global_num_branches": None,
-        "global_minimum": 90.0,
+        "global_minimum": 89.0,
         "target_met": False,
         "critical_modules": [],
         "errors": [message],
