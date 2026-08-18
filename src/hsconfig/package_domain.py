@@ -380,6 +380,7 @@ class ClaimDisposition(StrEnum):
 class GlobalValueDecisionKind(StrEnum):
     COPY_BASELINE = "copy_baseline"
     AUTHORIZED_OVERLAY = "authorized_overlay"
+    LLM_OPTIMIZED_START = "llm_optimized_start"
 
 
 def globalvalues_baseline_sha256(
@@ -637,6 +638,11 @@ class GlobalValueDecision(_ImmutableAuthorityNode):
             and not self.claim_ids
         ):
             raise ValueError("globalvalue_overlay_authority_missing")
+        if self.kind is GlobalValueDecisionKind.LLM_OPTIMIZED_START:
+            if not self.authority_id.startswith("starter:"):
+                raise ValueError("globalvalue_starter_authority_invalid")
+            if self.baseline_canonical_json == self.emitted_canonical_json:
+                raise ValueError("globalvalue_starter_change_missing")
 
 
 @dataclass(frozen=True, init=False)

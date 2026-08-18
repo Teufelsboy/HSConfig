@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError, replace
+from decimal import Decimal
 from types import MappingProxyType
 
 import pytest
@@ -15,6 +16,9 @@ from hsconfig.visionai_registry import (
     REPORT_REGISTRY,
     REQUIRED_RUNTIME_SURFACES,
     RUNTIME_SURFACE_REGISTRY,
+    STARTER_CARD_VALUE_CONSTRAINT,
+    STARTER_COMBO_VALUE_CONSTRAINT,
+    STARTER_GLOBALVALUE_CONSTRAINTS,
     ClaimSurfaceRule,
     GlobalValueKeySpec,
     ReportSpec,
@@ -23,7 +27,9 @@ from hsconfig.visionai_registry import (
     normalize_runtime_surface,
     report_spec,
     runtime_surface_spec,
+    starter_globalvalue_constraint,
 )
+from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
 
 
 def test_registry_has_one_normal_apply_authority():
@@ -34,6 +40,35 @@ def test_registry_has_one_normal_apply_authority():
     ]
     assert authorities == ["reports/operator_summary.json"]
     assert NORMAL_APPLY_AUTHORITY == authorities[0]
+
+
+def test_starter_globalvalue_constraints_cover_exact_baseline_keys():
+    assert tuple(STARTER_GLOBALVALUE_CONSTRAINTS) == (
+        GLOBALVALUES_BASELINE_DECISION_KEYS
+    )
+    for key in ("GameCardId", "ConfigComment"):
+        constraint = starter_globalvalue_constraint(key)
+
+        assert constraint.value_type_id == "copy_baseline"
+        assert constraint.minimum is None
+        assert constraint.maximum is None
+        assert constraint.copy_baseline_only is True
+    assert all(
+        constraint.value_type_id == "safe_numeric_expression"
+        and constraint.minimum == Decimal("-1000")
+        and constraint.maximum == Decimal("1000")
+        and not constraint.copy_baseline_only
+        for key, constraint in STARTER_GLOBALVALUE_CONSTRAINTS.items()
+        if key not in {"GameCardId", "ConfigComment"}
+    )
+    assert starter_globalvalue_constraint("GlobalTaunt") == (
+        STARTER_GLOBALVALUE_CONSTRAINTS["GlobalTaunt"]
+    )
+    assert STARTER_CARD_VALUE_CONSTRAINT.value_type_id == "finite_decimal"
+    assert STARTER_CARD_VALUE_CONSTRAINT.minimum == Decimal("-10000")
+    assert STARTER_CARD_VALUE_CONSTRAINT.maximum == Decimal("10000")
+    assert not STARTER_CARD_VALUE_CONSTRAINT.copy_baseline_only
+    assert STARTER_COMBO_VALUE_CONSTRAINT == STARTER_CARD_VALUE_CONSTRAINT
 
 
 def test_registry_classifies_normal_runtime_surfaces():

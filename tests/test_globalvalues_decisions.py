@@ -17,8 +17,12 @@ from hsconfig.globalvalues_decisions import (
 )
 from hsconfig.package_domain import (
     DispositionLedger,
+    GlobalValueDecision,
     GlobalValueDecisionKind,
+    GlobalValuesDecisionLedger,
     disposition_ledger_content_sha256,
+    globalvalues_baseline_sha256,
+    globalvalues_decision_ledger_content_sha256,
 )
 from hsconfig.visionai_registry import GLOBALVALUES_KEY_REGISTRY
 
@@ -167,6 +171,57 @@ def test_baseline_profile_closes_all_38_keys_in_registry_order() -> None:
         row.baseline_canonical_json == row.emitted_canonical_json
         for row in ledger.decisions
     )
+
+
+def test_llm_optimized_globalvalue_decision_kind_is_source_distinct() -> None:
+    decision = GlobalValueDecision(
+        deck_fingerprint=DECK_FINGERPRINT,
+        key="GlobalTaunt",
+        kind=GlobalValueDecisionKind.LLM_OPTIMIZED_START,
+        baseline_canonical_json=b'{"values":[{"condition":"*","value":"0"}]}',
+        emitted_canonical_json=b'{"values":[{"condition":"*","value":"1"}]}',
+        authority_id="starter:candidate-1",
+        claim_ids=(),
+        reason="bounded starter candidate",
+    )
+
+    assert decision.kind.value == "llm_optimized_start"
+    assert decision.claim_ids == ()
+    decisions = (decision,)
+    document = globalvalues_decision_ledger_document(
+        GlobalValuesDecisionLedger(
+            deck_fingerprint=DECK_FINGERPRINT,
+            baseline_sha256=globalvalues_baseline_sha256(decisions),
+            decisions=decisions,
+            content_sha256=globalvalues_decision_ledger_content_sha256(decisions),
+        )
+    )
+
+    assert document["decisions"][0]["kind"] == "llm_optimized_start"
+    assert document["decisions"][0]["claim_ids"] == []
+
+    with pytest.raises(ValueError, match="globalvalue_starter_authority_invalid"):
+        GlobalValueDecision(
+            deck_fingerprint=DECK_FINGERPRINT,
+            key="GlobalTaunt",
+            kind=GlobalValueDecisionKind.LLM_OPTIMIZED_START,
+            baseline_canonical_json=decision.baseline_canonical_json,
+            emitted_canonical_json=decision.emitted_canonical_json,
+            authority_id="source:claim-1",
+            claim_ids=(),
+            reason="bounded starter candidate",
+        )
+    with pytest.raises(ValueError, match="globalvalue_starter_change_missing"):
+        GlobalValueDecision(
+            deck_fingerprint=DECK_FINGERPRINT,
+            key="GlobalTaunt",
+            kind=GlobalValueDecisionKind.LLM_OPTIMIZED_START,
+            baseline_canonical_json=decision.baseline_canonical_json,
+            emitted_canonical_json=decision.baseline_canonical_json,
+            authority_id="starter:candidate-1",
+            claim_ids=(),
+            reason="bounded starter candidate",
+        )
 
 
 def test_baseline_decision_registry_does_not_repurpose_authority_registry() -> None:

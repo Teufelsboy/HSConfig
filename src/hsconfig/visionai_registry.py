@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
+from hsconfig.globalvalues_baseline import _FALLBACK_GLOBALVALUES_BASELINE
 from hsconfig.package_domain import deep_freeze_definition
 
 RuntimeSurfaceClassification = Literal[
@@ -39,6 +41,14 @@ class GlobalValueKeySpec:
     value_type_id: str
     key_class: str
     overlay_authority_required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeValueConstraint:
+    value_type_id: str
+    minimum: Decimal | None
+    maximum: Decimal | None
+    copy_baseline_only: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,6 +337,45 @@ GLOBALVALUES_KEY_REGISTRY: Mapping[str, GlobalValueKeySpec] = MappingProxyType(
         ),
     }
 )
+
+
+_STARTER_GLOBALVALUE_METADATA_KEYS = frozenset({"GameCardId", "ConfigComment"})
+_STARTER_GLOBALVALUE_DECISION_KEYS = tuple(_FALLBACK_GLOBALVALUES_BASELINE)
+_STARTER_GLOBALVALUE_NUMERIC_CONSTRAINT = RuntimeValueConstraint(
+    value_type_id="safe_numeric_expression",
+    minimum=Decimal("-1000"),
+    maximum=Decimal("1000"),
+    copy_baseline_only=False,
+)
+_STARTER_GLOBALVALUE_COPY_BASELINE_CONSTRAINT = RuntimeValueConstraint(
+    value_type_id="copy_baseline",
+    minimum=None,
+    maximum=None,
+    copy_baseline_only=True,
+)
+STARTER_GLOBALVALUE_CONSTRAINTS: Mapping[str, RuntimeValueConstraint] = (
+    MappingProxyType(
+        {
+            key: (
+                _STARTER_GLOBALVALUE_COPY_BASELINE_CONSTRAINT
+                if key in _STARTER_GLOBALVALUE_METADATA_KEYS
+                else _STARTER_GLOBALVALUE_NUMERIC_CONSTRAINT
+            )
+            for key in _STARTER_GLOBALVALUE_DECISION_KEYS
+        }
+    )
+)
+STARTER_CARD_VALUE_CONSTRAINT = RuntimeValueConstraint(
+    value_type_id="finite_decimal",
+    minimum=Decimal("-10000"),
+    maximum=Decimal("10000"),
+    copy_baseline_only=False,
+)
+STARTER_COMBO_VALUE_CONSTRAINT = STARTER_CARD_VALUE_CONSTRAINT
+
+
+def starter_globalvalue_constraint(key: str) -> RuntimeValueConstraint:
+    return STARTER_GLOBALVALUE_CONSTRAINTS[key]
 
 _OWNED_REPORT_SPECS = (
     (NORMAL_APPLY_AUTHORITY, True, True, "normal_operator_gate"),
