@@ -10,10 +10,12 @@ import pytest
 
 import hsconfig.atomic_io as atomic_io
 from hsconfig.atomic_io import (
+    AtomicWriteConflictError,
     atomic_write_bytes,
     atomic_write_json,
     flush_file,
 )
+from hsconfig.package_io import path_identity
 
 
 FAULT_STAGES = (
@@ -25,6 +27,29 @@ FAULT_STAGES = (
     "after_parent_flush",
 )
 PRE_REPLACE_STAGES = frozenset(FAULT_STAGES[:4])
+
+
+def test_atomic_write_optional_expected_parent_identity_rejects_substitution(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    expected_parent_identity = path_identity(parent)
+    retired = tmp_path / "retired"
+    parent.rename(retired)
+    parent.mkdir()
+    target = parent / "payload.json"
+
+    with pytest.raises(AtomicWriteConflictError, match="parent directory changed"):
+        atomic_write_bytes(
+            target,
+            b"bound",
+            expected_parent_identity=expected_parent_identity,
+        )
+
+    assert not target.exists()
+    atomic_write_bytes(target, b"default")
+    assert target.read_bytes() == b"default"
 
 
 class InjectedFault(RuntimeError):

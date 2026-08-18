@@ -86,6 +86,20 @@ def test_configure_help_is_marked_preferred_normal_path(capsys):
     assert "--apply" in help_text
 
 
+def test_starter_context_help_exposes_bounded_read_only_operands(capsys):
+    help_text = _subcommand_help("starter-context", capsys)
+
+    assert "bounded read-only starter context" in help_text.lower()
+    assert "never writes runtime files" in help_text.lower()
+    assert "--deck-name" in help_text
+    assert "--deck-code" in help_text
+    assert "--runtime-root" in help_text
+    assert "--out" in help_text
+    assert "--source-documents-json" in help_text
+    assert "--cards-json" in help_text
+    assert "--json" in help_text
+
+
 def test_prepare_help_groups_required_inputs_before_expert_fixture_inputs(capsys):
     help_text = _subcommand_help("prepare", capsys)
 

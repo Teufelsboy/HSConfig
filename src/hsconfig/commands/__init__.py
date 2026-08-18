@@ -1,1 +1,1 @@
-"""Command handlers for the hsconfig CLI."""
+"""Command handlers, including bounded read-only context construction."""

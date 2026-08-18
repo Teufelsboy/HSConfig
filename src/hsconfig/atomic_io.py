@@ -39,6 +39,7 @@ def atomic_write_bytes(
     content: bytes,
     *,
     fault_hook: FaultHook = no_fault,
+    expected_parent_identity: tuple[int, int, int] | None = None,
 ) -> None:
     """Durably replace *path* with complete bytes from a sibling temp file.
 
@@ -57,6 +58,13 @@ def atomic_write_bytes(
     temp_identity: tuple[int, int, int] | None = None
     fault_hook("before_temp_write")
     parent_identity = _lstat_identity(parent)
+    if (
+        expected_parent_identity is not None
+        and parent_identity != expected_parent_identity
+    ):
+        raise AtomicWriteConflictError(
+            f"parent directory changed before atomic write: {parent}"
+        )
     resolved_parent_identity = _stat_identity(parent)
     try:
         (

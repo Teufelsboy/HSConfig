@@ -62,6 +62,35 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--apply", action="store_true")
     configure.add_argument("--json", action="store_true")
 
+    starter_context = subparsers.add_parser(
+        "starter-context",
+        help="build a bounded read-only starter context",
+        description=(
+            "Bounded read-only starter context. Never writes runtime files. "
+            "Uses one resolved deck, card, source, registry, and GlobalValues "
+            "authority snapshot."
+        ),
+    )
+    starter_context.add_argument("--deck-name", required=True)
+    starter_context.add_argument("--deck-code", required=True)
+    starter_context.add_argument("--runtime-root", required=True)
+    starter_context.add_argument("--out", required=True)
+    starter_context.add_argument("--guide-sources-json")
+    starter_context.add_argument("--source-documents-json")
+    starter_context.add_argument("--cards-json")
+    starter_context.add_argument("--claims-json")
+    starter_context.add_argument("--collectible-cards-json")
+    starter_context.add_argument("--full-cards-json")
+    starter_context.add_argument("--allow-placeholder", action="store_true")
+    starter_context.add_argument("--skip-semantic-fetch", action="store_true")
+    starter_context.add_argument("--current-date")
+    starter_context.add_argument("--json", action="store_true")
+    starter_context.set_defaults(
+        auto_research_fallback=False,
+        plan_reports_dir=None,
+        source_evidence_json=None,
+    )
+
     build = subparsers.add_parser(
         "build",
         help="expert lower-level package builder",

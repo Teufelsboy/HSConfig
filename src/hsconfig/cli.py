@@ -31,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
         from hsconfig.commands.configure import run_configure_command
 
         return run_configure_command(args)
+    if args.command == "starter-context":
+        from hsconfig.commands.starter_context import run_starter_context_command
+
+        return run_starter_context_command(args)
     if args.command == "apply":
         return run_apply_command(args)
     if args.command == "runtime-match":
