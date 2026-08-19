@@ -110,6 +110,16 @@ def recompute_apply_decision(
     enforce_summary_core_fields: bool,
 ) -> tuple[ApplyDecision, ApplyFacts]:
     package = Path(package_root)
+    required_structure_reasons = _required_package_structure_reasons(
+        package,
+        summary,
+    )
+    if required_structure_reasons:
+        facts = _single_blocked_fact(
+            "actual_runtime_surface_inventory",
+            required_structure_reasons[0],
+        )
+        return build_apply_decision(facts), facts
     try:
         configuration_mode = configuration_mode_from_manifest(
             read_json(package / "reports" / "input_manifest.json")
@@ -129,7 +139,6 @@ def recompute_apply_decision(
         else "source_contract"
     )
     runtime_surface_reasons = [
-        *_required_package_structure_reasons(package, summary),
         *_summary_optional_surface_reasons(summary),
         *_actual_optional_surface_reasons(package),
         *_actual_runtime_json_reasons(package),

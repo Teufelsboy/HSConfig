@@ -1231,6 +1231,53 @@ def test_recompute_without_summary_core_enforcement_returns_recomputed_facts(
     assert facts.package_summary_parity is True
 
 
+def test_recompute_blocks_when_manifest_disappears_after_structure_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    summary = read_json(package / "reports" / "operator_summary.json")
+    manifest_path = package / "reports" / "input_manifest.json"
+    real_read_json = apply_gate_module.read_json
+    manifest_read_failed = False
+
+    def _manifest_disappears_once(path: str | Path) -> object:
+        nonlocal manifest_read_failed
+        if Path(path) == manifest_path and not manifest_read_failed:
+            manifest_read_failed = True
+            raise FileNotFoundError(str(path))
+        return real_read_json(path)
+
+    monkeypatch.setattr(apply_gate_module, "read_json", _manifest_disappears_once)
+
+    decision, _facts = apply_gate_module.recompute_apply_decision(
+        package,
+        summary,
+        enforce_summary_core_fields=True,
+    )
+
+    assert manifest_read_failed is True
+    assert decision.allowed is False
+    assert decision.reasons[0]["reason"] == "configuration_mode_invalid"
+
+
 def test_deck_input_reasons_preserve_existing_authority_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1398,7 +1445,7 @@ def _patch_derivation_verifiers(
 
 def _summary_derivation(**overrides: object) -> dict[str, object]:
     summary = {
-        "schema_version": 1,
+        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
         "receipt_path": DERIVATION_RECEIPT_PATH,
         "receipt_sha256": "digest",
         "verified": True,
@@ -1411,7 +1458,10 @@ def test_derivation_reasons_reject_summary_digest_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _write_derivation_payload(
+        tmp_path,
+        {"schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION},
+    )
     _patch_derivation_verifiers(monkeypatch, verified=True)
 
     reasons = apply_gate_module._package_derivation_reasons(
@@ -1426,7 +1476,10 @@ def test_derivation_reasons_use_default_code_for_empty_verification_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _write_derivation_payload(
+        tmp_path,
+        {"schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION},
+    )
     _patch_derivation_verifiers(monkeypatch, verified=False)
 
     reasons = apply_gate_module._package_derivation_reasons(
@@ -1444,7 +1497,10 @@ def test_derivation_reasons_reject_noncanonical_summary_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_derivation_payload(tmp_path, {"schema_version": 1})
+    _write_derivation_payload(
+        tmp_path,
+        {"schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION},
+    )
     _patch_derivation_verifiers(monkeypatch, verified=True)
 
     reasons = apply_gate_module._package_derivation_reasons(
