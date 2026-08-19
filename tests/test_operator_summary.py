@@ -723,13 +723,28 @@ def test_operator_summary_separates_pre_run_assurance_dimensions():
 
 
 def test_operator_summary_reports_llm_optimized_start_without_optimality_claim():
+    selected_candidate_sha256 = "sha256:" + "1" * 64
+    decision_sha256 = "sha256:" + "2" * 64
     summary = build_operator_summary(
         deck_name="OptimizedStart",
         deck_code="AAE=",
         technical_validation={"status": "passed", "errors": []},
+        package_derivation={
+            "schema_version": 3,
+            "receipt_path": "package_derivation_receipt.json",
+            "receipt_sha256": "sha256:" + "3" * 64,
+            "verified": True,
+            "selected_candidate_sha256": selected_candidate_sha256,
+            "decision_sha256": decision_sha256,
+        },
         package_authority={
             "strategy_authority_mode": "llm_optimized_start",
             "optimized_start_derivation_validity": True,
+            "strict_validation_passed": True,
+            "deck_input_apply_eligible": True,
+            "source_authority_verified": True,
+            "derivation_receipt_verified": True,
+            "receipt_sha256": "sha256:" + "3" * 64,
             "source_apply_eligible": False,
             "source_apply_eligibility_reasons": [
                 "diagnostic_source_not_apply_eligible"
@@ -741,6 +756,10 @@ def test_operator_summary_reports_llm_optimized_start_without_optimality_claim()
 
     assert summary["strategy_authority_mode"] == "llm_optimized_start"
     assert summary["optimized_start_derivation_validity"] is True
+    assert summary["package_derivation"]["selected_candidate_sha256"] == (
+        selected_candidate_sha256
+    )
+    assert summary["package_derivation"]["decision_sha256"] == decision_sha256
     assert summary["configuration_assurance"]["assurance"] == (
         "LLM_OPTIMIZED_START"
     )

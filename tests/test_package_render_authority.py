@@ -120,6 +120,90 @@ def test_optimized_reports_preserve_all_five_frozen_canonical_bytes(
         assert files[path] == projections[path].canonical_json
 
 
+def test_optimized_operator_summary_binds_candidate_and_decision_digests(
+    tmp_path: Path,
+) -> None:
+    rendered = render_package_authority(_optimized_model(tmp_path))
+    artifacts = rendered.artifacts
+    summary = artifacts.read_json("reports/operator_summary.json")
+    derivation = summary["package_derivation"]
+    decision = artifacts.read_json(
+        "reports/optimized_start/starter_config_decision.json"
+    )
+    selected_candidate_id = decision["selected_candidate_id"]
+    selected_candidate = artifacts.read_json(
+        f"reports/optimized_start/{selected_candidate_id}.json"
+    )
+    reviewed = {
+        row["candidate_id"]: row
+        for row in decision["reviewed_candidates"]
+    }
+
+    assert derivation["selected_candidate_sha256"] == (
+        selected_candidate["content_sha256"]
+    )
+    assert derivation["selected_candidate_sha256"] == (
+        reviewed[selected_candidate_id]["content_sha256"]
+    )
+    assert derivation["decision_sha256"] == decision["content_sha256"]
+    receipt = artifacts.read_json("package_derivation_receipt.json")
+    receipt_payload = json.dumps(
+        receipt,
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    assert receipt["schema_version"] == 3
+    assert "selected_candidate_sha256" not in receipt_payload
+    assert "decision_sha256" not in receipt_payload
+    for relative_path in (
+        "reports/output_ownership_manifest.json",
+        "reports/runtime_surface_ledger.json",
+    ):
+        payload = json.dumps(
+            artifacts.read_json(relative_path),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        assert "selected_candidate_sha256" not in payload
+        assert "decision_sha256" not in payload
+
+    files = {
+        artifact.relative_path: artifact.content
+        for artifact in artifacts.artifacts
+    }
+    missing_digest_summary = dict(summary)
+    missing_digest_derivation = dict(summary["package_derivation"])
+    missing_digest_derivation.pop("selected_candidate_sha256")
+    missing_digest_summary["package_derivation"] = missing_digest_derivation
+    files["reports/operator_summary.json"] = (
+        json.dumps(
+            missing_digest_summary,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    replay_inputs = load_operator_summary_inputs(ArtifactSet.from_files(files))
+    assert replay_inputs.authority.package_summary_parity is False
+
+    invalid_candidate = dict(selected_candidate)
+    invalid_candidate["unexpected"] = True
+    files[
+        f"reports/optimized_start/{selected_candidate_id}.json"
+    ] = json.dumps(
+        invalid_candidate,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    with pytest.raises(
+        ValueError,
+        match="^optimized_start_derivation_invalid$",
+    ):
+        load_operator_summary_inputs(ArtifactSet.from_files(files))
+
+
 def test_conservative_json_projection_rendering_remains_pretty(
     tmp_path: Path,
 ) -> None:

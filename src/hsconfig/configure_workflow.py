@@ -1186,6 +1186,10 @@ def _optimized_start_selection_summary(
             ),
             "candidate_ids": candidate_ids,
             "selected_candidate_id": selected_id,
+            "selected_candidate_sha256": (
+                selection.selected.document.content_sha256
+            ),
+            "decision_sha256": selection.decision.content_sha256,
             "selection_rationale": decision["selection_rationale"],
             "mulligan_summary": {
                 "rule_count": len(mulligan),

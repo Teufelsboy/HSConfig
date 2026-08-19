@@ -404,6 +404,12 @@ def test_optimized_configure_summary_binds_selected_candidate(
         "candidate-3",
     ]
     assert decision["selected_candidate_id"] == "candidate-1"
+    selected_candidate = read_json(source_root / "candidate-1.json")
+    critic_decision = read_json(source_root / "starter_config_decision.json")
+    assert decision["selected_candidate_sha256"] == (
+        selected_candidate["content_sha256"]
+    )
+    assert decision["decision_sha256"] == critic_decision["content_sha256"]
     assert decision["selection_rationale"] == (
         "The first candidate has the clearest bounded pressure plan."
     )

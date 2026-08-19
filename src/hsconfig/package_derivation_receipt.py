@@ -12,6 +12,7 @@ from hsconfig.configuration_mode import (
 )
 from hsconfig.io import decode_json_bytes, read_json
 from hsconfig.package_model import PackageView
+from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
@@ -24,12 +25,60 @@ from hsconfig.strict_package_validation import (
     strict_validation_passed,
     validate_complete_package,
 )
+from hsconfig.starter_candidate import (
+    ValidatedStarterCandidate,
+    validate_starter_candidate,
+)
+from hsconfig.starter_context import validate_starter_context_document
+from hsconfig.starter_contract import (
+    STARTER_CANDIDATE_1_FILENAME,
+    STARTER_CANDIDATE_2_FILENAME,
+    STARTER_CANDIDATE_3_FILENAME,
+    STARTER_CANDIDATE_FIELDS,
+    STARTER_CANDIDATE_MAX_BYTES,
+    STARTER_CONTEXT_FIELDS,
+    STARTER_CONTEXT_FILENAME,
+    STARTER_CONTEXT_MAX_BYTES,
+    STARTER_DECISION_FIELDS,
+    STARTER_DECISION_FILENAME,
+    STARTER_DECISION_MAX_BYTES,
+    STARTER_SCHEMA_VERSION,
+    StarterStrategyRole,
+)
+from hsconfig.starter_decision import (
+    _validate_candidate_set,
+    _validate_decision,
+    load_validated_starter_selection,
+)
+from hsconfig.starter_document import (
+    StarterDocument,
+    load_starter_document,
+    seal_starter_document,
+)
 from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
 
 
 DERIVATION_RECEIPT_SCHEMA_VERSION = 2
 OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION = 3
 DERIVATION_RECEIPT_PATH = "package_derivation_receipt.json"
+
+_FIXED_CANDIDATE_PATH_BINDINGS = (
+    (
+        STARTER_CANDIDATE_1_FILENAME,
+        "candidate-1",
+        StarterStrategyRole.PROACTIVE_TEMPO.value,
+    ),
+    (
+        STARTER_CANDIDATE_2_FILENAME,
+        "candidate-2",
+        StarterStrategyRole.BALANCED.value,
+    ),
+    (
+        STARTER_CANDIDATE_3_FILENAME,
+        "candidate-3",
+        StarterStrategyRole.RESOURCE_ORIENTED.value,
+    ),
+)
 
 _AUTHORITATIVE_JSON_PATHS = (
     "reports/input_manifest.json",
@@ -211,6 +260,9 @@ def refresh_package_derivation_authority(
     package = Path(package_root)
     receipt = build_package_derivation_receipt(package)
     verified, reasons = verify_package_derivation_receipt(package, receipt)
+    optimized_digests: dict[str, str] = {}
+    if receipt["schema_version"] == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION:
+        optimized_digests = optimized_start_derivation_digests(package)
     digest = write_package_derivation_receipt(
         package / DERIVATION_RECEIPT_PATH,
         receipt,
@@ -221,9 +273,164 @@ def refresh_package_derivation_authority(
         "receipt_sha256": digest,
         "verified": verified,
     }
+    authority.update(optimized_digests)
     if reasons:
         authority["reasons"] = reasons
     return authority
+
+
+def optimized_start_derivation_digests(
+    package_root: str | Path,
+) -> dict[str, str]:
+    """Validate the fixed starter reports and expose their self digests."""
+
+    optimized = Path(package_root) / "reports" / "optimized_start"
+    try:
+        context_document = load_starter_document(
+            optimized / STARTER_CONTEXT_FILENAME,
+            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+            expected_fields=STARTER_CONTEXT_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        context = validate_starter_context_document(context_document)
+        selection = load_validated_starter_selection(
+            optimized / STARTER_DECISION_FILENAME,
+            current_context=context,
+        )
+        _validate_fixed_candidate_path_bindings(selection.candidates)
+        return _selected_decision_digests(
+            decision=selection.decision,
+            selected=selection.selected,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+
+
+def optimized_start_derivation_digests_from_view(
+    package: PackageView,
+) -> dict[str, str]:
+    """Derive selected-candidate and critic digests from one fixed bundle."""
+
+    optimized_root = "reports/optimized_start"
+    try:
+        context_document = _validated_starter_document_from_view(
+            package,
+            f"{optimized_root}/{STARTER_CONTEXT_FILENAME}",
+            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+            expected_fields=STARTER_CONTEXT_FIELDS,
+        )
+        context = validate_starter_context_document(context_document)
+        candidates = tuple(
+            validate_starter_candidate(
+                _validated_starter_document_from_view(
+                    package,
+                    f"{optimized_root}/{filename}",
+                    maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+                    expected_fields=STARTER_CANDIDATE_FIELDS,
+                ),
+                context=context,
+            )
+            for filename, _candidate_id, _strategy_role in (
+                _FIXED_CANDIDATE_PATH_BINDINGS
+            )
+        )
+        _validate_candidate_set(candidates)
+        _validate_fixed_candidate_path_bindings(candidates)
+        decision = _validated_starter_document_from_view(
+            package,
+            f"{optimized_root}/{STARTER_DECISION_FILENAME}",
+            maximum_bytes=STARTER_DECISION_MAX_BYTES,
+            expected_fields=STARTER_DECISION_FIELDS,
+        )
+        selected_id = _validate_decision(
+            decision,
+            current_context=context,
+            candidates=candidates,
+        )
+        selected = next(
+            candidate
+            for candidate in candidates
+            if candidate.candidate_id == selected_id
+        )
+        return _selected_decision_digests(
+            decision=decision,
+            selected=selected,
+        )
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+
+
+def _selected_decision_digests(
+    *,
+    decision: StarterDocument,
+    selected: ValidatedStarterCandidate,
+) -> dict[str, str]:
+    selected_id = selected.candidate_id
+    reviewed = {
+        str(row["candidate_id"]): row
+        for row in decision.to_value()["reviewed_candidates"]
+    }
+    if reviewed[selected_id]["content_sha256"] != (
+        selected.document.content_sha256
+    ):
+        raise ValueError("starter_decision_candidate_digest_mismatch")
+    return {
+        "selected_candidate_sha256": selected.document.content_sha256,
+        "decision_sha256": decision.content_sha256,
+    }
+
+
+def _validate_fixed_candidate_path_bindings(
+    candidates: tuple[ValidatedStarterCandidate, ...],
+) -> None:
+    if len(candidates) != len(_FIXED_CANDIDATE_PATH_BINDINGS):
+        raise ValueError("starter_candidate_fixed_path_mapping_invalid")
+    for candidate, (_filename, candidate_id, strategy_role) in zip(
+        candidates,
+        _FIXED_CANDIDATE_PATH_BINDINGS,
+        strict=True,
+    ):
+        if (
+            candidate.candidate_id != candidate_id
+            or candidate.strategy_role != strategy_role
+        ):
+            raise ValueError("starter_candidate_fixed_path_mapping_invalid")
+
+
+def _validated_starter_document_from_view(
+    package: PackageView,
+    relative_path: str,
+    *,
+    maximum_bytes: int,
+    expected_fields: frozenset[str],
+) -> StarterDocument:
+    raw_value = package.read_bytes(relative_path)
+    if not isinstance(raw_value, (bytes, bytearray, memoryview)):
+        raise TypeError("starter_document_bytes_invalid")
+    raw = memoryview(raw_value).tobytes()
+    if len(raw) > maximum_bytes:
+        raise ValueError("starter_document_too_large")
+    if raw.startswith(b"\xef\xbb\xbf") or b"\x00" in raw or b"\r" in raw:
+        raise ValueError("starter_document_source_bytes_invalid")
+    frozen = FrozenJsonDocument.from_json_bytes(raw)
+    if frozen.canonical_json != raw:
+        raise ValueError("starter_document_not_canonical")
+    value = frozen.to_value()
+    if not isinstance(value, dict) or set(value) != expected_fields:
+        raise ValueError("starter_document_fields_invalid")
+    unsigned = dict(value)
+    content_sha256 = unsigned.pop("content_sha256")
+    sealed = seal_starter_document(
+        unsigned,
+        expected_fields=expected_fields,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    if (
+        sealed.canonical_json != raw
+        or sealed.content_sha256 != content_sha256
+    ):
+        raise ValueError("starter_document_content_sha256_invalid")
+    return sealed
 
 
 def deck_input_apply_eligibility_reasons(
@@ -553,6 +760,14 @@ def build_package_authority_context(
             package,
             receipt,
         )
+    optimized_reports_valid = False
+    if strategy_authority_mode == "llm_optimized_start":
+        try:
+            optimized_start_derivation_digests(package)
+        except (OSError, TypeError, ValueError):
+            pass
+        else:
+            optimized_reports_valid = True
     source_authority_reasons_value, canonical_receipt_count = (
         _source_authority_state(package)
     )
@@ -583,6 +798,7 @@ def build_package_authority_context(
             and isinstance(receipt, Mapping)
             and receipt.get("schema_version")
             == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+            and optimized_reports_valid
         ),
         "receipt_sha256": receipt_sha256,
     }

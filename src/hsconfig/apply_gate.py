@@ -23,6 +23,7 @@ from hsconfig.package_derivation_receipt import (
     OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
     deck_input_apply_eligibility_reasons,
     derivation_schema_version_supported,
+    optimized_start_derivation_digests,
     package_derivation_receipt_sha256,
     source_apply_eligibility_reasons,
     source_authority_reasons,
@@ -410,11 +411,18 @@ def _package_derivation_reasons(
                 ),
             }
         ]
+    optimized_digests: dict[str, str] = {}
+    if strategy_authority_mode == "llm_optimized_start":
+        try:
+            optimized_digests = optimized_start_derivation_digests(package)
+        except (OSError, TypeError, ValueError):
+            return [_optimized_derivation_reason()]
     expected_summary_derivation = {
         "schema_version": expected_schema_version,
         "receipt_path": DERIVATION_RECEIPT_PATH,
         "receipt_sha256": actual_digest,
         "verified": True,
+        **optimized_digests,
     }
     if summary_derivation != expected_summary_derivation:
         return [

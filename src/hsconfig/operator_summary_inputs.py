@@ -17,6 +17,7 @@ from hsconfig.package_derivation_receipt import (
     OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
     canonical_source_receipt_reasons,
     derivation_schema_version_supported,
+    optimized_start_derivation_digests_from_view,
     package_authority_context_verified,
     package_derivation_receipt_sha256,
     verify_package_derivation_receipt_from_view,
@@ -670,6 +671,7 @@ def _with_package_summary_parity(
             *status_keys,
             "strategy_authority_mode",
             "optimized_start_derivation_validity",
+            "package_derivation",
         )
     parity = all(
         stored_summary.get(key) == expected.get(key)
@@ -768,6 +770,10 @@ def _replay_package_authority(
         "receipt_sha256": receipt_sha256,
         "verified": receipt_verified,
     }
+    if strategy_authority_mode == "llm_optimized_start":
+        package_derivation.update(
+            optimized_start_derivation_digests_from_view(package)
+        )
     package_authority = {
         "strict_validation_passed": strict_valid,
         "deck_input_apply_eligible": deck_valid,
