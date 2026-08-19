@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from hsconfig.external_skill_bundle import load_embedded_skill_bundle
 from tests.helpers.markdown_contract import scan_markdown
 
 
@@ -268,3 +269,45 @@ def test_operator_combo_summaries_require_live_verified_strategic_receipt() -> N
 
     assert "per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence and a matching live-verified strategic receipt exist." in _compact(operator)
     assert "`Combo.json` is conditional on a complete source-backed combo with a matching live-verified strategic receipt." in _compact(operator)
+
+
+def test_docs_define_optimized_start_as_pre_game_non_optimality_contract() -> None:
+    readme = _text(ROOT / "README.md")
+    operator = _text(OPERATOR)
+    skill = load_embedded_skill_bundle()["SKILL.md"].decode("utf-8")
+    combined = f"{readme}\n{operator}\n{skill}"
+    compact = _compact(combined)
+
+    for marker in (
+        "exactly three fixed candidates",
+        "`candidate-1.json` (`proactive_tempo`)",
+        "`candidate-2.json` (`balanced`)",
+        "`candidate-3.json` (`resource_oriented`)",
+        "independent clean-context critic",
+        "at most two targeted repair rounds",
+        "`LLM_OPTIMIZED_START`",
+        "`configure_summary.json.optimized_start`",
+        "`optimized_start_summary_invalid`",
+        "`optimized_start_derivation_invalid`",
+        "only when live writing was requested",
+        "`runtime-match`",
+        "best practical pre-game start config",
+        "not measured gameplay optimality",
+    ):
+        assert marker in combined
+
+    for document in (readme, operator, skill):
+        assert "Conservative CLI Compatibility" in document
+        assert "only normal generation route" in _compact(document)
+    assert "source-contract-only apply blocker" in compact
+    assert "visible informational limitations" in compact
+    assert "live configure-result" in compact
+    assert "re-derives" in compact
+    assert "non-persisted" in compact
+    assert "cannot roll back an already-published current pointer" in compact
+    for contradiction in (
+        "Preferred normal path: `hsconfig configure`.",
+        "Run `hsconfig configure` for normal operation.",
+        "Use `hsconfig configure` for normal operation:",
+    ):
+        assert contradiction not in combined

@@ -13,19 +13,85 @@ inventory are never apply authority.
 
 ## Quick Start
 
-- Run `hsconfig configure` for normal operation.
+- Use the installed HSConfig skill's optimized three-candidate workflow as the
+  only normal generation route. Use raw `hsconfig configure` only for
+  Conservative CLI Compatibility when conservative source-contract behavior is
+  explicitly intended.
 - Before source refresh, package generation, or runtime-facing apply review, run `git fetch --all --prune --tags`, `python scripts/check_hsconfig_currentness.py --cwd . --json`, and `git status --short --branch`. Runtime-facing work must start from a clean worktree and not be behind `origin/main`; feature branches may be ahead.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
 - After `configure`, resolve `<out>/current.json` and read `<current-revision>/configure_summary.json.acceptance_summary` first, then `<current-revision>/configure_summary.json.handoff_contract`, then `<current-revision>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `<current-package>/reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed. This is the human-facing verdict only when read from `reports/operator_summary.json`; the apply command recomputes every technical authority boundary before writing.
-- A captured or diagnostic-source package can instead be
+- On the conservative `source_contract` route, a captured or diagnostic-source
+  package can instead be
   `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`,
   `fixture_classification=load_safe_fixture`, and
   `runtime_apply_reason=diagnostic_source_not_apply_eligible` while
   `runtime_apply_mode=blocked` and `runtime_apply_allowed=false`. This package
   is valid and load-safe for inspection, but apply-ineligible until rebuilt
-  from live-verified source.
+  from live-verified source. That source-acquisition rule is a
+  source-contract-only apply blocker. On the optimized route, the same source
+  gaps remain visible informational limitations; they do not replace the
+  sealed starter, derivation-receipt, operator-summary, and recomputed ApplyFacts
+  authority checks.
 - Warnings are follow-up work, not a second apply path. HSTuner owns post-run evaluation and tuning.
+
+### LLM-optimized start workflow
+
+The installed skill uses the optimized route for normal generation. Raw
+`hsconfig configure` remains available as the conservative compatibility mode.
+The optimized route works in one caller-owned external starter directory that
+must be initially absent. Its closed file set is:
+
+- immutable `starter_context.json`;
+- `candidate-1.json` (`proactive_tempo`);
+- `candidate-2.json` (`balanced`);
+- `candidate-3.json` (`resource_oriented`);
+- `starter_config_decision.json`.
+
+The skill first runs `starter-context`. Three strategist contexts then create
+exactly three fixed candidates without changing the context or choosing any
+filesystem path. The controller seals each draft into compact canonical bytes
+with `seal_starter_document`, then runs the public
+`starter-validate-candidate` command separately for all three. A failed
+candidate returns only to its own strategist for at most two targeted repair
+rounds. The critic is not started until all three validator receipts have exit
+code zero.
+
+The independent clean-context critic receives the immutable context, the three
+sealed candidates, and their valid receipts. It writes only
+`starter_config_decision.json`, ranks all three without a numeric score, and
+uses the qualitative `high` or `low` confidence contract. The controller seals
+that decision and invokes `configure --optimized-start
+--starter-decision-json`. The repository contains no model client; strategist
+and critic dispatch belong to the installed Codex skill, while HSConfig only
+validates and compiles their untrusted documents.
+
+After configuration, require manifest mode `LLM_OPTIMIZED_START`, a valid
+schema-v3 optimized derivation, `strategy_authority_mode=llm_optimized_start`,
+and the exact live configure-result `optimized_start` projection. The build
+helper validates that non-persisted live projection immediately against the
+same five sealed starter reports. Later standalone package validation re-derives
+the exact projection from those five durable reports and validates the
+schema-v3 receipt, operator summary, assurance, and recomputed ApplyFacts; it
+does not invent an adjacent persisted `optimized_start` field. Stable
+failure boundaries include `starter_context_document_invalid`,
+`starter_decision_required`, `starter_decision_not_enabled`,
+`starter_selection_invalid`, `configuration_mode_invalid`,
+`optimized_start_summary_invalid`, and
+`optimized_start_derivation_invalid`. Failures inside the production configure
+transaction preserve the starter documents and previous publication for
+targeted repair. Post-configure helper validation is read-only detection: it
+does not touch runtime state, but cannot roll back an already-published current
+pointer.
+
+`LLM_OPTIMIZED_START` is a provenance and pre-run configuration-assurance
+label. It describes a best practical pre-game start config, not measured
+gameplay optimality, in-client behavior, win-rate improvement, or post-game
+tuning. `reports/operator_summary.json` remains the only normal apply
+authority. Apply only when live writing was requested, only through guarded
+`hsconfig apply` or `hsconfig configure --apply`, and then run the standalone
+read-only `runtime-match` check. Completion requires `status=matched` for the
+exact applied package.
 
 ### Canonical local release gate
 
@@ -113,11 +179,13 @@ swaps, and repository/tree/mode binding drift; inspected files and archives reje
 links, reparse points, hardlinks, unsafe members, and repository/output changes during
 the run. No evidence-file cleanup phase exists because the gate never writes evidence.
 
-## Preferred Normal Path
+## Conservative CLI Compatibility
 
-Preferred normal path: `hsconfig configure`.
+The following direct CLI path is available for explicit conservative
+source-contract operation. It is not the installed skill's normal generation
+route.
 
-## Normal Operator Path
+## Conservative CLI Operator Path
 
 1. Run `hsconfig configure`.
 2. Resolve `outputs/<DeckName>/current.json` to its `revisions/sha256-<digest>` directory. Read `<current-revision>/configure_summary.json.acceptance_summary`, then `<current-revision>/configure_summary.json.handoff_contract` as the pre-run config contract receipt: compact diagnostic-only handoff proof for use_config_now, single authority, no-default-only status, forbidden-surface status, source-to-runtime trace status, Darkbishop boundary, mechanic discipline, and the next report; it does not replace `reports/operator_summary.json`, cannot apply runtime files, cannot turn source gaps into blockers, and operator_summary.json remains the only normal apply authority. Then read `<current-revision>/configure_summary.json.source_closure_receipt` when source depth is the question; it is a compact diagnostic-only source-closure receipt that does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
@@ -158,7 +226,7 @@ attention, without changing apply authority.
 Contract preflight is diagnostic-only and does not replace
 `reports/operator_summary.json`.
 
-Use `hsconfig configure` for normal operation:
+For conservative CLI compatibility, use raw `hsconfig configure`:
 
 ```powershell
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
@@ -172,7 +240,7 @@ When public guide URLs are available for a fresh config, use the online source p
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
 
-This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. Strategic Strong claims require exact deck-matching guide claims acquired as `live_http` with `live_verified` provenance and bound to matching strategic receipts. Static semantics may support only deterministic identity, role, and mechanical effect claim families. If sources are thin, unavailable, stale, captured, fixture-backed, manual, legacy, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a technically valid diagnostic package and reports the first missing source link. A package that consumed captured, fixture, manual, or legacy provenance remains available for build, validation, and preflight, but runtime apply is blocked with `diagnostic_source_not_apply_eligible`.
+This writes `02_source_acquisition`, `03_source_autopilot`, and the conservative `04_package`. Strategic Strong claims require exact deck-matching guide claims acquired as `live_http` with `live_verified` provenance and bound to matching strategic receipts. Static semantics may support only deterministic identity, role, and mechanical effect claim families. If sources are thin, unavailable, stale, captured, fixture-backed, manual, legacy, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a technically valid diagnostic package and reports the first missing source link. On this conservative `source_contract` route, a package that consumed captured, fixture, manual, or legacy provenance remains available for build, validation, and preflight, but runtime apply is blocked with `diagnostic_source_not_apply_eligible`. For `llm_optimized_start`, source-acquisition gaps remain visible informational limitations and are omitted from blocking ApplyFacts.
 
 When `--online-source` is used, HSConfig also checks its source candidate
 registry for the deck name. These candidate URLs are acquisition seeds only.

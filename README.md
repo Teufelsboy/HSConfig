@@ -30,7 +30,46 @@ The detailed operator instructions are in `docs/operator/README.md`.
 
 ## Normal operation
 
-Preferred normal path: `hsconfig configure`.
+The installed HSConfig skill normally builds an LLM-optimized start from
+exactly three fixed candidates:
+
+- `candidate-1.json` (`proactive_tempo`)
+- `candidate-2.json` (`balanced`)
+- `candidate-3.json` (`resource_oriented`)
+
+Each candidate is validated against one immutable `starter_context.json`
+before an independent clean-context critic ranks all three without numeric
+scores. A strategist gets at most two targeted repair rounds for technical
+validation defects. The selected document is then compiled through
+`configure --optimized-start --starter-decision-json`; direct raw `hsconfig
+configure` remains the conservative compatibility path.
+
+`LLM_OPTIMIZED_START` means the package is bound to the validated starter
+documents and compiler output. It is a best practical pre-game start config,
+not measured gameplay optimality. Inspect
+`configure_summary.json.optimized_start` and the package's
+`reports/operator_summary.json` before any runtime action.
+
+This installed optimized workflow is the only normal generation route. Source
+acquisition eligibility is a source-contract-only apply blocker on the
+conservative route. Optimized packages keep source gaps as visible
+informational limitations while their sealed starter authority, package
+derivation, and guarded apply facts are validated independently.
+
+The skill applies only when live writing was requested, and then runs the
+read-only `runtime-match` check against the exact applied package. Failures such
+as `optimized_start_summary_invalid` or `optimized_start_derivation_invalid`
+inside the production configure transaction leave prior published output and
+runtime state in place. The helper also validates the live configure-result
+summary immediately after production configure returns. That post-configure
+check is read-only detection: it preserves runtime state but cannot roll back
+an already-published current pointer.
+
+## Conservative CLI Compatibility
+
+Direct raw `hsconfig configure` remains available for explicitly conservative
+source-contract operation. It is compatibility/expert access, not the normal
+installed-skill generation route.
 
 ```powershell
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
