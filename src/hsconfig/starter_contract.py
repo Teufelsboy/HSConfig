@@ -21,6 +21,11 @@ STARTER_FILENAMES = (
     STARTER_CANDIDATE_3_FILENAME,
     STARTER_DECISION_FILENAME,
 )
+STARTER_CANDIDATE_FILENAMES = (
+    STARTER_CANDIDATE_1_FILENAME,
+    STARTER_CANDIDATE_2_FILENAME,
+    STARTER_CANDIDATE_3_FILENAME,
+)
 
 STARTER_CONTEXT_MAX_BYTES = 512 * 1024
 STARTER_CANDIDATE_MAX_BYTES = 256 * 1024
@@ -72,6 +77,33 @@ STARTER_DECISION_FIELDS = frozenset(
         "critic_identity",
         "content_sha256",
     }
+)
+STARTER_STRATEGY_SUMMARY_FIELDS = frozenset({"role", "summary"})
+STARTER_MULLIGAN_ROW_FIELDS = frozenset(
+    {"rule_id", "selector_kind", "selector", "action", "condition"}
+)
+STARTER_CARD_RULE_FIELDS = frozenset(
+    {
+        "rule_id",
+        "source_card_id",
+        "runtime_card_id",
+        "link_kind",
+        "behavior_block",
+        "condition",
+        "value",
+    }
+)
+STARTER_COMBO_FIELDS = frozenset(
+    {"rule_id", "cards", "timing", "values", "condition"}
+)
+STARTER_CARD_DISPOSITION_FIELDS = frozenset(
+    {"card_id", "disposition", "rule_ids", "reason"}
+)
+STARTER_REVIEWED_CANDIDATE_FIELDS = frozenset(
+    {"candidate_id", "candidate_revision", "content_sha256"}
+)
+STARTER_CRITIC_IDENTITY_FIELDS = frozenset(
+    {"kind", "review_id", "confidence"}
 )
 
 
@@ -172,16 +204,24 @@ __all__ = (
     "STARTER_CANDIDATE_1_FILENAME",
     "STARTER_CANDIDATE_2_FILENAME",
     "STARTER_CANDIDATE_3_FILENAME",
+    "STARTER_CANDIDATE_FILENAMES",
     "STARTER_CANDIDATE_FIELDS",
     "STARTER_CANDIDATE_MAX_BYTES",
     "STARTER_CONTEXT_FIELDS",
     "STARTER_CONTEXT_FILENAME",
     "STARTER_CONTEXT_MAX_BYTES",
+    "STARTER_CARD_DISPOSITION_FIELDS",
+    "STARTER_CARD_RULE_FIELDS",
+    "STARTER_COMBO_FIELDS",
+    "STARTER_CRITIC_IDENTITY_FIELDS",
     "STARTER_DECISION_FIELDS",
     "STARTER_DECISION_FILENAME",
     "STARTER_DECISION_MAX_BYTES",
     "STARTER_FILENAMES",
+    "STARTER_MULLIGAN_ROW_FIELDS",
+    "STARTER_REVIEWED_CANDIDATE_FIELDS",
     "STARTER_SCHEMA_VERSION",
+    "STARTER_STRATEGY_SUMMARY_FIELDS",
     "StarterCandidateRole",
     "StarterStrategyRole",
     "reject_path_like_fields",

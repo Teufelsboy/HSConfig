@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         from hsconfig.commands.starter_context import run_starter_context_command
 
         return run_starter_context_command(args)
+    if args.command == "starter-validate-candidate":
+        from hsconfig.commands.starter_validate_candidate import (
+            run_starter_validate_candidate_command,
+        )
+
+        return run_starter_validate_candidate_command(args)
     if args.command == "apply":
         return run_apply_command(args)
     if args.command == "runtime-match":

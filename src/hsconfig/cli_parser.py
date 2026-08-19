@@ -91,6 +91,21 @@ def build_parser() -> argparse.ArgumentParser:
         source_evidence_json=None,
     )
 
+    starter_validate_candidate = subparsers.add_parser(
+        "starter-validate-candidate",
+        help="validate one bounded optimized starter candidate",
+        description=(
+            "Read one canonical starter context and one candidate, validate "
+            "their immutable runtime intent, and emit a bounded receipt. "
+            "Never resolves sources or writes files."
+        ),
+    )
+    starter_validate_candidate.add_argument(
+        "--starter-context-json", required=True
+    )
+    starter_validate_candidate.add_argument("--candidate-json", required=True)
+    starter_validate_candidate.add_argument("--json", action="store_true")
+
     build = subparsers.add_parser(
         "build",
         help="expert lower-level package builder",

@@ -42,6 +42,7 @@ def test_cli_parser_subcommands_match_main_dispatch_commands():
     )
 
     assert registered_commands == dispatched_commands
+    assert "starter-validate-candidate" in registered_commands
 
 
 def _write_cards_json(path: Path, card_ids: list[str]) -> list[dict]:
