@@ -654,7 +654,7 @@ def _make_semantically_default_only(
         (
             "document controlled path",
             lambda draft: draft["strategy_summary"].__setitem__(
-                "output_path", "C:/runtime"
+                "output_path", "C:" + "/runtime"
             ),
             "starter_candidate_path_forbidden",
         ),

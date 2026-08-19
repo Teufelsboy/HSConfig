@@ -9260,12 +9260,12 @@ def test_real_working_pre_cutover_publishability_has_no_placeholder_violation(
 def test_current_operator_placeholder_reference_is_exactly_approved() -> None:
     relative = "docs/operator/README.md"
     data = (ROOT / relative).read_bytes()
-    line = data.decode("utf-8").splitlines()[646]
+    line = data.decode("utf-8").splitlines()[714]
 
     assert hashlib.sha256(line.strip().encode("utf-8")).hexdigest() == (
         "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
     )
-    assert f"public_placeholder:{relative}:647" not in _text_violations(
+    assert f"public_placeholder:{relative}:715" not in _text_violations(
         relative,
         data,
         public_doc=True,

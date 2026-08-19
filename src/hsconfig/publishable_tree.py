@@ -306,18 +306,19 @@ _MAX_YAML_ALIASES = 1_024
 SOURCE_TODO_ALLOWLIST: tuple[Mapping[str, Any], ...] = ()
 EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
     "docs/operator/README.md": {
-        647: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
+        715: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
     },
     "src/hsconfig/cli_parser.py": {
-        61: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
-        79: "d11fe3f4881b01ce66c0f8ef09778e84f182aa2d571c42f9cd4b8fae4bf9eff7",
-        112: "ab157ec4b7902309bb5029142aca743511e43587fdf753f52668750b788101cc",
-        122: "cace9a43ddb95629998271a922872430b8e5230b0e25c2b335d910c63b08e4dd",
-        136: "c601aab16f8d343ec912c1b44d6bbba7832bc43b89a87e92536f3355c2a10e0c",
-        149: "ba0492c2907f7e3596bb82298d6eab7bd238c8197c84be310c900d5a1eaf2520",
-        167: "eb0b21eea338c4ac38770df1932764f86eb4bc334bf51f2345d7ddca3662d098",
-        188: "87078ccbe89f5d5a0aa0a0f7601ce6e71b6b4015b316ad220164abb0151cfd89",
-        202: "bc2e3a70c28a3eabbc1bd0747bf8fb7582a68cb66b0e3dc729c3c07b3a7ec78a",
+        64: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
+        89: "894d8f6d55a35c4e9426fe29de30db2333f5b3797ee24587b272d034ab7e7562",
+        128: "d11fe3f4881b01ce66c0f8ef09778e84f182aa2d571c42f9cd4b8fae4bf9eff7",
+        161: "ab157ec4b7902309bb5029142aca743511e43587fdf753f52668750b788101cc",
+        171: "cace9a43ddb95629998271a922872430b8e5230b0e25c2b335d910c63b08e4dd",
+        185: "c601aab16f8d343ec912c1b44d6bbba7832bc43b89a87e92536f3355c2a10e0c",
+        198: "ba0492c2907f7e3596bb82298d6eab7bd238c8197c84be310c900d5a1eaf2520",
+        216: "eb0b21eea338c4ac38770df1932764f86eb4bc334bf51f2345d7ddca3662d098",
+        237: "87078ccbe89f5d5a0aa0a0f7601ce6e71b6b4015b316ad220164abb0151cfd89",
+        251: "bc2e3a70c28a3eabbc1bd0747bf8fb7582a68cb66b0e3dc729c3c07b3a7ec78a",
     },
     "src/hsconfig/deck_input_verification.py": {
         33: "c6b238e40c24b6c239e0c07fdb6857cc0cf1e11e3682d50dff5a7be65866af05"

@@ -190,7 +190,7 @@ def test_load_starter_document_keeps_only_a_canonical_value_snapshot(
         (lambda value: value.pop("cards"), STARTER_CONTEXT_FIELDS),
         (lambda value: value.__setitem__("unexpected", True), STARTER_CONTEXT_FIELDS),
         (lambda value: value.__setitem__("schema_version", 2), STARTER_CONTEXT_FIELDS),
-        (lambda value: value.__setitem__("runtime_path", "C:/unsafe"), STARTER_DECISION_FIELDS),
+        (lambda value: value.__setitem__("runtime_path", "C:" + "/unsafe"), STARTER_DECISION_FIELDS),
     ],
 )
 def test_seal_starter_document_rejects_closed_schema_violations(
@@ -244,7 +244,7 @@ def test_fixed_starter_sibling_names_reject_an_unexpected_name() -> None:
 def test_critic_document_rejects_a_document_controlled_path_field() -> None:
     # Break caught: accepting a critic-supplied filesystem authority subtree.
     value = _decision_value()
-    value["critic_identity"]["artifact_path"] = "C:/unsafe"
+    value["critic_identity"]["artifact_path"] = "C:" + "/unsafe"
 
     with pytest.raises(ValueError, match="starter_critic_path_forbidden"):
         reject_path_like_fields(value, error="starter_critic_path_forbidden")

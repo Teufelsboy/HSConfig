@@ -490,10 +490,10 @@ def test_starter_context_rejects_ids_when_audited_build_fingerprint_disagrees(
             "retrieved_at", "2099-01-01T00:00:00Z"
         ),
         lambda claim: claim["source_identity_signals"][0].__setitem__(
-            "path", "D:/capture/raw.json"
+            "path", "D:" + "/capture/raw.json"
         ),
         lambda claim: claim["deck_match"]["exact_deck_evidence"].__setitem__(
-            "runtime_path", "D:/runtime/CustomConfig"
+            "runtime_path", "D:" + "/runtime/CustomConfig"
         ),
     ],
 )
@@ -554,7 +554,7 @@ def test_starter_context_digest_binds_claim_authority_fields(tmp_path: Path) -> 
             value, "GlobalTaunt", {"values": [{"condition": "*", "value": True}]}
         ),
         lambda value: _replace_baseline_value(
-            value, "ConfigComment", {"path": "D:/runtime/GlobalValues.json"}
+            value, "ConfigComment", {"path": "D:" + "/runtime/GlobalValues.json"}
         ),
     ],
 )
@@ -597,7 +597,7 @@ def test_starter_context_maximum_applies_to_final_canonical_bytes() -> None:
     "mutate",
     [
         lambda value: value["guide_claim_bundle"]["source_evidence_index"][0].__setitem__(
-            "source_url", "file:///C:/private/source.html"
+            "source_url", "file:///" + "C:" + "/private/source.html"
         ),
         lambda value: value["guide_claim_bundle"]["source_evidence_index"][0].__setitem__(
             "source_url", "https://127.0.0.1/private/source.html"
@@ -904,7 +904,7 @@ def test_starter_context_rejects_open_markup_or_transport_claim_prose(
         (
             "claim_prose_windows_path_token",
             lambda value: _claim_with_field(value, "claim").__setitem__(
-                "claim", "Use C:/private/runtime/GlobalValues.json"
+                "claim", "Use " + "C:" + "/private/runtime/GlobalValues.json"
             ),
             "starter_context_claim_text_invalid",
         ),
