@@ -102,12 +102,15 @@ def test_active_secondary_docs_have_real_operator_backlinks() -> None:
         assert OPERATOR.resolve() in targets, path
 
 
-def test_operator_guide_owns_the_detailed_normal_command_path() -> None:
+def test_operator_guide_owns_the_detailed_conservative_cli_path() -> None:
     operator = _text(OPERATOR)
     secondary = _combined(*SECONDARY_DOCS)
 
-    assert "## Preferred Normal Path" in operator
-    assert "Preferred normal path: `hsconfig configure`." in operator
+    assert "The installed skill uses the optimized route for normal generation." in operator
+    assert "## Conservative CLI Compatibility" in operator
+    assert "## Conservative CLI Operator Path" in operator
+    assert "For conservative CLI compatibility, use raw `hsconfig configure`:" in operator
+    assert "## Preferred Normal Path" not in operator
     assert 'hsconfig configure --deck-name "<DeckName>"' in operator
     assert 'hsconfig configure --deck-name "<DeckName>"' not in secondary
 

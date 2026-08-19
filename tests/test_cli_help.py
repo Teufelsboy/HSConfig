@@ -9,6 +9,8 @@ INSPECTED_PATH = (
     "research-deck -> prepare -> validate -> apply"
 )
 OLD_LOWER_LEVEL_LABEL = "Lower-level " + "normal path:"
+NORMAL_SKILL_ROUTE = "Normal installed-skill path: optimized three-candidate workflow."
+CONSERVATIVE_CLI_ROUTE = "Conservative CLI Compatibility: raw configure."
 
 
 def test_cli_parser_module_builds_same_root_help():
@@ -16,7 +18,9 @@ def test_cli_parser_module_builds_same_root_help():
 
     assert "HSConfig builds lean HearthRanger VisionAI CustomConfig packages" in help_text
     assert "docs/operator/README.md" in help_text
-    assert "Preferred normal path: configure" in help_text
+    assert NORMAL_SKILL_ROUTE in help_text
+    assert CONSERVATIVE_CLI_ROUTE in help_text
+    assert "Preferred normal path: configure" not in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
     assert OLD_LOWER_LEVEL_LABEL not in help_text
@@ -25,7 +29,9 @@ def test_cli_parser_module_builds_same_root_help():
 def test_root_help_names_preferred_lower_level_and_expert_paths():
     help_text = _build_parser().format_help()
 
-    assert "Preferred normal path: configure" in help_text
+    assert NORMAL_SKILL_ROUTE in help_text
+    assert CONSERVATIVE_CLI_ROUTE in help_text
+    assert "Preferred normal path: configure" not in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
     assert OLD_LOWER_LEVEL_LABEL not in help_text
@@ -33,10 +39,12 @@ def test_root_help_names_preferred_lower_level_and_expert_paths():
     assert "build, --claims-json, --cards-json, --plan-reports-dir" in help_text
 
 
-def test_root_help_names_configure_as_preferred_normal_path():
+def test_root_help_marks_raw_configure_as_conservative_cli_compatibility():
     help_text = _build_parser().format_help()
 
-    assert "Preferred normal path: configure" in help_text
+    assert NORMAL_SKILL_ROUTE in help_text
+    assert CONSERVATIVE_CLI_ROUTE in help_text
+    assert "Preferred normal path: configure" not in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
     assert OLD_LOWER_LEVEL_LABEL not in help_text
@@ -46,7 +54,9 @@ def test_root_help_points_to_operator_docs():
     help_text = _build_parser().format_help()
 
     assert "docs/operator/README.md" in help_text
-    assert "Preferred normal path: configure" in help_text
+    assert NORMAL_SKILL_ROUTE in help_text
+    assert CONSERVATIVE_CLI_ROUTE in help_text
+    assert "Preferred normal path: configure" not in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
     assert OLD_LOWER_LEVEL_LABEL not in help_text
@@ -74,10 +84,15 @@ def test_source_stage_help_is_marked_inspected_not_normal(capsys):
         assert "normal path" not in help_text.lower()
 
 
-def test_configure_help_is_marked_preferred_normal_path(capsys):
+def test_configure_help_is_marked_conservative_cli_compatibility(capsys):
     help_text = _subcommand_help("configure", capsys)
+    normalized_help = " ".join(help_text.split())
 
-    assert "Preferred one-command pre-run package path" in help_text
+    assert "Conservative CLI Compatibility path" in normalized_help
+    assert "The installed skill's optimized" in normalized_help
+    assert "workflow is the normal generation route." in normalized_help
+    assert "Raw configure decodes a deck" in normalized_help
+    assert "Preferred one-command pre-run package path" not in help_text
     assert "--deck-name" in help_text
     assert "--deck-code" in help_text
     assert "--runtime-root" in help_text

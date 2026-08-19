@@ -127,7 +127,16 @@ FROZEN_POLICY_TEXT = {
     "SECURITY.md": EXPECTED_SECURITY_TEXT,
 }
 FROZEN_README_PREFIX_SHA256 = (
-    "b48b62ec1f97eadd1211177b6d6564fcb8dd563f1cd900802cfb6edc692c4c7b"
+    "4b0af1f4a1c9a6ba78ca26725087002779ecf7d8370e2adcb7b8958348664d68"
+)
+EXPECTED_README_OPTIMIZED_ROUTE_PROSE = (
+    "The installed HSConfig skill normally builds an LLM-optimized start from "
+    "exactly three fixed candidates:",
+    "This installed optimized workflow is the only normal generation route.",
+    "Conservative CLI Compatibility",
+    "Direct raw hsconfig configure remains available for explicitly conservative "
+    "source-contract operation. It is compatibility/expert access, not the normal "
+    "installed-skill generation route.",
 )
 EXPECTED_README_DOCUMENTATION_ROWS = (
     "- [Operator guide](docs/operator/README.md)",
@@ -310,6 +319,10 @@ def _governance_errors(root: Path) -> list[str]:
     if readme_document.ordinary_text_lines.count(EXPECTED_README_COPYRIGHT) != 1:
         errors.append("readme_owner_year")
     visible_readme = " ".join(readme_document.policy_text.split())
+    presented_readme = " ".join(readme_document.presentation_prose.split())
+    for expected_route_prose in EXPECTED_README_OPTIMIZED_ROUTE_PROSE:
+        if expected_route_prose not in presented_readme:
+            errors.append(f"readme_optimized_route_contract:{expected_route_prose}")
     if "HSConfig is Open Source." in visible_readme:
         errors.append("readme_invariant:open_source")
     if "Another Company owns this repository." in visible_readme:

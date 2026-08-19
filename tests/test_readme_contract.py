@@ -24,6 +24,7 @@ REQUIRED_HEADINGS = (
     "## Scope and non-goals",
     "## Installation",
     "## Normal operation",
+    "## Conservative CLI Compatibility",
     "## Verification",
     "## Documentation",
 )
@@ -34,12 +35,14 @@ EXPECTED_LINKS = (
     "SECURITY.md",
     "CONTRIBUTING.md",
 )
-NORMAL_CONFIGURE_COMMAND = (
+CONSERVATIVE_CONFIGURE_COMMAND = (
     'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
     '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json'
 )
 PRESERVED_ANCHORS = (
-    "Preferred normal path: `hsconfig configure`.",
+    "This installed optimized workflow is the only normal generation route.",
+    "Direct raw `hsconfig configure` remains available for explicitly conservative "
+    "source-contract operation.",
     "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.",
     "docs/operator/README.md",
     "local Clean-OID producer/verifier",
@@ -187,15 +190,15 @@ def _readme_contract_errors(root: Path) -> list[str]:
     command_positions = [
         index
         for index, line in enumerate(rendered_lines)
-        if line.strip() == NORMAL_CONFIGURE_COMMAND
+        if line.strip() == CONSERVATIVE_CONFIGURE_COMMAND
     ]
     if (
         len(command_positions) != 1
-        or positions[3] < 0
         or positions[4] < 0
-        or not positions[3] < command_positions[0] < positions[4]
+        or positions[5] < 0
+        or not positions[4] < command_positions[0] < positions[5]
     ):
-        errors.append("readme_normal_configure_command")
+        errors.append("readme_conservative_configure_command")
 
     for anchor in PRESERVED_ANCHORS:
         visible_anchor = _presentation_text(anchor)
@@ -440,7 +443,7 @@ def test_readme_contract_requires_prose_anchors_outside_block_code(
 ) -> None:
     root = _copy_readme_context(tmp_path)
     readme = root / "README.md"
-    anchor = PRESERVED_ANCHORS[5]
+    anchor = PRESERVED_ANCHORS[-1]
     readme.write_text(
         readme.read_text(encoding="utf-8").replace(anchor, replacement, 1),
         encoding="utf-8",
@@ -705,31 +708,33 @@ def test_readme_contract_fails_closed_on_unsupported_link_syntax(
     assert expected_error in _readme_contract_errors(root)
 
 
-def test_readme_round10_rejects_a_duplicate_normal_configure_command(
+def test_readme_round10_rejects_a_duplicate_conservative_configure_command(
     tmp_path: Path,
 ) -> None:
     root = _copy_readme_context(tmp_path)
     readme = root / "README.md"
     readme.write_text(
         readme.read_text(encoding="utf-8")
-        + f"\n## Appendix\n\n```powershell\n{NORMAL_CONFIGURE_COMMAND}\n```\n",
+        + f"\n## Appendix\n\n```powershell\n{CONSERVATIVE_CONFIGURE_COMMAND}\n```\n",
         encoding="utf-8",
     )
 
-    assert "readme_normal_configure_command" in _readme_contract_errors(root)
+    assert "readme_conservative_configure_command" in _readme_contract_errors(root)
 
 
-def test_readme_round10_rejects_a_misplaced_normal_configure_command(
+def test_readme_round10_rejects_a_misplaced_conservative_configure_command(
     tmp_path: Path,
 ) -> None:
     root = _copy_readme_context(tmp_path)
     readme = root / "README.md"
     source = readme.read_text(encoding="utf-8")
-    source = source.replace(NORMAL_CONFIGURE_COMMAND, "# command moved", 1)
-    source += f"\n## Appendix\n\n```powershell\n{NORMAL_CONFIGURE_COMMAND}\n```\n"
+    source = source.replace(CONSERVATIVE_CONFIGURE_COMMAND, "# command moved", 1)
+    source += (
+        f"\n## Appendix\n\n```powershell\n{CONSERVATIVE_CONFIGURE_COMMAND}\n```\n"
+    )
     readme.write_text(source, encoding="utf-8")
 
-    assert "readme_normal_configure_command" in _readme_contract_errors(root)
+    assert "readme_conservative_configure_command" in _readme_contract_errors(root)
 
 
 @pytest.mark.parametrize("anchor", PRESERVED_ANCHORS)
@@ -750,11 +755,11 @@ def test_readme_round10_rejects_duplicate_visible_preserved_anchors(
 @pytest.mark.parametrize(
     "payload",
     (
-        f"`{NORMAL_CONFIGURE_COMMAND}`",
-        f"**`{NORMAL_CONFIGURE_COMMAND}`**",
+        f"`{CONSERVATIVE_CONFIGURE_COMMAND}`",
+        f"**`{CONSERVATIVE_CONFIGURE_COMMAND}`**",
     ),
 )
-def test_readme_round11_counts_visible_inline_configure_command_duplicates(
+def test_readme_round11_counts_visible_inline_conservative_command_duplicates(
     tmp_path: Path,
     payload: str,
 ) -> None:
@@ -765,22 +770,23 @@ def test_readme_round11_counts_visible_inline_configure_command_duplicates(
         encoding="utf-8",
     )
 
-    assert "readme_normal_configure_command" in _readme_contract_errors(root)
+    assert "readme_conservative_configure_command" in _readme_contract_errors(root)
 
 
 @pytest.mark.parametrize(
     ("payload", "anchor"),
     (
         (
-            "Preferred normal path: **`hsconfig configure`**.",
+            "This installed **optimized workflow** is the only normal generation "
+            "route.",
             PRESERVED_ANCHORS[0],
         ),
         (
             "Runtime writes happen only through **`hsconfig apply`** or "
             "**`hsconfig configure --apply`**.",
-            PRESERVED_ANCHORS[1],
+            PRESERVED_ANCHORS[2],
         ),
-        ("**docs/operator/README.md**", PRESERVED_ANCHORS[2]),
+        ("**docs/operator/README.md**", PRESERVED_ANCHORS[3]),
     ),
 )
 def test_readme_round11_counts_visible_formatted_anchor_duplicates(
@@ -810,9 +816,10 @@ def test_readme_round12_presentation_uses_only_the_visible_link_label() -> None:
 @pytest.mark.parametrize(
     ("payload", "anchor"),
     (
-        ("docs/operator/README&#46;md", PRESERVED_ANCHORS[2]),
+        ("docs/operator/README&#46;md", PRESERVED_ANCHORS[3]),
         (
-            "Preferred normal path&#58; **`hsconfig configure`**.",
+            "This installed optimized workflow is the only normal generation "
+            "route&#46;",
             PRESERVED_ANCHORS[0],
         ),
     ),
@@ -867,7 +874,7 @@ def test_markdown_round13_preserves_inline_code_entities_literally() -> None:
     assert document.presentation_prose == "hsconfig source&#45;manifest"
 
 
-def test_readme_round13_rejects_an_entity_encoded_fenced_configure_command(
+def test_readme_round13_rejects_an_entity_encoded_fenced_conservative_command(
     tmp_path: Path,
 ) -> None:
     root = _copy_readme_context(tmp_path)
@@ -875,14 +882,16 @@ def test_readme_round13_rejects_an_entity_encoded_fenced_configure_command(
     text = readme.read_text(encoding="utf-8")
     readme.write_text(
         text.replace(
-            NORMAL_CONFIGURE_COMMAND,
-            NORMAL_CONFIGURE_COMMAND.replace("<DeckName>", "&lt;DeckName&gt;"),
+            CONSERVATIVE_CONFIGURE_COMMAND,
+            CONSERVATIVE_CONFIGURE_COMMAND.replace(
+                "<DeckName>", "&lt;DeckName&gt;"
+            ),
             1,
         ),
         encoding="utf-8",
     )
 
-    assert "readme_normal_configure_command" in _readme_contract_errors(root)
+    assert "readme_conservative_configure_command" in _readme_contract_errors(root)
 
 
 def test_markdown_round14_has_no_source_namespace_sentinel_collision() -> None:

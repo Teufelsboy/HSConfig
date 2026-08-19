@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="HSConfig builds lean HearthRanger VisionAI CustomConfig packages before games are played.",
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
-            "Preferred normal path: configure.\n"
+            "Normal installed-skill path: optimized three-candidate workflow.\n"
+            "Conservative CLI Compatibility: raw configure.\n"
             "Lower-level inspected path: source-manifest -> "
             "source-autopilot or draft-source-documents -> research-deck -> "
             f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
@@ -36,11 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     configure = subparsers.add_parser(
         "configure",
-        help="preferred one-command pre-run package path",
+        help="Conservative CLI Compatibility pre-run package path",
         description=(
-            "Preferred one-command pre-run package path. Decode a deck, build "
-            "source/research artifacts, prepare a load-safe package, validate it, "
-            "and optionally apply it through the existing guarded apply gate."
+            "Conservative CLI Compatibility path. The installed skill's optimized "
+            "three-candidate workflow is the normal generation route. Raw configure "
+            "decodes a deck, builds source/research artifacts, prepares a load-safe "
+            "package, validates it, and can optionally apply it through the existing "
+            "guarded apply gate."
         ),
     )
     configure.add_argument("--deck-name", required=True)

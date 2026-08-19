@@ -18,13 +18,24 @@ def test_operator_readme_has_compact_quick_start_before_details():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
     quick_start_index = text.index("## Quick Start")
-    preferred_path_index = text.index("## Preferred Normal Path")
+    optimized_details_index = text.index("### LLM-optimized start workflow")
+    conservative_path_index = text.index("## Conservative CLI Compatibility")
     expert_path_index = text.index("## Expert Paths")
 
-    assert quick_start_index < preferred_path_index < expert_path_index
-    quick_start = text[quick_start_index:preferred_path_index]
+    assert (
+        quick_start_index
+        < optimized_details_index
+        < conservative_path_index
+        < expert_path_index
+    )
+    quick_start_summary = text[quick_start_index:optimized_details_index]
+    quick_start = text[quick_start_index:conservative_path_index]
 
-    assert "Run `hsconfig configure` for normal operation." in quick_start
+    assert "installed HSConfig skill's optimized three-candidate workflow" in quick_start
+    assert "only normal generation route" in quick_start
+    assert "raw `hsconfig configure` only for" in quick_start
+    assert "Conservative CLI Compatibility" in quick_start
+    assert "Run `hsconfig configure` for normal operation." not in quick_start
     current_pointer = "`<out>/current.json`"
     acceptance = "`<current-revision>/configure_summary.json.acceptance_summary`"
     handoff = "`<current-revision>/configure_summary.json.handoff_contract`"
@@ -47,7 +58,13 @@ def test_operator_readme_has_compact_quick_start_before_details():
     assert "`technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed." in quick_start
     assert "Warnings are follow-up work, not a second apply path." in quick_start
     assert "HSTuner owns post-run evaluation and tuning." in quick_start
-    assert len([line for line in quick_start.splitlines() if line.strip().startswith("- ")]) <= 7
+    assert len(
+        [
+            line
+            for line in quick_start_summary.splitlines()
+            if line.strip().startswith("- ")
+        ]
+    ) <= 7
 
 
 def test_guidance_for_source_backed_strong_package():
