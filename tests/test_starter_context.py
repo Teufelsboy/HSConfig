@@ -1251,10 +1251,20 @@ def test_starter_context_keeps_public_https_in_dedicated_source_references(
         "ShadowPriest",
     ).snapshot.general_preconfig.to_value()
     evidence = preconfig["guide_claim_bundle"]["source_evidence_index"][0]
+    original_source_ref = evidence["source_ref"]
+    matching_claims = [
+        row
+        for row in preconfig["guide_claim_bundle"]["claims"]
+        if original_source_ref in row.get("source_refs", [])
+    ]
+    assert len(matching_claims) == evidence["claim_count"]
     evidence["source_url"] = public_url
     evidence["source_ref"] = public_url
-    claim = _claim_with_field(preconfig, "source_refs")
-    claim["source_refs"] = [public_url]
+    for claim in matching_claims:
+        claim["source_refs"] = [
+            public_url if value == original_source_ref else value
+            for value in claim["source_refs"]
+        ]
 
     value = build_starter_context(
         PackageResolutionSnapshot.from_preconfig(preconfig)
@@ -1264,12 +1274,17 @@ def test_starter_context_keeps_public_https_in_dedicated_source_references(
         row.get("source_url") == public_url and row["source_ref"] == public_url
         for row in value["source_evidence"]["rows"]
     )
-    projected_claim = next(
+    matching_claim_ids = {row["claim_id"] for row in matching_claims}
+    projected_claims = [
         row
         for row in value["existing_claims"]
-        if row["claim_id"] == claim["claim_id"]
+        if row["claim_id"] in matching_claim_ids
+    ]
+    assert len(projected_claims) == len(matching_claims)
+    assert all(public_url in row["source_refs"] for row in projected_claims)
+    assert all(
+        original_source_ref not in row["source_refs"] for row in projected_claims
     )
-    assert projected_claim["source_refs"] == [public_url]
 
 
 def test_starter_context_normalizes_legitimate_claim_prose_and_paired_tags(

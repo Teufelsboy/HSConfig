@@ -687,9 +687,7 @@ def test_execute_configure_rejects_rebound_invalid_context_without_publication(
 
     assert result.status == "failed"
     assert result.exit_code == 1
-    assert result.summary["errors"] == (
-        "optimized_start_summary_invalid",
-    )
+    assert result.summary["errors"] == ["optimized_start_derivation_invalid"]
     assert result.published_output is None
     assert result.package_model is None
     assert result.configure_run_model is None
