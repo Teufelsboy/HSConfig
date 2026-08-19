@@ -38,6 +38,7 @@ def test_package_invocation_is_slotted_frozen_and_excludes_transport_fields() ->
         plan_reports_dir=None,
         target_config_mode="preview",
         include_disposition_diagnostics=True,
+        configuration_mode="CONSERVATIVE",
     )
 
     assert tuple(field.name for field in fields(invocation)) == (
@@ -49,6 +50,7 @@ def test_package_invocation_is_slotted_frozen_and_excludes_transport_fields() ->
         "plan_reports_dir",
         "target_config_mode",
         "include_disposition_diagnostics",
+        "configuration_mode",
     )
     assert not hasattr(invocation, "__dict__")
     assert not {"out", "command", "json"}.intersection(
@@ -85,6 +87,7 @@ def test_package_invocation_rejects_invalid_required_runtime_values(
         "plan_reports_dir": None,
         "target_config_mode": "preview",
         "include_disposition_diagnostics": False,
+        "configuration_mode": "CONSERVATIVE",
     }
     values[field_name] = value
 
@@ -108,10 +111,12 @@ def test_general_resolution_request_detaches_every_nested_mutable_input() -> Non
             plan_reports_dir=None,
             target_config_mode="preview",
             include_disposition_diagnostics=False,
+            configuration_mode="CONSERVATIVE",
         ),
         plan_overrides={"combo_plan_report.json": overrides["combo_plan"]},
         acquisition_closure_input=closure,
         mulligan_gap_input=gaps,
+        starter_selection=None,
     )
 
     preconfig["deck_identity"]["cards"].append("LATER")
@@ -152,10 +157,12 @@ def test_general_request_authority_graph_rejects_all_rebinding() -> None:
             plan_reports_dir=None,
             target_config_mode="preview",
             include_disposition_diagnostics=False,
+            configuration_mode="CONSERVATIVE",
         ),
         plan_overrides={},
         acquisition_closure_input=_acquisition_closure(),
         mulligan_gap_input=[_mulligan_gap()],
+        starter_selection=None,
     )
     pending: list[object] = [request]
     seen: set[int] = set()
@@ -282,10 +289,12 @@ def test_general_request_binds_invocation_code_to_frozen_identity() -> None:
                 plan_reports_dir=None,
                 target_config_mode="preview",
                 include_disposition_diagnostics=False,
+                configuration_mode="CONSERVATIVE",
             ),
             plan_overrides={},
             acquisition_closure_input=_acquisition_closure(),
             mulligan_gap_input=[],
+            starter_selection=None,
         )
 
 
@@ -422,10 +431,12 @@ def test_resolved_request_binds_strict_context_to_invocation_deck_code() -> None
                 plan_reports_dir=None,
                 target_config_mode="preview",
                 include_disposition_diagnostics=False,
+                configuration_mode="CONSERVATIVE",
             ),
             plan_overrides={},
             acquisition_closure_input=_acquisition_closure(),
             mulligan_gap_input=[],
+            starter_selection=None,
         )
 
 
@@ -456,10 +467,12 @@ def test_resolved_request_accepts_the_matching_audited_deck_code() -> None:
             plan_reports_dir=None,
             target_config_mode="preview",
             include_disposition_diagnostics=False,
+            configuration_mode="CONSERVATIVE",
         ),
         plan_overrides={},
         acquisition_closure_input=_acquisition_closure(),
         mulligan_gap_input=[],
+        starter_selection=None,
     )
 
     assert request.snapshot.strict_build_context is context
@@ -533,12 +546,14 @@ def test_resolved_request_rejects_generic_documents_in_specialized_fields() -> N
                 plan_reports_dir=None,
                 target_config_mode="preview",
                 include_disposition_diagnostics=False,
+                configuration_mode="CONSERVATIVE",
             ),
             plan_overrides=generic,  # type: ignore[arg-type]
             acquisition_closure_input=AcquisitionClosureInput.from_value(
                 _acquisition_closure()
             ),
             mulligan_gap_input=MulliganGapInput.from_value([]),
+            starter_selection=None,
         )
 
 

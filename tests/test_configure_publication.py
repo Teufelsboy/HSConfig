@@ -157,6 +157,35 @@ def test_failed_configure_leaves_previous_current_byte_identical(
     assert _tree_bytes(output_root) == before_tree
 
 
+def test_invalid_optimized_selection_leaves_previous_current_byte_identical(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _disable_remote_card_fetches(monkeypatch)
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    runtime_root = tmp_path / "runtime"
+    assert main(_configure_args(output_root, runtime_root)) == 0
+    capsys.readouterr()
+    before_pointer = (output_root / "current.json").read_bytes()
+    before_tree = _tree_bytes(output_root)
+
+    assert main(
+        [
+            *_configure_args(output_root, runtime_root),
+            "--optimized-start",
+            "--starter-decision-json",
+            str(tmp_path / "missing" / "starter_decision.json"),
+        ]
+    ) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert "starter" in " ".join(payload["errors"])
+    assert (output_root / "current.json").read_bytes() == before_pointer
+    assert _tree_bytes(output_root) == before_tree
+
+
 @pytest.mark.parametrize(
     "installer_status",
     [

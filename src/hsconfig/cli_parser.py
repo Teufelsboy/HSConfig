@@ -59,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--collectible-cards-json")
     configure.add_argument("--full-cards-json")
     configure.add_argument("--allow-placeholder", action="store_true")
+    configure.add_argument("--optimized-start", action="store_true")
+    configure.add_argument("--starter-decision-json")
     configure.add_argument("--apply", action="store_true")
     configure.add_argument("--json", action="store_true")
 

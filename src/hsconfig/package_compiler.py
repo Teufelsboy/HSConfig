@@ -1165,6 +1165,8 @@ def compile_package(
             ),
         }
     )
+    if request.invocation.configuration_mode == "LLM_OPTIMIZED_START":
+        manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
     json_projections = _all_json_projections(
         state=state,
         manifest=manifest,

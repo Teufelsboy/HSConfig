@@ -10,7 +10,7 @@ from hashlib import sha256
 import json
 from pathlib import Path, PurePath
 import re
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from hsconfig.build_context import ResolvedBuildContext, resolve_build_context
 from hsconfig.build_input_catalog import (
@@ -25,6 +25,9 @@ from hsconfig.globalvalues_decisions import (
 from hsconfig.package_domain import _ImmutableAuthorityNode
 from hsconfig.pre_run_metrics import build_source_acquisition_closure_report
 from hsconfig.preconfig_context import build_preconfig_context
+
+if TYPE_CHECKING:
+    from hsconfig.starter_decision import ValidatedStarterSelection
 
 
 def _reject_json_constant(value: str) -> None:
@@ -434,6 +437,9 @@ class PackageInvocation(_ImmutableAuthorityNode):
     plan_reports_dir: str | None
     target_config_mode: str
     include_disposition_diagnostics: bool
+    configuration_mode: Literal["CONSERVATIVE", "LLM_OPTIMIZED_START"] = (
+        "CONSERVATIVE"
+    )
 
     @classmethod
     def _normalize_authority_values(
@@ -484,6 +490,13 @@ class PackageInvocation(_ImmutableAuthorityNode):
             raise ValueError(
                 "package_invocation_disposition_diagnostics_invalid"
             )
+        if not isinstance(self.configuration_mode, str) or (
+            self.configuration_mode not in {
+            "CONSERVATIVE",
+            "LLM_OPTIMIZED_START",
+            }
+        ):
+            raise ValueError("configuration_mode_invalid")
 
 
 @dataclass(frozen=True, init=False)
@@ -558,6 +571,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
     plan_overrides: PlanOverrides
     acquisition_closure_input: AcquisitionClosureInput
     mulligan_gap_input: MulliganGapInput
+    starter_selection: ValidatedStarterSelection | None = None
 
     def __post_init__(self) -> None:
         expected_types = (
@@ -596,6 +610,89 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
             expected_hash.removeprefix("sha256:")
         ):
             raise ValueError("resolved_package_request_deck_code_mismatch")
+        if self.invocation.configuration_mode == "CONSERVATIVE":
+            if self.starter_selection is not None:
+                raise ValueError("starter_selection_forbidden")
+            return
+        if self.invocation.configuration_mode != "LLM_OPTIMIZED_START":
+            raise ValueError("configuration_mode_invalid")
+
+        from hsconfig.starter_candidate import validate_starter_candidate
+        from hsconfig.starter_context import StarterContext, build_starter_context
+        from hsconfig.starter_decision import (
+            ValidatedStarterSelection,
+            _validate_candidate_set,
+            _validate_decision,
+        )
+        from hsconfig.starter_contract import (
+            STARTER_DECISION_FIELDS,
+            STARTER_SCHEMA_VERSION,
+        )
+        from hsconfig.starter_document import (
+            StarterDocument,
+            seal_starter_document,
+        )
+
+        selection = self.starter_selection
+        if not isinstance(selection, ValidatedStarterSelection):
+            raise ValueError("starter_selection_required")
+        current_context = build_starter_context(self.snapshot)
+        if not isinstance(selection.context, StarterContext):
+            raise ValueError("starter_selection_invalid")
+        if (
+            selection.context.document.canonical_json
+            != current_context.document.canonical_json
+            or selection.context.document.content_sha256
+            != current_context.document.content_sha256
+        ):
+            raise ValueError("starter_context_mismatch")
+        try:
+            if not isinstance(selection.decision, StarterDocument):
+                raise TypeError("starter_decision_invalid")
+            decision_value = selection.decision.to_value()
+            unsigned_decision = dict(decision_value)
+            embedded_digest = unsigned_decision.pop("content_sha256")
+            decision = seal_starter_document(
+                unsigned_decision,
+                expected_fields=STARTER_DECISION_FIELDS,
+                schema_version=STARTER_SCHEMA_VERSION,
+            )
+            if (
+                selection.decision.document.canonical_json
+                != decision.document.canonical_json
+                or selection.decision.content_sha256
+                != decision.content_sha256
+                or embedded_digest != decision.content_sha256
+            ):
+                raise ValueError("starter_decision_reseal_mismatch")
+            candidates = tuple(
+                validate_starter_candidate(
+                    candidate.document,
+                    context=current_context,
+                )
+                for candidate in selection.candidates
+            )
+            _validate_candidate_set(candidates)
+            selected_id = _validate_decision(
+                decision,
+                current_context=current_context,
+                candidates=candidates,
+            )
+            selected = next(
+                candidate
+                for candidate in candidates
+                if candidate.candidate_id == selected_id
+            )
+            resealed = ValidatedStarterSelection(
+                context=current_context,
+                candidates=candidates,
+                decision=decision,
+                selected=selected,
+            )
+        except (AttributeError, KeyError, StopIteration, TypeError, ValueError) as error:
+            raise ValueError("starter_selection_invalid") from error
+        if resealed != selection:
+            raise ValueError("starter_selection_invalid")
 
     @classmethod
     def from_values(
@@ -606,6 +703,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         plan_overrides: Any,
         acquisition_closure_input: Any,
         mulligan_gap_input: Any,
+        starter_selection: ValidatedStarterSelection | None = None,
     ) -> ResolvedPackageRequest:
         return cls(
             snapshot=snapshot,
@@ -617,6 +715,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
             mulligan_gap_input=MulliganGapInput.from_value(
                 mulligan_gap_input
             ),
+            starter_selection=starter_selection,
         )
 
     @property
@@ -645,6 +744,17 @@ def resolve_package_request(
 ) -> ResolvedPackageRequest:
     """Resolve every physical input once, then seal the compiler request."""
 
+    optimized_start = getattr(args, "optimized_start", False)
+    starter_decision_json = getattr(args, "starter_decision_json", None)
+    if type(optimized_start) is not bool:
+        raise ValueError("optimized_start_invalid")
+    if optimized_start and starter_decision_json is None:
+        raise ValueError("starter_decision_required")
+    if not optimized_start and starter_decision_json is not None:
+        raise ValueError("starter_decision_not_enabled")
+    configuration_mode: Literal["CONSERVATIVE", "LLM_OPTIMIZED_START"] = (
+        "LLM_OPTIMIZED_START" if optimized_start else "CONSERVATIVE"
+    )
     preconfig = build_preconfig_context(
         args,
         current_date=current_date,
@@ -687,6 +797,25 @@ def resolve_package_request(
         if strict_context is not None
         else PackageResolutionSnapshot.from_preconfig(resolved_preconfig)
     )
+    starter_selection = None
+    if optimized_start:
+        from hsconfig.starter_context import build_starter_context
+        from hsconfig.starter_decision import load_validated_starter_selection
+
+        current_context = build_starter_context(snapshot)
+        try:
+            starter_selection = load_validated_starter_selection(
+                Path(starter_decision_json),
+                current_context=current_context,
+            )
+        except ValueError as error:
+            if str(error) in {
+                "starter_selection_context_mismatch",
+                "starter_decision_context_sha256_mismatch",
+                "starter_candidate_context_sha256_mismatch",
+            }:
+                raise ValueError("starter_context_mismatch") from error
+            raise
     acquisition_input = build_source_acquisition_closure_report(
         deck_fingerprint=str(deck_identity["deck_fingerprint"]),
         acquisition_closure=acquisition_closure,
@@ -713,10 +842,12 @@ def resolve_package_request(
             include_disposition_diagnostics=(
                 include_disposition_diagnostics
             ),
+            configuration_mode=configuration_mode,
         ),
         plan_overrides=_read_plan_overrides(plan_reports_dir),
         acquisition_closure_input=acquisition_input,
         mulligan_gap_input=list(mulligan_source_gaps or ()),
+        starter_selection=starter_selection,
     )
 
 

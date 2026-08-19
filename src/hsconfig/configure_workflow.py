@@ -501,6 +501,8 @@ def _request_namespace(request: ConfigureRequest) -> argparse.Namespace:
         ),
         full_cards_json=_path_text(request.full_cards_json),
         allow_placeholder=request.allow_placeholder,
+        optimized_start=request.optimized_start,
+        starter_decision_json=_path_text(request.starter_decision_json),
         apply=request.apply_requested,
         json=request.json_output,
     )
@@ -826,6 +828,12 @@ def _execute_configure_namespace(
                 claims_json=None,
                 plan_reports_dir=None,
                 allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
+                optimized_start=bool(getattr(args, "optimized_start", False)),
+                starter_decision_json=getattr(
+                    args,
+                    "starter_decision_json",
+                    None,
+                ),
                 auto_research_fallback=True,
                 current_date=current_date,
                 json=True,

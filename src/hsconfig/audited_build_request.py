@@ -66,10 +66,12 @@ def resolve_frozen_audited_package_request(
             plan_reports_dir=None,
             target_config_mode="preview",
             include_disposition_diagnostics=False,
+            configuration_mode="CONSERVATIVE",
         ),
         plan_overrides={},
         acquisition_closure_input=closure,
         mulligan_gap_input=[],
+        starter_selection=None,
     )
 
 

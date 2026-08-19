@@ -112,6 +112,9 @@ def test_cli_maps_every_configure_option_and_leaves_namespace_byte_identical(
             "--full-cards-json",
             str(tmp_path / "full.json"),
             "--allow-placeholder",
+            "--optimized-start",
+            "--starter-decision-json",
+            str(tmp_path / "starter_decision.json"),
             "--apply",
             "--json",
         ]
@@ -162,6 +165,8 @@ def test_cli_maps_every_configure_option_and_leaves_namespace_byte_identical(
         source_fixture_url_map_json=tmp_path / "fixture-map.json",
         source_fetch_timeout_seconds=9.5,
         allow_placeholder=True,
+        optimized_start=True,
+        starter_decision_json=tmp_path / "starter_decision.json",
         json_output=True,
     )
 
@@ -457,6 +462,8 @@ def _request(
         source_fixture_url_map_json=None,
         source_fetch_timeout_seconds=6.0,
         allow_placeholder=False,
+        optimized_start=False,
+        starter_decision_json=None,
         json_output=True,
     )
 

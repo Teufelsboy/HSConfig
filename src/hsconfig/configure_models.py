@@ -39,6 +39,8 @@ class ConfigureRequest(_ImmutableAuthorityNode):
     source_fetch_timeout_seconds: float
     allow_placeholder: bool
     json_output: bool
+    optimized_start: bool = False
+    starter_decision_json: Path | None = None
 
     @classmethod
     def _normalize_authority_values(
@@ -56,6 +58,7 @@ class ConfigureRequest(_ImmutableAuthorityNode):
             "collectible_cards_json",
             "full_cards_json",
             "source_fixture_url_map_json",
+            "starter_decision_json",
         ):
             value = values[name]
             normalized[name] = None if value is None else Path(value)
@@ -79,6 +82,7 @@ class ConfigureRequest(_ImmutableAuthorityNode):
             "auto_source",
             "allow_placeholder",
             "json_output",
+            "optimized_start",
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"configure_{name}_invalid")

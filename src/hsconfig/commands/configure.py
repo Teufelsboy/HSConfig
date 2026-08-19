@@ -111,6 +111,10 @@ def configure_request_from_args(args: argparse.Namespace) -> ConfigureRequest:
             getattr(args, "allow_placeholder", False)
         ),
         json_output=bool(getattr(args, "json", False)),
+        optimized_start=bool(getattr(args, "optimized_start", False)),
+        starter_decision_json=_optional_path(
+            getattr(args, "starter_decision_json", None)
+        ),
     )
 
 

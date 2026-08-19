@@ -2573,6 +2573,7 @@ def test_package_invocation_rejects_noncanonical_transport_and_mode_values() -> 
         "plan_reports_dir": None,
         "target_config_mode": "preview",
         "include_disposition_diagnostics": False,
+        "configuration_mode": "CONSERVATIVE",
     }
     invocation = package_request.PackageInvocation(
         **{**values, "cards_json": PurePath("cards.json")}
@@ -2584,6 +2585,7 @@ def test_package_invocation_rejects_noncanonical_transport_and_mode_values() -> 
         ({"runtime_root": " padded "}, "package_invocation_runtime_root_invalid"),
         ({"claims_json": ""}, "package_invocation_claims_json_invalid"),
         ({"target_config_mode": "apply"}, "package_invocation_target_config_mode_invalid"),
+        ({"configuration_mode": "unknown"}, "configuration_mode_invalid"),
         (
             {"include_disposition_diagnostics": 0},
             "package_invocation_disposition_diagnostics_invalid",

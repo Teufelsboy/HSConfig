@@ -185,6 +185,12 @@ def test_c4_compiles_complete_immutable_runtime_and_report_inputs(
             "reports/pre_run_closure.json",
         }
     )
+    input_manifest = next(
+        projection.document.to_value()
+        for projection in compiled.json_projections
+        if projection.relative_path == "reports/input_manifest.json"
+    )
+    assert "configuration_mode" not in input_manifest
     ledger_bytes = compiled.semantic_runtime_ledger.canonical_json
     mutable = compiled.semantic_runtime_ledger.to_value()
     mutable.clear()
@@ -563,6 +569,7 @@ def test_resolved_incomplete_baseline_is_closed_before_ambient_rebinding(
         plan_overrides=original.plan_overrides,
         acquisition_closure_input=original.acquisition_closure_input,
         mulligan_gap_input=original.mulligan_gap_input,
+        starter_selection=None,
     )
     expected = compile_package(request)
 
