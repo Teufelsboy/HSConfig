@@ -119,7 +119,11 @@ def recompute_apply_decision(
             "actual_runtime_surface_inventory",
             required_structure_reasons[0],
         )
-        return build_apply_decision(facts), facts
+        return _finalize_recomputed_decision(
+            summary,
+            facts,
+            enforce_summary_core_fields=enforce_summary_core_fields,
+        )
     try:
         configuration_mode = configuration_mode_from_manifest(
             read_json(package / "reports" / "input_manifest.json")
@@ -132,7 +136,11 @@ def recompute_apply_decision(
                 "code": "configuration_mode_invalid",
             },
         )
-        return build_apply_decision(facts), facts
+        return _finalize_recomputed_decision(
+            summary,
+            facts,
+            enforce_summary_core_fields=enforce_summary_core_fields,
+        )
     strategy_authority_mode = (
         "llm_optimized_start"
         if configuration_mode == LLM_OPTIMIZED_START
@@ -200,6 +208,19 @@ def recompute_apply_decision(
         blocking_reasons=primary_blocking_reasons,
         informational_reasons=informational_reasons,
     )
+    return _finalize_recomputed_decision(
+        summary,
+        facts,
+        enforce_summary_core_fields=enforce_summary_core_fields,
+    )
+
+
+def _finalize_recomputed_decision(
+    summary: dict[str, Any],
+    facts: ApplyFacts,
+    *,
+    enforce_summary_core_fields: bool,
+) -> tuple[ApplyDecision, ApplyFacts]:
     decision = build_apply_decision(facts)
     if not enforce_summary_core_fields:
         return decision, facts
