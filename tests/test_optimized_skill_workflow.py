@@ -542,10 +542,24 @@ def test_embedded_validate_helper_requires_optimized_summary_and_assurance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     helper = _materialize_helper(tmp_path, "scripts/validate_package.py")
-    package, _summary, _starter_dir = _render_real_optimized_package(
+    package, summary, starter_dir = _render_real_optimized_package(
         tmp_path / "real-high",
         monkeypatch,
     )
+    optimized = summary["optimized_start"]
+    assert isinstance(optimized, dict)
+    decision = json.loads(
+        (starter_dir / "starter_config_decision.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    selected = json.loads(
+        (starter_dir / f"{decision['selected_candidate_id']}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert optimized["selected_candidate_sha256"] == selected["content_sha256"]
+    assert optimized["decision_sha256"] == decision["content_sha256"]
     calls: list[list[str]] = []
     real_main = hsconfig_cli.main
 

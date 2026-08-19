@@ -27,7 +27,7 @@ from hsconfig.external_skill_bundle import (
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCE = ROOT / "src/hsconfig/resources/codex_skill_bundle.json"
 EXPECTED_AGGREGATE_SHA256 = (
-    "8048ebccabda4f7f1d655a61d8b8a04934f17aab4ccbc0f75d5ec39d21fbf6de"
+    "4d6857f91292f52c81ad812364c53218ff8c6d844bf00b4630d17625ef82a06f"
 )
 
 
