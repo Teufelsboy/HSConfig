@@ -287,6 +287,7 @@ def test_package_loader_snapshots_each_file_once_and_never_reuses_view() -> None
     }
     source = _PoisonablePackageView(
         {
+            "reports/input_manifest.json": b"{}",
             "reports/operator_summary.json": (
                 b"\xef\xbb\xbf"
                 + json.dumps(stored_poison).encode("utf-8")
@@ -303,6 +304,7 @@ def test_package_loader_snapshots_each_file_once_and_never_reuses_view() -> None
 
     assert source.file_names_calls == 1
     assert source.read_counts == {
+        "reports/input_manifest.json": 1,
         "reports/operator_summary.json": 1,
         "reports/validation_report.json": 1,
     }
@@ -343,6 +345,7 @@ def test_package_replay_invalid_derivation_receipt_fails_closed(
         "use_config_now_scope": "load_safety_only",
     }
     files = {
+        "reports/input_manifest.json": b"{}",
         "reports/operator_summary.json": json.dumps(
             stored_allowed
         ).encode("utf-8"),

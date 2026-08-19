@@ -600,7 +600,7 @@ def test_pre_authority_owner_mapping_is_exact_and_rejects_swaps() -> None:
     assert counts == {
         ProjectionOwner.RESOLUTION: 15,
         ProjectionOwner.RESEARCH: 9,
-        ProjectionOwner.PACKAGE_COMPILER: 23,
+        ProjectionOwner.PACKAGE_COMPILER: 28,
     }
     with pytest.raises(ValueError, match="projection_owner_mismatch"):
         NamedJsonProjection(

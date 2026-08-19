@@ -632,6 +632,8 @@ def test_operator_remaining_projection_helpers_fail_closed_on_malformed_blocks()
         primary_blockers=[],
         package_derivation=None,
         package_authority=None,
+        strategy_authority_mode="source_contract",
+        optimized_start_derivation_validity=False,
         source_apply_eligible=True,
         source_apply_eligibility_reasons=[],
         exact_source_closed=False,
@@ -2878,6 +2880,8 @@ def test_strict_validation_memory_view_distinguishes_missing_multiple_and_invali
         globalvalues_baseline={},
         globalvalues_profile=None,
         globalvalues_authority_matrix=None,
+        configuration_mode="CONSERVATIVE",
+        optimized_globalvalues_decision_ledger=None,
     )
     assert "no deck config directories found" in missing["errors"][0]
 
@@ -2891,6 +2895,8 @@ def test_strict_validation_memory_view_distinguishes_missing_multiple_and_invali
         globalvalues_baseline={},
         globalvalues_profile=None,
         globalvalues_authority_matrix=None,
+        configuration_mode="CONSERVATIVE",
+        optimized_globalvalues_decision_ledger=None,
     )
     assert any("expected exactly one deck config directory" in row for row in multiple["errors"])
     assert any("unsupported VisionAI surface" in row for row in multiple["errors"])
@@ -3049,7 +3055,10 @@ def test_strict_validation_current_contract_requires_globalvalues_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     package = _quality_package_root(
-        {"reports/globalvalues_baseline.json": {}}
+        {
+            "reports/input_manifest.json": {},
+            "reports/globalvalues_baseline.json": {},
+        }
     ).package
     monkeypatch.setattr(
         strict_package_validation,
@@ -4984,7 +4993,15 @@ def test_derivation_receipt_remaining_authority_and_view_boundaries(
     context = package_derivation_receipt.build_package_authority_context(tmp_path)
     assert context["derivation_receipt_verified"] is False
     assert context["receipt_sha256"] == "sha256:" + ("b" * 64)
-    monkeypatch.setattr(package_derivation_receipt, "read_json", lambda _path: [])
+    monkeypatch.setattr(
+        package_derivation_receipt,
+        "read_json",
+        lambda path: (
+            {"schema_version": 1}
+            if Path(path).name == "input_manifest.json"
+            else []
+        ),
+    )
     no_receipt_context = package_derivation_receipt.build_package_authority_context(
         tmp_path
     )
@@ -4998,11 +5015,17 @@ def test_derivation_receipt_remaining_authority_and_view_boundaries(
     (tmp_path / "reports" / "guide_claim_bundle.json").write_text(
         "[]", encoding="utf-8"
     )
+    (tmp_path / "reports" / "input_manifest.json").write_text(
+        "{}", encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="source receipt container"):
         package_derivation_receipt._authoritative_input_digests(tmp_path)
 
     invalid_guide = _quality_package_root(
-        {"reports/guide_claim_bundle.json": []}
+        {
+            "reports/input_manifest.json": {},
+            "reports/guide_claim_bundle.json": [],
+        }
     ).package
     with pytest.raises(ValueError, match="source receipt container"):
         package_derivation_receipt._authoritative_input_digests_from_view(
@@ -5010,7 +5033,10 @@ def test_derivation_receipt_remaining_authority_and_view_boundaries(
         )
 
     missing_behavior = _quality_package_root(
-        {"reports/guide_claim_bundle.json": {}}
+        {
+            "reports/input_manifest.json": {},
+            "reports/guide_claim_bundle.json": {},
+        }
     ).package
     monkeypatch.setattr(
         package_derivation_receipt,
@@ -5024,14 +5050,15 @@ def test_derivation_receipt_remaining_authority_and_view_boundaries(
 
     invalid_input = _quality_package_root(
         {
-            "reports/input_manifest.json": [],
+            "reports/input_manifest.json": {},
+            "reports/deck_identity.json": [],
             "reports/guide_claim_bundle.json": {},
         }
     ).package
     monkeypatch.setattr(
         package_derivation_receipt,
         "_AUTHORITATIVE_JSON_PATHS",
-        ("reports/input_manifest.json",),
+        ("reports/deck_identity.json",),
     )
     with pytest.raises(ValueError, match="Authoritative package input"):
         package_derivation_receipt._authoritative_input_digests_from_view(
@@ -5040,6 +5067,7 @@ def test_derivation_receipt_remaining_authority_and_view_boundaries(
 
     verification = _quality_package_root(
         {
+            "reports/input_manifest.json": {},
             "reports/guide_claim_bundle.json": {},
             "reports/deck_input_verification.json": {"verified": True},
         }
