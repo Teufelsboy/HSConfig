@@ -75,6 +75,8 @@ MUTATIONS = (
 
 _COPIED_SOURCE_FILES = (
     "src/hsconfig/__init__.py",
+    "src/hsconfig/globalvalues_baseline.py",
+    "src/hsconfig/io.py",
     "src/hsconfig/package_domain.py",
     "src/hsconfig/runtime_entity_owner.py",
     "src/hsconfig/version.py",
