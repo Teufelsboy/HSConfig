@@ -142,17 +142,7 @@ def build_source_to_runtime_explainability_report(
         "claim_rows": claim_rows,
         "card_rows": card_rows,
         "runtime_entity_transitions": [
-            {
-                key: row[key]
-                for key in (
-                    "source_card_id",
-                    "source_role",
-                    "runtime_card_id",
-                    "runtime_owner_role",
-                    "link_kind",
-                    "runtime_file",
-                )
-            }
+            _runtime_entity_transition_projection(row)
             for row in runtime_entity_transitions
         ],
         "runtime_entity_owner_collisions": owner_collisions,
@@ -182,6 +172,26 @@ def build_source_to_runtime_explainability_report(
         }
         for row in report["claim_rows"]
     ]
+    projected_claim_ids = {
+        str(row.get("claim_id", "")) for row in report["claim_rows"]
+    }
+    report["claim_rows"].extend(
+        _optimized_start_claim_projection(
+            row,
+            card_behavior_plan=card_behavior_plan or {},
+        )
+        for row in disposition_ledger.claims
+        if row.claim_id not in projected_claim_ids
+        and row.evidence_id.startswith("starter:")
+    )
+    report["claim_rows"].sort(key=lambda row: str(row.get("claim_id", "")))
+    report["summary"]["claims_total"] = len(report["claim_rows"])
+    report["summary"]["runtime_lowered_claims"] = sum(
+        1
+        for row in report["claim_rows"]
+        if row.get("emitted_runtime_files")
+        and not row.get("not_emitted_runtime_files")
+    )
     report["card_rows"] = [
         {
             **row,
@@ -1558,6 +1568,7 @@ def _runtime_entity_transitions(
         key = (claim_id, source_card_id, runtime_card_id, link_kind)
         transitions[key] = {
             "claim_id": claim_id,
+            "authority_id": str(row.get("authority_id") or "").strip(),
             "source_card_id": source_card_id,
             "source_role": f"{link_kind}_source",
             "runtime_card_id": runtime_card_id,
@@ -1570,6 +1581,71 @@ def _runtime_entity_transitions(
             "runtime_file": f"{runtime_card_id}.json",
         }
     return [transitions[key] for key in sorted(transitions)]
+
+
+def _runtime_entity_transition_projection(
+    row: Mapping[str, str],
+) -> dict[str, str]:
+    projection = {
+        key: row[key]
+        for key in (
+            "source_card_id",
+            "source_role",
+            "runtime_card_id",
+            "runtime_owner_role",
+            "link_kind",
+            "runtime_file",
+        )
+    }
+    if row.get("authority_id"):
+        projection["authority_id"] = row["authority_id"]
+    return projection
+
+
+def _optimized_start_claim_projection(
+    row: Any,
+    *,
+    card_behavior_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    behavior = next(
+        (
+            candidate
+            for candidate in card_behavior_plan.get("rows", ())
+            if isinstance(candidate, Mapping)
+            and candidate.get("claim_id") == row.claim_id
+        ),
+        {},
+    )
+    emitted_files = list(row.runtime_paths)
+    return {
+        "claim_id": row.claim_id,
+        "claim_kind": row.claim_kind,
+        "policy_lane": "LLM_OPTIMIZED_START",
+        "surface_gate_decision": "accepted",
+        "surface_gate_reason": "validated_optimized_start",
+        "builder_or_router_decision": "runtime_emitted",
+        "emitted_runtime_files": emitted_files,
+        "not_emitted_runtime_files": [],
+        "first_missing_link": None,
+        "why_not_emitted": None,
+        "apply_blocked": False,
+        "next_source_action": "none",
+        "authority_id": row.evidence_id,
+        "source_claim_ids": [],
+        **(
+            {
+                "behavior_block": str(behavior["behavior_block"]),
+                "source_card_id": str(behavior["source_card_id"]),
+                "runtime_card_id": str(behavior["runtime_card_id"]),
+                "link_kind": str(behavior["link_kind"]),
+                "condition": str(behavior["condition"]),
+                "value": str(behavior["value"]),
+            }
+            if behavior
+            else {}
+        ),
+        **_claim_disposition_fields(row),
+    }
 
 
 def _behavior_identities_by_claim_id(

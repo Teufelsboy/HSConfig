@@ -4,8 +4,14 @@ from pathlib import Path
 import pytest
 
 from hsconfig.compile_globalvalues import compile_globalvalues
+from hsconfig.globalvalues_decisions import (
+    build_optimized_globalvalues_decision_ledger,
+    canonical_globalvalues_baseline_sha256,
+    normalize_globalvalues_decision_baseline,
+)
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.io import write_json
+from hsconfig.package_domain import GlobalValueDecisionKind
 from hsconfig.validate_package import validate_config_package
 
 
@@ -408,6 +414,26 @@ def test_compile_globalvalues_preserves_and_profiles_every_key(tmp_path: Path):
         )["status"]
         == "passed"
     )
+
+    optimized_baseline = normalize_globalvalues_decision_baseline(
+        default_values
+    )
+    desired = json.loads(json.dumps(optimized_baseline))
+    desired["FirstTurnValueWeight"]["values"][0]["value"] = "0.75"
+    optimized = build_optimized_globalvalues_decision_ledger(
+        deck_fingerprint="0" * 64,
+        baseline=optimized_baseline,
+        baseline_sha256=canonical_globalvalues_baseline_sha256(
+            optimized_baseline
+        ),
+        desired_state=desired,
+        authority_id="starter:sha256:candidate-1",
+    )
+    optimized_by_key = {row.key: row for row in optimized.decisions}
+    assert optimized_by_key["FirstTurnValueWeight"].kind is (
+        GlobalValueDecisionKind.LLM_OPTIMIZED_START
+    )
+    assert optimized_by_key["FirstTurnValueWeight"].claim_ids == ()
 
 
 def test_validate_package_rejects_globalvalues_missing_baseline_keys(tmp_path: Path):

@@ -62,13 +62,24 @@ def _plan(
 def test_compile_mulligan_emits_valid_mulligan_block(
     tmp_path: Path,
 ) -> None:
-    result = compile_mulligan(_plan(_rule("EX1_001")))
+    optimized_rule = MulliganRuleModel(
+        card_id="EX1_001",
+        selector_kind="card",
+        selector_canonical_json=_json("EX1_001"),
+        action="hold",
+        condition_canonical_json=_json("*"),
+        reason="exact optimized authority",
+        confidence="llm_optimized_start",
+        source_claim_ids=(),
+        claim_id="starter:sha256:candidate-1:keep-ex1-001",
+    )
+    result = compile_mulligan(_plan(optimized_rule))
 
     assert result["GameCardId"] == "Mulligan"
     assert set(result) == {"GameCardId", "ConfigComment", "Mulligan"}
     assert result["Mulligan"]["values"] == [
         {
-            "comment": "Fixture: ex1_001-claim",
+            "comment": "Fixture: starter:sha256:candidate-1:keep-ex1-001",
             "mulligan": "EX1_001",
             "condition": "*",
             "value": "hold",

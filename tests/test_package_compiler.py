@@ -4,6 +4,7 @@ import ast
 from collections.abc import Mapping
 from dataclasses import fields, replace
 from hashlib import sha256
+import json
 from pathlib import Path
 import importlib
 import subprocess
@@ -32,6 +33,22 @@ from hsconfig.package_request import (
     ResolvedPackageRequest,
 )
 from tests.helpers.audited_package_request import audited_request
+
+
+def _named_documents_sha256(rows: tuple[Any, ...]) -> str:
+    canonical = json.dumps(
+        [
+            [
+                getattr(row, "relative_path", getattr(row, "file_name", "")),
+                json.loads(row.document.canonical_json),
+            ]
+            for row in rows
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return sha256(canonical).hexdigest()
 
 
 def test_shared_audited_request_runs_without_importing_test_modules() -> None:
@@ -139,7 +156,11 @@ def test_c4_compiles_complete_immutable_runtime_and_report_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request = audited_request(tmp_path, "ShadowPriest")
+    request = audited_request(
+        tmp_path,
+        "ShadowPriest",
+        fixture_paths=True,
+    )
 
     def forbidden(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
@@ -166,6 +187,16 @@ def test_c4_compiles_complete_immutable_runtime_and_report_inputs(
 
     assert isinstance(compiled, CompiledPackage)
     assert compiled == compile_package(request)
+    # Pinned at signed Task-5 HEAD 00195a11 before optimized lowering existed.
+    assert _named_documents_sha256(compiled.runtime_surfaces) == (
+        "5a1fa6fad36fa7ab70cf038d0b4fe075bd1416b76f25161b24b13214f32af944"
+    )
+    assert _named_documents_sha256(
+        compiled.decision_snapshot.decision_projections
+    ) == "b4d17f16d3e8e0350b87c24a225a56dc1d4c52709cc1ddfecc8617974e04cdb7"
+    assert _named_documents_sha256(compiled.json_projections) == (
+        "d708531fea254ed4e7e7a0ba65f9d0084443c575105b3aa15e639a6433afbad6"
+    )
     assert compiled.combo_plan.decisions == ()
     assert all(
         surface.family != "Combo"

@@ -483,6 +483,7 @@ def test_darkbishop_hero_power_behavior_is_owned_by_linked_mind_spike_file():
     }
     rows = [
         {
+            "authority_id": "LLM_OPTIMIZED_START",
             "surface": "CardID.json",
             "surface_family": "CARDID.json",
             "card_id": "SW_448",
@@ -494,8 +495,8 @@ def test_darkbishop_hero_power_behavior_is_owned_by_linked_mind_spike_file():
             "value": "10",
             "rule_id_suffix": "enable_shadow_hero_power",
             "roles": ["hero_power_transform"],
-            "source_claim_ids": ["claim-darkbishop-effect"],
-            "confidence": "source_backed",
+            "source_claim_ids": [],
+            "confidence": "llm_optimized_start",
         }
     ]
 
@@ -511,6 +512,8 @@ def test_darkbishop_hero_power_behavior_is_owned_by_linked_mind_spike_file():
         (row["condition"], row["value"])
         for row in mind_spike["BeforeUseHeroPowerBonus"]["values"]
     ] == [("*", "10")]
+    assert rows[0]["authority_id"] == "LLM_OPTIMIZED_START"
+    assert rows[0]["source_claim_ids"] == []
 
 
 def test_compile_cardid_emits_one_physical_row_per_semantic_runtime_owner():

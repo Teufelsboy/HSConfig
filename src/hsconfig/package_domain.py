@@ -641,6 +641,8 @@ class GlobalValueDecision(_ImmutableAuthorityNode):
         if self.kind is GlobalValueDecisionKind.LLM_OPTIMIZED_START:
             if not self.authority_id.startswith("starter:"):
                 raise ValueError("globalvalue_starter_authority_invalid")
+            if self.claim_ids:
+                raise ValueError("globalvalue_starter_claim_ids_forbidden")
             if self.baseline_canonical_json == self.emitted_canonical_json:
                 raise ValueError("globalvalue_starter_change_missing")
 

@@ -11,10 +11,12 @@ from hsconfig.package_domain import (
     CardDispositionRow,
     ClaimDisposition,
     ClaimDispositionRow,
+    ComboPlanModel,
     DispositionLedger,
     DualClosureStatus,
     EvidenceLane,
     GlobalValuesDecisionLedger,
+    MulliganPlanModel,
     deep_freeze_definition,
     disposition_ledger_content_sha256,
 )
@@ -336,6 +338,156 @@ def build_disposition_ledger(
         claims=claims,
         content_sha256=disposition_ledger_content_sha256(
             deck_fingerprint=deck_fingerprint,
+            cards=cards,
+            claims=claims,
+        ),
+    )
+
+
+def build_optimized_start_disposition_ledger(
+    *,
+    base_dispositions: DispositionLedger,
+    card_behavior_plan: Mapping[str, Any],
+    mulligan_plan: MulliganPlanModel,
+    combo_plan: ComboPlanModel,
+    authority_id: str,
+) -> DispositionLedger:
+    """Replace physical source attribution with selected starter rules."""
+
+    if not isinstance(base_dispositions, DispositionLedger):
+        raise TypeError("optimized_base_dispositions_invalid")
+    if not isinstance(card_behavior_plan, Mapping):
+        raise TypeError("optimized_card_behavior_plan_invalid")
+    if not isinstance(mulligan_plan, MulliganPlanModel):
+        raise TypeError("optimized_mulligan_plan_invalid")
+    if not isinstance(combo_plan, ComboPlanModel):
+        raise TypeError("optimized_combo_plan_invalid")
+    if not isinstance(authority_id, str) or not authority_id.startswith(
+        "starter:"
+    ):
+        raise ValueError("optimized_authority_id_invalid")
+
+    candidate_rows = [
+        row
+        for row in card_behavior_plan.get("rows", ())
+        if isinstance(row, Mapping)
+        and row.get("meaningful_runtime_surface") is True
+        and isinstance(row.get("claim_id"), str)
+        and row.get("claim_id")
+        and row.get("authority_id") == "LLM_OPTIMIZED_START"
+        and not row.get("source_claim_ids")
+    ]
+    claims_by_runtime_path: dict[str, set[str]] = {}
+    for row in candidate_rows:
+        runtime_card_id = str(
+            row.get("runtime_card_id") or row.get("card_id") or ""
+        )
+        if runtime_card_id:
+            claims_by_runtime_path.setdefault(
+                f"{runtime_card_id}.json",
+                set(),
+            ).add(str(row["claim_id"]))
+
+    card_rows: list[CardDispositionRow] = []
+    for row in base_dispositions.cards:
+        starter_claim_ids = tuple(
+            sorted(
+                {
+                    claim_id
+                    for path in row.runtime_paths
+                    for claim_id in claims_by_runtime_path.get(path, ())
+                }
+            )
+        )
+        if not starter_claim_ids:
+            card_rows.append(row)
+            continue
+        card_rows.append(
+            CardDispositionRow(
+                deck_fingerprint=row.deck_fingerprint,
+                composite_card_key=row.composite_card_key,
+                zone=row.zone,
+                official_semantics_canonical_json=(
+                    row.official_semantics_canonical_json
+                ),
+                authority_lane=row.authority_lane,
+                evidence_ids=(authority_id,),
+                claim_ids=starter_claim_ids,
+                physical_owner=row.physical_owner,
+                disposition=row.disposition,
+                runtime_paths=row.runtime_paths,
+                reason_code="optimized_start_physical_emission",
+            )
+        )
+
+    claim_rows = [
+        (
+            ClaimDispositionRow(
+                deck_fingerprint=row.deck_fingerprint,
+                claim_id=row.claim_id,
+                claim_kind=row.claim_kind,
+                evidence_id=row.evidence_id,
+                disposition=(
+                    ClaimDisposition.SUPPRESSED_INSUFFICIENT_AUTHORITY
+                ),
+                runtime_paths=(),
+                reason_code="replaced_by_optimized_start",
+            )
+            if row.runtime_paths
+            else row
+        )
+        for row in base_dispositions.claims
+    ]
+    claim_rows.extend(
+        ClaimDispositionRow(
+            deck_fingerprint=base_dispositions.deck_fingerprint,
+            claim_id=str(row["claim_id"]),
+            claim_kind="llm_optimized_start_card_rule",
+            evidence_id=authority_id,
+            disposition=ClaimDisposition.RUNTIME_EMITTED,
+            runtime_paths=(
+                f"{str(row.get('runtime_card_id') or row.get('card_id'))}.json",
+            ),
+            reason_code="optimized_start_physical_emission",
+        )
+        for row in candidate_rows
+    )
+    claim_rows.extend(
+        ClaimDispositionRow(
+            deck_fingerprint=base_dispositions.deck_fingerprint,
+            claim_id=str(rule.claim_id),
+            claim_kind="llm_optimized_start_mulligan_rule",
+            evidence_id=authority_id,
+            disposition=ClaimDisposition.RUNTIME_EMITTED,
+            runtime_paths=("Mulligan.json",),
+            reason_code="optimized_start_physical_emission",
+        )
+        for rule in mulligan_plan.rules
+        if rule.claim_id is not None
+    )
+    claim_rows.extend(
+        ClaimDispositionRow(
+            deck_fingerprint=base_dispositions.deck_fingerprint,
+            claim_id=str(decision.claim_id),
+            claim_kind="llm_optimized_start_combo_rule",
+            evidence_id=authority_id,
+            disposition=ClaimDisposition.RUNTIME_EMITTED,
+            runtime_paths=("Combo.json",),
+            reason_code="optimized_start_physical_emission",
+        )
+        for decision in combo_plan.decisions
+        if decision.claim_id is not None
+    )
+    cards = tuple(card_rows)
+    claims = tuple(sorted(claim_rows, key=lambda row: row.claim_id))
+    if len({row.claim_id for row in claims}) != len(claims):
+        raise ValueError("optimized_claim_disposition_duplicate")
+    return DispositionLedger(
+        deck_fingerprint=base_dispositions.deck_fingerprint,
+        cards=cards,
+        claims=claims,
+        content_sha256=disposition_ledger_content_sha256(
+            deck_fingerprint=base_dispositions.deck_fingerprint,
             cards=cards,
             claims=claims,
         ),

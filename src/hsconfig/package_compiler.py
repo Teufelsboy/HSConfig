@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import json
 from types import MappingProxyType
 from typing import Any
 
@@ -28,6 +29,8 @@ from hsconfig.configure_stages import (
 from hsconfig.disposition_ledger import (
     DispositionLedger,
     DualClosureStatus,
+    build_dual_closure,
+    build_optimized_start_disposition_ledger,
 )
 from hsconfig.evidence_contract import policy_profile_from_mapping
 from hsconfig.gameplan_contract import build_gameplan_contract
@@ -38,6 +41,7 @@ from hsconfig.globalvalues_decisions import (
     build_globalvalues_decision_ledger,
     canonical_globalvalues_baseline_sha256,
     normalize_globalvalues_decision_baseline,
+    project_optimized_globalvalues_profile,
 )
 from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.mechanic_drift import build_mechanic_drift_report
@@ -98,6 +102,10 @@ from hsconfig.source_contract_audit import (
 )
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
+)
+from hsconfig.starter_compiler import (
+    OptimizedStartLowering,
+    lower_optimized_start,
 )
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.models import InputManifest
@@ -166,6 +174,11 @@ _COMPILER_PROJECTION_PATHS = frozenset(
         "reports/source_contract_audit.md",
         "reports/source_to_runtime_explainability.json",
         "reports/surface_intent.json",
+        "reports/optimized_start/starter_context.json",
+        "reports/optimized_start/candidate-1.json",
+        "reports/optimized_start/candidate-2.json",
+        "reports/optimized_start/candidate-3.json",
+        "reports/optimized_start/starter_config_decision.json",
     }
 )
 PRE_AUTHORITY_OWNER_BY_PATH = MappingProxyType({
@@ -191,6 +204,11 @@ _OPTIONAL_JSON_PROJECTION_PATHS = frozenset(
         "reports/deckstring_decode_receipt.json",
         "reports/guide_sources.json",
         "reports/plan_input_diagnostics.json",
+        "reports/optimized_start/starter_context.json",
+        "reports/optimized_start/candidate-1.json",
+        "reports/optimized_start/candidate-2.json",
+        "reports/optimized_start/candidate-3.json",
+        "reports/optimized_start/starter_config_decision.json",
     }
 )
 _ALLOWED_JSON_PROJECTION_PATHS = frozenset(
@@ -261,6 +279,7 @@ class PackageDecisionSnapshot(_ImmutableAuthorityNode):
     combo_plan: ComboPlanModel
     decision_projections: tuple[NamedJsonProjection, ...]
     compiler_state: FrozenJsonDocument
+    optimized_start_lowering: OptimizedStartLowering | None = None
 
     def __post_init__(self) -> None:
         if not all(
@@ -283,6 +302,11 @@ class PackageDecisionSnapshot(_ImmutableAuthorityNode):
             raise TypeError("package_decision_projection_invalid")
         if not isinstance(self.compiler_state, FrozenJsonDocument):
             raise TypeError("package_decision_state_invalid")
+        if self.optimized_start_lowering is not None and not isinstance(
+            self.optimized_start_lowering,
+            OptimizedStartLowering,
+        ):
+            raise TypeError("package_decision_optimized_lowering_invalid")
 
 
 def compile_package_decisions(
@@ -292,6 +316,16 @@ def compile_package_decisions(
 
     if not isinstance(request, ResolvedPackageRequest):
         raise TypeError("resolved_package_request_required")
+    if request.starter_selection is None:
+        return _compile_conservative_package_decisions(request)
+    return _compile_optimized_package_decisions(request)
+
+
+def _compile_conservative_package_decisions(
+    request: ResolvedPackageRequest,
+) -> PackageDecisionSnapshot:
+    """Compile the byte-compatible conservative C3 decisions."""
+
     context = request.snapshot.general_preconfig.to_value()
     cards_payload = context["cards_payload"]
     verified_deck_stage = build_verified_deck_stage(
@@ -595,6 +629,75 @@ def compile_package_decisions(
     )
 
 
+def _compile_optimized_package_decisions(
+    request: ResolvedPackageRequest,
+) -> PackageDecisionSnapshot:
+    """Replace conservative runtime decisions with one selected candidate."""
+
+    selection = request.starter_selection
+    if selection is None:
+        raise ValueError("starter_selection_required")
+    conservative = _compile_conservative_package_decisions(request)
+    lowered = lower_optimized_start(
+        request=request,
+        selection=selection,
+    )
+    state = conservative.compiler_state.to_value()
+    mulligan_plan = lowered.mulligan_plan.to_report()
+    combo_plan = lowered.combo_plan.to_report()
+    card_behavior_plan = lowered.card_behavior_plan.to_value()
+    globalvalues_matrix = _neutral_optimized_globalvalues_matrix()
+    gameplan_contract = {
+        **state["gameplan_contract"],
+        "mulligan_plan": mulligan_plan,
+        "card_behavior_plan": card_behavior_plan,
+        "combo_plan": combo_plan,
+        "global_values_authority_matrix": globalvalues_matrix,
+    }
+    state.update(
+        {
+            "mulligan_plan": mulligan_plan,
+            "card_behavior_plan": card_behavior_plan,
+            "combo_plan": combo_plan,
+            "global_values_authority_matrix": globalvalues_matrix,
+            "gameplan_contract": gameplan_contract,
+        }
+    )
+    projections = (
+        *_c3_projections(state),
+        *(
+            NamedJsonProjection(
+                path,
+                ProjectionOwner.PACKAGE_COMPILER,
+                document.document,
+            )
+            for path, document in lowered.optimized_projections
+        ),
+    )
+    return PackageDecisionSnapshot(
+        deck_name=conservative.deck_name,
+        deck_slug=conservative.deck_slug,
+        deck_fingerprint=conservative.deck_fingerprint,
+        mulligan_plan=lowered.mulligan_plan,
+        combo_plan=lowered.combo_plan,
+        decision_projections=tuple(
+            sorted(projections, key=lambda row: row.relative_path)
+        ),
+        compiler_state=FrozenJsonDocument.from_value(state),
+        optimized_start_lowering=lowered,
+    )
+
+
+def _neutral_optimized_globalvalues_matrix(
+) -> dict[str, Any]:
+    """Keep Step1 source overlays out of direct optimized desired state."""
+
+    return {
+        "allowed_step1_overlays": [],
+        "blocked_until_runtime_evidence": [],
+    }
+
+
 def _c3_projections(
     state: dict[str, Any],
 ) -> tuple[NamedJsonProjection, ...]:
@@ -863,6 +966,14 @@ class CompiledPackage(_ImmutableAuthorityNode):
             }.items()
             if value is not None
         }
+        if self.decision_snapshot.optimized_start_lowering is not None:
+            optional_json_paths.update(
+                path
+                for path, _document in (
+                    self.decision_snapshot.optimized_start_lowering
+                    .optimized_projections
+                )
+            )
         expected_json_paths = (
             _required_json_paths | optional_json_paths
         )
@@ -939,17 +1050,30 @@ def compile_package(
     baseline = normalize_globalvalues_decision_baseline(
         state["globalvalues_baseline"]
     )
-    globalvalues_ledger = build_globalvalues_decision_ledger(
-        deck_fingerprint=decisions.deck_fingerprint,
-        baseline=baseline,
-        baseline_sha256=canonical_globalvalues_baseline_sha256(baseline),
-        authority_matrix=state["global_values_authority_matrix"],
-    )
-    globalvalues = compile_globalvalues(
-        baseline,
-        gameplan,
-        decision_ledger=globalvalues_ledger,
-    )
+    optimized_lowering = decisions.optimized_start_lowering
+    if optimized_lowering is None:
+        globalvalues_ledger = build_globalvalues_decision_ledger(
+            deck_fingerprint=decisions.deck_fingerprint,
+            baseline=baseline,
+            baseline_sha256=canonical_globalvalues_baseline_sha256(baseline),
+            authority_matrix=state["global_values_authority_matrix"],
+        )
+        globalvalues = compile_globalvalues(
+            baseline,
+            gameplan,
+            decision_ledger=globalvalues_ledger,
+        )
+    else:
+        globalvalues_ledger = optimized_lowering.globalvalues_ledger
+        desired_state = {
+            decision.key: json.loads(decision.emitted_canonical_json)
+            for decision in globalvalues_ledger.decisions
+        }
+        globalvalues = compile_globalvalues(desired_state, gameplan)
+        globalvalues["profile"] = project_optimized_globalvalues_profile(
+            globalvalues["profile"],
+            ledger=globalvalues_ledger,
+        )
     compiled_mulligan = compile_mulligan(decisions.mulligan_plan)
     compiled_combo = compile_combo(
         decisions.combo_plan,
@@ -1074,6 +1198,29 @@ def compile_package(
             ),
         )
     )
+    if optimized_lowering is not None:
+        disposition = build_optimized_start_disposition_ledger(
+            base_dispositions=disposition,
+            card_behavior_plan=card_plan,
+            mulligan_plan=decisions.mulligan_plan,
+            combo_plan=decisions.combo_plan,
+            authority_id=optimized_lowering.authority_id,
+        )
+        dual_closure = build_dual_closure(
+            dispositions=disposition,
+            globalvalues_ledger=globalvalues_ledger,
+            strategy_source_status=(
+                "strong"
+                if str(
+                    state["guide_claim_bundle"].get(
+                        "source_backed_status",
+                        "",
+                    )
+                )
+                == "SOURCE_BACKED_STRONG"
+                else "partial"
+            ),
+        )
     classified = {
         str(claim_id): row["evidence_authority"]
         for claim_id, row in source_audit.get("claim_rows", {}).items()
@@ -1129,12 +1276,18 @@ def compile_package(
         runtime_surface_ledger=semantic_ledger,
         disposition_ledger=(
             disposition
-            if request.invocation.include_disposition_diagnostics
+            if (
+                request.invocation.include_disposition_diagnostics
+                or optimized_lowering is not None
+            )
             else None
         ),
         dual_closure_status=(
             dual_closure
-            if request.invocation.include_disposition_diagnostics
+            if (
+                request.invocation.include_disposition_diagnostics
+                or optimized_lowering is not None
+            )
             else None
         ),
     )
@@ -1185,6 +1338,25 @@ def compile_package(
         layered=layered,
         pre_run_closure=pre_run_closure,
     )
+    if optimized_lowering is not None:
+        json_projections = tuple(
+            sorted(
+                (
+                    *json_projections,
+                    *(
+                        NamedJsonProjection(
+                            path,
+                            ProjectionOwner.PACKAGE_COMPILER,
+                            document.document,
+                        )
+                        for path, document in (
+                            optimized_lowering.optimized_projections
+                        )
+                    ),
+                ),
+                key=lambda row: row.relative_path,
+            )
+        )
     runtime_surfaces = _runtime_surfaces(
         runtime_values,
         decisions=decisions,

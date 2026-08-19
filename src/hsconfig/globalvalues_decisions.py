@@ -106,6 +106,98 @@ def build_globalvalues_decision_ledger(
     )
 
 
+def build_optimized_globalvalues_decision_ledger(
+    *,
+    deck_fingerprint: str,
+    baseline: Mapping[str, Any],
+    baseline_sha256: str,
+    desired_state: Mapping[str, Any],
+    authority_id: str,
+) -> GlobalValuesDecisionLedger:
+    """Bind one complete optimized desired state to its exact baseline."""
+
+    if (
+        not isinstance(deck_fingerprint, str)
+        or _DECK_FINGERPRINT_RE.fullmatch(deck_fingerprint) is None
+    ):
+        raise ValueError("globalvalues_deck_fingerprint_invalid")
+    if not isinstance(baseline, Mapping):
+        raise ValueError("globalvalues_baseline_must_be_object")
+    if not isinstance(desired_state, Mapping):
+        raise ValueError("globalvalues_desired_state_must_be_object")
+    if not isinstance(authority_id, str) or not authority_id.startswith(
+        "starter:"
+    ):
+        raise ValueError("globalvalues_starter_authority_invalid")
+
+    frozen_baseline = deepcopy(dict(baseline))
+    frozen_desired = deepcopy(dict(desired_state))
+    expected_keys = set(GLOBALVALUES_BASELINE_DECISION_KEYS)
+    if (
+        len(frozen_baseline) != len(GLOBALVALUES_BASELINE_DECISION_KEYS)
+        or set(frozen_baseline) != expected_keys
+    ):
+        raise ValueError("globalvalues_baseline_keys_invalid")
+    if (
+        len(frozen_desired) != len(GLOBALVALUES_BASELINE_DECISION_KEYS)
+        or set(frozen_desired) != expected_keys
+    ):
+        raise ValueError("globalvalues_desired_state_keys_invalid")
+    if baseline_sha256 != canonical_globalvalues_baseline_sha256(
+        frozen_baseline
+    ):
+        raise ValueError("globalvalues_baseline_sha256_invalid")
+
+    decisions = tuple(
+        _optimized_decision_for_key(
+            deck_fingerprint=deck_fingerprint,
+            key=key,
+            baseline_value=frozen_baseline[key],
+            desired_value=frozen_desired[key],
+            authority_id=authority_id,
+        )
+        for key in GLOBALVALUES_BASELINE_DECISION_KEYS
+    )
+    return GlobalValuesDecisionLedger(
+        deck_fingerprint=deck_fingerprint,
+        baseline_sha256=baseline_sha256,
+        decisions=decisions,
+        content_sha256=globalvalues_decision_ledger_content_sha256(
+            decisions
+        ),
+    )
+
+
+def _optimized_decision_for_key(
+    *,
+    deck_fingerprint: str,
+    key: str,
+    baseline_value: Any,
+    desired_value: Any,
+    authority_id: str,
+) -> GlobalValueDecision:
+    baseline_canonical_json = _canonical_bytes(baseline_value)
+    emitted_canonical_json = _canonical_bytes(desired_value)
+    if emitted_canonical_json == baseline_canonical_json:
+        kind = GlobalValueDecisionKind.COPY_BASELINE
+        decision_authority_id = _BASELINE_AUTHORITY_ID
+        reason = "copied canonical baseline"
+    else:
+        kind = GlobalValueDecisionKind.LLM_OPTIMIZED_START
+        decision_authority_id = authority_id
+        reason = "selected optimized starter desired state"
+    return GlobalValueDecision(
+        deck_fingerprint=deck_fingerprint,
+        key=key,
+        kind=kind,
+        baseline_canonical_json=baseline_canonical_json,
+        emitted_canonical_json=emitted_canonical_json,
+        authority_id=decision_authority_id,
+        claim_ids=(),
+        reason=reason,
+    )
+
+
 def _validated_overlay_rows(
     authority_matrix: Mapping[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -249,3 +341,79 @@ def globalvalues_decision_ledger_document(
             for decision in ledger.decisions
         ],
     }
+
+
+def project_optimized_globalvalues_profile(
+    profile: Mapping[str, Any],
+    *,
+    ledger: GlobalValuesDecisionLedger,
+) -> dict[str, Any]:
+    """Project changed/unchanged profile rows from the one optimized ledger."""
+
+    projected = deepcopy(dict(profile))
+    raw_keys = projected.get("keys")
+    if not isinstance(raw_keys, Mapping):
+        raise ValueError("globalvalues_profile_keys_invalid")
+    key_profiles = deepcopy(dict(raw_keys))
+    if set(key_profiles) != {
+        decision.key for decision in ledger.decisions
+    }:
+        raise ValueError("globalvalues_profile_ledger_keys_mismatch")
+
+    changed_keys: list[str] = []
+    unchanged_keys: list[str] = []
+    for decision in ledger.decisions:
+        if decision.kind is GlobalValueDecisionKind.LLM_OPTIMIZED_START:
+            changed_keys.append(decision.key)
+            key_profiles[decision.key] = {
+                **key_profiles[decision.key],
+                "baseline_value": _first_profile_value(
+                    decision.baseline_canonical_json
+                ),
+                "decision": "llm_optimized_start",
+                "status": "llm_optimized_start",
+                "new_value": _first_profile_value(
+                    decision.emitted_canonical_json
+                ),
+                "authority_id": decision.authority_id,
+                "reason": decision.reason,
+            }
+        else:
+            unchanged_keys.append(decision.key)
+    changed_keys.sort()
+    unchanged_keys.sort()
+    status = "llm_optimized_start" if changed_keys else "baseline_confirmed"
+    summary = deepcopy(dict(projected.get("summary", {})))
+    summary.update(
+        {
+            "status": status,
+            "key_count": len(ledger.decisions),
+            "changed_key_count": len(changed_keys),
+            "unchanged_key_count": len(unchanged_keys),
+        }
+    )
+    projected.update(
+        {
+            "status": status,
+            "summary": summary,
+            "key_count": len(ledger.decisions),
+            "changed_keys": changed_keys,
+            "unchanged_keys": unchanged_keys,
+            "keys": key_profiles,
+        }
+    )
+    return projected
+
+
+def _first_profile_value(canonical_json: bytes) -> str:
+    value = json.loads(canonical_json)
+    if isinstance(value, Mapping):
+        rows = value.get("values")
+        if (
+            isinstance(rows, list)
+            and rows
+            and isinstance(rows[0], Mapping)
+            and "value" in rows[0]
+        ):
+            return str(rows[0]["value"])
+    return str(value)
