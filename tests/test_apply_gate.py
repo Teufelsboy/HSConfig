@@ -400,6 +400,70 @@ def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
     }
 
 
+def test_apply_gate_allows_valid_llm_optimized_start(tmp_path: Path):
+    package = tmp_path / "optimized"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
+    write_json(manifest_path, manifest)
+    optimized_paths = (
+        "reports/optimized_start/starter_context.json",
+        "reports/optimized_start/candidate-1.json",
+        "reports/optimized_start/candidate-2.json",
+        "reports/optimized_start/candidate-3.json",
+        "reports/optimized_start/starter_config_decision.json",
+    )
+    for path in optimized_paths:
+        write_json(package / path, {"frozen": path})
+    receipt = build_package_derivation_receipt(package)
+    digest = write_package_derivation_receipt(
+        package / DERIVATION_RECEIPT_PATH,
+        receipt,
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary.update(
+        {
+            "strategy_authority_mode": "llm_optimized_start",
+            "optimized_start_derivation_validity": True,
+            "package_derivation": {
+                "schema_version": 3,
+                "receipt_path": DERIVATION_RECEIPT_PATH,
+                "receipt_sha256": digest,
+                "verified": True,
+            },
+        }
+    )
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["policy"] == "ALLOWED_WITH_WARNINGS"
+    assert gate["reasons"] == [
+        {"reason": "runtime_load_safe_package"},
+        {"reason": "exact_source_not_closed", "blocking": False},
+        {"reason": "semantic_strength_incomplete", "blocking": False},
+    ]
+
+
 def test_apply_gate_allows_valid_but_not_guide_strong_as_load_safe_apply(tmp_path: Path):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)

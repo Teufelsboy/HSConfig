@@ -10,6 +10,11 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from hsconfig.configuration_mode import (
+    CONSERVATIVE,
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.evidence_contract import PolicyProfile, load_policy_profile
 from hsconfig.globalvalues_decisions import (
@@ -906,6 +911,41 @@ def verified_emission_input_from_ledgers(
     )
 
 
+def optimized_verified_emission_input_from_ledgers(
+    *,
+    disposition_ledger: DispositionLedger,
+    runtime_surface_ledger: Mapping[str, Any],
+) -> VerifiedEmissionInput:
+    """Bind optimized semantics to each distinct physical observation once."""
+
+    expectations = verified_emission_input_from_ledgers(
+        disposition_ledger=disposition_ledger,
+        runtime_surface_ledger={},
+    ).expectations
+    physical_rows = tuple(
+        {
+            "physical_owner": owner,
+            "relative_path": surface,
+            "meaningful": True,
+            "schema_supported": True,
+        }
+        for owner, surface in sorted(
+            _physical_cardid_observations(runtime_surface_ledger)
+        )
+    )
+    rejected_rows = [
+        *runtime_surface_ledger.get("physical_errors", ()),
+        *runtime_surface_ledger.get("unexpected_runtime_emissions", ()),
+        *runtime_surface_ledger.get("linked_runtime_owner_collisions", ()),
+    ]
+    return verified_emission_input_from_physical_rows(
+        disposition_ledger=disposition_ledger,
+        physical_rows=physical_rows,
+        rejected_rows=rejected_rows,
+        semantic_expectations=expectations,
+    )
+
+
 def _physical_cardid_observations(
     runtime_surface_ledger: Mapping[str, Any],
 ) -> set[tuple[str, str]]:
@@ -1268,9 +1308,23 @@ def build_pre_run_closure_report(
     layered_evidence_report: Mapping[str, Any],
     source_acquisition_report: Mapping[str, Any],
     verified_emissions: VerifiedEmissionInput,
+    configuration_mode: str = CONSERVATIVE,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one package-local closure report from typed and physical facts."""
 
+    configuration_mode = configuration_mode_from_manifest(
+        {"configuration_mode": configuration_mode}
+    )
+    if configuration_mode == LLM_OPTIMIZED_START:
+        if runtime_surface_ledger is None:
+            raise ValueError("optimized_verified_emission_authority_missing")
+        expected_verified = optimized_verified_emission_input_from_ledgers(
+            disposition_ledger=disposition_ledger,
+            runtime_surface_ledger=runtime_surface_ledger,
+        )
+        if verified_emissions != expected_verified:
+            raise ValueError("optimized_verified_emission_authority_mismatch")
     fingerprint = disposition_ledger.deck_fingerprint
     fingerprints = {
         fingerprint,
@@ -1560,7 +1614,8 @@ def _verified_emission_from_package_view(
     *,
     package: PackageView,
     disposition_ledger: DispositionLedger,
-    source_contract_audit: Mapping[str, Any],
+    source_contract_audit: Mapping[str, Any] | None,
+    configuration_mode: str = CONSERVATIVE,
 ) -> VerifiedEmissionInput:
     try:
         runtime_ledger = package.read_json(
@@ -1632,7 +1687,8 @@ def _verified_emission_from_package_view(
     if actual_observations != reported_observations:
         raise ValueError("verified_emission_package_view_mismatch")
 
-    expectations = pre_emission_expectations_from_audit(
+    expectations = _verified_emission_expectations_for_mode(
+        configuration_mode=configuration_mode,
         disposition_ledger=disposition_ledger,
         source_contract_audit=source_contract_audit,
     )
@@ -1658,6 +1714,26 @@ def _verified_emission_from_package_view(
         physical_rows=physical_rows,
         rejected_rows=rejected_rows,
         semantic_expectations=expectations,
+    )
+
+
+def _verified_emission_expectations_for_mode(
+    *,
+    configuration_mode: str,
+    disposition_ledger: DispositionLedger,
+    source_contract_audit: Mapping[str, Any] | None,
+) -> tuple[VerifiedSemanticExpectation, ...]:
+    mode = configuration_mode_from_manifest(
+        {"configuration_mode": configuration_mode}
+    )
+    if mode == LLM_OPTIMIZED_START or source_contract_audit is None:
+        return verified_emission_input_from_ledgers(
+            disposition_ledger=disposition_ledger,
+            runtime_surface_ledger={},
+        ).expectations
+    return pre_emission_expectations_from_audit(
+        disposition_ledger=disposition_ledger,
+        source_contract_audit=source_contract_audit,
     )
 
 
@@ -2088,6 +2164,7 @@ def validate_pre_run_package_reports(
         raise ValueError(
             "pre_run_contract_schema_version_invalid"
         )
+    configuration_mode = configuration_mode_from_manifest(input_manifest)
     disposition = load_disposition_ledger_report(
         documents["reports/disposition_ledger.json"]
     )
@@ -2166,23 +2243,20 @@ def validate_pre_run_package_reports(
     )
     if verified.deck_fingerprint != fingerprint:
         raise ValueError("verified_emission_cross_deck")
-    expected_semantics = (
-        pre_emission_expectations_from_audit(
-            disposition_ledger=disposition,
-            source_contract_audit=source_contract_audit,
-        )
-        if source_contract_audit is not None
-        else verified_emission_input_from_ledgers(
-            disposition_ledger=disposition,
-            runtime_surface_ledger={},
-        ).expectations
+    expected_semantics = _verified_emission_expectations_for_mode(
+        configuration_mode=configuration_mode,
+        disposition_ledger=disposition,
+        source_contract_audit=source_contract_audit,
     )
     if verified.expectations != expected_semantics:
         raise ValueError(
             "verified_emission_semantic_projection_mismatch"
         )
     if package.exists("reports/runtime_surface_ledger.json"):
-        if source_contract_audit is None:
+        if (
+            configuration_mode == CONSERVATIVE
+            and source_contract_audit is None
+        ):
             raise ValueError(
                 "verified_emission_package_view_mismatch"
             )
@@ -2190,6 +2264,7 @@ def validate_pre_run_package_reports(
             package=package,
             disposition_ledger=disposition,
             source_contract_audit=source_contract_audit,
+            configuration_mode=configuration_mode,
         )
         if verified != rederived_verified:
             raise ValueError(

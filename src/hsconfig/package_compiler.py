@@ -79,6 +79,7 @@ from hsconfig.pre_run_metrics import (
     disposition_ledger_document,
     globalvalues_decision_report_document,
     source_acquisition_input_binding,
+    optimized_verified_emission_input_from_ledgers,
 )
 from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
 from hsconfig.source_acquisition_closure import (
@@ -1221,6 +1222,10 @@ def compile_package(
                 else "partial"
             ),
         )
+        verified_emissions = optimized_verified_emission_input_from_ledgers(
+            disposition_ledger=disposition,
+            runtime_surface_ledger=semantic_ledger,
+        )
     classified = {
         str(claim_id): row["evidence_authority"]
         for claim_id, row in source_audit.get("claim_rows", {}).items()
@@ -1246,6 +1251,8 @@ def compile_package(
         layered_evidence_report=layered,
         source_acquisition_report=acquisition_report,
         verified_emissions=verified_emissions,
+        configuration_mode=request.invocation.configuration_mode,
+        runtime_surface_ledger=semantic_ledger,
     )
     if request.invocation.include_disposition_diagnostics:
         source_audit = project_source_contract_audit_from_dispositions(

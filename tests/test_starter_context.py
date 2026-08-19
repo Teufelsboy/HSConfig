@@ -12,7 +12,12 @@ from hsconfig.starter_context import (
     _enforce_starter_context_max_bytes,
     build_starter_context,
 )
-from hsconfig.starter_contract import STARTER_CONTEXT_MAX_BYTES
+from hsconfig.starter_contract import (
+    STARTER_CONTEXT_FIELDS,
+    STARTER_CONTEXT_MAX_BYTES,
+    STARTER_SCHEMA_VERSION,
+)
+from hsconfig.starter_document import seal_starter_document
 from tests.helpers.audited_package_request import audited_request
 
 
@@ -34,6 +39,120 @@ SHADOWPRIEST_CARD_COUNTS = {
     "WON_065": 2,
     "YOD_032": 2,
 }
+
+
+def test_sealed_starter_context_validator_accepts_canonical_shadowpriest(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.starter_context import validate_starter_context_document
+
+    context = build_starter_context(
+        audited_request(tmp_path, "ShadowPriest").snapshot
+    )
+
+    validated = validate_starter_context_document(context.document)
+
+    assert validated == context
+    assert validated.document.canonical_json == context.document.canonical_json
+    assert validated.deck_fingerprint == (
+        "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327"
+    )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "source_evidence_wrong_type",
+        "source_row_unknown_key",
+        "source_gap_missing_key",
+        "source_provenance_drift",
+        "source_claim_count_drift",
+        "deck_identity_unknown_key",
+        "cards_missing_key",
+        "linked_entity_unknown_key",
+        "identity_card_count_drift",
+        "deck_shape_drift",
+        "runtime_contract_unknown_key",
+        "baseline_missing_key",
+        "baseline_receipt_drift",
+        "existing_claim_unknown_key",
+        "claim_card_unbound",
+        "claim_deck_match_drift",
+        "claim_source_family_drift",
+        "safety_boundary_missing_key",
+    ),
+)
+def test_sealed_starter_context_validator_rejects_nested_family_drift(
+    tmp_path: Path,
+    defect: str,
+) -> None:
+    from hsconfig.starter_context import validate_starter_context_document
+
+    context = build_starter_context(
+        audited_request(tmp_path, "ShadowPriest").snapshot
+    )
+    value = context.document.to_value()
+    del value["content_sha256"]
+
+    if defect == "source_evidence_wrong_type":
+        value["source_evidence"] = "invalid"
+    elif defect == "source_row_unknown_key":
+        value["source_evidence"]["rows"][0]["captured_at"] = (
+            "2026-07-29T00:00:00Z"
+        )
+    elif defect == "source_gap_missing_key":
+        del value["source_evidence"]["gaps"][0]["value"]
+    elif defect == "source_provenance_drift":
+        value["source_evidence"]["rows"][0]["provenance"]["mode"] = (
+            "invented"
+        )
+    elif defect == "source_claim_count_drift":
+        value["source_evidence"]["rows"][0]["claim_count"] = 2
+    elif defect == "deck_identity_unknown_key":
+        value["deck_identity"]["invented_authority"] = "hidden"
+    elif defect == "cards_missing_key":
+        del value["cards"][0]["name"]
+    elif defect == "linked_entity_unknown_key":
+        linked_card = next(card for card in value["cards"] if card["linked_entities"])
+        linked_card["linked_entities"][0]["invented_authority"] = "hidden"
+    elif defect == "identity_card_count_drift":
+        value["deck_identity"]["card_count_total"] = 29
+    elif defect == "deck_shape_drift":
+        value["deck_shape"]["physical_card_count"] = 29
+    elif defect == "runtime_contract_unknown_key":
+        value["supported_runtime_contract"]["invented_surface"] = {}
+    elif defect == "baseline_missing_key":
+        del value["globalvalues_baseline"]["values"]["GlobalTaunt"]
+    elif defect == "baseline_receipt_drift":
+        value["globalvalues_baseline"]["receipt"]["snapshot_status"] = (
+            "live_runtime"
+        )
+    elif defect == "existing_claim_unknown_key":
+        value["existing_claims"][0]["invented_authority"] = "hidden"
+    elif defect == "claim_card_unbound":
+        value["existing_claims"][0]["cards"] = ["EX1_001"]
+    elif defect == "claim_deck_match_drift":
+        value["existing_claims"][0]["deck_match"][
+            "target_deck_code_sha256"
+        ] = "f" * 64
+    elif defect == "claim_source_family_drift":
+        value["existing_claims"][0]["source_family"] = "invented"
+    elif defect == "safety_boundary_missing_key":
+        del value["known_safety_boundaries"][0]["restrictions"]
+    else:
+        raise AssertionError(f"unknown_test_defect:{defect}")
+
+    rebound = seal_starter_document(
+        value,
+        expected_fields=STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^starter_context_document_invalid$",
+    ):
+        validate_starter_context_document(rebound)
 
 
 def test_shadowpriest_starter_context_closes_identity_cards_and_runtime_contract(

@@ -204,3 +204,33 @@ def test_linked_runtime_entity_has_explicit_source_to_owner_manifest_row():
         "SW_448"
     )
     assert "owner_kind" not in by_file["CustomConfig/shadowpriest/SW_448.json"]
+
+
+def test_optimized_report_ownership_is_mode_bound():
+    optimized_paths = (
+        "reports/optimized_start/starter_context.json",
+        "reports/optimized_start/candidate-1.json",
+        "reports/optimized_start/candidate-2.json",
+        "reports/optimized_start/candidate-3.json",
+        "reports/optimized_start/starter_config_decision.json",
+    )
+
+    manifest = build_output_ownership_manifest(
+        ["reports/operator_summary.json", *optimized_paths]
+    )
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    for path in optimized_paths:
+        assert by_file[path]["classification"] == "diagnostic"
+        assert by_file[path]["authority"] == "diagnostic_optimized_start"
+        assert by_file[path]["configuration_modes"] == [
+            "LLM_OPTIMIZED_START"
+        ]
+        assert by_file[path]["diagnostic_only"] is True
+        assert by_file[path]["can_block_apply"] is False
+    assert manifest["summary"]["unclassified_file_count"] == 0
+    assert [
+        row["file"]
+        for row in manifest["files"]
+        if row["classification"] == "gate"
+    ] == ["reports/operator_summary.json"]

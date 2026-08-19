@@ -6,10 +6,15 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
+from hsconfig.configuration_mode import (
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.package_domain import canonical_relative_path
 from hsconfig.package_derivation_receipt import (
+    OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
     canonical_source_receipt_reasons,
     derivation_schema_version_supported,
     package_authority_context_verified,
@@ -62,6 +67,11 @@ class OperatorAuthorityInputs:
     source_acquisition_eligibility: bool
     derivation_receipt_validity: bool
     package_summary_parity: bool
+    strategy_authority_mode: Literal[
+        "source_contract",
+        "llm_optimized_start",
+    ] = "source_contract"
+    optimized_start_derivation_validity: bool = False
     blocking_reasons: tuple[Mapping[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
@@ -414,6 +424,18 @@ def _authority_from_raw_inputs(
         if package_authority is None
         else authority.get("source_apply_eligible") is True
     )
+    strategy_authority_mode = authority.get(
+        "strategy_authority_mode",
+        "source_contract",
+    )
+    if strategy_authority_mode not in {
+        "source_contract",
+        "llm_optimized_start",
+    }:
+        raise ValueError("strategy_authority_mode_invalid")
+    optimized_start_derivation_validity = (
+        authority.get("optimized_start_derivation_validity") is True
+    )
     blocking_rows: list[Mapping[str, Any]] = []
     if not strict_report_valid:
         errors = technical_report.get("errors", [])
@@ -436,7 +458,10 @@ def _authority_from_raw_inputs(
                 "code": "technical_validation_failed",
             }
         )
-    if not source_eligible:
+    if (
+        strategy_authority_mode == "source_contract"
+        and not source_eligible
+    ):
         reasons = authority.get(
             "source_apply_eligibility_reasons",
             [],
@@ -468,6 +493,10 @@ def _authority_from_raw_inputs(
         source_acquisition_eligibility=source_eligible,
         derivation_receipt_validity=derivation_valid,
         package_summary_parity=True,
+        strategy_authority_mode=strategy_authority_mode,
+        optimized_start_derivation_validity=(
+            optimized_start_derivation_validity
+        ),
         blocking_reasons=_mapping_rows(blocking_rows),
     )
 
@@ -636,6 +665,12 @@ def _with_package_summary_parity(
         "use_config_now",
         "use_config_now_scope",
     )
+    if inputs.authority.strategy_authority_mode == "llm_optimized_start":
+        status_keys = (
+            *status_keys,
+            "strategy_authority_mode",
+            "optimized_start_derivation_validity",
+        )
     parity = all(
         stored_summary.get(key) == expected.get(key)
         for key in status_keys
@@ -653,6 +688,13 @@ def _replay_package_authority(
     documents: Mapping[str, Any],
     package: PackageView,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    manifest = documents.get("reports/input_manifest.json")
+    configuration_mode = configuration_mode_from_manifest(manifest)
+    strategy_authority_mode = (
+        "llm_optimized_start"
+        if configuration_mode == LLM_OPTIMIZED_START
+        else "source_contract"
+    )
     receipt_present = "package_derivation_receipt.json" in documents
     receipt = documents.get("package_derivation_receipt.json")
     if not isinstance(receipt, Mapping):
@@ -677,6 +719,8 @@ def _replay_package_authority(
                 "source_apply_eligible": False,
                 "source_apply_eligibility_reasons": [reason],
                 "derivation_receipt_verified": False,
+                "strategy_authority_mode": strategy_authority_mode,
+                "optimized_start_derivation_validity": False,
                 "receipt_sha256": "",
             },
         )
@@ -709,7 +753,6 @@ def _replay_package_authority(
         and validation.get("status") == "passed"
         and not validation.get("errors")
     )
-    manifest = documents.get("reports/input_manifest.json")
     verification = (
         manifest.get("deck_input_verification")
         if isinstance(manifest, Mapping)
@@ -740,6 +783,13 @@ def _replay_package_authority(
             else ["diagnostic_source_not_apply_eligible"]
         ),
         "derivation_receipt_verified": receipt_verified,
+        "strategy_authority_mode": strategy_authority_mode,
+        "optimized_start_derivation_validity": (
+            strategy_authority_mode == "llm_optimized_start"
+            and receipt_verified
+            and receipt.get("schema_version")
+            == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+        ),
         "receipt_sha256": receipt_sha256,
     }
     return package_derivation, package_authority

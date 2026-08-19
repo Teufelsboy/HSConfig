@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 from dataclasses import dataclass
 from types import FunctionType, MappingProxyType, SimpleNamespace
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from hsconfig.apply_decision import build_apply_decision
 from hsconfig.operator_summary_inputs import (
@@ -44,6 +44,11 @@ class _SealedApplyFacts(NamedTuple):
     package_summary_parity: bool
     blocking_reasons: tuple[dict[str, Any], ...]
     informational_reasons: tuple[dict[str, Any], ...]
+    strategy_authority_mode: Literal[
+        "source_contract",
+        "llm_optimized_start",
+    ] = "source_contract"
+    optimized_start_derivation_validity: bool = False
 
     @property
     def technical_valid(self) -> bool:
@@ -121,6 +126,8 @@ _AUTHORITY_SLOTS = tuple(
         "source_acquisition_eligibility",
         "derivation_receipt_validity",
         "package_summary_parity",
+        "strategy_authority_mode",
+        "optimized_start_derivation_validity",
         "blocking_reasons",
     )
 )
@@ -150,6 +157,8 @@ def _build_operator_status_unsealed(
         source_acquisition_eligibility_slot,
         derivation_receipt_validity_slot,
         package_summary_parity_slot,
+        strategy_authority_mode_slot,
+        optimized_start_derivation_validity_slot,
         blocking_reasons_slot,
     ) = _AUTHORITY_SLOTS
     package_authority = package_authority_slot.__get__(
@@ -190,6 +199,16 @@ def _build_operator_status_unsealed(
         authority,
         _AUTHORITY_TYPE,
     )
+    strategy_authority_mode = strategy_authority_mode_slot.__get__(
+        authority,
+        _AUTHORITY_TYPE,
+    )
+    optimized_start_derivation_validity = (
+        optimized_start_derivation_validity_slot.__get__(
+            authority,
+            _AUTHORITY_TYPE,
+        )
+    )
     blocking_reasons = blocking_reasons_slot.__get__(
         authority,
         _AUTHORITY_TYPE,
@@ -208,6 +227,25 @@ def _build_operator_status_unsealed(
         informational.append(
             {"reason": "semantic_strength_incomplete", "blocking": False}
         )
+    if (
+        strategy_authority_mode == "llm_optimized_start"
+        and not source_acquisition_eligibility
+    ):
+        source_reasons = (
+            package_authority.get("source_apply_eligibility_reasons", ())
+            if package_authority is not None
+            else ()
+        )
+        informational.extend(
+            {
+                "reason": str(reason),
+                "blocking": False,
+            }
+            for reason in (
+                source_reasons
+                or ("diagnostic_source_not_apply_eligible",)
+            )
+        )
     facts = SimpleNamespace(
         strict_package_validation=strict_package_validation,
         actual_runtime_surface_inventory=actual_runtime_surface_inventory,
@@ -216,6 +254,10 @@ def _build_operator_status_unsealed(
         source_acquisition_eligibility=source_acquisition_eligibility,
         derivation_receipt_validity=derivation_receipt_validity,
         package_summary_parity=package_summary_parity,
+        strategy_authority_mode=strategy_authority_mode,
+        optimized_start_derivation_validity=(
+            optimized_start_derivation_validity
+        ),
         blocking_reasons=tuple(
             dict(reason) for reason in blocking_reasons
         ),
@@ -248,6 +290,7 @@ def _build_operator_status_unsealed(
         )
     elif (
         technical_valid
+        and strategy_authority_mode == "source_contract"
         and not source_acquisition_eligibility
     ):
         next_action = "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"

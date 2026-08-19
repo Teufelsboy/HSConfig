@@ -1,11 +1,23 @@
+from copy import deepcopy
+from dataclasses import replace
 import json
 from pathlib import Path
 
 import pytest
 
 from hsconfig.io import write_json
-from hsconfig.validate_package import validate_config_package
+from hsconfig.starter_context import build_starter_context
+from hsconfig.starter_decision import load_validated_starter_selection
+from hsconfig.validate_package import (
+    _validate_globalvalues,
+    validate_config_package,
+)
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS, supported_surface
+from tests.helpers.audited_package_request import audited_request
+from tests.test_starter_decision import (
+    three_candidates,
+    write_selection_bundle,
+)
 
 
 def _strict_package(tmp_path: Path) -> Path:
@@ -29,6 +41,73 @@ def _strict_package(tmp_path: Path) -> Path:
         },
     )
     return package
+
+
+def test_optimized_globalvalues_are_bound_to_the_complete_decision_ledger(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.package_compiler import compile_package
+
+    conservative = audited_request(tmp_path / "request", "ShadowPriest")
+    context = build_starter_context(conservative.snapshot)
+    decision_path = write_selection_bundle(
+        tmp_path / "selection",
+        context,
+        three_candidates(context),
+    )
+    selection = load_validated_starter_selection(
+        decision_path,
+        current_context=context,
+    )
+    compiled = compile_package(
+        replace(
+            conservative,
+            invocation=replace(
+                conservative.invocation,
+                configuration_mode="LLM_OPTIMIZED_START",
+            ),
+            starter_selection=selection,
+        )
+    )
+    documents = {
+        row.relative_path: row.document.to_value()
+        for row in compiled.json_projections
+    }
+    globalvalues = next(
+        row.document.to_value()
+        for row in compiled.runtime_surfaces
+        if row.file_name == "GlobalValues.json"
+    )
+    arguments = {
+        "baseline": documents["reports/globalvalues_baseline.json"],
+        "profile": documents["reports/globalvalues_profile.json"],
+        "authority_matrix": documents[
+            "reports/global_values_authority_matrix.json"
+        ],
+        "require_profile": True,
+        "configuration_mode": "LLM_OPTIMIZED_START",
+        "optimized_globalvalues_decision_ledger": documents[
+            "reports/globalvalues_decision_ledger.json"
+        ],
+    }
+
+    assert _validate_globalvalues(
+        Path("GlobalValues.json"),
+        globalvalues,
+        **arguments,
+    ) == []
+    tampered = deepcopy(globalvalues)
+    tampered["FirstTurnValueWeight"]["values"][0]["value"] = "9.99"
+    errors = _validate_globalvalues(
+        Path("GlobalValues.json"),
+        tampered,
+        **arguments,
+    )
+
+    assert any(
+        "does not match optimized decision ledger" in error
+        for error in errors
+    )
 
 
 @pytest.mark.parametrize(

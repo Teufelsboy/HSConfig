@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from hsconfig.visionai_registry import report_spec
+from hsconfig.visionai_registry import (
+    OPTIMIZED_START_REPORT_PATHS,
+    report_spec,
+)
 
 
-def build_report_ownership() -> list[dict[str, Any]]:
-    return [
+def build_report_ownership(
+    *,
+    include_optimized_start: bool = False,
+) -> list[dict[str, Any]]:
+    rows = [
         _report_row(
             "reports/operator_summary.json",
             classification="gate",
@@ -176,6 +182,23 @@ def build_report_ownership() -> list[dict[str, Any]]:
             open_order="10",
         ),
     ]
+    if include_optimized_start:
+        rows.extend(
+            _report_row(
+                path,
+                producer="prepare",
+                classification="diagnostic",
+                answers="which frozen optimized-start document bound package strategy",
+                open_order="18",
+                configuration_modes=["LLM_OPTIMIZED_START"],
+                notes=(
+                    "mode-bound derivation evidence; diagnostic for human review; "
+                    "does not replace operator_summary.json"
+                ),
+            )
+            for path in OPTIMIZED_START_REPORT_PATHS
+        )
+    return rows
 
 
 def _report_row(relative_path: str, **metadata: Any) -> dict[str, Any]:

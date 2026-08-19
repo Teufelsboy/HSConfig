@@ -11,10 +11,16 @@ from hsconfig.compile_globalvalues import (
     _numeric_value,
     compile_globalvalues,
 )
+from hsconfig.configuration_mode import (
+    CONSERVATIVE,
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.condition_format import classify_runtime_condition
 from hsconfig.globalvalues_decisions import (
     build_globalvalues_decision_ledger,
     canonical_globalvalues_baseline_sha256,
+    project_optimized_globalvalues_profile,
 )
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
@@ -71,12 +77,24 @@ def validate_config_package(
     globalvalues_baseline: dict[str, Any] | None = None,
     globalvalues_profile: dict[str, Any] | None = None,
     globalvalues_authority_matrix: dict[str, Any] | None = None,
+    configuration_mode: str = CONSERVATIVE,
+    optimized_globalvalues_decision_ledger: dict[str, Any] | None = None,
     require_complete_package: bool = False,
     require_globalvalues_profile: bool = False,
 ) -> dict[str, Any]:
     root = Path(package_root)
     errors: list[str] = []
     checked_files = 0
+    try:
+        configuration_mode = configuration_mode_from_manifest(
+            {"configuration_mode": configuration_mode}
+        )
+    except ValueError:
+        return {
+            "status": "failed",
+            "errors": ["configuration_mode_invalid"],
+            "checked_files": checked_files,
+        }
 
     custom_config = root / "CustomConfig"
     if not custom_config.exists():
@@ -123,6 +141,10 @@ def validate_config_package(
                     globalvalues_baseline=globalvalues_baseline,
                     globalvalues_profile=globalvalues_profile,
                     globalvalues_authority_matrix=globalvalues_authority_matrix,
+                    configuration_mode=configuration_mode,
+                    optimized_globalvalues_decision_ledger=(
+                        optimized_globalvalues_decision_ledger
+                    ),
                     require_globalvalues_profile=require_globalvalues_profile,
                 )
             )
@@ -166,6 +188,8 @@ def _validate_blocks(
     globalvalues_baseline: dict[str, Any] | None,
     globalvalues_profile: dict[str, Any] | None,
     globalvalues_authority_matrix: dict[str, Any] | None,
+    configuration_mode: str,
+    optimized_globalvalues_decision_ledger: dict[str, Any] | None,
     require_globalvalues_profile: bool,
 ) -> list[str]:
     if path.name == MULLIGAN_RUNTIME_FILE:
@@ -184,6 +208,10 @@ def _validate_blocks(
             globalvalues_profile,
             globalvalues_authority_matrix,
             require_profile=require_globalvalues_profile,
+            configuration_mode=configuration_mode,
+            optimized_globalvalues_decision_ledger=(
+                optimized_globalvalues_decision_ledger
+            ),
         )
     if path.name in SERIALIZED_SPECIAL_RUNTIME_SURFACES:
         return _validate_values_blocks(path, data)
@@ -323,6 +351,8 @@ def _validate_globalvalues(
     authority_matrix: dict[str, Any] | None,
     *,
     require_profile: bool,
+    configuration_mode: str,
+    optimized_globalvalues_decision_ledger: dict[str, Any] | None,
 ) -> list[str]:
     errors = _validate_values_blocks(path, data)
     errors.extend(_validate_globalvalues_rows(path, data))
@@ -383,15 +413,26 @@ def _validate_globalvalues(
                 )
             )
             if baseline is not None and authority_matrix is not None:
-                errors.extend(
-                    _validate_canonical_globalvalues_authority(
-                        path,
-                        data,
-                        baseline,
-                        profile,
-                        authority_matrix,
+                if configuration_mode == LLM_OPTIMIZED_START:
+                    errors.extend(
+                        _validate_optimized_globalvalues_authority(
+                            path,
+                            data,
+                            baseline,
+                            profile,
+                            optimized_globalvalues_decision_ledger,
+                        )
                     )
-                )
+                else:
+                    errors.extend(
+                        _validate_canonical_globalvalues_authority(
+                            path,
+                            data,
+                            baseline,
+                            profile,
+                            authority_matrix,
+                        )
+                    )
         expected_key_count = (
             len(baseline) + len(generated_overlay_keys) if baseline is not None else len(data)
         )
@@ -404,6 +445,70 @@ def _validate_globalvalues(
         missing_profiles = runtime_keys - profiled_keys
         for key in sorted(missing_profiles):
             errors.append(f"{path}: GlobalValues profile missing key {key}")
+    return errors
+
+
+def _validate_optimized_globalvalues_authority(
+    path: Path,
+    data: dict[str, Any],
+    baseline: dict[str, Any],
+    profile: dict[str, Any],
+    decision_ledger_document: dict[str, Any] | None,
+) -> list[str]:
+    if decision_ledger_document is None:
+        return [
+            f"{path}: optimized GlobalValues decision ledger missing"
+        ]
+    try:
+        from hsconfig.pre_run_metrics import (
+            load_globalvalues_decision_ledger_report,
+        )
+
+        ledger = load_globalvalues_decision_ledger_report(
+            decision_ledger_document
+        )
+        if ledger.baseline_sha256 != canonical_globalvalues_baseline_sha256(
+            baseline
+        ):
+            raise ValueError("optimized_globalvalues_baseline_mismatch")
+        baseline_by_key = {
+            key: json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+            for key, value in baseline.items()
+        }
+        if any(
+            decision.baseline_canonical_json
+            != baseline_by_key.get(decision.key)
+            or decision.kind.value
+            not in {"copy_baseline", "llm_optimized_start"}
+            for decision in ledger.decisions
+        ):
+            raise ValueError("optimized_globalvalues_baseline_mismatch")
+        desired_state = {
+            decision.key: json.loads(decision.emitted_canonical_json)
+            for decision in ledger.decisions
+        }
+        canonical = compile_globalvalues(desired_state, {})
+        canonical["profile"] = project_optimized_globalvalues_profile(
+            canonical["profile"],
+            ledger=ledger,
+        )
+    except (TypeError, ValueError):
+        return [f"{path}: optimized GlobalValues decision ledger invalid"]
+
+    errors: list[str] = []
+    if data != canonical["config"]:
+        errors.append(
+            f"{path}: GlobalValues config does not match optimized decision ledger"
+        )
+    if profile != canonical["profile"]:
+        errors.append(
+            f"{path}: GlobalValues profile does not match optimized decision ledger"
+        )
     return errors
 
 

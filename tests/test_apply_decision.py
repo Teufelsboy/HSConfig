@@ -218,3 +218,62 @@ def test_primary_apply_reason_fails_closed_for_blank_reason_value() -> None:
     )
 
     assert primary_apply_reason(decision) == "blocked"
+
+
+def test_optimized_apply_uses_bound_starter_derivation_without_fabricated_source_authority() -> None:
+    from hsconfig.apply_decision import ApplyFacts, build_apply_decision
+
+    common = {
+        "strict_package_validation": True,
+        "actual_runtime_surface_inventory": True,
+        "deck_input_verification": True,
+        "source_receipt_validity": True,
+        "source_acquisition_eligibility": False,
+        "derivation_receipt_validity": True,
+        "package_summary_parity": True,
+    }
+    conservative = build_apply_decision(
+        ApplyFacts(
+            **common,
+            strategy_authority_mode="source_contract",
+            optimized_start_derivation_validity=False,
+        )
+    )
+    optimized = build_apply_decision(
+        ApplyFacts(
+            **common,
+            strategy_authority_mode="llm_optimized_start",
+            optimized_start_derivation_validity=True,
+            informational_reasons=(
+                {
+                    "reason": "diagnostic_source_not_apply_eligible",
+                    "blocking": False,
+                },
+            ),
+        )
+    )
+    stale = build_apply_decision(
+        ApplyFacts(
+            **common,
+            strategy_authority_mode="llm_optimized_start",
+            optimized_start_derivation_validity=False,
+        )
+    )
+
+    assert conservative.allowed is False
+    assert conservative.reasons[0]["reason"] == (
+        "source_acquisition_not_eligible"
+    )
+    assert optimized.allowed is True
+    assert optimized.policy == "ALLOWED_WITH_WARNINGS"
+    assert optimized.reasons[-1] == {
+        "reason": "diagnostic_source_not_apply_eligible",
+        "blocking": False,
+    }
+    assert stale.allowed is False
+    assert stale.reasons == (
+        {
+            "reason": "optimized_start_derivation_invalid",
+            "code": "optimized_start_derivation_invalid",
+        },
+    )

@@ -24,7 +24,10 @@ def build_output_ownership_manifest(
     *,
     card_behavior_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    report_rows = {row["file"]: dict(row) for row in build_report_ownership()}
+    report_rows = {
+        row["file"]: dict(row)
+        for row in build_report_ownership(include_optimized_start=True)
+    }
     accepted_behavior_rows, owner_collisions = (
         partition_runtime_entity_owner_rows(
             row
@@ -131,7 +134,7 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
         }
     if path in report_rows:
         row = dict(report_rows[path])
-        return {
+        classified = {
             "file": path,
             "producer": row.get("producer", "prepare"),
             "classification": row.get("classification", "diagnostic"),
@@ -140,6 +143,11 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
             "runtime_surface": None,
             "diagnostic_only": row.get("classification") != "gate",
         }
+        if "configuration_modes" in row:
+            classified["configuration_modes"] = list(
+                row["configuration_modes"]
+            )
+        return classified
     legacy_surface = _legacy_non_normal_surface(path)
     if legacy_surface:
         return {

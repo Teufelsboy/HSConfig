@@ -207,6 +207,23 @@ def _build_operator_summary_unfrozen(
         if package_authority is None
         else package_authority.get("source_apply_eligible") is True
     )
+    strategy_authority_mode = (
+        "source_contract"
+        if package_authority is None
+        else package_authority.get(
+            "strategy_authority_mode",
+            "source_contract",
+        )
+    )
+    if strategy_authority_mode not in {
+        "source_contract",
+        "llm_optimized_start",
+    }:
+        raise ValueError("strategy_authority_mode_invalid")
+    optimized_start_derivation_validity = (
+        package_authority is not None
+        and package_authority.get("optimized_start_derivation_validity") is True
+    )
     source_apply_eligibility_reasons = (
         []
         if package_authority is None
@@ -365,6 +382,10 @@ def _build_operator_summary_unfrozen(
         source_apply_eligibility_reasons=source_apply_eligibility_reasons,
         exact_source_closed=exact_source_closed,
         semantic_status=semantic_status,
+        strategy_authority_mode=strategy_authority_mode,
+        optimized_start_derivation_validity=(
+            optimized_start_derivation_validity
+        ),
     )
     apply_decision = build_apply_decision(apply_facts)
     decision_projection = apply_decision_summary_projection(
@@ -376,7 +397,11 @@ def _build_operator_summary_unfrozen(
     runtime_apply_mode = str(decision_projection["runtime_apply_mode"])
     runtime_apply_allowed = decision_projection["runtime_apply_allowed"] is True
     runtime_apply_reason = str(decision_projection["runtime_apply_reason"])
-    if technical_status == "VALID_PACKAGE" and not source_apply_eligible:
+    if (
+        technical_status == "VALID_PACKAGE"
+        and strategy_authority_mode == "source_contract"
+        and not source_apply_eligible
+    ):
         next_action = DIAGNOSTIC_SOURCE_NEXT_ACTION
     runtime_apply_requires_flag = None
     mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
@@ -438,6 +463,7 @@ def _build_operator_summary_unfrozen(
             source_to_runtime_explainability_report or {},
         ),
         semantic_handoff_status=str(semantic_handoff["semantic_handoff_status"]),
+        strategy_authority_mode=strategy_authority_mode,
     )
     readiness_ledger_hash = str(
         (config_readiness_report or {}).get("surface_ledger_sha256", "")
@@ -549,12 +575,25 @@ def _build_operator_summary_unfrozen(
             output_ownership_manifest
         ),
         "generated_files": sorted(str(path) for path in generated_files),
-        "report_ownership": build_report_ownership(),
+        "report_ownership": build_report_ownership(
+            include_optimized_start=(
+                strategy_authority_mode == "llm_optimized_start"
+            )
+        ),
     }
     if deck_input_verification is not None:
         summary["deck_input_verification"] = dict(deck_input_verification)
     if package_derivation is not None:
         summary["package_derivation"] = dict(package_derivation)
+    if strategy_authority_mode == "llm_optimized_start":
+        summary.update(
+            {
+                "strategy_authority_mode": strategy_authority_mode,
+                "optimized_start_derivation_validity": (
+                    optimized_start_derivation_validity
+                ),
+            }
+        )
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
 
@@ -700,6 +739,7 @@ def _configuration_assurance(
     source_backed_status: str,
     source_lanes: list[str],
     semantic_handoff_status: str,
+    strategy_authority_mode: str,
 ) -> dict[str, Any]:
     if "deck_matched_public_guide" in source_lanes:
         source_authority = "exact"
@@ -709,7 +749,7 @@ def _configuration_assurance(
         source_authority = "partial"
     else:
         source_authority = "unknown"
-    return {
+    assurance = {
         "load_safety": (
             "validated" if technical_status == "VALID_PACKAGE" else "not_validated"
         ),
@@ -719,6 +759,9 @@ def _configuration_assurance(
         "optimality_claim_allowed": False,
         "runtime_gate_impact": "none",
     }
+    if strategy_authority_mode == "llm_optimized_start":
+        assurance["assurance"] = "LLM_OPTIMIZED_START"
+    return assurance
 
 
 def _nested_source_lanes(value: Any) -> set[str]:
@@ -761,7 +804,12 @@ def refresh_generated_file_accounting(
     refreshed["output_ownership_summary"] = _output_ownership_summary(
         output_ownership_manifest
     )
-    refreshed["report_ownership"] = build_report_ownership()
+    refreshed["report_ownership"] = build_report_ownership(
+        include_optimized_start=(
+            operator_summary.get("strategy_authority_mode")
+            == "llm_optimized_start"
+        )
+    )
     return refreshed
 
 
@@ -1125,6 +1173,8 @@ def _operator_apply_facts(
     source_apply_eligibility_reasons: list[str],
     exact_source_closed: bool,
     semantic_status: str,
+    strategy_authority_mode: str,
+    optimized_start_derivation_validity: bool,
 ) -> ApplyFacts:
     technical_valid = technical_status == "VALID_PACKAGE"
     has_package_context = package_derivation is not None
@@ -1160,7 +1210,10 @@ def _operator_apply_facts(
                 "code": "invalid_package",
             }
         )
-    if not source_apply_eligible:
+    if (
+        strategy_authority_mode == "source_contract"
+        and not source_apply_eligible
+    ):
         blocking_reasons.extend(
             {
                 "reason": reason,
@@ -1190,6 +1243,20 @@ def _operator_apply_facts(
                 "blocking": False,
             }
         )
+    if (
+        strategy_authority_mode == "llm_optimized_start"
+        and not source_apply_eligible
+    ):
+        informational_reasons.extend(
+            {
+                "reason": reason,
+                "blocking": False,
+            }
+            for reason in (
+                source_apply_eligibility_reasons
+                or [DIAGNOSTIC_SOURCE_APPLY_REASON]
+            )
+        )
     return ApplyFacts(
         strict_package_validation=strict_valid,
         actual_runtime_surface_inventory=technical_valid,
@@ -1198,6 +1265,10 @@ def _operator_apply_facts(
         source_acquisition_eligibility=source_apply_eligible,
         derivation_receipt_validity=derivation_valid,
         package_summary_parity=True,
+        strategy_authority_mode=strategy_authority_mode,
+        optimized_start_derivation_validity=(
+            optimized_start_derivation_validity
+        ),
         blocking_reasons=blocking_reasons,
         informational_reasons=tuple(informational_reasons),
     )

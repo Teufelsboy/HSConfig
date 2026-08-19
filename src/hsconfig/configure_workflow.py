@@ -8,6 +8,10 @@ import tempfile
 from types import SimpleNamespace
 from typing import Any, Callable
 
+from hsconfig.configuration_mode import (
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.apply_decision import (
     apply_decision_payload,
     apply_decision_summary_projection,
@@ -79,6 +83,19 @@ from hsconfig.source_candidate_plan import (
     is_acquisition_url,
 )
 from hsconfig.source_readiness_preview import build_source_readiness_preview
+from hsconfig.starter_contract import (
+    STARTER_CONTEXT_FIELDS,
+    STARTER_CONTEXT_FILENAME,
+    STARTER_CONTEXT_MAX_BYTES,
+    STARTER_DECISION_FILENAME,
+    STARTER_SCHEMA_VERSION,
+)
+from hsconfig.starter_decision import (
+    ValidatedStarterSelection,
+    load_validated_starter_selection,
+)
+from hsconfig.starter_context import validate_starter_context_document
+from hsconfig.starter_document import load_starter_document
 
 
 ApplyPayload = Callable[[argparse.Namespace], tuple[dict[str, Any], int]]
@@ -1083,6 +1100,7 @@ def _execute_configure_namespace(
             "runtime_package_match_status": "not_checked",
             "runtime_package_match": None,
     }
+    summary_payload.update(_optimized_start_configure_summary(package_dir))
     try:
         invoke_configure_fault(
             configure_fault_hook,
@@ -1106,6 +1124,83 @@ def _finish(
     summary = build_configure_summary(status, payload)
     write_json(out / "configure_summary.json", summary)
     return summary, exit_code
+
+
+def _optimized_start_configure_summary(
+    package_dir: Path,
+) -> dict[str, Any]:
+    reports = Path(package_dir) / "reports"
+    manifest = read_json(reports / "input_manifest.json")
+    if configuration_mode_from_manifest(manifest) != LLM_OPTIMIZED_START:
+        return {}
+    optimized = reports / "optimized_start"
+    try:
+        selection = _load_validated_optimized_start_selection(optimized)
+        return _optimized_start_selection_summary(selection)
+    except (KeyError, OSError, TypeError, ValueError):
+        raise ValueError("optimized_start_summary_invalid") from None
+
+
+def _load_validated_optimized_start_selection(
+    optimized: Path,
+) -> ValidatedStarterSelection:
+    context_document = load_starter_document(
+        optimized / STARTER_CONTEXT_FILENAME,
+        maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+        expected_fields=STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    context = validate_starter_context_document(context_document)
+    return load_validated_starter_selection(
+        optimized / STARTER_DECISION_FILENAME,
+        current_context=context,
+    )
+
+
+def _optimized_start_selection_summary(
+    selection: ValidatedStarterSelection,
+) -> dict[str, Any]:
+    context = selection.context.document.to_value()
+    decision = selection.decision.to_value()
+    selected = selection.selected.document.to_value()
+    candidate_ids = [
+        candidate.candidate_id for candidate in selection.candidates
+    ]
+    selected_id = selection.selected.candidate_id
+    confidence = decision["critic_identity"]["confidence"]
+    baseline = context["globalvalues_baseline"]["values"]
+    globalvalues = selection.selected.globalvalues.to_value()
+    mulligan = selected["mulligan"]
+    card_rules = selected["card_rules"]
+    risks = decision["risks"]
+    changed_globalvalues = sorted(
+        key
+        for key, value in globalvalues.items()
+        if baseline.get(key) != value
+    )
+    combo = selected["combo"]
+    return {
+        "optimized_start": {
+            "status": (
+                "selected" if confidence == "high" else "low_confidence"
+            ),
+            "candidate_ids": candidate_ids,
+            "selected_candidate_id": selected_id,
+            "selection_rationale": decision["selection_rationale"],
+            "mulligan_summary": {
+                "rule_count": len(mulligan),
+                "rules": [dict(row) for row in mulligan],
+            },
+            "changed_globalvalues": changed_globalvalues,
+            "per_card_rules": [dict(row) for row in card_rules],
+            "combo_summary": {
+                "configured": combo is not None,
+                "rule": combo,
+            },
+            "risks": list(risks),
+            "next_report_path": "reports/operator_summary.json",
+        }
+    }
 
 
 def _finish_stage_exception(out: Path, stage: str, exc: Exception) -> tuple[dict[str, Any], int]:

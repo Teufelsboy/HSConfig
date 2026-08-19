@@ -4,6 +4,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from hsconfig.configuration_mode import (
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.apply_decision import (
     ApplyDecision,
     ApplyFacts,
@@ -16,6 +20,7 @@ from hsconfig.io import read_json
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     DERIVATION_RECEIPT_SCHEMA_VERSION,
+    OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
     deck_input_apply_eligibility_reasons,
     derivation_schema_version_supported,
     package_derivation_receipt_sha256,
@@ -104,6 +109,24 @@ def recompute_apply_decision(
     enforce_summary_core_fields: bool,
 ) -> tuple[ApplyDecision, ApplyFacts]:
     package = Path(package_root)
+    try:
+        configuration_mode = configuration_mode_from_manifest(
+            read_json(package / "reports" / "input_manifest.json")
+        )
+    except (OSError, TypeError, ValueError):
+        facts = _single_blocked_fact(
+            "strict_package_validation",
+            {
+                "reason": "configuration_mode_invalid",
+                "code": "configuration_mode_invalid",
+            },
+        )
+        return build_apply_decision(facts), facts
+    strategy_authority_mode = (
+        "llm_optimized_start"
+        if configuration_mode == LLM_OPTIMIZED_START
+        else "source_contract"
+    )
     runtime_surface_reasons = [
         *_required_package_structure_reasons(package, summary),
         *_summary_optional_surface_reasons(summary),
@@ -114,7 +137,11 @@ def recompute_apply_decision(
     deck_input_reasons = _deck_input_verification_reasons(package, summary)
     source_receipt_reasons = source_authority_reasons(package)
     source_acquisition_reasons = source_apply_eligibility_reasons(package)
-    derivation_reasons = _package_derivation_reasons(package, summary)
+    derivation_reasons = _package_derivation_reasons(
+        package,
+        summary,
+        strategy_authority_mode=strategy_authority_mode,
+    )
     package_summary_reasons = [
         *_actual_files_missing_from_summary_reasons(package, summary),
         *_summary_files_missing_from_actual_reasons(package, summary),
@@ -123,13 +150,19 @@ def recompute_apply_decision(
         package,
         summary=summary,
         source_receipt_reasons=source_receipt_reasons,
+        source_acquisition_reasons=source_acquisition_reasons,
+        strategy_authority_mode=strategy_authority_mode,
     )
     blocking_reason_groups = (
         runtime_surface_reasons,
         strict_reasons,
         deck_input_reasons,
         source_receipt_reasons,
-        source_acquisition_reasons,
+        (
+            source_acquisition_reasons
+            if strategy_authority_mode == "source_contract"
+            else []
+        ),
         derivation_reasons,
         package_summary_reasons,
     )
@@ -149,6 +182,11 @@ def recompute_apply_decision(
         source_acquisition_eligibility=not source_acquisition_reasons,
         derivation_receipt_validity=not derivation_reasons,
         package_summary_parity=not package_summary_reasons,
+        strategy_authority_mode=strategy_authority_mode,
+        optimized_start_derivation_validity=(
+            strategy_authority_mode == "llm_optimized_start"
+            and not derivation_reasons
+        ),
         blocking_reasons=primary_blocking_reasons,
         informational_reasons=informational_reasons,
     )
@@ -266,6 +304,8 @@ def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
 def _package_derivation_reasons(
     package: Path,
     summary: dict[str, Any],
+    *,
+    strategy_authority_mode: str = "source_contract",
 ) -> list[dict[str, str]]:
     receipt_path = package / DERIVATION_RECEIPT_PATH
     summary_derivation = summary.get("package_derivation")
@@ -311,10 +351,26 @@ def _package_derivation_reasons(
                 "detail": "Package derivation receipt schema version is not supported.",
             }
         ]
+    expected_schema_version = (
+        OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+        if strategy_authority_mode == "llm_optimized_start"
+        else DERIVATION_RECEIPT_SCHEMA_VERSION
+    )
+    if receipt.get("schema_version") != expected_schema_version:
+        return [
+            _optimized_derivation_reason()
+            if strategy_authority_mode == "llm_optimized_start"
+            else {
+                "reason": "package_derivation_receipt_schema_unsupported",
+                "code": "package_derivation_receipt_schema_unsupported",
+                "detail": "Package derivation receipt schema version is not supported.",
+            }
+        ]
     if (
         not derivation_schema_version_supported(
             summary_derivation.get("schema_version")
         )
+        or summary_derivation.get("schema_version") != expected_schema_version
         or summary_derivation.get("verified") is not True
     ):
         return [
@@ -340,6 +396,8 @@ def _package_derivation_reasons(
     if not verified:
         first = verification_reasons[0] if verification_reasons else {}
         code = str(first.get("code") or "package_derivation_mismatch")
+        if strategy_authority_mode == "llm_optimized_start":
+            return [_optimized_derivation_reason()]
         return [
             {
                 "reason": code,
@@ -353,7 +411,7 @@ def _package_derivation_reasons(
             }
         ]
     expected_summary_derivation = {
-        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "schema_version": expected_schema_version,
         "receipt_path": DERIVATION_RECEIPT_PATH,
         "receipt_sha256": actual_digest,
         "verified": True,
@@ -367,6 +425,14 @@ def _package_derivation_reasons(
             }
         ]
     return []
+
+
+def _optimized_derivation_reason() -> dict[str, str]:
+    return {
+        "reason": "optimized_start_derivation_invalid",
+        "code": "optimized_start_derivation_invalid",
+        "detail": "Optimized-start derivation evidence is missing, stale, or malformed.",
+    }
 
 
 def _required_package_structure_reasons(
@@ -581,6 +647,8 @@ def _informational_reasons(
     *,
     summary: dict[str, Any],
     source_receipt_reasons: list[dict[str, str]],
+    source_acquisition_reasons: list[dict[str, str]] | None = None,
+    strategy_authority_mode: str = "source_contract",
 ) -> tuple[dict[str, Any], ...]:
     reasons: list[dict[str, Any]] = []
     if source_receipt_reasons:
@@ -607,6 +675,14 @@ def _informational_reasons(
                 "reason": "semantic_strength_incomplete",
                 "blocking": False,
             }
+        )
+    if strategy_authority_mode == "llm_optimized_start":
+        reasons.extend(
+            {
+                **reason,
+                "blocking": False,
+            }
+            for reason in (source_acquisition_reasons or [])
         )
     return tuple(reasons)
 
@@ -643,6 +719,8 @@ def _single_blocked_fact(
         "source_acquisition_eligibility": True,
         "derivation_receipt_validity": True,
         "package_summary_parity": True,
+        "strategy_authority_mode": "source_contract",
+        "optimized_start_derivation_validity": False,
     }
     values[fact_name] = False
     return ApplyFacts(

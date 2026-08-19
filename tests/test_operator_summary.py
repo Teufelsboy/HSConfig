@@ -722,6 +722,37 @@ def test_operator_summary_separates_pre_run_assurance_dimensions():
     }
 
 
+def test_operator_summary_reports_llm_optimized_start_without_optimality_claim():
+    summary = build_operator_summary(
+        deck_name="OptimizedStart",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        package_authority={
+            "strategy_authority_mode": "llm_optimized_start",
+            "optimized_start_derivation_validity": True,
+            "source_apply_eligible": False,
+            "source_apply_eligibility_reasons": [
+                "diagnostic_source_not_apply_eligible"
+            ],
+            "canonical_receipt_count": 0,
+            "exact_source_closed": False,
+        },
+    )
+
+    assert summary["strategy_authority_mode"] == "llm_optimized_start"
+    assert summary["optimized_start_derivation_validity"] is True
+    assert summary["configuration_assurance"]["assurance"] == (
+        "LLM_OPTIMIZED_START"
+    )
+    assert summary["configuration_assurance"]["optimality_claim_allowed"] is False
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert "diagnostic_source_not_apply_eligible" in (
+        summary["source_apply_eligibility_reasons"]
+    )
+    assert "GAMEPLAY_OPTIMAL" not in json.dumps(summary, sort_keys=True)
+
+
 def test_operator_summary_names_current_package_apply_authority():
     summary = build_operator_summary(
         deck_name="Current Package",

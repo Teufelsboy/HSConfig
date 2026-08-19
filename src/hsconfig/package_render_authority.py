@@ -40,6 +40,7 @@ from hsconfig.strict_package_validation import (
     validate_complete_package_from_view,
 )
 from hsconfig.strong_promotion_report import build_strong_promotion_report
+from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
 
 
 class RenderFaultPoint(StrEnum):
@@ -406,8 +407,10 @@ def _core_runtime_files(model: PackageModel) -> Mapping[str, bytes]:
 
 def _pre_authority_files(model: PackageModel) -> Mapping[str, bytes]:
     files = {
-        projection.relative_path: _json_bytes(
-            projection.document.to_value()
+        projection.relative_path: (
+            projection.document.canonical_json
+            if projection.relative_path in OPTIMIZED_START_REPORT_PATHS
+            else _json_bytes(projection.document.to_value())
         )
         for projection in model.compiled.json_projections
     }

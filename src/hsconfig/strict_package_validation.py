@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hsconfig.configuration_mode import (
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.io import decode_json_bytes
 from hsconfig.package_io import (
     read_optional_profile,
@@ -33,7 +37,11 @@ from hsconfig.validate_package import (
     _validate_top_level,
     validate_config_package,
 )
-from hsconfig.visionai_registry import REQUIRED_RUNTIME_SURFACES, supported_surface
+from hsconfig.visionai_registry import (
+    OPTIMIZED_START_REPORT_PATHS,
+    REQUIRED_RUNTIME_SURFACES,
+    supported_surface,
+)
 
 
 LINKED_RUNTIME_OWNER_EVIDENCE_MISSING = (
@@ -79,6 +87,18 @@ def validate_complete_package(
 ) -> dict[str, Any]:
     """Run the strict complete-package contract used by every caller."""
     package_path = Path(package)
+    try:
+        configuration_mode, optimized_globalvalues_ledger = (
+            _globalvalues_authority_from_view(
+                DirectoryPackageView(package_path)
+            )
+        )
+    except (OSError, TypeError, ValueError):
+        return {
+            "status": "failed",
+            "errors": ["configuration_mode_invalid"],
+            "checked_files": 0,
+        }
     baseline = read_required_baseline(package_path)
     profile = read_optional_profile(package_path)
     authority_matrix_path = (
@@ -94,6 +114,10 @@ def validate_complete_package(
         globalvalues_baseline=baseline,
         globalvalues_profile=profile,
         globalvalues_authority_matrix=authority_matrix,
+        configuration_mode=configuration_mode,
+        optimized_globalvalues_decision_ledger=(
+            optimized_globalvalues_ledger
+        ),
         require_complete_package=True,
         require_globalvalues_profile=True,
     )
@@ -102,6 +126,9 @@ def validate_complete_package(
     pre_run_contract_errors = _validate_pre_run_contract_reports(
         package_path,
         legacy_contract_version=legacy_pre_run_contract_version,
+    )
+    optimized_start_report_errors = _validate_optimized_start_reports(
+        package_path
     )
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
@@ -114,6 +141,7 @@ def validate_complete_package(
         and not physical_surface_errors
         and not globalvalues_contract_errors
         and not pre_run_contract_errors
+        and not optimized_start_report_errors
     ):
         return report
     return {
@@ -125,6 +153,7 @@ def validate_complete_package(
             *linked_runtime_errors,
             *physical_surface_errors,
             *pre_run_contract_errors,
+            *optimized_start_report_errors,
         ],
     }
 
@@ -137,6 +166,16 @@ def validate_complete_package_from_view(
 ) -> dict[str, Any]:
     """Run the strict complete-package contract without filesystem adaptation."""
 
+    try:
+        configuration_mode, optimized_globalvalues_ledger = (
+            _globalvalues_authority_from_view(package)
+        )
+    except (OSError, TypeError, ValueError):
+        return {
+            "status": "failed",
+            "errors": ["configuration_mode_invalid"],
+            "checked_files": 0,
+        }
     baseline = _required_view_mapping(
         package,
         "reports/globalvalues_baseline.json",
@@ -157,12 +196,19 @@ def validate_complete_package_from_view(
         globalvalues_baseline=baseline,
         globalvalues_profile=profile,
         globalvalues_authority_matrix=authority_matrix,
+        configuration_mode=configuration_mode,
+        optimized_globalvalues_decision_ledger=(
+            optimized_globalvalues_ledger
+        ),
     )
     linked_runtime_errors = _validate_linked_runtime_entities_view(package)
     physical_surface_errors = _validate_runtime_surface_ledger_view(package)
     pre_run_contract_errors = _validate_pre_run_contract_reports_view(
         package,
         legacy_contract_version=legacy_pre_run_contract_version,
+    )
+    optimized_start_report_errors = _validate_optimized_start_reports_view(
+        package
     )
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
@@ -175,6 +221,7 @@ def validate_complete_package_from_view(
         and not physical_surface_errors
         and not globalvalues_contract_errors
         and not pre_run_contract_errors
+        and not optimized_start_report_errors
     ):
         return report
     return {
@@ -186,8 +233,66 @@ def validate_complete_package_from_view(
             *linked_runtime_errors,
             *physical_surface_errors,
             *pre_run_contract_errors,
+            *optimized_start_report_errors,
         ],
     }
+
+
+def _validate_optimized_start_reports(package: Path) -> list[str]:
+    manifest_path = package / "reports" / "input_manifest.json"
+    try:
+        manifest = decode_json_bytes(manifest_path.read_bytes())
+        configuration_mode = configuration_mode_from_manifest(manifest)
+    except (OSError, TypeError, ValueError):
+        return ["configuration_mode_invalid"]
+    optimized_root = package / "reports" / "optimized_start"
+    actual = {
+        path.relative_to(package).as_posix()
+        for path in optimized_root.rglob("*")
+        if path.is_file()
+    } if optimized_root.is_dir() else set()
+    return _optimized_start_report_set_errors(
+        configuration_mode=configuration_mode,
+        actual=actual,
+    )
+
+
+def _validate_optimized_start_reports_view(
+    package: PackageView,
+) -> list[str]:
+    try:
+        manifest = decode_json_bytes(
+            package.read_bytes("reports/input_manifest.json")
+        )
+        configuration_mode = configuration_mode_from_manifest(manifest)
+    except (OSError, TypeError, ValueError):
+        return ["configuration_mode_invalid"]
+    actual = {
+        path
+        for path in package.file_names()
+        if path.startswith("reports/optimized_start/")
+    }
+    return _optimized_start_report_set_errors(
+        configuration_mode=configuration_mode,
+        actual=actual,
+    )
+
+
+def _optimized_start_report_set_errors(
+    *,
+    configuration_mode: str,
+    actual: set[str],
+) -> list[str]:
+    expected = set(OPTIMIZED_START_REPORT_PATHS)
+    if configuration_mode != LLM_OPTIMIZED_START:
+        return (
+            ["optimized_start_reports_forbidden_in_conservative_mode"]
+            if actual
+            else []
+        )
+    if actual != expected:
+        return ["optimized_start_reports_incomplete"]
+    return []
 
 
 def _validate_config_package_view(
@@ -196,6 +301,8 @@ def _validate_config_package_view(
     globalvalues_baseline: dict[str, Any],
     globalvalues_profile: dict[str, Any] | None,
     globalvalues_authority_matrix: dict[str, Any] | None,
+    configuration_mode: str,
+    optimized_globalvalues_decision_ledger: dict[str, Any] | None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     checked_files = 0
@@ -263,6 +370,10 @@ def _validate_config_package_view(
                     globalvalues_authority_matrix=(
                         globalvalues_authority_matrix
                     ),
+                    configuration_mode=configuration_mode,
+                    optimized_globalvalues_decision_ledger=(
+                        optimized_globalvalues_decision_ledger
+                    ),
                     require_globalvalues_profile=True,
                 )
             )
@@ -276,6 +387,25 @@ def _validate_config_package_view(
         "errors": errors,
         "checked_files": checked_files,
     }
+
+
+def _globalvalues_authority_from_view(
+    package: PackageView,
+) -> tuple[str, dict[str, Any] | None]:
+    manifest = _required_view_mapping(
+        package,
+        "reports/input_manifest.json",
+        "input manifest",
+    )
+    configuration_mode = configuration_mode_from_manifest(manifest)
+    if configuration_mode != LLM_OPTIMIZED_START:
+        return configuration_mode, None
+    ledger = _required_view_mapping(
+        package,
+        "reports/globalvalues_decision_ledger.json",
+        "optimized GlobalValues decision ledger",
+    )
+    return configuration_mode, ledger
 
 
 def _validate_pre_run_contract_reports(

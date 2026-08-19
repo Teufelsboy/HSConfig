@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,11 @@ class ApplyFacts:
     source_acquisition_eligibility: bool
     derivation_receipt_validity: bool
     package_summary_parity: bool
+    strategy_authority_mode: Literal[
+        "source_contract",
+        "llm_optimized_start",
+    ] = "source_contract"
+    optimized_start_derivation_validity: bool = False
     blocking_reasons: Sequence[Mapping[str, Any]] = ()
     informational_reasons: Sequence[Mapping[str, Any]] = ()
 
@@ -51,16 +56,40 @@ _FACT_REASON = (
 
 
 def build_apply_decision(facts: ApplyFacts) -> ApplyDecision:
+    if facts.strategy_authority_mode == "source_contract":
+        fact_reasons = _FACT_REASON
+    elif facts.strategy_authority_mode == "llm_optimized_start":
+        fact_reasons = tuple(
+            (
+                "optimized_start_derivation_validity",
+                "optimized_start_derivation_invalid",
+            )
+            if fact_name == "source_acquisition_eligibility"
+            else (fact_name, reason)
+            for fact_name, reason in _FACT_REASON
+        )
+    else:
+        return ApplyDecision(
+            allowed=False,
+            mode="blocked",
+            policy="BLOCKED",
+            reasons=(
+                {
+                    "reason": "strategy_authority_mode_invalid",
+                    "code": "strategy_authority_mode_invalid",
+                },
+            ),
+        )
     allowed = all(
         bool(getattr(facts, fact_name))
-        for fact_name, _reason in _FACT_REASON
+        for fact_name, _reason in fact_reasons
     )
     if not allowed:
         reasons = _reason_tuple(facts.blocking_reasons)
         if not reasons:
             reasons = tuple(
                 {"reason": reason, "code": reason}
-                for fact_name, reason in _FACT_REASON
+                for fact_name, reason in fact_reasons
                 if not bool(getattr(facts, fact_name))
             )
         return ApplyDecision(
@@ -95,7 +124,7 @@ def apply_decision_summary_projection(
     decision: ApplyDecision,
     facts: ApplyFacts,
 ) -> dict[str, Any]:
-    return {
+    projection = {
         "technical_status": (
             "VALID_PACKAGE" if facts.technical_valid else "INVALID_PACKAGE"
         ),
@@ -104,6 +133,16 @@ def apply_decision_summary_projection(
         "runtime_apply_mode": decision.mode,
         "runtime_apply_reason": primary_apply_reason(decision),
     }
+    if facts.strategy_authority_mode == "llm_optimized_start":
+        projection.update(
+            {
+                "strategy_authority_mode": "llm_optimized_start",
+                "optimized_start_derivation_validity": (
+                    facts.optimized_start_derivation_validity
+                ),
+            }
+        )
+    return projection
 
 
 def primary_apply_reason(decision: ApplyDecision) -> str:

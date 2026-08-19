@@ -20,7 +20,7 @@ from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import read_json, write_json
 from hsconfig.package_assembler import assemble_package
 from hsconfig.package_compiler import compile_package
-from hsconfig.package_render_authority import AuthorityArtifact
+from hsconfig.package_render_authority import ArtifactSet, AuthorityArtifact
 from hsconfig.run_manifest import (
     build_tree_manifest_from_artifacts,
     write_tree_manifest,
@@ -50,6 +50,40 @@ def test_strict_validation_passed_requires_clean_passed_report(
     from hsconfig.strict_package_validation import strict_validation_passed
 
     assert strict_validation_passed(report) is expected
+
+
+def test_package_view_mode_authority_binds_only_optimized_globalvalues_ledger(
+) -> None:
+    optimized_ledger = {"sealed": "optimized-ledger"}
+    optimized = ArtifactSet.from_files(
+        {
+            "reports/input_manifest.json": (
+                b'{"configuration_mode":"LLM_OPTIMIZED_START"}'
+            ),
+            "reports/globalvalues_decision_ledger.json": json.dumps(
+                optimized_ledger
+            ).encode("utf-8"),
+        }
+    )
+    conservative = ArtifactSet.from_files(
+        {"reports/input_manifest.json": b"{}"}
+    )
+
+    assert strict_package_validation._globalvalues_authority_from_view(
+        optimized
+    ) == ("LLM_OPTIMIZED_START", optimized_ledger)
+    assert strict_package_validation._globalvalues_authority_from_view(
+        conservative
+    ) == ("CONSERVATIVE", None)
+    invalid = ArtifactSet.from_files(
+        {
+            "reports/input_manifest.json": (
+                b'{"configuration_mode":"not-a-mode"}'
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="configuration_mode_invalid"):
+        strict_package_validation._globalvalues_authority_from_view(invalid)
 
 
 class _OneReadPackageView:
@@ -1488,3 +1522,54 @@ def test_strict_validation_rejects_non_curated_linked_runtime_relation(
         error.startswith("linked_runtime_entity_relation_invalid:")
         for error in report["errors"]
     )
+
+
+def test_optimized_reports_are_all_or_none_and_conservative_mode_rejects_strays(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.io import read_json, write_json
+    from hsconfig.package_model import DirectoryPackageView
+    from hsconfig.strict_package_validation import (
+        strict_validation_passed,
+        validate_complete_package,
+        validate_complete_package_from_view,
+    )
+    from tests.helpers.current_apply_eligible_package import (
+        write_current_apply_eligible_package,
+    )
+
+    optimized_paths = (
+        "reports/optimized_start/starter_context.json",
+        "reports/optimized_start/candidate-1.json",
+        "reports/optimized_start/candidate-2.json",
+        "reports/optimized_start/candidate-3.json",
+        "reports/optimized_start/starter_config_decision.json",
+    )
+    conservative = write_current_apply_eligible_package(
+        tmp_path / "conservative"
+    )
+    write_json(conservative / optimized_paths[0], {"unexpected": True})
+    conservative_report = validate_complete_package(conservative)
+
+    optimized = write_current_apply_eligible_package(tmp_path / "optimized")
+    manifest_path = optimized / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
+    write_json(manifest_path, manifest)
+    for path in optimized_paths:
+        write_json(optimized / path, {"frozen": path})
+    complete_path_report = validate_complete_package(optimized)
+    complete_view_report = validate_complete_package_from_view(
+        DirectoryPackageView(optimized)
+    )
+    (optimized / optimized_paths[-1]).unlink()
+    incomplete_report = validate_complete_package(optimized)
+
+    assert strict_validation_passed(conservative_report) is False
+    assert "optimized_start_reports_forbidden_in_conservative_mode" in (
+        conservative_report["errors"]
+    )
+    assert strict_validation_passed(complete_path_report) is True
+    assert complete_path_report == complete_view_report
+    assert strict_validation_passed(incomplete_report) is False
+    assert "optimized_start_reports_incomplete" in incomplete_report["errors"]

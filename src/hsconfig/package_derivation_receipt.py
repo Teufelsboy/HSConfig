@@ -6,6 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hsconfig.configuration_mode import (
+    LLM_OPTIMIZED_START,
+    configuration_mode_from_manifest,
+)
 from hsconfig.io import decode_json_bytes, read_json
 from hsconfig.package_model import PackageView
 from hsconfig.source_acquisition_provenance import (
@@ -20,9 +24,11 @@ from hsconfig.strict_package_validation import (
     strict_validation_passed,
     validate_complete_package,
 )
+from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
 
 
 DERIVATION_RECEIPT_SCHEMA_VERSION = 2
+OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION = 3
 DERIVATION_RECEIPT_PATH = "package_derivation_receipt.json"
 
 _AUTHORITATIVE_JSON_PATHS = (
@@ -68,7 +74,24 @@ _AUTHORITY_EXCLUDED_TOP_LEVEL_FIELDS = {
 
 
 def derivation_schema_version_supported(value: Any) -> bool:
-    return type(value) is int and value == DERIVATION_RECEIPT_SCHEMA_VERSION
+    return type(value) is int and value in {
+        DERIVATION_RECEIPT_SCHEMA_VERSION,
+        OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
+    }
+
+
+def _receipt_schema_for(package: PackageView) -> int:
+    manifest = package.read_json("reports/input_manifest.json")
+    if configuration_mode_from_manifest(manifest) == LLM_OPTIMIZED_START:
+        return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+    return DERIVATION_RECEIPT_SCHEMA_VERSION
+
+
+def _receipt_schema_for_path(package: Path) -> int:
+    manifest = read_json(package / "reports" / "input_manifest.json")
+    if configuration_mode_from_manifest(manifest) == LLM_OPTIMIZED_START:
+        return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+    return DERIVATION_RECEIPT_SCHEMA_VERSION
 
 
 def build_package_derivation_receipt(
@@ -76,7 +99,7 @@ def build_package_derivation_receipt(
 ) -> dict[str, Any]:
     package = Path(package_root)
     return {
-        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "schema_version": _receipt_schema_for_path(package),
         "inputs": _authoritative_input_digests(package),
         "linked_runtime_owners": _linked_runtime_owners(package),
         "runtime_files": _runtime_file_digests(package),
@@ -119,7 +142,7 @@ def build_package_derivation_receipt_from_view(
     """Build a receipt without adapting an existing package view to Path."""
 
     return {
-        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "schema_version": _receipt_schema_for(package),
         "inputs": _authoritative_input_digests_from_view(package),
         "linked_runtime_owners": _linked_runtime_owners_from_view(package),
         "runtime_files": _runtime_file_digests_from_view(package),
@@ -193,7 +216,7 @@ def refresh_package_derivation_authority(
         receipt,
     )
     authority: dict[str, Any] = {
-        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "schema_version": receipt["schema_version"],
         "receipt_path": DERIVATION_RECEIPT_PATH,
         "receipt_sha256": digest,
         "verified": verified,
@@ -510,6 +533,13 @@ def build_package_authority_context(
     package_root: str | Path,
 ) -> dict[str, Any]:
     package = Path(package_root)
+    manifest = read_json(package / "reports" / "input_manifest.json")
+    configuration_mode = configuration_mode_from_manifest(manifest)
+    strategy_authority_mode = (
+        "llm_optimized_start"
+        if configuration_mode == LLM_OPTIMIZED_START
+        else "source_contract"
+    )
     final_strict_validation_report = validate_complete_package(package)
     receipt_verified = False
     receipt_sha256: str | None = None
@@ -546,6 +576,14 @@ def build_package_authority_context(
             for row in source_apply_reasons
         ],
         "derivation_receipt_verified": receipt_verified,
+        "strategy_authority_mode": strategy_authority_mode,
+        "optimized_start_derivation_validity": (
+            strategy_authority_mode == "llm_optimized_start"
+            and receipt_verified
+            and isinstance(receipt, Mapping)
+            and receipt.get("schema_version")
+            == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+        ),
         "receipt_sha256": receipt_sha256,
     }
 
@@ -553,7 +591,7 @@ def build_package_authority_context(
 def package_authority_context_verified(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
-    return all(
+    common_verified = all(
         value.get(key) is True
         for key in (
             "strict_validation_passed",
@@ -562,12 +600,38 @@ def package_authority_context_verified(value: Any) -> bool:
             "derivation_receipt_verified",
         )
     )
+    strategy_authority_mode = value.get(
+        "strategy_authority_mode",
+        "source_contract",
+    )
+    if strategy_authority_mode == "source_contract":
+        return common_verified
+    if strategy_authority_mode == "llm_optimized_start":
+        return (
+            common_verified
+            and value.get("optimized_start_derivation_validity") is True
+        )
+    return False
 
 
 def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     inputs: dict[str, str] = {}
     manifest: Mapping[str, Any] | None = None
-    for relative_path in _AUTHORITATIVE_JSON_PATHS:
+    configuration_manifest = read_json(
+        package_root / "reports" / "input_manifest.json"
+    )
+    configuration_mode = configuration_mode_from_manifest(
+        configuration_manifest
+    )
+    authoritative_paths = (
+        *_AUTHORITATIVE_JSON_PATHS,
+        *(
+            OPTIMIZED_START_REPORT_PATHS
+            if configuration_mode == LLM_OPTIMIZED_START
+            else ()
+        ),
+    )
+    for relative_path in authoritative_paths:
         path = package_root / Path(relative_path)
         if (
             relative_path == "reports/card_behavior_plan_report.json"
@@ -627,7 +691,18 @@ def _authoritative_input_digests_from_view(
 ) -> dict[str, str]:
     inputs: dict[str, str] = {}
     manifest: Mapping[str, Any] | None = None
-    for relative_path in _AUTHORITATIVE_JSON_PATHS:
+    configuration_mode = configuration_mode_from_manifest(
+        package.read_json("reports/input_manifest.json")
+    )
+    authoritative_paths = (
+        *_AUTHORITATIVE_JSON_PATHS,
+        *(
+            OPTIMIZED_START_REPORT_PATHS
+            if configuration_mode == LLM_OPTIMIZED_START
+            else ()
+        ),
+    )
+    for relative_path in authoritative_paths:
         if (
             relative_path == "reports/card_behavior_plan_report.json"
             and not package.exists(relative_path)

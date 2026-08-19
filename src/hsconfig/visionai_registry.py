@@ -60,6 +60,13 @@ class ReportSpec:
 
 
 NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
+OPTIMIZED_START_REPORT_PATHS = (
+    "reports/optimized_start/starter_context.json",
+    "reports/optimized_start/candidate-1.json",
+    "reports/optimized_start/candidate-2.json",
+    "reports/optimized_start/candidate-3.json",
+    "reports/optimized_start/starter_config_decision.json",
+)
 CARDID_SURFACE_FAMILY = "CARDID.json"
 CARDID_SURFACE_DISPLAY_NAME = "per-card <CARDID>.json"
 GLOBALVALUES_RUNTIME_FILE = "GlobalValues.json"
@@ -477,6 +484,10 @@ _OWNED_REPORT_SPECS = (
         True,
         False,
         "physical_runtime_surface_ledger",
+    ),
+    *(
+        (path, False, False, "diagnostic_optimized_start")
+        for path in OPTIMIZED_START_REPORT_PATHS
     ),
 )
 

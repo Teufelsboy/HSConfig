@@ -33,6 +33,17 @@ from hsconfig.package_request import (
     ResolvedPackageRequest,
 )
 from tests.helpers.audited_package_request import audited_request
+from hsconfig.pre_run_metrics import (
+    _load_verified_emission_input,
+    load_disposition_ledger_report,
+    optimized_verified_emission_input_from_ledgers,
+)
+from hsconfig.starter_context import build_starter_context
+from hsconfig.starter_decision import load_validated_starter_selection
+from tests.test_starter_decision import (
+    three_candidates,
+    write_selection_bundle,
+)
 
 
 def _named_documents_sha256(rows: tuple[Any, ...]) -> str:
@@ -49,6 +60,67 @@ def _named_documents_sha256(rows: tuple[Any, ...]) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return sha256(canonical).hexdigest()
+
+
+def _optimized_request(tmp_path: Path) -> ResolvedPackageRequest:
+    conservative = audited_request(tmp_path / "request", "ShadowPriest")
+    context = build_starter_context(conservative.snapshot)
+    decision_path = write_selection_bundle(
+        tmp_path / "selection",
+        context,
+        three_candidates(context),
+    )
+    selection = load_validated_starter_selection(
+        decision_path,
+        current_context=context,
+    )
+    return replace(
+        conservative,
+        invocation=replace(
+            conservative.invocation,
+            configuration_mode="LLM_OPTIMIZED_START",
+        ),
+        starter_selection=selection,
+    )
+
+
+def test_optimized_pre_run_closure_uses_rebound_runtime_authority(
+    tmp_path: Path,
+) -> None:
+    compiled = compile_package(_optimized_request(tmp_path))
+    documents = {
+        row.relative_path: row.document.to_value()
+        for row in compiled.json_projections
+    }
+    disposition = load_disposition_ledger_report(
+        documents["reports/disposition_ledger.json"]
+    )
+    expected = optimized_verified_emission_input_from_ledgers(
+        disposition_ledger=disposition,
+        runtime_surface_ledger=compiled.semantic_runtime_ledger.to_value(),
+    )
+    stored = _load_verified_emission_input(
+        documents["reports/pre_run_closure.json"]["verified_emission"]
+    )
+
+    assert stored == expected
+
+
+def test_conservative_pre_run_closure_bytes_remain_pinned(
+    tmp_path: Path,
+) -> None:
+    compiled = compile_package(
+        audited_request(tmp_path, "ShadowPriest")
+    )
+    pre_run = next(
+        row.document.to_value()
+        for row in compiled.json_projections
+        if row.relative_path == "reports/pre_run_closure.json"
+    )
+
+    assert pre_run["content_sha256"] == (
+        "sha256:5e90ccced119f27ef73a46a80ccb8d45d51e054a7483449b607966a470d19426"
+    )
 
 
 def test_shared_audited_request_runs_without_importing_test_modules() -> None:

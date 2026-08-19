@@ -170,6 +170,51 @@ def _globalvalues_ledger() -> GlobalValuesDecisionLedger:
     )
 
 
+def test_verified_emission_expectations_dispatch_only_by_configuration_mode(
+) -> None:
+    disposition = _claim_ledger(("claim-a", "card_behavior"))
+    source_audit = {
+        "claim_rows": {
+            "claim-a": {
+                "evidence_authority": {"runtime_authorized": True}
+            }
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "claim-a",
+                "builder_or_router_decision": "emitted",
+                "emitted_files": ["CARD_001.json"],
+            }
+        ],
+    }
+    conservative = pre_run_metrics._verified_emission_expectations_for_mode(
+        configuration_mode="CONSERVATIVE",
+        disposition_ledger=disposition,
+        source_contract_audit=source_audit,
+    )
+    optimized = pre_run_metrics._verified_emission_expectations_for_mode(
+        configuration_mode="LLM_OPTIMIZED_START",
+        disposition_ledger=disposition,
+        source_contract_audit=source_audit,
+    )
+
+    assert conservative == pre_run_metrics.pre_emission_expectations_from_audit(
+        disposition_ledger=disposition,
+        source_contract_audit=source_audit,
+    )
+    assert optimized == pre_run_metrics.verified_emission_input_from_ledgers(
+        disposition_ledger=disposition,
+        runtime_surface_ledger={},
+    ).expectations
+    assert conservative != optimized
+    with pytest.raises(ValueError, match="configuration_mode_invalid"):
+        pre_run_metrics._verified_emission_expectations_for_mode(
+            configuration_mode="INVALID",
+            disposition_ledger=disposition,
+            source_contract_audit=source_audit,
+        )
+
+
 @pytest.mark.parametrize(
     ("verified", "expected"),
     [

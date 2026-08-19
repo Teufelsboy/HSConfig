@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from hsconfig.commands.common import run_payload_command
 from hsconfig.starter_candidate import validate_starter_candidate
-from hsconfig.starter_context import StarterContext
+from hsconfig.starter_context import (
+    StarterContext,
+    validate_starter_context_document,
+)
 from hsconfig.starter_contract import (
     STARTER_CANDIDATE_FIELDS,
     STARTER_CANDIDATE_MAX_BYTES,
@@ -61,22 +63,7 @@ def _starter_validate_candidate_payload(
 
 
 def _reconstruct_starter_context(document: Any) -> StarterContext:
-    value = document.to_value()
-    identity = value.get("deck_identity")
-    baseline = value.get("globalvalues_baseline")
-    if not isinstance(identity, Mapping) or not isinstance(baseline, Mapping):
-        raise ValueError("starter_context_document_invalid")
-    deck_fingerprint = identity.get("deck_fingerprint")
-    baseline_sha256 = baseline.get("content_sha256")
-    if not isinstance(deck_fingerprint, str) or not isinstance(
-        baseline_sha256, str
-    ):
-        raise ValueError("starter_context_document_invalid")
-    return StarterContext(
-        document=document,
-        deck_fingerprint=deck_fingerprint,
-        globalvalues_baseline_sha256=baseline_sha256,
-    )
+    return validate_starter_context_document(document)
 
 
 __all__ = ("run_starter_validate_candidate_command",)

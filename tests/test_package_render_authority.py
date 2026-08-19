@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+import json
 from pathlib import Path
 
 import pytest
@@ -14,8 +16,12 @@ from hsconfig.package_derivation_receipt import (
 from hsconfig.package_render_authority import (
     ArtifactSet,
     RenderFaultPoint,
+    _pre_authority_files,
     render_package_authority,
 )
+from hsconfig.starter_context import build_starter_context
+from hsconfig.starter_decision import load_validated_starter_selection
+from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
 from hsconfig.strict_package_validation import (
     validate_complete_package,
     validate_complete_package_from_view,
@@ -26,6 +32,10 @@ from tests.helpers.package_byte_contract import (
     load_fixture,
 )
 from tests.helpers.audited_package_request import audited_request
+from tests.test_starter_decision import (
+    three_candidates,
+    write_selection_bundle,
+)
 
 
 FIXTURE_PATH = Path("tests/fixtures/package-byte-contract-v1.json")
@@ -55,6 +65,33 @@ def _model(tmp_path: Path, deck_name: str = "ShadowPriest"):
     )
 
 
+def _optimized_model(tmp_path: Path):
+    conservative = audited_request(
+        tmp_path / "request",
+        "ShadowPriest",
+        fixture_paths=True,
+    )
+    context = build_starter_context(conservative.snapshot)
+    decision_path = write_selection_bundle(
+        tmp_path / "selection",
+        context,
+        three_candidates(context),
+    )
+    selection = load_validated_starter_selection(
+        decision_path,
+        current_context=context,
+    )
+    optimized = replace(
+        conservative,
+        invocation=replace(
+            conservative.invocation,
+            configuration_mode="LLM_OPTIMIZED_START",
+        ),
+        starter_selection=selection,
+    )
+    return assemble_package(compile_package(optimized))
+
+
 def _metadata(artifacts: ArtifactSet) -> list[dict[str, object]]:
     return [
         {
@@ -64,6 +101,79 @@ def _metadata(artifacts: ArtifactSet) -> list[dict[str, object]]:
         }
         for artifact in artifacts.artifacts
     ]
+
+
+def test_optimized_reports_preserve_all_five_frozen_canonical_bytes(
+    tmp_path: Path,
+) -> None:
+    model = _optimized_model(tmp_path)
+    files = _pre_authority_files(model)
+    projections = {
+        row.relative_path: row.document
+        for row in model.compiled.json_projections
+    }
+
+    assert set(OPTIMIZED_START_REPORT_PATHS) == {
+        path for path in files if path.startswith("reports/optimized_start/")
+    }
+    for path in OPTIMIZED_START_REPORT_PATHS:
+        assert files[path] == projections[path].canonical_json
+
+
+def test_conservative_json_projection_rendering_remains_pretty(
+    tmp_path: Path,
+) -> None:
+    model = _model(tmp_path)
+    files = _pre_authority_files(model)
+    projection = next(
+        row
+        for row in model.compiled.json_projections
+        if row.relative_path == "reports/input_manifest.json"
+    )
+    expected = (
+        json.dumps(
+            projection.document.to_value(),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+
+    assert files[projection.relative_path] == expected
+
+
+def test_optimized_strict_validation_rejects_globalvalues_runtime_tamper(
+    tmp_path: Path,
+) -> None:
+    rendered = render_package_authority(_optimized_model(tmp_path))
+    files = {
+        row.relative_path: row.content
+        for row in rendered.artifacts.artifacts
+    }
+    globalvalues_path = next(
+        path
+        for path in files
+        if path.endswith("/GlobalValues.json")
+    )
+    tampered = json.loads(files[globalvalues_path])
+    tampered["FirstTurnValueWeight"]["values"][0]["value"] = "9.99"
+    files[globalvalues_path] = json.dumps(
+        tampered,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8") + b"\n"
+
+    report = validate_complete_package_from_view(
+        ArtifactSet.from_files(files)
+    )
+
+    assert report["status"] == "failed"
+    assert any(
+        "does not match optimized decision ledger" in error
+        for error in report["errors"]
+    )
 
 
 def test_render_authority_completes_the_exact_shadowpriest_plan_in_memory(

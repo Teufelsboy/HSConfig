@@ -10,8 +10,12 @@ from hsconfig.cli import main
 from hsconfig.cli_parser import build_parser
 from hsconfig.starter_contract import (
     STARTER_CANDIDATE_1_FILENAME,
+    STARTER_CANDIDATE_FIELDS,
+    STARTER_CONTEXT_FIELDS,
     STARTER_CONTEXT_FILENAME,
+    STARTER_SCHEMA_VERSION,
 )
+from hsconfig.starter_document import seal_starter_document
 from tests.test_starter_candidate import (
     build_shadowpriest_context,
     sealed_candidate,
@@ -126,6 +130,54 @@ def test_candidate_cli_validates_content_independent_of_caller_basename(
 
     assert code == 0
     assert json.loads(capsys.readouterr().out)["valid"] is True
+
+
+def test_candidate_cli_rejects_fully_rebound_invalid_context(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    context_path, candidate_path, context, candidate = _write_cli_inputs(
+        tmp_path
+    )
+    context_value = context.document.to_value()
+    del context_value["content_sha256"]
+    context_value["source_evidence"] = "invalid"
+    rebound_context = seal_starter_document(
+        context_value,
+        expected_fields=STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    context_path.write_bytes(rebound_context.canonical_json)
+
+    candidate_value = candidate.to_value()
+    del candidate_value["content_sha256"]
+    candidate_value["starter_context_sha256"] = (
+        rebound_context.content_sha256
+    )
+    candidate_path.write_bytes(
+        seal_starter_document(
+            candidate_value,
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        ).canonical_json
+    )
+
+    code = main(
+        [
+            "starter-validate-candidate",
+            "--starter-context-json",
+            str(context_path),
+            "--candidate-json",
+            str(candidate_path),
+            "--json",
+        ]
+    )
+
+    assert code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "errors": ["starter_context_document_invalid"],
+        "status": "failed",
+    }
 
 
 @pytest.mark.parametrize(

@@ -238,6 +238,85 @@ _MAX_CLAIM_TEXT_CHARS = 4096
 _MAX_CONTEXT_TOKEN_CHARS = 256
 _MAX_CONTEXT_REFERENCE_CHARS = 2048
 _MAX_CONTEXT_PUBLIC_URL_CHARS = 2048
+_CONTEXT_CARD_FIELDS = frozenset(
+    {
+        "card_id",
+        "count",
+        "cost",
+        "dbf_id",
+        "linked_entities",
+        "mechanic_families",
+        "mechanics",
+        "name",
+        "text",
+        "type",
+    }
+)
+_CONTEXT_LINKED_ENTITY_FIELDS = frozenset(
+    {"card_id", "dbf_id", "link_kind", "name", "type"}
+)
+_CONTEXT_IDENTITY_FIELDS = frozenset(
+    {
+        "card_count_total",
+        "deck_code_sha256",
+        "deck_fingerprint",
+        "deck_name",
+        "format",
+        "hero_dbf_id",
+        "unique_card_count",
+    }
+)
+_CONTEXT_AUDITED_IDENTITY_FIELDS = frozenset({"hdt_deck_id", "hs_id"})
+_CONTEXT_BASELINE_FIELDS = frozenset(
+    {"content_sha256", "key_count", "receipt", "values"}
+)
+_CONTEXT_BASELINE_RECEIPT_FIELDS = frozenset(
+    {"key_count", "snapshot_date", "snapshot_status", "source"}
+)
+_CONTEXT_SOURCE_EVIDENCE_FIELDS = frozenset({"gaps", "rows"})
+_CONTEXT_SOURCE_GAP_FIELDS = frozenset({"gap_kind", "value"})
+_CONTEXT_SOURCE_ROW_FIELDS = frozenset(
+    {
+        "claim_count",
+        "missing_source_keys",
+        "provenance",
+        "source_family",
+        "source_id",
+        "source_ref",
+        "source_title",
+        "unsupported_claim_count",
+    }
+)
+_CONTEXT_CLAIM_REQUIRED_FIELDS = frozenset(
+    {
+        "cards",
+        "claim",
+        "claim_id",
+        "claim_kind",
+        "claim_readiness",
+        "conditions",
+        "confidence",
+        "evidence_text_short",
+        "runtime_lowerable",
+        "runtime_lowering_reason",
+        "source_family",
+        "source_refs",
+        "support_status",
+    }
+)
+_CONTEXT_CLAIM_OPTIONAL_FIELDS = (
+    frozenset(_CLAIM_AUTHORITY_TEXT_FIELDS)
+    | _AUTHORITATIVE_CLAIM_SEMANTIC_FIELDS
+    | frozenset(
+        {
+            "acquisition_provenance",
+            "deck_match",
+            "promotion_eligible",
+            "semantic_qualifiers",
+            "source_identity_signals",
+        }
+    )
+)
 
 
 class _ContextScalarKind(Enum):
@@ -267,7 +346,6 @@ def build_starter_context(snapshot: PackageResolutionSnapshot) -> StarterContext
     deck_identity = _mapping(preconfig.get("deck_identity"), "deck_identity")
     cards = _card_rows(preconfig)
     identity_projection = _deck_identity(deck_identity, cards=cards)
-    deck_fingerprint = str(identity_projection["deck_fingerprint"])
     baseline = _mapping(
         preconfig.get("globalvalues_baseline"),
         "globalvalues_baseline",
@@ -298,9 +376,75 @@ def build_starter_context(snapshot: PackageResolutionSnapshot) -> StarterContext
         schema_version=STARTER_SCHEMA_VERSION,
     )
     _enforce_starter_context_max_bytes(document.canonical_json)
+    return validate_starter_context_document(document)
+
+
+def validate_starter_context_document(
+    document: StarterDocument,
+) -> StarterContext:
+    """Validate and reconstruct one sealed starter context without side effects."""
+
+    try:
+        return _validated_starter_context_document(document)
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("starter_context_document_invalid") from None
+
+
+def _validated_starter_context_document(
+    document: StarterDocument,
+) -> StarterContext:
+    if not isinstance(document, StarterDocument):
+        raise TypeError("starter_context_document_invalid")
+    value = document.to_value()
+    if set(value) != STARTER_CONTEXT_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    unsigned = dict(value)
+    content_sha256 = unsigned.pop("content_sha256")
+    resealed = seal_starter_document(
+        unsigned,
+        expected_fields=STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    if (
+        document.content_sha256 != content_sha256
+        or resealed.content_sha256 != content_sha256
+        or resealed.canonical_json != document.canonical_json
+    ):
+        raise ValueError("starter_context_document_invalid")
+    _enforce_starter_context_max_bytes(document.canonical_json)
+
+    cards = _validated_context_cards(value["cards"])
+    identity = _validated_context_identity(value["deck_identity"], cards=cards)
+    if _canonical_bytes(value["deck_shape"]) != _canonical_bytes(_deck_shape(cards)):
+        raise ValueError("starter_context_document_invalid")
+    if _canonical_bytes(value["supported_runtime_contract"]) != _canonical_bytes(
+        _runtime_contract()
+    ):
+        raise ValueError("starter_context_document_invalid")
+    baseline_sha256 = _validated_context_baseline(
+        value["globalvalues_baseline"]
+    )
+    source_rows, source_gaps = _validated_context_source_evidence(
+        value["source_evidence"]
+    )
+    claims = _validated_context_claims(
+        value["existing_claims"],
+        identity=identity,
+        cards=cards,
+    )
+    _validate_context_authority_relationships(
+        source_rows=source_rows,
+        source_gaps=source_gaps,
+        claims=claims,
+        cards=cards,
+    )
+    if _canonical_bytes(value["known_safety_boundaries"]) != _canonical_bytes(
+        _known_safety_boundaries(cards)
+    ):
+        raise ValueError("starter_context_document_invalid")
     return StarterContext(
         document=document,
-        deck_fingerprint=deck_fingerprint,
+        deck_fingerprint=str(identity["deck_fingerprint"]),
         globalvalues_baseline_sha256=baseline_sha256,
     )
 
@@ -308,6 +452,509 @@ def build_starter_context(snapshot: PackageResolutionSnapshot) -> StarterContext
 def _enforce_starter_context_max_bytes(canonical_json: bytes) -> None:
     if len(canonical_json) > STARTER_CONTEXT_MAX_BYTES:
         raise ValueError("starter_context_maximum_bytes_exceeded")
+
+
+def _validated_context_cards(value: object) -> list[dict[str, Any]]:
+    raw_cards = _sequence(value, "document_cards")
+    if not raw_cards:
+        raise ValueError("starter_context_document_invalid")
+    cards: list[dict[str, Any]] = []
+    seen_card_ids: set[str] = set()
+    seen_dbf_ids: set[int] = set()
+    for raw_card in raw_cards:
+        card = _mapping(raw_card, "document_card")
+        if set(card) != _CONTEXT_CARD_FIELDS:
+            raise ValueError("starter_context_document_invalid")
+        card_id = _context_safe_scalar(
+            card["card_id"],
+            kind=_ContextScalarKind.CARD_ID,
+            error="starter_context_document_invalid",
+        )
+        dbf_id = _positive_int(
+            card["dbf_id"], "starter_context_document_invalid"
+        )
+        if card_id in seen_card_ids or dbf_id in seen_dbf_ids:
+            raise ValueError("starter_context_document_invalid")
+        seen_card_ids.add(card_id)
+        seen_dbf_ids.add(dbf_id)
+        normalized = {
+            "card_id": card_id,
+            "count": _positive_int(
+                card["count"], "starter_context_document_invalid"
+            ),
+            "cost": _nonnegative_int(
+                card["cost"], "starter_context_document_invalid"
+            ),
+            "dbf_id": dbf_id,
+            "linked_entities": _validated_context_linked_entities(
+                card["linked_entities"]
+            ),
+            "mechanic_families": _validated_sorted_tokens(
+                card["mechanic_families"]
+            ),
+            "mechanics": _validated_sorted_tokens(card["mechanics"]),
+            "name": _validated_context_prose(card["name"]),
+            "text": _validated_context_prose(card["text"], allow_empty=True),
+            "type": _context_safe_scalar(
+                card["type"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+        }
+        if _canonical_bytes(normalized) != _canonical_bytes(card):
+            raise ValueError("starter_context_document_invalid")
+        cards.append(normalized)
+    if cards != sorted(cards, key=lambda row: str(row["card_id"])):
+        raise ValueError("starter_context_document_invalid")
+    return cards
+
+
+def _validated_context_linked_entities(value: object) -> list[dict[str, Any]]:
+    entities: list[dict[str, Any]] = []
+    seen_card_ids: set[str] = set()
+    seen_dbf_ids: set[int] = set()
+    for raw_entity in _sequence(value, "document_linked_entities"):
+        entity = _mapping(raw_entity, "document_linked_entity")
+        if set(entity) != _CONTEXT_LINKED_ENTITY_FIELDS:
+            raise ValueError("starter_context_document_invalid")
+        card_id = _context_safe_scalar(
+            entity["card_id"],
+            kind=_ContextScalarKind.CARD_ID,
+            error="starter_context_document_invalid",
+        )
+        dbf_id = _positive_int(
+            entity["dbf_id"], "starter_context_document_invalid"
+        )
+        if card_id in seen_card_ids or dbf_id in seen_dbf_ids:
+            raise ValueError("starter_context_document_invalid")
+        seen_card_ids.add(card_id)
+        seen_dbf_ids.add(dbf_id)
+        normalized = {
+            "card_id": card_id,
+            "dbf_id": dbf_id,
+            "link_kind": _context_safe_scalar(
+                entity["link_kind"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+            "name": _validated_context_prose(entity["name"]),
+            "type": _context_safe_scalar(
+                entity["type"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+        }
+        if _canonical_bytes(normalized) != _canonical_bytes(entity):
+            raise ValueError("starter_context_document_invalid")
+        entities.append(normalized)
+    if entities != sorted(entities, key=_canonical_bytes):
+        raise ValueError("starter_context_document_invalid")
+    return entities
+
+
+def _validated_context_prose(value: object, *, allow_empty: bool = False) -> str:
+    if not isinstance(value, str):
+        raise ValueError("starter_context_document_invalid")
+    if not value and allow_empty:
+        return value
+    if not value or value != value.strip() or _contains_unsafe_control(value):
+        raise ValueError("starter_context_document_invalid")
+    if len(value) > _MAX_CLAIM_TEXT_CHARS:
+        raise ValueError("starter_context_document_invalid")
+    stripped = _strip_paired_presentation_tags(
+        value, error="starter_context_document_invalid"
+    )
+    _context_safe_scalar(
+        stripped,
+        kind=_ContextScalarKind.PROSE,
+        error="starter_context_document_invalid",
+        allow_empty=allow_empty,
+    )
+    return value
+
+
+def _validated_sorted_tokens(value: object) -> list[str]:
+    rows = [
+        _context_safe_scalar(
+            item,
+            kind=_ContextScalarKind.TOKEN,
+            error="starter_context_document_invalid",
+        )
+        for item in _sequence(value, "document_token_list")
+    ]
+    if rows != sorted(set(rows)):
+        raise ValueError("starter_context_document_invalid")
+    return rows
+
+
+def _validated_context_identity(
+    value: object,
+    *,
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    identity = _mapping(value, "document_deck_identity")
+    if frozenset(identity) not in (
+        _CONTEXT_IDENTITY_FIELDS,
+        _CONTEXT_IDENTITY_FIELDS | _CONTEXT_AUDITED_IDENTITY_FIELDS,
+    ):
+        raise ValueError("starter_context_document_invalid")
+    _validated_context_prose(identity["deck_name"])
+    _context_safe_scalar(
+        identity["format"],
+        kind=_ContextScalarKind.TOKEN,
+        error="starter_context_document_invalid",
+    )
+    for field in _CONTEXT_AUDITED_IDENTITY_FIELDS & set(identity):
+        _context_safe_scalar(
+            identity[field],
+            kind=_ContextScalarKind.TOKEN,
+            error="starter_context_document_invalid",
+        )
+    raw_identity = {
+        "card_count_total": identity["card_count_total"],
+        "deck_code_hash": identity["deck_code_sha256"],
+        "deck_fingerprint": identity["deck_fingerprint"],
+        "deck_name": identity["deck_name"],
+        "format": identity["format"],
+        "hero_dbf_id": identity["hero_dbf_id"],
+        "main_deck": [
+            {"card_id": card["card_id"], "count": card["count"]}
+            for card in cards
+        ],
+    }
+    projected = _deck_identity(raw_identity, cards=cards)
+    if _canonical_bytes(identity) != _canonical_bytes(projected):
+        raise ValueError("starter_context_document_invalid")
+    return projected
+
+
+def _validated_context_baseline(value: object) -> str:
+    baseline_projection = _mapping(value, "document_globalvalues_baseline")
+    if set(baseline_projection) != _CONTEXT_BASELINE_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    baseline = _mapping(
+        baseline_projection["values"], "document_globalvalues_values"
+    )
+    _validate_globalvalues_baseline(baseline)
+    digest = canonical_globalvalues_baseline_sha256(baseline)
+    if baseline_projection["content_sha256"] != digest:
+        raise ValueError("starter_context_document_invalid")
+    key_count = _positive_int(
+        baseline_projection["key_count"], "starter_context_document_invalid"
+    )
+    if key_count != 38 or key_count != len(baseline):
+        raise ValueError("starter_context_document_invalid")
+    receipt = _mapping(
+        baseline_projection["receipt"], "document_globalvalues_receipt"
+    )
+    if set(receipt) != _CONTEXT_BASELINE_RECEIPT_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    if receipt["key_count"] != key_count:
+        raise ValueError("starter_context_document_invalid")
+    source = receipt["source"]
+    snapshot_status = receipt["snapshot_status"]
+    snapshot_date = receipt["snapshot_date"]
+    if source == "bundled_fallback":
+        valid_receipt = (
+            snapshot_status == "known_runtime_snapshot"
+            and _canonical_nullable_date(snapshot_date, allow_none=False)
+        )
+    elif source == "runtime_default":
+        valid_receipt = snapshot_status == "live_runtime" and snapshot_date is None
+    else:
+        valid_receipt = False
+    if not valid_receipt:
+        raise ValueError("starter_context_document_invalid")
+    return digest
+
+
+def _validated_context_source_evidence(
+    value: object,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    evidence = _mapping(value, "document_source_evidence")
+    if set(evidence) != _CONTEXT_SOURCE_EVIDENCE_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    rows: list[dict[str, Any]] = []
+    for raw_row in _sequence(evidence["rows"], "document_source_rows"):
+        row = _mapping(raw_row, "document_source_row")
+        expected_fields = _CONTEXT_SOURCE_ROW_FIELDS
+        if "source_url" in row:
+            expected_fields |= {"source_url"}
+        if set(row) != expected_fields:
+            raise ValueError("starter_context_document_invalid")
+        normalized = {
+            "claim_count": _nonnegative_int(
+                row["claim_count"], "starter_context_document_invalid"
+            ),
+            "missing_source_keys": _validated_sorted_tokens(
+                row["missing_source_keys"]
+            ),
+            "provenance": _closed_provenance(
+                row["provenance"], error="starter_context_document_invalid"
+            ),
+            "source_family": _context_safe_scalar(
+                row["source_family"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+            "source_id": _context_safe_scalar(
+                row["source_id"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+            "source_ref": _closed_source_reference(row["source_ref"]),
+            "source_title": _closed_source_scalar(row["source_title"]),
+            "unsupported_claim_count": _nonnegative_int(
+                row["unsupported_claim_count"],
+                "starter_context_document_invalid",
+            ),
+        }
+        if "source_url" in row:
+            source_url = _closed_public_url(row["source_url"])
+            if source_url is None:
+                raise ValueError("starter_context_document_invalid")
+            normalized["source_url"] = source_url
+        if _canonical_bytes(row) != _canonical_bytes(normalized):
+            raise ValueError("starter_context_document_invalid")
+        rows.append(normalized)
+    if rows != sorted(rows, key=_canonical_bytes):
+        raise ValueError("starter_context_document_invalid")
+
+    gaps: list[dict[str, Any]] = []
+    for raw_gap in _sequence(evidence["gaps"], "document_source_gaps"):
+        gap = _mapping(raw_gap, "document_source_gap")
+        if set(gap) != _CONTEXT_SOURCE_GAP_FIELDS:
+            raise ValueError("starter_context_document_invalid")
+        normalized_gap = {
+            "gap_kind": _evidence_gap_kind(gap["gap_kind"]),
+            "value": _context_safe_scalar(
+                gap["value"],
+                kind=_ContextScalarKind.TOKEN,
+                error="starter_context_document_invalid",
+            ),
+        }
+        if normalized_gap != gap:
+            raise ValueError("starter_context_document_invalid")
+        gaps.append(normalized_gap)
+    if gaps != sorted(gaps, key=_canonical_bytes):
+        raise ValueError("starter_context_document_invalid")
+    return rows, gaps
+
+
+def _validated_context_claims(
+    value: object,
+    *,
+    identity: Mapping[str, Any],
+    cards: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    claims = _sequence(value, "document_existing_claims")
+    normalized_claims: list[dict[str, Any]] = []
+    claim_ids: set[str] = set()
+    bound_card_ids = {
+        str(card["card_id"])
+        for card in cards
+    } | {
+        str(entity["card_id"])
+        for card in cards
+        for entity in card["linked_entities"]
+    }
+    for raw_claim in claims:
+        claim = _mapping(raw_claim, "document_existing_claim")
+        if not _CONTEXT_CLAIM_REQUIRED_FIELDS <= set(claim) or not set(claim) <= (
+            _CONTEXT_CLAIM_REQUIRED_FIELDS | _CONTEXT_CLAIM_OPTIONAL_FIELDS
+        ):
+            raise ValueError("starter_context_document_invalid")
+        claim_kind = _claim_semantic_text(
+            claim["claim_kind"], allowed_values=CLAIM_SURFACE_REGISTRY
+        )
+        claim_id = _context_safe_scalar(
+            claim["claim_id"],
+            kind=_ContextScalarKind.TOKEN,
+            error="starter_context_document_invalid",
+        )
+        if claim_id in claim_ids:
+            raise ValueError("starter_context_document_invalid")
+        claim_ids.add(claim_id)
+        runtime_lowerable = claim["runtime_lowerable"]
+        if type(runtime_lowerable) is not bool:
+            raise ValueError("starter_context_document_invalid")
+        normalized: dict[str, Any] = {
+            "cards": _claim_card_references(
+                claim["cards"], claim_kind=claim_kind, cards=cards
+            ),
+            "claim_id": claim_id,
+            "claim_kind": claim_kind,
+            "claim": _claim_text(claim["claim"]),
+            "claim_readiness": _claim_semantic_text(
+                claim["claim_readiness"],
+                allowed_values=SUPPORTED_CLAIM_READINESS,
+            ),
+            "confidence": _claim_semantic_text(claim["confidence"]),
+            "conditions": _validated_projected_claim_conditions(
+                claim["conditions"]
+            ),
+            "evidence_text_short": _claim_evidence_text(
+                claim["evidence_text_short"]
+            ),
+            "runtime_lowerable": runtime_lowerable,
+            "runtime_lowering_reason": _claim_optional_semantic_text(
+                claim["runtime_lowering_reason"]
+            ),
+            "source_family": _claim_semantic_text(claim["source_family"]),
+            "source_refs": sorted(
+                _closed_source_reference(item)
+                for item in _sequence(
+                    claim["source_refs"], "document_claim_source_refs"
+                )
+            ),
+            "support_status": _claim_semantic_text(claim["support_status"]),
+        }
+        if len(normalized["source_refs"]) != len(set(normalized["source_refs"])):
+            raise ValueError("starter_context_document_invalid")
+        if "semantic_qualifiers" in claim:
+            normalized["semantic_qualifiers"] = _claim_semantic_qualifiers(claim)
+        for field in _CLAIM_AUTHORITY_TEXT_FIELDS:
+            if field in claim:
+                normalized[field] = _claim_semantic_text(
+                    claim[field],
+                    allowed_values=(
+                        SUPPORTED_SPECIFICITY_STATUSES
+                        if field == "specificity_status"
+                        else None
+                    ),
+                )
+        if "promotion_eligible" in claim:
+            if type(claim["promotion_eligible"]) is not bool:
+                raise ValueError("starter_context_document_invalid")
+            normalized["promotion_eligible"] = claim["promotion_eligible"]
+        if "acquisition_provenance" in claim:
+            normalized["acquisition_provenance"] = _closed_provenance(
+                claim["acquisition_provenance"],
+                error="starter_context_document_invalid",
+            )
+        if "source_identity_signals" in claim:
+            normalized["source_identity_signals"] = _claim_identity_signals(
+                claim["source_identity_signals"]
+            )
+        if "deck_match" in claim:
+            normalized["deck_match"] = _validated_projected_deck_match(
+                claim["deck_match"], identity=identity
+            )
+        semantics = _claim_kind_semantics(claim, claim_kind=claim_kind)
+        for field in ("option_card_id", "sequence"):
+            if field not in semantics:
+                continue
+            references = (
+                [semantics[field]]
+                if field == "option_card_id"
+                else semantics[field]
+            )
+            if not set(references) <= bound_card_ids:
+                raise ValueError("starter_context_document_invalid")
+        normalized.update(semantics)
+        if _canonical_bytes(claim) != _canonical_bytes(normalized):
+            raise ValueError("starter_context_document_invalid")
+        normalized_claims.append(normalized)
+    if normalized_claims != sorted(normalized_claims, key=_canonical_bytes):
+        raise ValueError("starter_context_document_invalid")
+    return normalized_claims
+
+
+def _validate_context_authority_relationships(
+    *,
+    source_rows: list[dict[str, Any]],
+    source_gaps: list[dict[str, Any]],
+    claims: list[dict[str, Any]],
+    cards: list[dict[str, Any]],
+) -> None:
+    source_ids = [str(row["source_id"]) for row in source_rows]
+    source_refs = [str(row["source_ref"]) for row in source_rows]
+    if len(source_ids) != len(set(source_ids)) or len(source_refs) != len(
+        set(source_refs)
+    ):
+        raise ValueError("starter_context_document_invalid")
+    physical_card_ids = {str(card["card_id"]) for card in cards}
+    claim_ids = {str(claim["claim_id"]) for claim in claims}
+    for gap in source_gaps:
+        if (
+            gap["gap_kind"] == "uncovered_card"
+            and gap["value"] not in physical_card_ids
+        ):
+            raise ValueError("starter_context_document_invalid")
+        if (
+            gap["gap_kind"] == "unsupported_claim"
+            and gap["value"] in claim_ids
+        ):
+            raise ValueError("starter_context_document_invalid")
+
+    for row in source_rows:
+        row_refs = {str(row["source_ref"])}
+        if "source_url" in row:
+            row_refs.add(str(row["source_url"]))
+        matching_claims = [
+            claim
+            for claim in claims
+            if row_refs & set(claim["source_refs"])
+        ]
+        supported_claim_count = (
+            int(row["claim_count"]) - int(row["unsupported_claim_count"])
+        )
+        if supported_claim_count < 0 or len(matching_claims) != supported_claim_count:
+            raise ValueError("starter_context_document_invalid")
+        for claim in matching_claims:
+            if claim["source_family"] != row["source_family"]:
+                raise ValueError("starter_context_document_invalid")
+            if (
+                "acquisition_provenance" in claim
+                and claim["acquisition_provenance"] != row["provenance"]
+            ):
+                raise ValueError("starter_context_document_invalid")
+
+
+def _validated_projected_claim_conditions(value: object) -> dict[str, Any]:
+    conditions = _mapping(value, "document_claim_conditions")
+    if set(conditions) not in (
+        {"runtime_condition"},
+        {"report_only", "runtime_condition"},
+    ):
+        raise ValueError("starter_context_document_invalid")
+    runtime_condition = _context_safe_scalar(
+        conditions["runtime_condition"],
+        kind=_ContextScalarKind.VALIDATED,
+        error="starter_context_document_invalid",
+    )
+    classified = classify_runtime_condition(runtime_condition)
+    if classified.status != "runtime_safe" or classified.value != runtime_condition:
+        raise ValueError("starter_context_document_invalid")
+    normalized: dict[str, Any] = {"runtime_condition": runtime_condition}
+    if "report_only" in conditions:
+        report_only = _mapping(
+            conditions["report_only"], "document_claim_report_only"
+        )
+        if not report_only or not set(report_only) <= set(REPORT_ONLY_CONDITION_KEYS):
+            raise ValueError("starter_context_document_invalid")
+        normalized["report_only"] = {
+            str(key): _claim_semantic_text(report_only[key])
+            for key in sorted(report_only)
+        }
+    return normalized
+
+
+def _validated_projected_deck_match(
+    value: object,
+    *,
+    identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    deck_match = _mapping(value, "document_claim_deck_match")
+    if set(deck_match) != {"exact_deck_evidence", "target_deck_code_sha256"}:
+        raise ValueError("starter_context_document_invalid")
+    projected = _claim_deck_match(
+        {"exact_deck_evidence": deck_match["exact_deck_evidence"]},
+        identity=identity,
+    )
+    if _canonical_bytes(deck_match) != _canonical_bytes(projected):
+        raise ValueError("starter_context_document_invalid")
+    return projected
 
 
 def _deck_identity(
@@ -1638,4 +2285,8 @@ def _canonical_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-__all__ = ("StarterContext", "build_starter_context")
+__all__ = (
+    "StarterContext",
+    "build_starter_context",
+    "validate_starter_context_document",
+)
