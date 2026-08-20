@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 import json
 from hashlib import sha256
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.starter_contract import (
     STARTER_CANDIDATE_FIELDS,
     STARTER_CANDIDATE_MAX_BYTES,
@@ -16,10 +18,15 @@ from hsconfig.starter_contract import (
     STARTER_FILENAMES,
     STARTER_SCHEMA_VERSION,
     reject_path_like_fields,
+    require_nonempty_string,
+    require_object_list,
+    require_string_list,
     validate_candidate_revision,
     validate_starter_sibling_name,
 )
 from hsconfig.starter_document import (
+    StarterDocument,
+    _validate_unsigned_shape,
     load_starter_document,
     seal_starter_document,
 )
@@ -257,3 +264,131 @@ def test_candidate_revision_is_limited_to_the_three_authorized_revisions(
     # Break caught: allowing an unbounded repair loop or a non-integer revision.
     with pytest.raises(ValueError, match="starter_candidate_revision_invalid"):
         validate_candidate_revision(revision)
+
+
+@pytest.mark.parametrize(
+    ("boundary", "exception_type"),
+    [
+        ("nonempty_invalid", ValueError),
+        ("nonempty_valid", None),
+        ("string_list_bad_item", ValueError),
+        ("string_list_valid", None),
+        ("object_list_string_root", ValueError),
+        ("object_list_bad_item", ValueError),
+        ("object_list_valid", None),
+        ("document_root_not_object", TypeError),
+        ("seal_root_not_mapping", ValueError),
+        ("load_digest_not_string", ValueError),
+        ("load_maximum_negative", ValueError),
+        ("unsigned_shape_not_object", ValueError),
+        ("sealed_fields_missing", ValueError),
+        ("sealed_schema_invalid", ValueError),
+    ],
+)
+def test_starter_contract_helpers_and_documents_fail_closed_at_type_boundaries(
+    tmp_path: Path,
+    boundary: str,
+    exception_type: type[Exception] | None,
+) -> None:
+    # Breaks caught: coercing attacker-controlled scalars/collections or loading
+    # an unbounded, unsealed, wrongly versioned, or non-object authority document.
+    if boundary == "nonempty_valid":
+        assert exception_type is None
+        assert require_nonempty_string("candidate-1", error="closed") == "candidate-1"
+        return
+    if boundary == "string_list_valid":
+        assert exception_type is None
+        assert require_string_list(["a", "b"], error="closed") == ["a", "b"]
+        return
+    if boundary == "object_list_valid":
+        assert exception_type is None
+        assert require_object_list([{"id": 1}], error="closed") == [{"id": 1}]
+        return
+
+    path = tmp_path / "candidate-1.json"
+    if boundary == "nonempty_invalid":
+        call = partial(require_nonempty_string, " candidate-1", error="closed")
+        error = "closed"
+    elif boundary == "string_list_bad_item":
+        call = partial(require_string_list, ["a", ""], error="closed")
+        error = "closed"
+    elif boundary == "object_list_string_root":
+        call = partial(require_object_list, "abc", error="closed")
+        error = "closed"
+    elif boundary == "object_list_bad_item":
+        call = partial(require_object_list, [{"id": 1}, "bad"], error="closed")
+        error = "closed"
+    elif boundary == "document_root_not_object":
+        document = StarterDocument(
+            document=FrozenJsonDocument.from_value([]),
+            content_sha256="sha256:" + "a" * 64,
+        )
+        call = document.to_value
+        error = "starter_document_root_invalid"
+    elif boundary == "seal_root_not_mapping":
+        call = partial(
+            seal_starter_document,
+            "not-an-object",  # type: ignore[arg-type]
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_root_invalid"
+    elif boundary == "load_digest_not_string":
+        value = {**_candidate_value(), "content_sha256": 7}
+        path.write_bytes(_canonical_bytes(value))
+        call = partial(
+            load_starter_document,
+            path,
+            maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_content_sha256_invalid"
+    elif boundary == "load_maximum_negative":
+        call = partial(
+            load_starter_document,
+            path,
+            maximum_bytes=-1,
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_maximum_bytes_invalid"
+    elif boundary == "unsigned_shape_not_object":
+        call = partial(
+            _validate_unsigned_shape,
+            [],
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_fields_invalid"
+    elif boundary == "sealed_fields_missing":
+        path.write_bytes(_canonical_bytes(_candidate_value()))
+        call = partial(
+            load_starter_document,
+            path,
+            maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_fields_invalid"
+    elif boundary == "sealed_schema_invalid":
+        value = {
+            **_candidate_value(),
+            "schema_version": True,
+            "content_sha256": "sha256:" + "a" * 64,
+        }
+        path.write_bytes(_canonical_bytes(value))
+        call = partial(
+            load_starter_document,
+            path,
+            maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+            expected_fields=STARTER_CANDIDATE_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+        error = "starter_document_schema_version_invalid"
+    else:
+        raise AssertionError(f"unknown_contract_boundary:{boundary}")
+
+    assert exception_type is not None
+    with pytest.raises(exception_type, match=f"^{error}$"):
+        call()

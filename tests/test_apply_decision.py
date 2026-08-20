@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -32,6 +32,27 @@ def test_apply_decision_is_an_immutable_literal_load_safe_projection() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         decision.allowed = False  # type: ignore[misc]
+
+
+def test_apply_decision_fails_closed_for_invalid_strategy_authority_mode() -> None:
+    from hsconfig.apply_decision import ApplyDecision, build_apply_decision
+
+    invalid_facts = replace(
+        _valid_facts(),
+        strategy_authority_mode="invalid",  # type: ignore[arg-type]
+    )
+
+    assert build_apply_decision(invalid_facts) == ApplyDecision(
+        allowed=False,
+        mode="blocked",
+        policy="BLOCKED",
+        reasons=(
+            {
+                "reason": "strategy_authority_mode_invalid",
+                "code": "strategy_authority_mode_invalid",
+            },
+        ),
+    )
 
 
 @pytest.mark.parametrize(

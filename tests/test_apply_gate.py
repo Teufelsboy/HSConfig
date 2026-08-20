@@ -14,6 +14,7 @@ from hsconfig.operator_summary_inputs import load_operator_summary_inputs
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     DERIVATION_RECEIPT_SCHEMA_VERSION,
+    OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
     build_package_derivation_receipt,
     build_package_authority_context,
     refresh_package_derivation_authority,
@@ -1404,6 +1405,41 @@ def test_derivation_reasons_reject_unsupported_receipt_schema(tmp_path: Path) ->
     assert reasons[0]["reason"] == "package_derivation_receipt_schema_unsupported"
 
 
+@pytest.mark.parametrize(
+    ("strategy_authority_mode", "receipt_schema_version", "expected_reason"),
+    (
+        (
+            "source_contract",
+            OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
+            "package_derivation_receipt_schema_unsupported",
+        ),
+        (
+            "llm_optimized_start",
+            DERIVATION_RECEIPT_SCHEMA_VERSION,
+            "optimized_start_derivation_invalid",
+        ),
+    ),
+)
+def test_derivation_reasons_reject_supported_schema_from_other_authority_mode(
+    tmp_path: Path,
+    strategy_authority_mode: str,
+    receipt_schema_version: int,
+    expected_reason: str,
+) -> None:
+    _write_derivation_payload(
+        tmp_path,
+        {"schema_version": receipt_schema_version},
+    )
+
+    reasons = apply_gate_module._package_derivation_reasons(
+        tmp_path,
+        {"package_derivation": {}},
+        strategy_authority_mode=strategy_authority_mode,
+    )
+
+    assert reasons[0]["reason"] == expected_reason
+
+
 def test_derivation_reasons_reject_inconsistent_summary_schema(
     tmp_path: Path,
 ) -> None:
@@ -1539,6 +1575,59 @@ def test_required_structure_rejects_missing_required_runtime_file(
     reasons = apply_gate_module._required_package_structure_reasons(tmp_path, {})
 
     assert reasons[0]["reason"] == "missing_required_runtime_file"
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "takes_summary"),
+    (
+        ("_actual_optional_surface_reasons", False),
+        ("_actual_files_missing_from_summary_reasons", True),
+        ("_summary_files_missing_from_actual_reasons", True),
+        ("_actual_runtime_json_reasons", False),
+    ),
+)
+def test_runtime_inventory_helpers_do_not_traverse_missing_custom_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    helper_name: str,
+    takes_summary: bool,
+) -> None:
+    def unexpected_rglob(_path: Path, _pattern: str):
+        raise AssertionError("missing CustomConfig must short-circuit inventory traversal")
+
+    monkeypatch.setattr(Path, "rglob", unexpected_rglob)
+    helper = getattr(apply_gate_module, helper_name)
+
+    reasons = helper(tmp_path, {}) if takes_summary else helper(tmp_path)
+
+    assert reasons == []
+
+
+def test_summary_optional_surface_reasons_ignore_non_list_inventory() -> None:
+    reasons = apply_gate_module._summary_optional_surface_reasons(
+        {"generated_files": {"CustomConfig/deck/Combo.json": True}}
+    )
+
+    assert reasons == []
+
+
+def test_actual_files_missing_from_summary_reports_empty_inventory(
+    tmp_path: Path,
+) -> None:
+    runtime_file = tmp_path / "CustomConfig" / "deck" / "GlobalValues.json"
+    write_json(runtime_file, {"GameCardId": "GlobalValues"})
+
+    reasons = apply_gate_module._actual_files_missing_from_summary_reasons(
+        tmp_path,
+        {"generated_files": []},
+    )
+
+    assert reasons == [
+        {
+            "reason": "operator_summary_runtime_files_missing",
+            "generated_file": str(runtime_file),
+        }
+    ]
 
 
 def test_summary_missing_from_actual_reports_each_missing_runtime_file(

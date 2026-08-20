@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
 import pytest
 
-from hsconfig.package_request import PackageResolutionSnapshot
+from hsconfig.package_request import FrozenJsonDocument, PackageResolutionSnapshot
 from hsconfig.starter_context import (
+    StarterContext,
     _enforce_starter_context_max_bytes,
     build_starter_context,
+    validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
     STARTER_CONTEXT_FIELDS,
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_SCHEMA_VERSION,
 )
-from hsconfig.starter_document import seal_starter_document
+from hsconfig.starter_document import StarterDocument, seal_starter_document
 from tests.helpers.audited_package_request import audited_request
 
 
@@ -1446,3 +1449,238 @@ def _first_identity_signal(preconfig: dict[str, Any]) -> dict[str, Any]:
     return _claim_with_field(preconfig, "source_identity_signals")[
         "source_identity_signals"
     ][0]
+
+
+@pytest.fixture(scope="module")
+def adversarial_starter_context_seed(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> StarterContext:
+    return build_starter_context(
+        audited_request(
+            tmp_path_factory.mktemp("starter-context-adversarial"),
+            "ShadowPriest",
+        ).snapshot
+    )
+
+
+def _canonical_fixture_sort(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _mutate_context_boundary(value: dict[str, Any], defect: str) -> None:
+    cards = value["cards"]
+    claims = value["existing_claims"]
+    source = value["source_evidence"]
+    linked_card = next(card for card in cards if card["linked_entities"])
+
+    if defect == "empty_cards":
+        cards.clear()
+    elif defect == "duplicate_card_dbf_id":
+        cards[1]["dbf_id"] = cards[0]["dbf_id"]
+    elif defect == "cards_unsorted":
+        cards.reverse()
+    elif defect == "duplicate_linked_entity":
+        linked_card["linked_entities"].append(
+            deepcopy(linked_card["linked_entities"][0])
+        )
+    elif defect == "linked_entities_unsorted":
+        linked_card["linked_entities"].append(
+            {
+                "card_id": "AAA_001",
+                "dbf_id": 1,
+                "link_kind": "related_entity",
+                "name": "Synthetic linked boundary",
+                "type": "HERO_POWER",
+            }
+        )
+    elif defect == "duplicate_mechanic_token":
+        cards[0]["mechanics"] = ["BATTLECRY", "BATTLECRY"]
+    elif defect == "card_name_wrong_type":
+        cards[0]["name"] = 7
+    elif defect == "empty_card_text_allowed":
+        cards[0]["text"] = ""
+    elif defect == "card_name_empty":
+        cards[0]["name"] = ""
+    elif defect == "card_name_too_long":
+        cards[0]["name"] = "x" * 4097
+    elif defect == "baseline_extra_field":
+        value["globalvalues_baseline"]["transport"] = "forbidden"
+    elif defect == "baseline_digest_mismatch":
+        value["globalvalues_baseline"]["content_sha256"] = "f" * 64
+    elif defect == "baseline_key_count_mismatch":
+        value["globalvalues_baseline"]["key_count"] = 37
+    elif defect == "baseline_receipt_extra_field":
+        value["globalvalues_baseline"]["receipt"]["path"] = "runtime.json"
+    elif defect == "baseline_receipt_count_mismatch":
+        value["globalvalues_baseline"]["receipt"]["key_count"] = 37
+    elif defect == "runtime_default_receipt_allowed":
+        value["globalvalues_baseline"]["receipt"].update(
+            {
+                "snapshot_date": None,
+                "snapshot_status": "live_runtime",
+                "source": "runtime_default",
+            }
+        )
+    elif defect == "baseline_source_unknown":
+        value["globalvalues_baseline"]["receipt"]["source"] = "invented"
+    elif defect == "source_evidence_extra_field":
+        source["transport"] = "forbidden"
+    elif defect == "source_row_without_url_allowed":
+        source["rows"][0].pop("source_url")
+        source["rows"].sort(key=_canonical_fixture_sort)
+    elif defect == "source_row_empty_url":
+        source["rows"][0]["source_url"] = ""
+    elif defect == "source_gaps_unsorted":
+        source["gaps"].append(
+            {"gap_kind": "missing_deck_identity", "value": "format"}
+        )
+    elif defect == "duplicate_source_id":
+        source["rows"][1]["source_id"] = source["rows"][0]["source_id"]
+        source["rows"].sort(key=_canonical_fixture_sort)
+    elif defect == "negative_supported_claim_count":
+        source["rows"][0]["unsupported_claim_count"] = (
+            source["rows"][0]["claim_count"] + 1
+        )
+        source["rows"].sort(key=_canonical_fixture_sort)
+    elif defect == "duplicate_claim_id":
+        claims[1]["claim_id"] = claims[0]["claim_id"]
+    elif defect == "runtime_lowerable_not_bool":
+        claims[0]["runtime_lowerable"] = 1
+    elif defect == "duplicate_claim_source_ref":
+        claims[0]["source_refs"].append(claims[0]["source_refs"][0])
+    elif defect == "promotion_eligible_not_bool":
+        claim = next(row for row in claims if "promotion_eligible" in row)
+        claim["promotion_eligible"] = 1
+    elif defect == "claims_unsorted":
+        claims.reverse()
+    elif defect == "conditions_fields_unknown":
+        claims[0]["conditions"]["turn"] = "early"
+    elif defect == "conditions_runtime_unsafe":
+        claims[0]["conditions"]["runtime_condition"] = "coin OR"
+    elif defect == "conditions_report_only_empty":
+        claims[0]["conditions"]["report_only"] = {}
+    elif defect == "conditions_report_only_allowed":
+        claims[0]["conditions"]["report_only"] = {"phase": "early"}
+        claims.sort(key=_canonical_fixture_sort)
+    elif defect == "deck_match_fields_unknown":
+        claim = next(row for row in claims if "deck_match" in row)
+        claim["deck_match"]["transport"] = "forbidden"
+    elif defect == "unbound_option_card":
+        claim = next(row for row in claims if row["claim_kind"] == "gameplan_posture")
+        claim["claim_kind"] = "discover_choice"
+        claim.pop("archetype")
+        claim["intent"] = "select"
+        claim["option_card_id"] = "EX1_999"
+    elif defect == "invalid_runtime_block":
+        claim = next(row for row in claims if row["claim_kind"] == "card_role")
+        claim["runtime_block"] = "InventedBlock"
+    elif defect == "invalid_globalvalue_operation":
+        claim = next(row for row in claims if row["claim_kind"] == "gameplan_posture")
+        claim["claim_kind"] = "globalvalue_numeric_tuning"
+        claim.pop("archetype")
+        claim.update(
+            {"key": "FirstTurnValueWeight", "operation": "multiply", "value": "1"}
+        )
+    elif defect == "invalid_globalvalue_key":
+        claim = next(row for row in claims if row["claim_kind"] == "gameplan_posture")
+        claim["claim_kind"] = "globalvalue_numeric_tuning"
+        claim.pop("archetype")
+        claim.update({"key": "InventedValue", "operation": "set", "value": "1"})
+    elif defect == "globalvalue_value_without_key":
+        claim = next(row for row in claims if row["claim_kind"] == "gameplan_posture")
+        claim["claim_kind"] = "globalvalue_numeric_tuning"
+        claim.pop("archetype")
+        claim.update({"operation": "set", "value": "1"})
+    elif defect == "empty_combo_sequence":
+        claim = next(row for row in claims if row["claim_kind"] == "gameplan_posture")
+        claim["claim_kind"] = "combo_sequence"
+        claim.pop("archetype")
+        claim.update({"intent": "play_in_order", "sequence": []})
+    else:
+        raise AssertionError(f"unknown_context_boundary:{defect}")
+
+
+@pytest.mark.parametrize(
+    ("defect", "accepted"),
+    [
+        ("wrong_document_type", False),
+        ("unsealed_extra_field", False),
+        ("empty_cards", False),
+        ("duplicate_card_dbf_id", False),
+        ("cards_unsorted", False),
+        ("duplicate_linked_entity", False),
+        ("linked_entities_unsorted", False),
+        ("duplicate_mechanic_token", False),
+        ("card_name_wrong_type", False),
+        ("empty_card_text_allowed", True),
+        ("card_name_empty", False),
+        ("card_name_too_long", False),
+        ("baseline_extra_field", False),
+        ("baseline_digest_mismatch", False),
+        ("baseline_key_count_mismatch", False),
+        ("baseline_receipt_extra_field", False),
+        ("baseline_receipt_count_mismatch", False),
+        ("runtime_default_receipt_allowed", True),
+        ("baseline_source_unknown", False),
+        ("source_evidence_extra_field", False),
+        ("source_row_without_url_allowed", True),
+        ("source_row_empty_url", False),
+        ("source_gaps_unsorted", False),
+        ("duplicate_source_id", False),
+        ("negative_supported_claim_count", False),
+        ("duplicate_claim_id", False),
+        ("runtime_lowerable_not_bool", False),
+        ("duplicate_claim_source_ref", False),
+        ("promotion_eligible_not_bool", False),
+        ("claims_unsorted", False),
+        ("conditions_fields_unknown", False),
+        ("conditions_runtime_unsafe", False),
+        ("conditions_report_only_empty", False),
+        ("conditions_report_only_allowed", True),
+        ("deck_match_fields_unknown", False),
+        ("unbound_option_card", False),
+        ("invalid_runtime_block", False),
+        ("invalid_globalvalue_operation", False),
+        ("invalid_globalvalue_key", False),
+        ("globalvalue_value_without_key", False),
+        ("empty_combo_sequence", False),
+    ],
+)
+def test_starter_context_validator_enforces_nested_authority_boundaries(
+    adversarial_starter_context_seed: StarterContext,
+    defect: str,
+    accepted: bool,
+) -> None:
+    # Breaks caught: accepting malformed identity, evidence, claim, baseline, or
+    # cross-authority relationships after an attacker recomputes the self digest.
+    seed = adversarial_starter_context_seed
+    if defect == "wrong_document_type":
+        document: object = object()
+    elif defect == "unsealed_extra_field":
+        value = seed.document.to_value()
+        value["invented_authority"] = "hidden"
+        document = StarterDocument(
+            document=FrozenJsonDocument.from_value(value),
+            content_sha256=seed.document.content_sha256,
+        )
+    else:
+        value = seed.document.to_value()
+        del value["content_sha256"]
+        _mutate_context_boundary(value, defect)
+        document = seal_starter_document(
+            value,
+            expected_fields=STARTER_CONTEXT_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+
+    if accepted:
+        validated = validate_starter_context_document(document)  # type: ignore[arg-type]
+        assert validated.document.canonical_json == document.canonical_json
+    else:
+        with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+            validate_starter_context_document(document)  # type: ignore[arg-type]

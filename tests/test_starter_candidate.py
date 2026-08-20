@@ -15,6 +15,7 @@ from hsconfig.starter_candidate import (
 from hsconfig.starter_context import StarterContext, build_starter_context
 from hsconfig.starter_contract import (
     STARTER_CANDIDATE_FIELDS,
+    STARTER_CONTEXT_FIELDS,
     STARTER_SCHEMA_VERSION,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
@@ -1247,3 +1248,296 @@ def test_runtime_intent_digest_preserves_long_exact_decimal_coefficients(
 
     assert first.runtime_intent_sha256 != distinct.runtime_intent_sha256
     assert first.runtime_intent_sha256 == equivalent.runtime_intent_sha256
+
+
+@pytest.fixture(scope="module")
+def adversarial_candidate_context(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> StarterContext:
+    return build_shadowpriest_context(
+        tmp_path_factory.mktemp("starter-candidate-adversarial")
+    )
+
+
+def _rebound_candidate_context(
+    context: StarterContext,
+    defect: str,
+) -> StarterContext:
+    value = context.document.to_value()
+    del value["content_sha256"]
+    identity = value["deck_identity"]
+    cards = value["cards"]
+    baseline = value["globalvalues_baseline"]
+    linked_card = next(card for card in cards if card["linked_entities"])
+    mutations: dict[str, Callable[[], None]] = {
+        "identity_not_mapping": lambda: value.__setitem__("deck_identity", []),
+        "identity_fingerprint_invalid": lambda: identity.__setitem__(
+            "deck_fingerprint", 7
+        ),
+        "identity_deck_name_empty": lambda: identity.__setitem__("deck_name", ""),
+        "identity_counts_mismatch": lambda: identity.__setitem__(
+            "card_count_total", 29
+        ),
+        "cards_empty": cards.clear,
+        "card_not_mapping": lambda: cards.__setitem__(0, "not-an-object"),
+        "card_id_invalid": lambda: cards[0].__setitem__("card_id", 7),
+        "links_not_list": lambda: linked_card.__setitem__(
+            "linked_entities", "not-a-list"
+        ),
+        "link_not_mapping": lambda: linked_card["linked_entities"].__setitem__(
+            0, "not-an-object"
+        ),
+        "link_identity_invalid": lambda: linked_card["linked_entities"][
+            0
+        ].__setitem__("card_id", 7),
+        "baseline_not_mapping": lambda: value.__setitem__(
+            "globalvalues_baseline", []
+        ),
+        "baseline_values_not_mapping": lambda: baseline.__setitem__("values", []),
+        "baseline_digest_mismatch": lambda: baseline.__setitem__(
+            "content_sha256", "sha256:" + "f" * 64
+        ),
+    }
+    mutations[defect]()
+    document = seal_starter_document(
+        value,
+        expected_fields=STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    return StarterContext(
+        document=document,
+        deck_fingerprint=context.deck_fingerprint,
+        globalvalues_baseline_sha256=context.globalvalues_baseline_sha256,
+    )
+
+
+def _mutate_candidate_boundary(draft: dict[str, Any], defect: str) -> None:
+    if defect == "duplicate_rule_id":
+        draft["mulligan"][0]["rule_id"] = draft["card_rules"][0]["rule_id"]
+    elif defect == "strategy_summary_blank":
+        draft["strategy_summary"]["summary"] = ""
+    elif defect == "mulligan_selector_unsupported":
+        _set_mulligan_selector(draft, "invented", "TOY_518")
+    elif defect == "mulligan_card_unknown":
+        _set_mulligan_selector(draft, "card", "EX1_999")
+    elif defect == "globalvalue_block_not_mapping":
+        draft["globalvalues"]["GlobalTaunt"] = []
+    elif defect == "globalvalue_rows_empty":
+        draft["globalvalues"]["GlobalTaunt"]["values"] = []
+    elif defect == "globalvalue_row_not_mapping":
+        draft["globalvalues"]["GlobalTaunt"]["values"][0] = "not-an-object"
+    elif defect == "globalvalue_value_blank":
+        draft["globalvalues"]["GlobalTaunt"]["values"][0]["value"] = ""
+    elif defect == "card_rules_not_list":
+        draft["card_rules"] = "not-a-list"
+    elif defect == "linked_owner_wrong_semantic_surface":
+        draft["card_rules"][0]["behavior_block"] = "OnBoardBonus"
+    elif defect == "combo_values_not_list":
+        _add_expanded_physical_rule(draft, surface="combo")
+        draft["combo"]["values"] = "10>>10"
+    elif defect == "rationales_not_mapping":
+        draft["rule_rationales"] = []
+    elif defect == "dispositions_not_list":
+        draft["card_dispositions"] = "not-a-list"
+    elif defect == "assumptions_not_list":
+        draft["assumptions"] = "No post-game evidence is used."
+    elif defect == "condition_leading_space":
+        draft["card_rules"][0]["condition"] = " *"
+    elif defect == "zero_decimal_allowed":
+        draft["card_rules"][0]["value"] = "0"
+    else:
+        raise AssertionError(f"unknown_candidate_boundary:{defect}")
+
+
+_CANDIDATE_CONTEXT_DEFECTS = frozenset(
+    {
+        "identity_not_mapping",
+        "identity_fingerprint_invalid",
+        "identity_deck_name_empty",
+        "identity_counts_mismatch",
+        "cards_empty",
+        "card_not_mapping",
+        "card_id_invalid",
+        "links_not_list",
+        "link_not_mapping",
+        "link_identity_invalid",
+        "baseline_not_mapping",
+        "baseline_values_not_mapping",
+        "baseline_digest_mismatch",
+    }
+)
+
+
+@pytest.mark.parametrize(
+    ("defect", "error", "exception_type", "accepted_value"),
+    [
+        (
+            "document_wrong_type",
+            "starter_candidate_document_invalid",
+            TypeError,
+            None,
+        ),
+        (
+            "document_fields_unknown",
+            "starter_candidate_fields_invalid",
+            ValueError,
+            None,
+        ),
+        ("context_wrong_type", "starter_candidate_context_invalid", TypeError, None),
+        (
+            "context_document_wrong_type",
+            "starter_candidate_context_invalid",
+            TypeError,
+            None,
+        ),
+        *(
+            (defect, "starter_candidate_context_invalid", ValueError, None)
+            for defect in sorted(_CANDIDATE_CONTEXT_DEFECTS)
+        ),
+        (
+            "duplicate_rule_id",
+            "starter_candidate_rule_id_duplicate",
+            ValueError,
+            None,
+        ),
+        (
+            "strategy_summary_blank",
+            "starter_candidate_strategy_summary_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "mulligan_selector_unsupported",
+            "starter_candidate_mulligan_selector_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "mulligan_card_unknown",
+            "starter_candidate_mulligan_card_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "globalvalue_block_not_mapping",
+            "starter_candidate_globalvalue_block_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "globalvalue_rows_empty",
+            "starter_candidate_globalvalue_block_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "globalvalue_row_not_mapping",
+            "starter_candidate_globalvalue_row_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "globalvalue_value_blank",
+            "starter_candidate_globalvalue_value_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "card_rules_not_list",
+            "starter_candidate_card_rules_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "linked_owner_wrong_semantic_surface",
+            "starter_candidate_runtime_owner_unauthorized",
+            ValueError,
+            None,
+        ),
+        (
+            "combo_values_not_list",
+            "starter_candidate_combo_values_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "rationales_not_mapping",
+            "starter_candidate_rule_rationales_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "dispositions_not_list",
+            "starter_candidate_card_dispositions_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "assumptions_not_list",
+            "starter_candidate_assumptions_invalid",
+            ValueError,
+            None,
+        ),
+        (
+            "condition_leading_space",
+            "starter_candidate_condition_invalid",
+            ValueError,
+            None,
+        ),
+        ("zero_decimal_allowed", None, None, "0"),
+    ],
+)
+def test_candidate_validator_enforces_malformed_and_normalized_boundaries(
+    adversarial_candidate_context: StarterContext,
+    defect: str,
+    error: str | None,
+    exception_type: type[Exception] | None,
+    accepted_value: str | None,
+) -> None:
+    # Breaks caught: trusting malformed sealed candidate/context authority or
+    # losing the exact condition and decimal normalization contract.
+    base_context = adversarial_candidate_context
+    context: object = base_context
+    if defect == "document_wrong_type":
+        document: object = object()
+    elif defect == "document_fields_unknown":
+        document = forged_candidate_document(
+            base_context,
+            mutate=lambda value: value.__setitem__("invented_authority", True),
+        )
+    else:
+        if defect == "context_wrong_type":
+            context = object()
+        elif defect == "context_document_wrong_type":
+            context = StarterContext(
+                document=object(),  # type: ignore[arg-type]
+                deck_fingerprint=base_context.deck_fingerprint,
+                globalvalues_baseline_sha256=base_context.globalvalues_baseline_sha256,
+            )
+        elif defect in _CANDIDATE_CONTEXT_DEFECTS:
+            context = _rebound_candidate_context(base_context, defect)
+        document = sealed_candidate(
+            base_context,
+            mutate=(
+                None
+                if defect in _CANDIDATE_CONTEXT_DEFECTS
+                or defect in {"context_wrong_type", "context_document_wrong_type"}
+                else lambda draft: _mutate_candidate_boundary(draft, defect)
+            ),
+        )
+
+    if error is not None:
+        assert exception_type is not None
+        with pytest.raises(exception_type, match=f"^{error}$"):
+            validate_starter_candidate(
+                document,  # type: ignore[arg-type]
+                context=context,  # type: ignore[arg-type]
+            )
+        return
+
+    assert exception_type is None
+    validated = validate_starter_candidate(
+        document,  # type: ignore[arg-type]
+        context=context,  # type: ignore[arg-type]
+    )
+    assert validated.card_behavior_rows[0].to_value()["value"] == accepted_value
