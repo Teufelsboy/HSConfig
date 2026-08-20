@@ -7,6 +7,7 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -806,8 +807,10 @@ from hsconfig.deck_config_ini import (
 path = Path(sys.argv[1])
 barrier = Path(sys.argv[2])
 value = sys.argv[3]
+ready = Path(sys.argv[4])
 snapshot = read_deck_config(path, deck_name="Deck")
 content = render_deck_config(snapshot, deck_name="Deck", config_dir=value)
+ready.write_text("ready", encoding="ascii")
 while not barrier.exists():
     time.sleep(0.01)
 try:
@@ -824,30 +827,85 @@ print("committed")
     environment["PYTHONPATH"] = source_root + os.pathsep + environment.get(
         "PYTHONPATH", ""
     )
-    processes = [
-        subprocess.Popen(
-            [sys.executable, str(worker), str(path), str(barrier), value],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=environment,
-        )
-        for value in ("First", "Second")
-    ]
-    barrier.write_text("go", encoding="ascii")
-    results = [process.communicate(timeout=20) for process in processes]
+    ready_markers = [tmp_path / f"ready-{value}" for value in ("First", "Second")]
+    processes: list[subprocess.Popen[str]] = []
+    cleanup_problems: list[str] = []
+    try:
+        for value, ready in zip(("First", "Second"), ready_markers, strict=True):
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(worker),
+                    str(path),
+                    str(barrier),
+                    value,
+                    str(ready),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=environment,
+            )
+            processes.append(process)
 
-    assert sorted(process.returncode for process in processes) == [0, 2]
-    assert sum("committed" in stdout for stdout, _ in results) == 1
-    assert sum(
-        "deck_config_ini_concurrent_change" in stdout
-        for stdout, _ in results
-    ) == 1
-    assert path.read_bytes() in {
-        b"[CONFIGS]\nDeck = First",
-        b"[CONFIGS]\nDeck = Second",
-    }
-    assert _temp_residue(path) == []
+        deadline = time.monotonic() + 20
+        while not all(marker.exists() for marker in ready_markers):
+            exited = [process for process in processes if process.poll() is not None]
+            if exited:
+                pytest.fail("worker exited before capturing the absent snapshot")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                pytest.fail("workers did not capture absent snapshots")
+            time.sleep(min(0.01, remaining))
+        assert all(process.poll() is None for process in processes)
+        assert not path.exists()
+        barrier.write_text("go", encoding="ascii")
+        results = [process.communicate(timeout=20) for process in processes]
+
+        assert sorted(process.returncode for process in processes) == [0, 2]
+        assert sum("committed" in stdout for stdout, _ in results) == 1
+        assert sum(
+            "deck_config_ini_concurrent_change" in stdout
+            for stdout, _ in results
+        ) == 1
+        assert path.read_bytes() in {
+            b"[CONFIGS]\nDeck = First",
+            b"[CONFIGS]\nDeck = Second",
+        }
+        assert _temp_residue(path) == []
+    finally:
+        primary_error = sys.exc_info()[0] is not None
+        for process in processes:
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except Exception as exc:
+                    cleanup_problems.append(f"terminate {process.pid}: {exc!r}")
+        for process in processes:
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except Exception as exc:
+                    cleanup_problems.append(f"kill {process.pid}: {exc!r}")
+                try:
+                    process.communicate(timeout=5)
+                except Exception as exc:
+                    cleanup_problems.append(f"reap {process.pid}: {exc!r}")
+            except Exception as exc:
+                cleanup_problems.append(f"reap {process.pid}: {exc!r}")
+            finally:
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        try:
+                            stream.close()
+                        except Exception as exc:
+                            cleanup_problems.append(
+                                f"close pipe for {process.pid}: {exc!r}"
+                            )
+        if cleanup_problems and not primary_error:
+            pytest.fail("worker cleanup failed: " + "; ".join(cleanup_problems))
 
 
 def test_replace_rejects_snapshot_path_that_becomes_hardlinked(

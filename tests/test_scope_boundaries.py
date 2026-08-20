@@ -223,12 +223,17 @@ def test_active_docs_use_pre_run_boundary_wording():
             "references/workflow.md"
         ].decode("utf-8"),
     }
-    required = (
+    canonical_variants = (
         "HSConfig is pre-run only. It does not parse replays, inspect winrate, "
-        "analyze runtime logs, promote candidates, or tune after games."
+        "analyze runtime logs, promote candidates, or tune after games.",
+        "HSConfig is pre-run only. It does not parse replays, inspect winrate, "
+        "analyze runtime logs, promote candidates, tune after games, or perform "
+        "HSTuner follow-up.",
     )
     missing = [
-        path for path, text in active_docs.items() if required not in text
+        path
+        for path, text in active_docs.items()
+        if not any(variant in text for variant in canonical_variants)
     ]
 
     assert missing == []
