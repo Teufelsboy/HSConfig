@@ -535,6 +535,89 @@ def test_starter_context_digest_binds_claim_authority_fields(tmp_path: Path) -> 
     _assert_no_volatile_or_raw_source_fields(claim)
 
 
+def test_starter_context_projects_and_binds_closed_source_record_strength(
+    tmp_path: Path,
+) -> None:
+    # Break caught: source-record authority from the normalized public guide
+    # was either rejected or omitted from the sealed starter-context digest.
+    snapshot = audited_request(tmp_path, "ShadowPriest").snapshot
+    original = build_starter_context(snapshot)
+    preconfig = snapshot.general_preconfig.to_value()
+    claim = preconfig["guide_claim_bundle"]["claims"][0]
+    claim["source_record_strength"] = "candidate_strong"
+
+    changed = build_starter_context(PackageResolutionSnapshot.from_preconfig(preconfig))
+    projected = next(
+        row
+        for row in changed.document.to_value()["existing_claims"]
+        if row["claim_id"] == claim["claim_id"]
+    )
+
+    assert projected["source_record_strength"] == "candidate_strong"
+    assert changed.document.content_sha256 != original.document.content_sha256
+
+    claim["source_record_strength"] = "https://example.invalid/authority"
+    with pytest.raises(ValueError, match="starter_context_claim_semantics_invalid"):
+        build_starter_context(PackageResolutionSnapshot.from_preconfig(preconfig))
+
+
+def test_starter_context_accepts_static_sw_448_hero_power_transform_mechanics(
+    tmp_path: Path,
+) -> None:
+    # Break caught: static SW_448 hero-power-transform semantics were rejected
+    # even though both mechanism tokens are canonical authority.
+    preconfig = audited_request(
+        tmp_path,
+        "ShadowPriest",
+    ).snapshot.general_preconfig.to_value()
+    claim = next(
+        row
+        for row in preconfig["guide_claim_bundle"]["claims"]
+        if row["claim_kind"] == "hero_power_transform" and row["cards"] == ["SW_448"]
+    )
+    claim.update(
+        {
+            "mechanic": "hero_power_transform",
+            "mechanic_family": "hero_power_transform",
+        }
+    )
+
+    context = build_starter_context(PackageResolutionSnapshot.from_preconfig(preconfig))
+    projected = next(
+        row
+        for row in context.document.to_value()["existing_claims"]
+        if row["claim_id"] == claim["claim_id"]
+    )
+
+    assert projected["mechanic"] == "hero_power_transform"
+    assert projected["mechanic_family"] == "hero_power_transform"
+
+
+def test_starter_context_rejects_transform_mechanics_on_unrelated_claim_kind(
+    tmp_path: Path,
+) -> None:
+    # Break caught: allowing transform mechanism fields on any claim kind
+    # would widen the existing semantic-authority surface.
+    preconfig = audited_request(
+        tmp_path,
+        "ShadowPriest",
+    ).snapshot.general_preconfig.to_value()
+    claim = next(
+        row
+        for row in preconfig["guide_claim_bundle"]["claims"]
+        if row["claim_kind"] == "card_role"
+    )
+    claim.update(
+        {
+            "mechanic": "hero_power_transform",
+            "mechanic_family": "hero_power_transform",
+        }
+    )
+
+    with pytest.raises(ValueError, match="starter_context_claim_semantics_invalid"):
+        build_starter_context(PackageResolutionSnapshot.from_preconfig(preconfig))
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

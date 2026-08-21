@@ -120,12 +120,16 @@ _CLAIM_AUTHORITY_TEXT_FIELDS = (
     "source_confidence",
     "source_family",
     "source_lane",
+    "source_record_strength",
     "source_type",
     "source_visibility",
     "specificity_status",
     "scope",
     "support_status",
     "trust_ceiling",
+)
+_SOURCE_RECORD_STRENGTHS = frozenset(
+    {"candidate_strong", "diagnostic_only", "partial", "static_semantics"}
 )
 _CLAIM_KIND_SEMANTIC_FIELDS = {
     "archetype": frozenset({"archetype", "stance"}),
@@ -147,7 +151,14 @@ _CLAIM_KIND_SEMANTIC_FIELDS = {
     "combo_sequence": frozenset({"intent", "sequence", "stance"}),
     "gameplan_posture": frozenset({"archetype", "stance"}),
     "hero_power_transform": frozenset(
-        {"archetype", "runtime_block", "runtime_value", "stance"}
+        {
+            "archetype",
+            "mechanic",
+            "mechanic_family",
+            "runtime_block",
+            "runtime_value",
+            "stance",
+        }
     ),
     "mechanic_usage": frozenset(
         {
@@ -820,6 +831,8 @@ def _validated_context_claims(
                     allowed_values=(
                         SUPPORTED_SPECIFICITY_STATUSES
                         if field == "specificity_status"
+                        else _SOURCE_RECORD_STRENGTHS
+                        if field == "source_record_strength"
                         else None
                     ),
                 )
@@ -1562,6 +1575,8 @@ def _existing_claims(
                     allowed_values=(
                         SUPPORTED_SPECIFICITY_STATUSES
                         if field == "specificity_status"
+                        else _SOURCE_RECORD_STRENGTHS
+                        if field == "source_record_strength"
                         else None
                     ),
                 )
