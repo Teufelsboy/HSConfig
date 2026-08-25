@@ -80,6 +80,62 @@ def test_bounded_package_snapshot_returns_stable_sorted_content(tmp_path: Path) 
         view.read_bytes("missing.json")
 
 
+def test_no_replace_commit_is_parent_identity_bound_on_windows_and_posix(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    source.write_bytes(b"authority")
+    expected = package_io.path_identity(source)
+    result = package_io.secure_commit_sibling_no_replace(
+        source_path=source,
+        target_path=target,
+        expected_source_identity=expected,
+        expected_parent_identity=package_io.path_identity(tmp_path),
+    )
+    assert result == expected == package_io.path_identity(target)
+    assert not source.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback only")
+def test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    source.write_bytes(b"authority")
+    expected = package_io.path_identity(source)
+    events: list[str] = []
+    package_io.secure_commit_sibling_no_replace(
+        source_path=source,
+        target_path=target,
+        expected_source_identity=expected,
+        expected_parent_identity=package_io.path_identity(tmp_path),
+        fault_hook=events.append,
+    )
+    assert events in ([], ["after_posix_link_before_source_unlink"])
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-kill resume only")
+def test_no_replace_posix_hard_kill_after_link_resumes_bound_identity(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    source.write_bytes(b"authority")
+    expected = package_io.path_identity(source)
+    os.link(source, target)
+    result = package_io.secure_commit_sibling_no_replace(
+        source_path=source,
+        target_path=target,
+        expected_source_identity=expected,
+        expected_parent_identity=package_io.path_identity(tmp_path),
+    )
+    assert result == expected
+    assert target.stat().st_nlink == 1
+    assert not source.exists()
+
+
 @pytest.mark.parametrize(
     ("constant", "value", "with_directory", "reason"),
     [

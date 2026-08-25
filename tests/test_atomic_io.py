@@ -11,6 +11,11 @@ import pytest
 import hsconfig.atomic_io as atomic_io
 from hsconfig.atomic_io import (
     AtomicWriteConflictError,
+    NO_REPLACE_COMMIT_FAULT_POINT,
+    NO_REPLACE_POSIX_LINK_FAULT_POINT,
+    STAGING_MATERIALIZE_FAULT_POINT,
+    atomic_commit_bound_staging_no_replace,
+    atomic_materialize_staging_bytes,
     atomic_write_bytes,
     atomic_write_json,
     flush_file,
@@ -50,6 +55,171 @@ def test_atomic_write_optional_expected_parent_identity_rejects_substitution(
     assert not target.exists()
     atomic_write_bytes(target, b"default")
     assert target.read_bytes() == b"default"
+
+
+def test_atomic_materialize_staging_binds_identity_only_after_complete_flush(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    inner = tmp_path / ".authority.json.staged.live-start-atomic.tmp"
+    payload = b'{"authority":true}\n'
+    events: list[str] = []
+
+    published = atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=inner,
+        payload=payload,
+        expected_parent_identity=path_identity(tmp_path),
+        maximum_size=1024,
+        fault_hook=events.append,
+    )
+
+    assert events[-1] == STAGING_MATERIALIZE_FAULT_POINT
+    assert published.identity == path_identity(staging)
+    assert published.size == len(payload)
+    assert published.sha256.startswith("sha256:")
+    assert staging.read_bytes() == payload
+    assert not inner.exists()
+
+
+def test_atomic_bound_no_replace_commit_preserves_persisted_staging_identity(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    payload = b"sealed"
+    staging.write_bytes(payload)
+    staging_identity = path_identity(staging)
+
+    published = atomic_commit_bound_staging_no_replace(
+        path=target,
+        staging_path=staging,
+        expected_staging_identity=staging_identity,
+        expected_size=len(payload),
+        expected_sha256="sha256:" + __import__("hashlib").sha256(payload).hexdigest(),
+        expected_parent_identity=path_identity(tmp_path),
+    )
+
+    assert published.identity == staging_identity == path_identity(target)
+    assert target.read_bytes() == payload
+    assert not staging.exists()
+
+
+def test_atomic_bound_no_replace_commit_rejects_parent_or_staging_substitution(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    staging = parent / "authority.json.staged"
+    target = parent / "authority.json"
+    staging.write_bytes(b"sealed")
+    stale_staging = path_identity(staging)
+    staging.unlink()
+    staging.write_bytes(b"sealed")
+    with pytest.raises(AtomicWriteConflictError):
+        atomic_commit_bound_staging_no_replace(
+            path=target,
+            staging_path=staging,
+            expected_staging_identity=stale_staging,
+            expected_size=6,
+            expected_sha256="sha256:" + __import__("hashlib").sha256(b"sealed").hexdigest(),
+            expected_parent_identity=path_identity(parent),
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX two-link state")
+def test_atomic_bound_no_replace_posix_two_link_intermediate_converges(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    payload = b"sealed"
+    staging.write_bytes(payload)
+    identity = path_identity(staging)
+    os.link(staging, target)
+    published = atomic_commit_bound_staging_no_replace(
+        path=target,
+        staging_path=staging,
+        expected_staging_identity=identity,
+        expected_size=len(payload),
+        expected_sha256="sha256:" + __import__("hashlib").sha256(payload).hexdigest(),
+        expected_parent_identity=path_identity(tmp_path),
+    )
+    assert published.identity == identity
+    assert target.stat().st_nlink == 1
+
+
+def test_atomic_bound_no_replace_maps_posix_link_before_unlink_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    target = tmp_path / "authority.json"
+    payload = b"sealed"
+    staging.write_bytes(payload)
+    events: list[str] = []
+
+    def simulate_posix_commit(**kwargs: Any) -> tuple[int, int, int]:
+        kwargs["fault_hook"]("after_posix_link_before_source_unlink")
+        os.replace(kwargs["source_path"], kwargs["target_path"])
+        return kwargs["expected_source_identity"]  # type: ignore[no-any-return]
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_commit_sibling_no_replace",
+        simulate_posix_commit,
+    )
+    atomic_commit_bound_staging_no_replace(
+        path=target,
+        staging_path=staging,
+        expected_staging_identity=path_identity(staging),
+        expected_size=len(payload),
+        expected_sha256="sha256:" + __import__("hashlib").sha256(payload).hexdigest(),
+        expected_parent_identity=path_identity(tmp_path),
+        fault_hook=events.append,
+    )
+    assert events == [
+        NO_REPLACE_POSIX_LINK_FAULT_POINT,
+        NO_REPLACE_COMMIT_FAULT_POINT,
+    ]
+
+
+def test_reserved_atomic_temp_discards_partial_but_rejects_reparse_hardlink_ads_or_unknown_name(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "session.json"
+    target.write_bytes(b"old")
+    result = atomic_io.atomic_write_reserved_bytes(
+        path=target,
+        payload=b"new",
+        expected_parent_identity=path_identity(tmp_path),
+        expected_predecessor_identity=path_identity(target),
+        expected_predecessor_sha256="sha256:" + __import__("hashlib").sha256(b"old").hexdigest(),
+        maximum_size=16,
+    )
+    assert result.identity == path_identity(target)
+    assert target.read_bytes() == b"new"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_reserved_predecessor_check_keeps_the_caller_bound_parent_identity(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "session.json"
+    target.write_bytes(b"old")
+    wrong_parent_identity = (999_999, 999_999, target.parent.stat().st_mode)
+
+    with pytest.raises(AtomicWriteConflictError, match="parent"):
+        atomic_io._require_reserved_predecessor(
+            target,
+            expected_identity=path_identity(target),
+            expected_sha256=(
+                "sha256:"
+                + __import__("hashlib").sha256(b"old").hexdigest()
+            ),
+            expected_parent_identity=wrong_parent_identity,
+            maximum_size=16,
+        )
 
 
 class InjectedFault(RuntimeError):

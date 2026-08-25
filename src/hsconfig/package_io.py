@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, Literal
 
 from hsconfig.io import read_json
 from hsconfig.package_domain import canonical_relative_path
@@ -38,7 +38,17 @@ MAX_FILESYSTEM_ENTRIES_PER_DIRECTORY = 10_000
 MAX_FILESYSTEM_NODES = 110_000
 _REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 PathIdentity = tuple[int, int, int]
+SiblingNoReplaceFaultPoint = Literal[
+    "after_posix_link_before_source_unlink",
+]
+SiblingNoReplaceFaultHook = Callable[[SiblingNoReplaceFaultPoint], None]
 _QUARANTINED_WINDOWS_HANDLES: list[_WindowsNativeHandleLease] = []
+
+
+def no_sibling_no_replace_fault(
+    _point: SiblingNoReplaceFaultPoint,
+) -> None:
+    """Default no-replace fault hook."""
 
 
 class _WindowsNativeHandleLease:
@@ -348,6 +358,170 @@ def secure_replace(
                 source_directory=stat.S_ISDIR(source_status.st_mode),
                 replace_if_exists=not expected_target_absent,
             )
+
+
+def secure_commit_sibling_no_replace(
+    *,
+    source_path: Path,
+    target_path: Path,
+    expected_source_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    fault_hook: SiblingNoReplaceFaultHook = no_sibling_no_replace_fault,
+) -> PathIdentity:
+    """Commit one already-bound sibling to an absent final name.
+
+    The operation never selects authority from a live occupant.  A caller may
+    resume from the exact final-only state or, on POSIX, from the exact
+    two-name hard-link intermediate left after the atomic no-replace link.
+    """
+
+    source = Path(source_path)
+    target = Path(target_path)
+    if (
+        source.parent != target.parent
+        or source.name == target.name
+        or source.parent != Path(source.parent).absolute()
+        or target.parent != Path(target.parent).absolute()
+    ):
+        raise ValueError("filesystem_sibling_no_replace_contract_invalid")
+    _require_child_name(source.name)
+    _require_child_name(target.name)
+    if (
+        not isinstance(expected_source_identity, tuple)
+        or len(expected_source_identity) != 3
+        or any(type(item) is not int for item in expected_source_identity)
+    ):
+        raise ValueError("filesystem_sibling_no_replace_identity_invalid")
+
+    with hold_plain_directory(
+        source.parent,
+        expected_identity=expected_parent_identity,
+    ) as parent:
+        source_status = _optional_child_status(parent, source.name)
+        target_status = _optional_child_status(parent, target.name)
+
+        if source_status is None:
+            if target_status is None:
+                raise FileNotFoundError(source)
+            _require_bound_no_replace_file(
+                target_status,
+                expected_identity=expected_source_identity,
+                allowed_link_counts=frozenset({1}),
+            )
+            parent.validate()
+            return expected_source_identity
+
+        allowed_source_links = frozenset({1}) if os.name == "nt" else frozenset({1, 2})
+        _require_bound_no_replace_file(
+            source_status,
+            expected_identity=expected_source_identity,
+            allowed_link_counts=allowed_source_links,
+        )
+
+        if target_status is not None:
+            if os.name == "nt":
+                raise FileExistsError(target)
+            _require_bound_no_replace_file(
+                target_status,
+                expected_identity=expected_source_identity,
+                allowed_link_counts=frozenset({2}),
+            )
+            if source_status.st_nlink != 2:
+                raise ValueError("filesystem_sibling_no_replace_intermediate_invalid")
+        elif os.name == "nt":
+            _replace_guarded(
+                parent,
+                source.name,
+                parent,
+                target.name,
+                expected_source_identity=expected_source_identity,
+                source_directory=False,
+                replace_if_exists=False,
+            )
+            committed = parent.child_status(target.name)
+            _require_bound_no_replace_file(
+                committed,
+                expected_identity=expected_source_identity,
+                allowed_link_counts=frozenset({1}),
+            )
+            return expected_source_identity
+        else:
+            parent.validate()
+            os.link(
+                source.name,
+                target.name,
+                src_dir_fd=parent.descriptor,
+                dst_dir_fd=parent.descriptor,
+                follow_symlinks=False,
+            )
+            parent.validate()
+
+        # POSIX commit or exact crash-resume intermediate.
+        source_after = parent.child_status(source.name)
+        target_after = parent.child_status(target.name)
+        _require_bound_no_replace_file(
+            source_after,
+            expected_identity=expected_source_identity,
+            allowed_link_counts=frozenset({2}),
+        )
+        _require_bound_no_replace_file(
+            target_after,
+            expected_identity=expected_source_identity,
+            allowed_link_counts=frozenset({2}),
+        )
+        if source_after.st_nlink != 2 or target_after.st_nlink != 2:
+            raise ValueError("filesystem_sibling_no_replace_intermediate_invalid")
+        fault_hook("after_posix_link_before_source_unlink")
+        parent.validate()
+        os.unlink(source.name, dir_fd=parent.descriptor)
+        _flush_directory_descriptor(parent.descriptor)
+        parent.validate()
+        try:
+            parent.child_status(source.name)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("filesystem_sibling_no_replace_source_not_retired")
+        final_status = parent.child_status(target.name)
+        _require_bound_no_replace_file(
+            final_status,
+            expected_identity=expected_source_identity,
+            allowed_link_counts=frozenset({1}),
+        )
+        return expected_source_identity
+
+
+def _optional_child_status(
+    parent: PlainDirectoryMutationGuard,
+    name: str,
+) -> os.stat_result | None:
+    try:
+        return parent.child_status(name)
+    except FileNotFoundError:
+        return None
+
+
+def _require_bound_no_replace_file(
+    status: os.stat_result,
+    *,
+    expected_identity: PathIdentity,
+    allowed_link_counts: frozenset[int],
+) -> None:
+    if (
+        path_identity_from_status(status) != expected_identity
+        or not stat.S_ISREG(status.st_mode)
+        or status_is_reparse(status)
+        or status.st_nlink not in allowed_link_counts
+    ):
+        raise ValueError("filesystem_sibling_no_replace_identity_changed")
+
+
+def _flush_directory_descriptor(descriptor: int) -> None:
+    try:
+        os.fsync(descriptor)
+    except OSError as error:
+        if error.errno not in {errno.EBADF, errno.EINVAL, errno.ENOTSUP}:
+            raise
 
 
 def _validate_replace_source(

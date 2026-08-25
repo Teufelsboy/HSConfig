@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import errno
+from dataclasses import dataclass
+from hashlib import sha256
 import json
 import math
 import os
@@ -9,10 +11,15 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Literal
 
 from hsconfig.package_io import (
     FilesystemPathGuard,
+    PathIdentity,
+    path_identity,
+    path_identity_from_status,
+    require_no_alternate_data_streams,
+    secure_commit_sibling_no_replace,
     secure_open_file_descriptor,
     secure_replace,
     secure_unlink,
@@ -20,6 +27,45 @@ from hsconfig.package_io import (
 
 
 FaultHook = Callable[[str], None]
+AtomicWriteFaultPoint = Literal[
+    "temp_created",
+    "temp_partial",
+    "temp_full",
+    "temp_flushed",
+    "before_replace",
+    "after_replace",
+]
+AtomicWriteFaultHook = Callable[[AtomicWriteFaultPoint], None]
+
+STAGING_MATERIALIZE_FAULT_POINT = "after_staging_flush_before_identity_return"
+NO_REPLACE_COMMIT_FAULT_POINT = "after_bound_staging_commit_before_return"
+NO_REPLACE_POSIX_LINK_FAULT_POINT = (
+    "after_bound_staging_posix_link_before_unlink"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicPublishedBytes:
+    path: Path
+    identity: PathIdentity
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedNoReplaceBytes:
+    path: Path
+    identity: PathIdentity
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class MaterializedStagingBytes:
+    path: Path
+    identity: PathIdentity
+    size: int
+    sha256: str
 
 
 class LockTimeoutError(TimeoutError):
@@ -32,6 +78,350 @@ class AtomicWriteConflictError(RuntimeError):
 
 def no_fault(stage: str) -> None:
     """Default fault hook that leaves the write uninterrupted."""
+
+
+def no_atomic_write_fault(_point: AtomicWriteFaultPoint) -> None:
+    """Default reserved-write fault hook."""
+
+
+def atomic_materialize_staging_bytes(
+    *,
+    staging_path: Path,
+    inner_temp_path: Path,
+    payload: bytes,
+    expected_parent_identity: PathIdentity,
+    maximum_size: int,
+    fault_hook: FaultHook = no_fault,
+) -> MaterializedStagingBytes:
+    """Flush exact bytes to deterministic staging without publishing them."""
+
+    staging = Path(staging_path)
+    inner = Path(inner_temp_path)
+    content = _bounded_payload(payload, maximum_size=maximum_size)
+    _require_reserved_staging_paths(staging=staging, inner=inner)
+    if path_identity(staging.parent) != expected_parent_identity:
+        raise AtomicWriteConflictError("parent directory changed before staging")
+    if os.path.lexists(staging) or os.path.lexists(inner):
+        raise AtomicWriteConflictError("reserved staging surface already exists")
+
+    descriptor = secure_open_file_descriptor(
+        inner,
+        create=True,
+        write=True,
+        expected_parent_identity=expected_parent_identity,
+    )
+    try:
+        with os.fdopen(descriptor, "w+b", closefd=False) as handle:
+            written = handle.write(content)
+            if written != len(content):
+                raise OSError(errno.EIO, "atomic staging short write")
+            handle.flush()
+            os.fsync(descriptor)
+        inner_identity = path_identity_from_status(os.fstat(descriptor))
+    finally:
+        os.close(descriptor)
+
+    secure_commit_sibling_no_replace(
+        source_path=inner,
+        target_path=staging,
+        expected_source_identity=inner_identity,
+        expected_parent_identity=expected_parent_identity,
+    )
+    identity, size, digest = _require_exact_bound_file(
+        staging,
+        expected_identity=inner_identity,
+        expected_size=len(content),
+        expected_sha256=_prefixed_sha256(content),
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=maximum_size,
+    )
+    fault_hook(STAGING_MATERIALIZE_FAULT_POINT)
+    return MaterializedStagingBytes(
+        path=staging,
+        identity=identity,
+        size=size,
+        sha256=digest,
+    )
+
+
+def atomic_commit_bound_staging_no_replace(
+    *,
+    path: Path,
+    staging_path: Path,
+    expected_staging_identity: PathIdentity,
+    expected_size: int,
+    expected_sha256: str,
+    expected_parent_identity: PathIdentity,
+    fault_hook: FaultHook = no_fault,
+) -> PublishedNoReplaceBytes:
+    """Publish only one previously persisted staging identity."""
+
+    target = Path(path)
+    staging = Path(staging_path)
+    if target.parent != staging.parent or target.name == staging.name:
+        raise ValueError("atomic_no_replace_paths_invalid")
+    if type(expected_size) is not int or expected_size < 0:
+        raise ValueError("atomic_no_replace_size_invalid")
+    _require_prefixed_sha256(expected_sha256)
+
+    def adapt_fault(point: str) -> None:
+        if point != "after_posix_link_before_source_unlink":
+            raise AtomicWriteConflictError("unknown no-replace fault point")
+        fault_hook(NO_REPLACE_POSIX_LINK_FAULT_POINT)
+
+    try:
+        _require_exact_bound_file(
+            staging,
+            expected_identity=expected_staging_identity,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+            expected_parent_identity=expected_parent_identity,
+            allowed_links=frozenset({1, 2}) if os.name != "nt" else frozenset({1}),
+            maximum_size=max(expected_size, 1),
+        )
+    except FileNotFoundError:
+        # Exact final-only resume is verified after the neutral commit helper.
+        pass
+    try:
+        committed_identity = secure_commit_sibling_no_replace(
+            source_path=staging,
+            target_path=target,
+            expected_source_identity=expected_staging_identity,
+            expected_parent_identity=expected_parent_identity,
+            fault_hook=adapt_fault,
+        )
+    except (ValueError, FileExistsError, FileNotFoundError) as error:
+        raise AtomicWriteConflictError("bound no-replace commit conflict") from error
+    identity, size, digest = _require_exact_bound_file(
+        target,
+        expected_identity=committed_identity,
+        expected_size=expected_size,
+        expected_sha256=expected_sha256,
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=max(expected_size, 1),
+    )
+    if os.path.lexists(staging):
+        raise AtomicWriteConflictError("bound staging was not retired")
+    fault_hook(NO_REPLACE_COMMIT_FAULT_POINT)
+    return PublishedNoReplaceBytes(target, identity, size, digest)
+
+
+def atomic_write_reserved_bytes(
+    *,
+    path: Path,
+    payload: bytes,
+    expected_parent_identity: PathIdentity,
+    expected_predecessor_identity: PathIdentity | None,
+    expected_predecessor_sha256: str | None,
+    maximum_size: int,
+    fault_hook: AtomicWriteFaultHook = no_atomic_write_fault,
+) -> AtomicPublishedBytes:
+    """CAS one special leaf through its deterministic reserved sibling."""
+
+    target = Path(path)
+    content = _bounded_payload(payload, maximum_size=maximum_size)
+    if (expected_predecessor_identity is None) != (
+        expected_predecessor_sha256 is None
+    ):
+        raise ValueError("atomic_reserved_predecessor_binding_invalid")
+    if expected_predecessor_sha256 is not None:
+        _require_prefixed_sha256(expected_predecessor_sha256)
+    if path_identity(target.parent) != expected_parent_identity:
+        raise AtomicWriteConflictError("parent directory changed before reserved write")
+    _require_reserved_predecessor(
+        target,
+        expected_identity=expected_predecessor_identity,
+        expected_sha256=expected_predecessor_sha256,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=maximum_size,
+    )
+    temp = target.with_name(f".{target.name}.live-start-atomic.tmp")
+    if os.path.lexists(temp):
+        raise AtomicWriteConflictError("reserved atomic temp already exists")
+    descriptor = secure_open_file_descriptor(
+        temp,
+        create=True,
+        write=True,
+        expected_parent_identity=expected_parent_identity,
+    )
+    try:
+        temp_identity = path_identity_from_status(os.fstat(descriptor))
+        fault_hook("temp_created")
+        split = len(content) // 2
+        if split:
+            if os.write(descriptor, content[:split]) != split:
+                raise OSError(errno.EIO, "atomic reserved short write")
+        fault_hook("temp_partial")
+        tail = content[split:]
+        if tail and os.write(descriptor, tail) != len(tail):
+            raise OSError(errno.EIO, "atomic reserved short write")
+        fault_hook("temp_full")
+        os.fsync(descriptor)
+        fault_hook("temp_flushed")
+    finally:
+        os.close(descriptor)
+    _require_exact_bound_file(
+        temp,
+        expected_identity=temp_identity,
+        expected_size=len(content),
+        expected_sha256=_prefixed_sha256(content),
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=maximum_size,
+    )
+    _require_reserved_predecessor(
+        target,
+        expected_identity=expected_predecessor_identity,
+        expected_sha256=expected_predecessor_sha256,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=maximum_size,
+    )
+    fault_hook("before_replace")
+    try:
+        secure_replace(
+            temp,
+            target,
+            expected_source_identity=temp_identity,
+            expected_source_parent_identity=expected_parent_identity,
+            expected_target_parent_identity=expected_parent_identity,
+            expected_target_absent=expected_predecessor_identity is None,
+        )
+    except (ValueError, FileExistsError, FileNotFoundError) as error:
+        raise AtomicWriteConflictError("reserved atomic CAS conflict") from error
+    fault_hook("after_replace")
+    identity, size, digest = _require_exact_bound_file(
+        target,
+        expected_identity=temp_identity,
+        expected_size=len(content),
+        expected_sha256=_prefixed_sha256(content),
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=maximum_size,
+    )
+    _flush_parent_directory(target.parent)
+    return AtomicPublishedBytes(target, identity, size, digest)
+
+
+def _bounded_payload(payload: bytes, *, maximum_size: int) -> bytes:
+    if type(maximum_size) is not int or maximum_size < 1:
+        raise ValueError("atomic_maximum_size_invalid")
+    if not isinstance(payload, bytes) or len(payload) > maximum_size:
+        raise ValueError("atomic_payload_invalid")
+    return bytes(payload)
+
+
+def _require_reserved_staging_paths(*, staging: Path, inner: Path) -> None:
+    expected = staging.with_name(f".{staging.name}.live-start-atomic.tmp")
+    if (
+        staging.parent != inner.parent
+        or inner != expected
+        or staging.name in {"", ".", ".."}
+    ):
+        raise ValueError("atomic_staging_paths_invalid")
+
+
+def _require_prefixed_sha256(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 71
+        or not value.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in value[7:])
+    ):
+        raise ValueError("atomic_sha256_invalid")
+
+
+def _prefixed_sha256(content: bytes) -> str:
+    return f"sha256:{sha256(content).hexdigest()}"
+
+
+def _require_reserved_predecessor(
+    path: Path,
+    *,
+    expected_identity: PathIdentity | None,
+    expected_sha256: str | None,
+    expected_parent_identity: PathIdentity,
+    maximum_size: int,
+) -> None:
+    if path_identity(path.parent) != expected_parent_identity:
+        raise AtomicWriteConflictError("reserved predecessor parent changed")
+    if expected_identity is None:
+        if os.path.lexists(path):
+            raise AtomicWriteConflictError("reserved target unexpectedly exists")
+        return
+    _require_exact_bound_file(
+        path,
+        expected_identity=expected_identity,
+        expected_size=None,
+        expected_sha256=expected_sha256,
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=maximum_size,
+    )
+
+
+def _require_exact_bound_file(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_size: int | None,
+    expected_sha256: str | None,
+    expected_parent_identity: PathIdentity,
+    allowed_links: frozenset[int],
+    maximum_size: int,
+) -> tuple[PathIdentity, int, str]:
+    if path_identity(path.parent) != expected_parent_identity:
+        raise AtomicWriteConflictError("bound file parent changed")
+    status = Path(path).lstat()
+    identity = path_identity_from_status(status)
+    if (
+        identity != expected_identity
+        or not stat.S_ISREG(status.st_mode)
+        or status.st_nlink not in allowed_links
+        or status.st_size > maximum_size
+    ):
+        raise AtomicWriteConflictError("bound file identity changed")
+    if os.name == "nt":
+        require_no_alternate_data_streams(
+            path,
+            expected_identity=identity,
+            expected_parent_identity=expected_parent_identity,
+            directory=False,
+            expected_size=status.st_size,
+        )
+    descriptor = secure_open_file_descriptor(
+        path,
+        create=False,
+        write=False,
+        expected_parent_identity=expected_parent_identity,
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            path_identity_from_status(opened) != identity
+            or opened.st_nlink not in allowed_links
+            or opened.st_size != status.st_size
+        ):
+            raise AtomicWriteConflictError("bound file changed while opening")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            content = handle.read(maximum_size + 1)
+        after = os.fstat(descriptor)
+        if (
+            path_identity_from_status(after) != identity
+            or after.st_size != len(content)
+            or after.st_nlink not in allowed_links
+        ):
+            raise AtomicWriteConflictError("bound file changed while reading")
+    finally:
+        os.close(descriptor)
+    size = len(content)
+    digest = _prefixed_sha256(content)
+    if expected_size is not None and size != expected_size:
+        raise AtomicWriteConflictError("bound file size changed")
+    if expected_sha256 is not None and digest != expected_sha256:
+        raise AtomicWriteConflictError("bound file digest changed")
+    return identity, size, digest
 
 
 def atomic_write_bytes(
