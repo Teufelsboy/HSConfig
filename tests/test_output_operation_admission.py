@@ -49,6 +49,11 @@ SUPERSCRIPT_DOS_DEVICE_COMPONENTS = (
     "LPT².txt",
     "LPT³.txt",
 )
+UNC_IPC_NAMESPACE_PATHS = (
+    "\\\\server\\PiPe\\authority",
+    "\\\\server\\MaIlSlOt\\authority",
+    "\\\\server\\iPc$\\authority",
+)
 
 
 def _canonical(document: dict[str, object]) -> bytes:
@@ -385,6 +390,7 @@ def test_public_output_operation_observation_never_creates_reserved_lock(
         "NUL",
         "COM1.txt",
         *SUPERSCRIPT_DOS_DEVICE_COMPONENTS,
+        *UNC_IPC_NAMESPACE_PATHS,
     ),
 )
 def test_output_operation_admission_rejects_unsafe_windows_namespace_paths(
@@ -424,6 +430,42 @@ def test_windows_namespace_validator_rejects_superscript_dos_devices(
             tmp_path / unsafe_component,
             error="windows_namespace_invalid",
         )
+
+
+@pytest.mark.parametrize("unsafe_path", UNC_IPC_NAMESPACE_PATHS)
+def test_windows_namespace_validator_rejects_unc_ipc_shares(
+    unsafe_path: str,
+):
+    if os.name != "nt":
+        pytest.skip("UNC IPC namespaces are Windows-specific")
+    with pytest.raises(ValueError, match="namespace"):
+        admission._require_windows_safe_absolute_path(
+            Path(unsafe_path),
+            error="windows_namespace_invalid",
+        )
+
+
+@pytest.mark.parametrize(
+    "ordinary_path",
+    (
+        "\\\\server\\ordinary-share\\authority",
+        "\\\\server\\C$\\authority",
+        "\\\\server\\ADMIN$\\authority",
+    ),
+)
+def test_windows_namespace_validator_preserves_ordinary_unc_shares(
+    ordinary_path: str,
+):
+    if os.name != "nt":
+        pytest.skip("UNC namespaces are Windows-specific")
+    candidate = Path(ordinary_path)
+    assert (
+        admission._require_windows_safe_absolute_path(
+            candidate,
+            error="windows_namespace_invalid",
+        )
+        == candidate
+    )
 
 
 @pytest.mark.parametrize(

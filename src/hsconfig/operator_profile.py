@@ -58,6 +58,12 @@ OPERATOR_PROFILE_FIELDS = frozenset(
 OPERATOR_PROFILE_NAME = "operator-profile.json"
 OPERATOR_PROFILE_LOCK_NAME = "operator-profile.lock"
 
+# A 256-component/row ceiling accommodates the 110-component Windows
+# long-path authority while bounding filesystem work under the 64 KiB profile
+# contract and NTFS's 255-character component limit.
+_PHYSICAL_IDENTITY_MAX_MISSING_COMPONENTS = 256
+_PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS = 256
+
 
 _STANDARD_SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TOKEN_AUTHORITY = object()
@@ -591,8 +597,7 @@ def _read_observation(
 
 
 def _load_canonical_document(raw: bytes) -> dict[str, Any]:
-    if not raw or len(raw) > OPERATOR_PROFILE_MAX_BYTES:
-        raise ValueError("operator_profile_size_invalid")
+    _require_profile_canonical_size(raw)
     if raw.startswith(b"\xef\xbb\xbf") or b"\x00" in raw:
         raise ValueError("operator_profile_bytes_invalid")
 
@@ -692,6 +697,7 @@ def _write_profile_cas(
     expected_parent_identity: PathIdentity,
     expected_root_bindings: tuple[tuple[Path, PathIdentity], ...],
 ) -> None:
+    _require_profile_canonical_size(canonical)
     _require_root_bindings_unchanged(expected_root_bindings)
     _require_predecessor_unchanged(
         path,
@@ -714,6 +720,11 @@ def _write_profile_cas(
         expected_parent_identity=expected_parent_identity,
         fault_hook=check_before_replace,
     )
+
+
+def _require_profile_canonical_size(canonical: bytes) -> None:
+    if not canonical or len(canonical) > OPERATOR_PROFILE_MAX_BYTES:
+        raise ValueError("operator_profile_size_invalid")
 
 
 def _require_predecessor_unchanged(
@@ -937,6 +948,8 @@ def _physical_identity_mapping(
     nearest_existing = Path(path)
     remaining: list[str] = []
     while not path_lexists(nearest_existing):
+        if len(remaining) >= _PHYSICAL_IDENTITY_MAX_MISSING_COMPONENTS:
+            raise ValueError("filesystem_identity_mapping_missing_bound_exceeded")
         parent = nearest_existing.parent
         if parent == nearest_existing:
             raise FileNotFoundError(nearest_existing)
@@ -946,6 +959,8 @@ def _physical_identity_mapping(
     identities: list[PathIdentity] = []
     current = nearest_existing
     while True:
+        if len(identities) >= _PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS:
+            raise ValueError("filesystem_identity_mapping_ancestor_bound_exceeded")
         require_plain_directory(current)
         require_same_identity_resolution(current)
         identities.append(path_identity(current))

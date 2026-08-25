@@ -44,6 +44,11 @@ SUPERSCRIPT_DOS_DEVICE_COMPONENTS = (
     "LPT².txt",
     "LPT³.txt",
 )
+UNC_IPC_NAMESPACE_PATHS = (
+    "\\\\server\\PiPe\\authority",
+    "\\\\server\\MaIlSlOt\\authority",
+    "\\\\server\\iPc$\\authority",
+)
 
 
 def _layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
@@ -107,6 +112,17 @@ def _administrative_share_alias_or_skip(path: Path) -> Path:
     if not available:
         pytest.skip("local administrative share is unavailable")
     return alias
+
+
+def _long_windows_profile_root(parent: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("the real UTF-8/UTF-16 long-path reproducer is Windows-specific")
+    parent.mkdir()
+    current = parent
+    for index in range(110):
+        current /= f"{index:03d}-" + ("界" * 235)
+        current.mkdir()
+    return current
 
 
 def _active_admission_document(
@@ -418,6 +434,81 @@ def test_enable_and_disable_require_absent_or_exact_predecessor_cas(
             expected_predecessor_sha256=disabled.content_sha256,
         )
     assert profile_path.read_bytes() == before_race
+
+
+@pytest.mark.parametrize(
+    "invalid_canonical",
+    (b"", b"x" * (operator_profile.OPERATOR_PROFILE_MAX_BYTES + 1)),
+    ids=("empty", "oversized"),
+)
+def test_expected_absent_enable_rejects_invalid_canonical_size_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_canonical: bytes,
+):
+    _local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+
+    def invalid_seal(**_kwargs: object) -> bytes:
+        return invalid_canonical
+
+    monkeypatch.setattr(operator_profile, "_seal_profile", invalid_seal)
+    with pytest.raises(ValueError):
+        _enable(runtime_root, output_base_root)
+
+    assert not operator_profile_path().exists()
+
+
+def test_real_long_path_profile_is_rejected_before_expected_absent_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    local_app_data, _runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    long_runtime_root = _long_windows_profile_root(tmp_path / "long-runtime")
+
+    with pytest.raises(ValueError):
+        _enable(long_runtime_root, output_base_root)
+
+    assert not (local_app_data / "HSConfig" / "operator-profile.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ("rebind", "disable"))
+def test_oversized_profile_mutation_preserves_exact_predecessor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+):
+    _local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    profile = _enable(runtime_root, output_base_root)
+    profile_path = operator_profile_path()
+    predecessor = (
+        profile_path.read_bytes(),
+        path_identity(profile_path),
+        profile_path.stat().st_mtime_ns,
+    )
+
+    def oversized_seal(**_kwargs: object) -> bytes:
+        return b"x" * (operator_profile.OPERATOR_PROFILE_MAX_BYTES + 1)
+
+    monkeypatch.setattr(operator_profile, "_seal_profile", oversized_seal)
+    with pytest.raises(ValueError):
+        if mutation == "rebind":
+            rebound_output = tmp_path / "rebound-oversized"
+            rebound_output.mkdir()
+            enable_operator_profile(
+                runtime_root=runtime_root,
+                output_base_root=rebound_output,
+                expected_predecessor_sha256=profile.content_sha256,
+            )
+        else:
+            disable_operator_profile(
+                expected_predecessor_sha256=profile.content_sha256
+            )
+
+    assert (
+        profile_path.read_bytes(),
+        path_identity(profile_path),
+        profile_path.stat().st_mtime_ns,
+    ) == predecessor
 
 
 def test_operator_profile_lease_is_active_nonforgeable_and_expires_on_exit(
@@ -735,6 +826,7 @@ def test_task1_state_and_lock_surfaces_reject_ntfs_alternate_data_streams(
         "NUL",
         "COM1.txt",
         *SUPERSCRIPT_DOS_DEVICE_COMPONENTS,
+        *UNC_IPC_NAMESPACE_PATHS,
     ),
 )
 def test_operator_profile_rejects_unsafe_windows_namespace_paths(
@@ -819,6 +911,66 @@ def test_windows_drive_unc_aliases_cannot_bypass_root_disjointness(
 
     assert tuple(local_app_data.iterdir()) == ()
     assert not state_root.exists()
+
+
+@pytest.mark.parametrize("authority", ("runtime_root", "output_base_root", "localappdata"))
+@pytest.mark.parametrize("unsafe_path", UNC_IPC_NAMESPACE_PATHS)
+def test_unc_ipc_authorities_reject_before_profile_state_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority: str,
+    unsafe_path: str,
+):
+    if os.name != "nt":
+        pytest.skip("UNC IPC namespaces are Windows-specific")
+    local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    if authority == "runtime_root":
+        runtime_root = Path(unsafe_path)
+    elif authority == "output_base_root":
+        output_base_root = Path(unsafe_path)
+    else:
+        monkeypatch.setenv("LOCALAPPDATA", unsafe_path)
+
+    with pytest.raises(ValueError, match="namespace"):
+        _enable(runtime_root, output_base_root)
+
+    assert tuple(local_app_data.iterdir()) == ()
+
+
+def test_physical_identity_mapping_bounds_missing_tail_traversal(
+    tmp_path: Path,
+):
+    missing_at_limit = tmp_path.joinpath(*(["missing"] * 256))
+    _identities, remaining = operator_profile._physical_identity_mapping(
+        missing_at_limit
+    )
+    assert len(remaining) == 256
+    with pytest.raises(ValueError, match="bound"):
+        operator_profile._physical_identity_mapping(missing_at_limit / "overflow")
+
+
+def test_physical_identity_mapping_bounds_existing_ancestor_traversal(
+    tmp_path: Path,
+):
+    base_rows = 1
+    base = tmp_path
+    while base.parent != base:
+        base_rows += 1
+        base = base.parent
+    existing_at_limit = tmp_path
+    for _ in range(256 - base_rows):
+        existing_at_limit /= "d"
+        existing_at_limit.mkdir()
+    identities, remaining = operator_profile._physical_identity_mapping(
+        existing_at_limit
+    )
+    assert len(identities) == 256
+    assert remaining == ()
+
+    existing_over_limit = existing_at_limit / "d"
+    existing_over_limit.mkdir()
+    with pytest.raises(ValueError, match="bound"):
+        operator_profile._physical_identity_mapping(existing_over_limit)
 
 
 def test_profile_observation_registry_is_weak_identity_bound_and_bounded(

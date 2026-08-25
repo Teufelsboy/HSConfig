@@ -79,6 +79,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     }
 )
 _WINDOWS_INVALID_COMPONENT_CHARACTERS = frozenset('<>"/\\|?*:')
+_WINDOWS_UNC_IPC_SHARES = frozenset({"pipe", "mailslot", "ipc$"})
 _LOCK_STREAM_VALIDATION_TIMEOUT_SECONDS = 30.0
 
 
@@ -646,6 +647,11 @@ def _require_windows_safe_absolute_path(path: Path, *, error: str) -> Path:
     drive = candidate.drive
     if drive.startswith("\\\\"):
         drive_components = drive[2:].split("\\")
+        if (
+            len(drive_components) != 2
+            or drive_components[1].casefold() in _WINDOWS_UNC_IPC_SHARES
+        ):
+            raise ValueError(error)
     elif re.fullmatch(r"[A-Za-z]:", drive):
         drive_components = []
     else:
