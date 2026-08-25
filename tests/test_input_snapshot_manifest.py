@@ -614,6 +614,65 @@ def test_snapshot_requires_unambiguous_hero_feed_identity(
         _freeze(captured_inputs)
 
 
+@pytest.mark.parametrize("alias", ("card_id", "dbf_id"))
+def test_snapshot_rejects_partial_hero_feed_identity_before_candidate_generation(
+    captured_inputs: _CapturedInputs,
+    alias: str,
+) -> None:
+    _replace_hero_feed_with_partial_identity(captured_inputs, alias=alias)
+
+    with pytest.raises(ValueError, match="input_snapshot_hero_identity_invalid"):
+        _freeze(captured_inputs)
+
+
+@pytest.mark.parametrize("alias", ("card_id", "dbf_id"))
+def test_snapshot_loader_rejects_partial_hero_feed_identity(
+    captured_inputs: _CapturedInputs,
+    tmp_path: Path,
+    alias: str,
+) -> None:
+    valid = _freeze(captured_inputs)
+    _replace_hero_feed_with_partial_identity(captured_inputs, alias=alias)
+    assert valid.collectible_cards.to_value() == captured_inputs.collectible_cards
+    partial = _replace_frozen_full_cards(
+        valid,
+        captured_inputs.full_cards,
+    )
+    run_root = tmp_path / f"partial-hero-{alias}"
+    _write_frozen_inputs(run_root, partial)
+
+    with pytest.raises(ValueError, match="input_snapshot_hero_identity_invalid"):
+        load_frozen_compiler_inputs(run_root)
+
+
+@pytest.mark.parametrize(
+    "overlap",
+    (
+        pytest.param(False, id="single-full-row"),
+        pytest.param(True, id="identical-full-collectible-overlap"),
+    ),
+)
+def test_snapshot_accepts_complete_hero_feed_identity_from_one_or_both_feeds(
+    captured_inputs: _CapturedInputs,
+    tmp_path: Path,
+    overlap: bool,
+) -> None:
+    hero_rows = [
+        row
+        for row in captured_inputs.full_cards
+        if row.get("id") == "HERO_04" and row.get("dbfId") == 671
+    ]
+    assert len(hero_rows) == 1
+    if overlap:
+        captured_inputs.collectible_cards.append(deepcopy(hero_rows[0]))
+
+    frozen = _freeze(captured_inputs)
+    run_root = tmp_path / f"complete-hero-overlap-{overlap}"
+    _write_frozen_inputs(run_root, frozen)
+
+    assert load_frozen_compiler_inputs(run_root) == frozen
+
+
 @pytest.mark.parametrize(
     "hero_card_id",
     (
@@ -1025,6 +1084,64 @@ def _set_sideboard_owner_alias(
 ) -> None:
     row["owner_card_id"] = card_id if alias in {"card_id", "full"} else None
     row["owner_dbf_id"] = dbf_id if alias in {"dbf_id", "full"} else None
+
+
+def _replace_hero_feed_with_partial_identity(
+    captured: _CapturedInputs,
+    *,
+    alias: str,
+) -> None:
+    receipt = captured.deck["cards_payload"]["deckstring_decode_receipt"]
+    hero_card_id = receipt["hero_card_id"]
+    hero_dbf_id = receipt["hero_dbf_id"]
+    assert hero_card_id == "HERO_04"
+    assert hero_dbf_id == 671
+    for feed in (captured.full_cards, captured.collectible_cards):
+        feed[:] = [
+            row
+            for row in feed
+            if not any(
+                row.get(key) == hero_card_id
+                for key in ("id", "cardId", "card_id")
+            )
+            and not any(
+                row.get(key) == hero_dbf_id for key in ("dbfId", "dbf_id")
+            )
+        ]
+    if alias == "card_id":
+        captured.full_cards.append({"id": hero_card_id})
+    elif alias == "dbf_id":
+        captured.full_cards.append({"dbfId": hero_dbf_id})
+    else:  # pragma: no cover - the parametrization is closed above
+        raise AssertionError(f"unknown hero alias: {alias}")
+
+
+def _replace_frozen_full_cards(
+    frozen: FrozenCompilerInputs,
+    full_cards: list[dict[str, Any]],
+) -> FrozenCompilerInputs:
+    full_document = FrozenJsonDocument.from_value(full_cards)
+    manifest_value = frozen.manifest.document.to_value()
+    binding = next(
+        row
+        for row in manifest_value["compiler_inputs"]["blobs"]
+        if row["name"] == "full_cards"
+    )
+    binding["sha256"] = _digest(full_document.canonical_json)
+    binding["size_bytes"] = len(full_document.canonical_json)
+    binding["record_count"] = len(full_cards)
+    manifest = validate_input_snapshot_manifest_document(
+        _reseal_manifest(manifest_value)
+    )
+    return FrozenCompilerInputs(
+        manifest=manifest,
+        deck=frozen.deck,
+        full_cards=full_document,
+        collectible_cards=frozen.collectible_cards,
+        source_acquisition=frozen.source_acquisition,
+        source_documents=frozen.source_documents,
+        globalvalues_baseline=frozen.globalvalues_baseline,
+    )
 
 
 def _write_frozen_inputs(

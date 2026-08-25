@@ -776,13 +776,15 @@ def _validate_deck_and_card_closure(
     )
     for row in [*main_cards, *sideboard_cards]:
         _require_resolved_card(row, by_id=by_id, by_dbf=by_dbf)
-    _require_resolved_identity(
+    resolved_hero = _require_resolved_identity(
         card_id=hero_card_id,
         dbf_id=hero_dbf_id,
         by_id=by_id,
         by_dbf=by_dbf,
         error_identity=hero_card_id,
     )
+    if resolved_hero != (hero_card_id, hero_dbf_id):
+        raise ValueError("input_snapshot_hero_identity_invalid")
     resolved_owners: set[tuple[str | None, int | None]] = set()
     for owner_card_id, owner_dbf_id in owners:
         resolved_owner = _require_resolved_identity(
