@@ -102,6 +102,7 @@ _DECK_OUTPUT_PRECONDITION_FIELDS = frozenset({"state", "identity"})
 _STANDARD_SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _BARE_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _BOUND_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_CARD_ID = re.compile(r"[A-Za-z0-9_]+\Z")
 _VERSION_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _WINDOWS_RESERVED_NAMES = frozenset(
     {"con", "prn", "aux", "nul"}
@@ -693,8 +694,6 @@ def _validate_deck_and_card_closure(
         if owner_card_id is None and owner_dbf_id is None:
             raise ValueError("input_snapshot_sideboard_owner_invalid")
         owner = (owner_card_id, owner_dbf_id)
-        if owner in owners:
-            raise ValueError("input_snapshot_duplicate_sideboard_owner")
         owners.append(owner)
         row_cards = _deck_card_rows(
             row.get("cards"),
@@ -747,7 +746,7 @@ def _validate_deck_and_card_closure(
         or cards_payload.get("format") != deck_identity.get("format")
     ):
         raise ValueError("input_snapshot_deck_format_invalid")
-    _validate_decode_receipt(
+    hero_card_id = _validate_decode_receipt(
         cards_payload.get("deckstring_decode_receipt"),
         hero_dbf_id=hero_dbf_id,
         main_total=main_total,
@@ -777,14 +776,25 @@ def _validate_deck_and_card_closure(
     )
     for row in [*main_cards, *sideboard_cards]:
         _require_resolved_card(row, by_id=by_id, by_dbf=by_dbf)
+    _require_resolved_identity(
+        card_id=hero_card_id,
+        dbf_id=hero_dbf_id,
+        by_id=by_id,
+        by_dbf=by_dbf,
+        error_identity=hero_card_id,
+    )
+    resolved_owners: set[tuple[str | None, int | None]] = set()
     for owner_card_id, owner_dbf_id in owners:
-        _require_resolved_identity(
+        resolved_owner = _require_resolved_identity(
             card_id=owner_card_id,
             dbf_id=owner_dbf_id,
             by_id=by_id,
             by_dbf=by_dbf,
             error_identity=owner_card_id or str(owner_dbf_id),
         )
+        if resolved_owner in resolved_owners:
+            raise ValueError("input_snapshot_duplicate_sideboard_owner")
+        resolved_owners.add(resolved_owner)
 
 
 def _validate_decode_receipt(
@@ -794,7 +804,7 @@ def _validate_decode_receipt(
     main_total: int,
     unique_count: int,
     sideboard_total: int,
-) -> None:
+) -> str:
     receipt = _require_mapping(
         value,
         "input_snapshot_deck_decode_receipt_invalid",
@@ -812,10 +822,13 @@ def _validate_decode_receipt(
         "unresolved_identities"
     ) != []:
         raise ValueError("input_snapshot_unresolved_deck_identity")
+    hero_card_id = receipt.get("hero_card_id")
     if (
         receipt.get("hero_dbf_id") != hero_dbf_id
-        or not isinstance(receipt.get("hero_card_id"), str)
-        or not receipt["hero_card_id"]
+        or type(hero_card_id) is not str
+        or not hero_card_id
+        or hero_card_id != hero_card_id.strip()
+        or _CARD_ID.fullmatch(hero_card_id) is None
         or receipt.get("hero_metadata_status") != "source_record"
     ):
         raise ValueError("input_snapshot_hero_identity_invalid")
@@ -827,6 +840,7 @@ def _validate_decode_receipt(
     for field, expected in expected_counts.items():
         if type(receipt.get(field)) is not int or receipt[field] != expected:
             raise ValueError("input_snapshot_deck_decode_receipt_invalid")
+    return hero_card_id
 
 
 def _deck_card_rows(value: Any, field: str) -> list[dict[str, Any]]:
@@ -989,7 +1003,7 @@ def _require_resolved_identity(
     by_id: Mapping[str, tuple[str | None, int | None]],
     by_dbf: Mapping[int, tuple[str | None, int | None]],
     error_identity: str,
-) -> None:
+) -> tuple[str | None, int | None]:
     id_identity = by_id.get(card_id) if card_id is not None else None
     dbf_identity = by_dbf.get(dbf_id) if dbf_id is not None else None
     if id_identity is None and dbf_identity is None:
@@ -1014,20 +1028,29 @@ def _require_resolved_identity(
         raise ValueError(
             f"input_snapshot_card_identity_ambiguous:{error_identity}"
         )
+    resolved = id_identity if id_identity is not None else dbf_identity
+    if resolved is None:  # pragma: no cover - guarded above
+        raise AssertionError("resolved card identity missing")
+    return resolved
 
 
 def _card_feed_id(row: Mapping[str, Any]) -> str | None:
-    values = {
-        str(row[key]).strip()
-        for key in ("id", "cardId", "card_id")
-        if key in row and row[key] not in (None, "")
-    }
+    values: set[str] = set()
+    for key in ("id", "cardId", "card_id"):
+        if key not in row:
+            continue
+        value = row[key]
+        if (
+            type(value) is not str
+            or not value
+            or value != value.strip()
+            or _CARD_ID.fullmatch(value) is None
+        ):
+            raise ValueError("input_snapshot_card_id_invalid")
+        values.add(value)
     if len(values) > 1:
         raise ValueError("input_snapshot_card_identity_contradiction")
-    value = next(iter(values), None)
-    if value == "":
-        raise ValueError("input_snapshot_card_id_invalid")
-    return value
+    return next(iter(values), None)
 
 
 def _card_feed_dbf(row: Mapping[str, Any]) -> int | None:
@@ -1147,16 +1170,23 @@ def _operator_bindings_from_values(
     deck_output_binding: Any,
     deck_name: Any,
 ) -> dict[str, Any]:
-    from hsconfig.operator_profile import DeckOutputBinding, OperatorProfile
+    from hsconfig.operator_profile import (
+        DeckOutputBinding,
+        OperatorProfile,
+        derive_deck_output_binding,
+        revalidate_operator_profile,
+    )
 
     if not isinstance(operator_profile, OperatorProfile):
         raise TypeError("input_snapshot_operator_profile_invalid")
     if not isinstance(deck_output_binding, DeckOutputBinding):
         raise TypeError("input_snapshot_deck_output_binding_invalid")
-    if operator_profile.live_by_default is not True:
-        raise ValueError("input_snapshot_operator_profile_disabled")
     if not isinstance(deck_name, str) or not deck_name:
         raise ValueError("input_snapshot_deck_name_invalid")
+    revalidate_operator_profile(operator_profile)
+    current_binding = derive_deck_output_binding(operator_profile, deck_name)
+    if deck_output_binding != current_binding:
+        raise ValueError("input_snapshot_deck_output_binding_changed")
     expected_name = slugify_deck_name(deck_name)
     if deck_output_binding.output_name != expected_name:
         raise ValueError("input_snapshot_deck_output_name_mismatch")

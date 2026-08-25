@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 from pathlib import Path
-import stat
 from typing import Any
 
 import pytest
@@ -32,6 +31,7 @@ from hsconfig.operator_profile import (
     DeckOutputBinding,
     OperatorProfile,
     derive_deck_output_binding,
+    disable_operator_profile,
     enable_operator_profile,
 )
 from hsconfig.package_request import (
@@ -533,6 +533,320 @@ def test_snapshot_rejects_an_unknown_card_before_candidate_generation(
         _freeze(captured_inputs)
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    (
+        pytest.param(
+            "missing",
+            "input_snapshot_unknown_deck_card:HERO_04",
+            id="missing",
+        ),
+        pytest.param(
+            "wrong_dbf",
+            "input_snapshot_card_identity_contradiction:HERO_04",
+            id="wrong-dbf",
+        ),
+        pytest.param(
+            "contradictory_aliases",
+            "input_snapshot_card_identity_contradiction",
+            id="contradictory-aliases",
+        ),
+        pytest.param(
+            "duplicate",
+            "input_snapshot_duplicate_full_cards_identity:HERO_04",
+            id="duplicate",
+        ),
+        pytest.param(
+            "ambiguous",
+            "input_snapshot_card_identity_ambiguous:HERO_04",
+            id="ambiguous",
+        ),
+    ),
+)
+def test_snapshot_requires_unambiguous_hero_feed_identity(
+    captured_inputs: _CapturedInputs,
+    mutation: str,
+    expected_error: str,
+) -> None:
+    receipt = captured_inputs.deck["cards_payload"][
+        "deckstring_decode_receipt"
+    ]
+    hero_card_id = receipt["hero_card_id"]
+    hero_dbf_id = receipt["hero_dbf_id"]
+    assert hero_card_id == "HERO_04"
+    assert hero_dbf_id == 671
+    hero_rows = [
+        row
+        for row in captured_inputs.full_cards
+        if row.get("id") == hero_card_id
+    ]
+    assert len(hero_rows) == 1
+
+    if mutation == "missing":
+        captured_inputs.full_cards[:] = [
+            row
+            for row in captured_inputs.full_cards
+            if row.get("id") != hero_card_id
+        ]
+        captured_inputs.collectible_cards[:] = [
+            row
+            for row in captured_inputs.collectible_cards
+            if row.get("id") != hero_card_id
+        ]
+    elif mutation == "wrong_dbf":
+        hero_rows[0]["dbfId"] = 100_671
+    elif mutation == "contradictory_aliases":
+        hero_rows[0]["cardId"] = "HERO_04_CONTRADICTION"
+    elif mutation == "duplicate":
+        captured_inputs.full_cards.append(deepcopy(hero_rows[0]))
+    elif mutation == "ambiguous":
+        captured_inputs.full_cards.remove(hero_rows[0])
+        captured_inputs.full_cards.extend(
+            (
+                {"id": hero_card_id},
+                {"dbfId": hero_dbf_id},
+            )
+        )
+    else:  # pragma: no cover - the parametrization is closed above
+        raise AssertionError(f"unknown mutation: {mutation}")
+
+    with pytest.raises(ValueError, match=expected_error):
+        _freeze(captured_inputs)
+
+
+@pytest.mark.parametrize(
+    "hero_card_id",
+    (
+        pytest.param(" HERO_04", id="leading-whitespace"),
+        pytest.param("HERO_04 ", id="trailing-whitespace"),
+        pytest.param("HERO-04", id="outside-card-id-grammar"),
+        pytest.param("", id="empty"),
+        pytest.param(True, id="boolean"),
+        pytest.param(671, id="numeric"),
+    ),
+)
+def test_snapshot_requires_canonical_receipt_hero_card_id(
+    captured_inputs: _CapturedInputs,
+    hero_card_id: object,
+) -> None:
+    preconfig = captured_inputs.snapshot.general_preconfig.to_value()
+    preconfig["cards_payload"]["deckstring_decode_receipt"][
+        "hero_card_id"
+    ] = hero_card_id
+    snapshot = PackageResolutionSnapshot.from_preconfig(preconfig)
+
+    with pytest.raises(ValueError, match="input_snapshot_hero_identity_invalid"):
+        _freeze(
+            captured_inputs,
+            snapshot=snapshot,
+            deck=_deck_projection(preconfig),
+        )
+
+
+@pytest.mark.parametrize(
+    "aliases",
+    (
+        pytest.param({"id": True}, id="boolean"),
+        pytest.param({"id": 7}, id="numeric"),
+        pytest.param({"id": " HERO_01 "}, id="whitespace-padded"),
+        pytest.param({"id": ""}, id="empty"),
+        pytest.param({"id": None}, id="null"),
+        pytest.param({"id": "HERO-01"}, id="outside-card-id-grammar"),
+        pytest.param(
+            {"id": "HERO_01", "cardId": 7},
+            id="mixed-alias-types",
+        ),
+    ),
+)
+def test_card_feed_id_aliases_are_strict_json_card_ids(
+    captured_inputs: _CapturedInputs,
+    aliases: dict[str, object],
+) -> None:
+    row = captured_inputs.full_cards[0]
+    for key in ("id", "cardId", "card_id"):
+        row.pop(key, None)
+    row.update(aliases)
+
+    with pytest.raises(ValueError, match="input_snapshot_card_id_invalid"):
+        _freeze(captured_inputs)
+
+
+@pytest.mark.parametrize(
+    ("first_alias", "second_alias", "copy_owner_to_collectible"),
+    (
+        pytest.param("card_id", "dbf_id", False, id="id-only-vs-dbf-only"),
+        pytest.param("card_id", "full", False, id="partial-vs-full"),
+        pytest.param("dbf_id", "full", True, id="across-two-card-feeds"),
+    ),
+)
+def test_snapshot_rejects_logically_duplicate_sideboard_owner_aliases(
+    captured_inputs: _CapturedInputs,
+    first_alias: str,
+    second_alias: str,
+    copy_owner_to_collectible: bool,
+) -> None:
+    preconfig = captured_inputs.snapshot.general_preconfig.to_value()
+    deck_sideboard = preconfig["deck_identity"]["sideboards"][0]
+    owner_card_id = deck_sideboard["owner_card_id"]
+    owner_dbf_id = deck_sideboard["owner_dbf_id"]
+    assert owner_card_id == "TOY_330"
+    assert owner_dbf_id == 102_983
+
+    for sideboards in (
+        preconfig["deck_identity"]["sideboards"],
+        preconfig["cards_payload"]["sideboards"],
+    ):
+        original = sideboards[0]
+        assert len(original["cards"]) >= 2
+        first = deepcopy(original)
+        second = deepcopy(original)
+        first["cards"] = original["cards"][:1]
+        second["sideboard_index"] = 2
+        second["cards"] = original["cards"][1:]
+        _set_sideboard_owner_alias(
+            first,
+            alias=first_alias,
+            card_id=owner_card_id,
+            dbf_id=owner_dbf_id,
+        )
+        _set_sideboard_owner_alias(
+            second,
+            alias=second_alias,
+            card_id=owner_card_id,
+            dbf_id=owner_dbf_id,
+        )
+        sideboards[:] = [first, second]
+
+    if copy_owner_to_collectible:
+        owner_rows = [
+            row
+            for row in captured_inputs.full_cards
+            if row.get("id") == owner_card_id
+            and row.get("dbfId") == owner_dbf_id
+        ]
+        assert len(owner_rows) == 1
+        captured_inputs.collectible_cards.append(deepcopy(owner_rows[0]))
+
+    snapshot = PackageResolutionSnapshot.from_preconfig(preconfig)
+    with pytest.raises(
+        ValueError,
+        match="input_snapshot_duplicate_sideboard_owner",
+    ):
+        _freeze(
+            captured_inputs,
+            snapshot=snapshot,
+            deck=_deck_projection(preconfig),
+        )
+
+
+def test_disabled_registered_profile_freezes_writes_and_loads_for_preview(
+    captured_inputs: _CapturedInputs,
+    tmp_path: Path,
+) -> None:
+    disabled = disable_operator_profile(
+        expected_predecessor_sha256=captured_inputs.profile.content_sha256
+    )
+    deck_name = captured_inputs.deck["deck_identity"]["deck_name"]
+    binding = derive_deck_output_binding(disabled, deck_name)
+
+    frozen = _freeze(
+        captured_inputs,
+        profile=disabled,
+        output_binding=binding,
+    )
+    run_root = tmp_path / "disabled-preview-run"
+    _write_frozen_inputs(run_root, frozen)
+
+    loaded = load_frozen_compiler_inputs(run_root)
+
+    assert disabled.live_by_default is False
+    assert loaded == frozen
+    assert loaded.manifest.operator_bindings.to_value()[
+        "operator_profile_sha256"
+    ] == disabled.content_sha256
+
+
+def test_freeze_rejects_unregistered_equal_profile_and_matching_binding(
+    captured_inputs: _CapturedInputs,
+) -> None:
+    profile = captured_inputs.profile
+    binding = captured_inputs.output_binding
+    forged_profile = OperatorProfile(
+        schema_version=profile.schema_version,
+        live_by_default=profile.live_by_default,
+        runtime_root=profile.runtime_root,
+        runtime_root_identity=profile.runtime_root_identity,
+        output_base_root=profile.output_base_root,
+        output_base_root_identity=profile.output_base_root_identity,
+        content_sha256=profile.content_sha256,
+    )
+    forged_binding = DeckOutputBinding(
+        output_name=binding.output_name,
+        output_root=binding.output_root,
+        precondition_state=binding.precondition_state,
+        precondition_identity=binding.precondition_identity,
+    )
+
+    with pytest.raises(ValueError, match="operator_profile_unbound"):
+        _freeze(
+            captured_inputs,
+            profile=forged_profile,
+            output_binding=forged_binding,
+        )
+
+
+def test_freeze_rejects_profile_changed_after_capture(
+    captured_inputs: _CapturedInputs,
+) -> None:
+    disable_operator_profile(
+        expected_predecessor_sha256=captured_inputs.profile.content_sha256
+    )
+
+    with pytest.raises(ValueError, match="operator_profile_.*_changed"):
+        _freeze(captured_inputs)
+
+
+@pytest.mark.parametrize("transition", ("created", "replaced"))
+def test_freeze_rejects_output_child_changed_after_precondition_capture(
+    captured_inputs: _CapturedInputs,
+    transition: str,
+) -> None:
+    output_root = captured_inputs.output_binding.output_root
+    stale_binding = captured_inputs.output_binding
+    if transition == "replaced":
+        output_root.mkdir()
+        deck_name = captured_inputs.deck["deck_identity"]["deck_name"]
+        stale_binding = derive_deck_output_binding(
+            captured_inputs.profile,
+            deck_name,
+        )
+        output_root.rename(output_root.with_name(output_root.name + "-old"))
+    output_root.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match="input_snapshot_deck_output_binding_changed",
+    ):
+        _freeze(captured_inputs, output_binding=stale_binding)
+
+
+def test_freeze_rejects_supplied_binding_unequal_to_fresh_derivation(
+    captured_inputs: _CapturedInputs,
+) -> None:
+    supplied = DeckOutputBinding(
+        output_name=captured_inputs.output_binding.output_name,
+        output_root=captured_inputs.output_binding.output_root,
+        precondition_state="existing",
+        precondition_identity=(1, 2, 3),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="input_snapshot_deck_output_binding_changed",
+    ):
+        _freeze(captured_inputs, output_binding=supplied)
+
+
 def test_pure_manifest_validation_needs_no_envelopes_or_local_roots(
     captured_inputs: _CapturedInputs,
     tmp_path: Path,
@@ -588,74 +902,83 @@ def test_physical_envelope_limits_cover_exact_blob_count_and_json_overhead(
         2 * INPUT_BLOB_MAX_BYTES + INPUT_ENVELOPE_JSON_OVERHEAD_MAX_BYTES
     )
 
-    current_size = 0
-    observed_limits: list[int] = []
+    scaled_file_maximum = 31
+    input_path = tmp_path / "scaled-input.json"
+    exact_bytes = b"x" * scaled_file_maximum
+    input_path.write_bytes(exact_bytes)
+    assert input_snapshot_manifest._read_input_file_once(
+        input_path,
+        maximum_bytes=scaled_file_maximum,
+    ) == exact_bytes
+    input_path.write_bytes(exact_bytes + b"x")
+    with pytest.raises(ValueError, match="input_envelope_size_invalid"):
+        input_snapshot_manifest._read_input_file_once(
+            input_path,
+            maximum_bytes=scaled_file_maximum,
+        )
 
-    def fake_status(path: Path) -> Any:
-        del path
-        return _FakeStatus(current_size)
-
-    def fake_read(
-        path: Path,
-        *,
-        expected_status: Any,
-        maximum_size: int,
-    ) -> bytes:
-        del path, expected_status
-        observed_limits.append(maximum_size)
-        return b"{}"
-
+    scaled_blob_maximum = 30
+    scaled_json_overhead = 61
+    scaled_cards_maximum = 151
+    documents = {
+        "deck": FrozenJsonDocument.from_value({}),
+        "full_cards": FrozenJsonDocument.from_value(
+            {"cards": [], "pad": "x" * 9}
+        ),
+        "collectible_cards": FrozenJsonDocument.from_value(
+            {"cards": [], "pad": "x" * 9}
+        ),
+        "source_acquisition": FrozenJsonDocument.from_value({}),
+        "source_documents": FrozenJsonDocument.from_value({}),
+        "globalvalues_baseline": FrozenJsonDocument.from_value(
+            {"pad": "x" * 20}
+        ),
+    }
     monkeypatch.setattr(
         input_snapshot_manifest,
-        "plain_file_status",
-        fake_status,
+        "INPUT_BLOB_MAX_BYTES",
+        scaled_blob_maximum,
     )
-    monkeypatch.setattr(
-        input_snapshot_manifest,
-        "read_file_no_follow",
-        fake_read,
-    )
-    monkeypatch.setattr(
-        input_snapshot_manifest,
-        "require_no_alternate_data_streams",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        input_snapshot_manifest,
-        "require_same_identity_resolution",
-        lambda *args, **kwargs: None,
-    )
-
-    for maximum in (
-        DECK_INPUT_ENVELOPE_MAX_BYTES,
-        CARDS_INPUT_ENVELOPE_MAX_BYTES,
-        SOURCES_INPUT_ENVELOPE_MAX_BYTES,
+    for name in (
+        "full_cards",
+        "collectible_cards",
+        "globalvalues_baseline",
     ):
-        current_size = maximum
-        assert input_snapshot_manifest._read_input_file_once(
-            tmp_path / "input.json",
-            maximum_bytes=maximum,
-        ) == b"{}"
-        current_size = maximum + 1
-        with pytest.raises(ValueError, match="input_envelope_size_invalid"):
-            input_snapshot_manifest._read_input_file_once(
-                tmp_path / "input.json",
-                maximum_bytes=maximum,
-            )
-    assert observed_limits == [
-        DECK_INPUT_ENVELOPE_MAX_BYTES,
-        CARDS_INPUT_ENVELOPE_MAX_BYTES,
-        SOURCES_INPUT_ENVELOPE_MAX_BYTES,
-    ]
+        binding = input_snapshot_manifest._binding_for_document(
+            name,
+            documents[name],
+        )
+        assert binding.size_bytes == scaled_blob_maximum
+    assert scaled_cards_maximum == (
+        3 * scaled_blob_maximum + scaled_json_overhead
+    )
+    assert scaled_cards_maximum > (
+        2 * scaled_blob_maximum + scaled_json_overhead
+    )
+    cards_envelope = FrozenJsonDocument.from_value(
+        {
+            "full_cards": documents["full_cards"].to_value(),
+            "collectible_cards": documents["collectible_cards"].to_value(),
+            "globalvalues_baseline": documents[
+                "globalvalues_baseline"
+            ].to_value(),
+        }
+    )
+    assert len(cards_envelope.canonical_json) == scaled_cards_maximum
 
-
-class _FakeStatus:
-    def __init__(self, size: int) -> None:
-        self.st_mode = stat.S_IFREG
-        self.st_nlink = 1
-        self.st_size = size
-        self.st_dev = 1
-        self.st_ino = 2
+    monkeypatch.setattr(
+        input_snapshot_manifest,
+        "CARDS_INPUT_ENVELOPE_MAX_BYTES",
+        scaled_cards_maximum,
+    )
+    input_snapshot_manifest._validate_envelope_sizes(documents)
+    monkeypatch.setattr(
+        input_snapshot_manifest,
+        "CARDS_INPUT_ENVELOPE_MAX_BYTES",
+        scaled_cards_maximum - 1,
+    )
+    with pytest.raises(ValueError, match="input_cards_envelope_size_invalid"):
+        input_snapshot_manifest._validate_envelope_sizes(documents)
 
 
 def _freeze(
@@ -663,6 +986,7 @@ def _freeze(
     *,
     snapshot: PackageResolutionSnapshot | None = None,
     deck: dict[str, Any] | None = None,
+    profile: OperatorProfile | None = None,
     output_binding: DeckOutputBinding | None = None,
 ) -> FrozenCompilerInputs:
     return freeze_compiler_inputs(
@@ -676,7 +1000,7 @@ def _freeze(
         bound_date="2026-07-29",
         runtime_grammar_version=_RUNTIME_GRAMMAR_VERSION,
         compiler_contract_id=_COMPILER_CONTRACT_ID,
-        operator_profile=captured.profile,
+        operator_profile=(captured.profile if profile is None else profile),
         deck_output_binding=(
             captured.output_binding
             if output_binding is None
@@ -690,6 +1014,17 @@ def _deck_projection(preconfig: dict[str, Any]) -> dict[str, Any]:
         "cards_payload": deepcopy(preconfig["cards_payload"]),
         "deck_identity": deepcopy(preconfig["deck_identity"]),
     }
+
+
+def _set_sideboard_owner_alias(
+    row: dict[str, Any],
+    *,
+    alias: str,
+    card_id: str,
+    dbf_id: int,
+) -> None:
+    row["owner_card_id"] = card_id if alias in {"card_id", "full"} else None
+    row["owner_dbf_id"] = dbf_id if alias in {"dbf_id", "full"} else None
 
 
 def _write_frozen_inputs(
