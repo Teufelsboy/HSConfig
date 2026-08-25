@@ -647,20 +647,20 @@ def _require_no_alternate_data_streams_root(
     )
     try:
         native_handle = msvcrt.get_osfhandle(descriptor)
-        _require_windows_root_directory_binding(
+        before = _require_windows_root_directory_binding(
             root,
             descriptor=descriptor,
             native_handle=native_handle,
             expected_identity=expected_identity,
         )
         streams = _windows_native_handle_streams(native_handle)
-        _require_windows_root_directory_binding(
+        after = _require_windows_root_directory_binding(
             root,
             descriptor=descriptor,
             native_handle=native_handle,
             expected_identity=expected_identity,
         )
-        if streams != ():
+        if streams != () or after != before:
             raise ValueError("filesystem_alternate_data_stream_forbidden")
     finally:
         os.close(descriptor)
@@ -672,7 +672,7 @@ def _require_windows_root_directory_binding(
     descriptor: int,
     native_handle: int,
     expected_identity: PathIdentity,
-) -> None:
+) -> _WindowsHandleState:
     opened_status = os.fstat(descriptor)
     lexical_status = root.lstat()
     opened = _windows_native_handle_state(native_handle)
@@ -688,6 +688,7 @@ def _require_windows_root_directory_binding(
         or bool(opened.attributes & _REPARSE_ATTRIBUTE)
     ):
         raise ValueError("filesystem_path_identity_changed")
+    return opened
 
 
 def secure_rmdir(

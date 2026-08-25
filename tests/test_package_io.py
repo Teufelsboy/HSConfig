@@ -220,6 +220,74 @@ def test_require_no_alternate_data_streams_accepts_authority_only_unc_root() -> 
     )
 
 
+def test_require_no_alternate_data_streams_root_rejects_late_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _windows_drive_root_or_skip(tmp_path)
+    identity = package_io.path_identity(root)
+    stream_name = f"hsconfig-package-io-late-{os.urandom(16).hex()}"
+    stream_path = Path(f"{root}:{stream_name}")
+    stream_payload = b"late-root-stream"
+    expected_stream = (f":{stream_name}:$DATA", len(stream_payload))
+    opened_descriptors: list[int] = []
+    initial_inventories: list[tuple[tuple[str, int], ...]] = []
+    final_inventories: list[tuple[tuple[str, int], ...]] = []
+    real_open = package_io._open_plain_directory_descriptor
+    real_streams = package_io._windows_native_handle_streams
+
+    def recording_open(path: Path, **kwargs: object) -> int:
+        descriptor = real_open(path, **kwargs)
+        opened_descriptors.append(descriptor)
+        return descriptor
+
+    def create_late_stream(
+        native_handle: int,
+    ) -> tuple[tuple[str, int], ...]:
+        initial = real_streams(native_handle)
+        initial_inventories.append(initial)
+        assert initial == ()
+        try:
+            with stream_path.open("xb") as stream:
+                assert stream.write(stream_payload) == len(stream_payload)
+        except OSError as error:
+            pytest.skip(f"local root cannot create an NTFS ADS: {error}")
+        final = real_streams(native_handle)
+        final_inventories.append(final)
+        assert expected_stream in final
+        return initial
+
+    monkeypatch.setattr(
+        package_io,
+        "_open_plain_directory_descriptor",
+        recording_open,
+    )
+    monkeypatch.setattr(
+        package_io,
+        "_windows_native_handle_streams",
+        create_late_stream,
+    )
+
+    try:
+        with pytest.raises(ValueError, match="alternate_data_stream"):
+            package_io.require_no_alternate_data_streams(
+                root,
+                expected_identity=identity,
+                expected_parent_identity=identity,
+                directory=True,
+            )
+
+        assert initial_inventories == [()]
+        assert final_inventories == [(expected_stream,)]
+        assert stream_path.read_bytes() == stream_payload
+        assert opened_descriptors
+        for descriptor in opened_descriptors:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+    finally:
+        stream_path.unlink(missing_ok=True)
+
+
 def test_require_no_alternate_data_streams_root_contract_fails_closed(
     tmp_path: Path,
 ) -> None:
