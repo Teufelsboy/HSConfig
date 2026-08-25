@@ -97,6 +97,32 @@ def test_no_replace_commit_is_parent_identity_bound_on_windows_and_posix(
     assert not source.exists()
 
 
+def test_no_replace_rejects_foreign_source_hardlink_before_target_creation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "authority.json.staged"
+    foreign = tmp_path / "foreign-hardlink.json"
+    target = tmp_path / "authority.json"
+    source.write_bytes(b"authority")
+    os.link(source, foreign)
+    expected = package_io.path_identity(source)
+    parent_identity = package_io.path_identity(tmp_path)
+
+    with pytest.raises(ValueError, match="identity|link"):
+        package_io.secure_commit_sibling_no_replace(
+            source_path=source,
+            target_path=target,
+            expected_source_identity=expected,
+            expected_parent_identity=parent_identity,
+        )
+
+    assert not target.exists()
+    assert package_io.path_identity(source) == expected
+    assert package_io.path_identity(foreign) == expected
+    assert source.stat().st_nlink == foreign.stat().st_nlink == 2
+    assert source.read_bytes() == foreign.read_bytes() == b"authority"
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback only")
 def test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink(
     tmp_path: Path,

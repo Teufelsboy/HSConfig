@@ -108,6 +108,24 @@ LIVE_START_TERMINAL_CLEANUP_INVENTORY_MAX_ENTRIES = MAX_FILESYSTEM_NODES
 LIVE_START_TERMINAL_CLEANUP_INVENTORY_KIND = (
     "live_start_terminal_resolution_cleanup_inventory"
 )
+LIVE_START_FROZEN_INPUT_FILES = (
+    "inputs/input_snapshot_manifest.json",
+    "inputs/deck.json",
+    "inputs/cards.json",
+    "inputs/sources.json",
+)
+LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES = MappingProxyType(
+    {
+        "inputs/input_snapshot_manifest.json": 256 * 1024,
+        "inputs/deck.json": 134_217_728 + 1_048_576,
+        "inputs/cards.json": 3 * 134_217_728 + 1_048_576,
+        "inputs/sources.json": 2 * 134_217_728 + 1_048_576,
+    }
+)
+
+
+def _no_creation_fault(_point: str) -> None:
+    """Default live-start creation hook."""
 
 
 class LiveStartPhase(StrEnum):
@@ -296,6 +314,19 @@ _EVENT_TRANSITIONS = MappingProxyType(
     }
 )
 
+_PHASE_FINAL_PENDING_OPERATIONS = MappingProxyType(
+    {
+        "initial_draft": "install_candidate",
+        "replacement_draft": "install_candidate",
+        "candidate_valid": "install_candidate_validation",
+        "review_approved": "install_review_validation",
+        "package_validated": "install_package_validation",
+        "prepublication_passed": "install_prepublication_validation",
+        "publication_committed": "cleanup_prepublication",
+        "apply_started": "install_apply_invocation",
+    }
+)
+
 _DOWNSTREAM_REVISION_ARTIFACTS = frozenset(
     {
         "receipts/candidate_validation.json",
@@ -363,6 +394,7 @@ class _SessionBearer:
         "session_root_identity",
         "session_lock_path",
         "session_lock_identity",
+        "session_lock",
     )
 
     def __init__(
@@ -372,6 +404,7 @@ class _SessionBearer:
         session_root_identity: PathIdentity,
         session_lock_path: Path,
         session_lock_identity: PathIdentity,
+        session_lock: ExclusiveFileLock | None = None,
     ) -> None:
         self.active = True
         self.thread_id = threading.get_ident()
@@ -380,6 +413,7 @@ class _SessionBearer:
         self.session_root_identity = session_root_identity
         self.session_lock_path = session_lock_path
         self.session_lock_identity = session_lock_identity
+        self.session_lock = session_lock
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -416,13 +450,176 @@ class LiveStartSessionLease:
     lock_token: SessionLockToken
 
 
+_AUTHORITY_REGISTRY_LOCK = threading.RLock()
+_ACTIVE_SESSION_CONTEXTS: dict[
+    int,
+    tuple[_SessionBearer, SessionLockToken],
+] = {}
+
+
+def _register_session_context(
+    *,
+    bearer: _SessionBearer,
+    token: SessionLockToken,
+) -> None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        if id(bearer) in _ACTIVE_SESSION_CONTEXTS:
+            raise SessionCapabilityError(
+                "live_start_session_capability_registry_conflict"
+            )
+        _ACTIVE_SESSION_CONTEXTS[id(bearer)] = (bearer, token)
+
+
+def _session_context_is_registered(
+    *,
+    bearer: _SessionBearer,
+    token: SessionLockToken | None = None,
+) -> bool:
+    with _AUTHORITY_REGISTRY_LOCK:
+        registered = _ACTIVE_SESSION_CONTEXTS.get(id(bearer))
+        return (
+            registered is not None
+            and registered[0] is bearer
+            and (token is None or registered[1] is token)
+        )
+
+
+def _deregister_session_context(*, bearer: _SessionBearer) -> None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        registered = _ACTIVE_SESSION_CONTEXTS.get(id(bearer))
+        if registered is not None and registered[0] is bearer:
+            del _ACTIVE_SESSION_CONTEXTS[id(bearer)]
+
+
+def _validate_frozen_input_bytes(
+    value: Mapping[str, bytes],
+    *,
+    manifest_self_sha256: str,
+) -> Mapping[str, bytes]:
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != set(LIVE_START_FROZEN_INPUT_FILES)
+    ):
+        raise SessionValidationError(
+            "live_start_frozen_input_fields_invalid"
+        )
+    frozen: dict[str, bytes] = {}
+    decoded: dict[str, dict[str, Any]] = {}
+    for logical in LIVE_START_FROZEN_INPUT_FILES:
+        raw = value[logical]
+        maximum_size = LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES[logical]
+        if (
+            type(raw) is not bytes
+            or not raw
+            or len(raw) > maximum_size
+        ):
+            raise SessionValidationError(
+                "live_start_frozen_input_bytes_invalid"
+            )
+        decoded[logical] = _decode_frozen_input_json(raw)
+        frozen[logical] = raw
+    manifest = decoded["inputs/input_snapshot_manifest.json"]
+    claimed = manifest.get("content_sha256")
+    unsigned = dict(manifest)
+    unsigned.pop("content_sha256", None)
+    if (
+        claimed != manifest_self_sha256
+        or _bytes_sha256(_canonical_frozen_input_json(unsigned))
+        != manifest_self_sha256
+    ):
+        raise SessionValidationError(
+            "live_start_frozen_manifest_digest_invalid"
+        )
+    return MappingProxyType(frozen)
+
+
+def _canonical_frozen_input_json(value: Any) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise SessionValidationError(
+            "live_start_frozen_input_json_invalid"
+        ) from error
+
+
+def _decode_frozen_input_json(raw: bytes) -> dict[str, Any]:
+    if (
+        raw.startswith(b"\xef\xbb\xbf")
+        or b"\x00" in raw
+        or b"\r" in raw
+    ):
+        raise SessionValidationError(
+            "live_start_frozen_input_json_encoding_invalid"
+        )
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise SessionValidationError(
+                    "live_start_frozen_input_json_duplicate_key"
+                )
+            result[key] = item
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise SessionValidationError(
+            "live_start_frozen_input_json_non_finite"
+        )
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SessionValidationError(
+            "live_start_frozen_input_json_invalid"
+        ) from error
+    if not isinstance(value, dict):
+        raise SessionValidationError(
+            "live_start_frozen_input_json_not_object"
+        )
+    if _canonical_frozen_input_json(value) != raw:
+        raise SessionValidationError(
+            "live_start_frozen_input_json_not_canonical"
+        )
+    return value
+
+
+def _resolve_local_app_data_root(configured: Path | None) -> Path:
+    if configured is None:
+        environment_value = os.environ.get("LOCALAPPDATA")
+        if not environment_value:
+            raise SessionValidationError(
+                "live_start_local_app_data_missing"
+            )
+        configured = Path(environment_value)
+    return Path(configured).absolute()
+
+
 def create_live_start_session(
     *,
     session_root: Path,
+    local_app_data_root: Path | None = None,
+    repository_root: Path,
+    runtime_root: Path,
+    output_base_root: Path,
+    output_deck_root: Path,
+    installed_skill_root: Path,
     deck_name: str,
     deck_code_sha256: str,
     input_snapshot_manifest_sha256: str,
+    frozen_input_bytes: Mapping[str, bytes],
     preview_requested: bool,
+    _fault_hook: Callable[[str], None] = _no_creation_fault,
 ) -> LiveStartSession:
     """Create one run, its external persistent lock, and initial cursor."""
 
@@ -435,11 +632,39 @@ def create_live_start_session(
         input_snapshot_manifest_sha256,
         "input_snapshot_manifest_sha256",
     )
+    frozen_inputs = _validate_frozen_input_bytes(
+        frozen_input_bytes,
+        manifest_self_sha256=input_snapshot_manifest_sha256,
+    )
+    if not callable(_fault_hook):
+        raise TypeError("live_start_creation_fault_hook_invalid")
     if type(preview_requested) is not bool:
         raise SessionValidationError("live_start_preview_requested_invalid")
-    if root.parent.name != "runs":
-        raise SessionValidationError("live_start_session_root_invalid")
-    state_root = root.parent.parent
+    local_root = _resolve_local_app_data_root(local_app_data_root)
+    state_root = local_root / "HSConfig"
+    expected_root = state_root / "runs" / run_id
+    if root != expected_root:
+        raise SessionValidationError(
+            "live_start_session_root_not_canonical"
+        )
+    forbidden_roots = tuple(
+        Path(path).absolute()
+        for path in (
+            repository_root,
+            runtime_root,
+            output_base_root,
+            output_deck_root,
+            installed_skill_root,
+        )
+    )
+    if any(
+        _paths_overlap(state_root, forbidden_root)
+        for forbidden_root in forbidden_roots
+    ):
+        raise SessionValidationError(
+            "live_start_session_forbidden_root_overlap"
+        )
+    _validate_existing_plain_ancestor_chain(local_root)
     _require_or_create_plain_directory(state_root)
     _require_or_create_plain_directory(root.parent)
     locks_root = state_root / "locks"
@@ -452,12 +677,51 @@ def create_live_start_session(
         lock_path,
         expected_parent_identity=path_identity(locks_root),
         create_if_missing=True,
-    ):
+    ) as session_lock:
         lock_identity = path_identity(lock_path)
+        try:
+            session_lock.validate_no_alternate_data_streams(
+                expected_size=0
+            )
+        except (OSError, ValueError) as error:
+            raise SessionLayoutError(
+                "live_start_layout_alternate_stream_forbidden"
+            ) from error
         root_identity = secure_create_directory(
             root,
             expected_parent_identity=path_identity(root.parent),
         )
+        inputs_root = root / "inputs"
+        inputs_identity = secure_create_directory(
+            inputs_root,
+            expected_parent_identity=root_identity,
+        )
+        input_bindings: dict[str, str] = {}
+        for logical in LIVE_START_FROZEN_INPUT_FILES:
+            payload = frozen_inputs[logical]
+            maximum_size = LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES[logical]
+            published_input = atomic_write_reserved_bytes(
+                path=root / logical,
+                payload=payload,
+                expected_parent_identity=inputs_identity,
+                expected_predecessor_identity=None,
+                expected_predecessor_sha256=None,
+                maximum_size=maximum_size,
+            )
+            rebound_raw, rebound_identity = _read_bound_file(
+                root / logical,
+                expected_parent_identity=inputs_identity,
+                maximum_size=maximum_size,
+            )
+            if (
+                rebound_raw != payload
+                or rebound_identity != published_input.identity
+                or _bytes_sha256(rebound_raw) != published_input.sha256
+            ):
+                raise SessionConflictError(
+                    "live_start_frozen_input_install_mismatch"
+                )
+            input_bindings[logical] = published_input.sha256
         value: dict[str, Any] = {
             "schema_version": LIVE_START_SESSION_SCHEMA_VERSION,
             "run_id": run_id,
@@ -470,11 +734,7 @@ def create_live_start_session(
             "input_snapshot_manifest_sha256": (
                 input_snapshot_manifest_sha256
             ),
-            "artifact_bindings": {
-                "inputs/input_snapshot_manifest.json": (
-                    input_snapshot_manifest_sha256
-                )
-            },
+            "artifact_bindings": input_bindings,
             "pending_transition": None,
             "prepublication_work_binding": None,
             "output_operation_admission_binding": None,
@@ -490,6 +750,7 @@ def create_live_start_session(
             "terminal_status": None,
         }
         sealed = _seal_session_value(value, session_identity=None)
+        _fault_hook("before_session_commit_marker")
         published = atomic_write_reserved_bytes(
             path=root / "session.json",
             payload=sealed.canonical_json,
@@ -498,6 +759,7 @@ def create_live_start_session(
             expected_predecessor_sha256=None,
             maximum_size=LIVE_START_SESSION_MAX_BYTES,
         )
+        _fault_hook("after_session_commit_marker")
         if path_identity(lock_path) != lock_identity:
             raise SessionConflictError("live_start_session_lock_changed")
         return _load_session_bytes(
@@ -509,10 +771,19 @@ def create_live_start_session(
 @contextmanager
 def lease_live_start_session(
     session_root: Path,
+    *,
+    local_app_data_root: Path | None = None,
 ) -> Iterator[LiveStartSessionLease]:
     root = Path(session_root).absolute()
     run_id = root.name
     _require_run_id(run_id)
+    local_root = _resolve_local_app_data_root(local_app_data_root)
+    expected_root = local_root / "HSConfig" / "runs" / run_id
+    if root != expected_root:
+        raise SessionValidationError(
+            "live_start_session_root_not_canonical"
+        )
+    _validate_existing_plain_ancestor_chain(local_root)
     lock_path = _session_lock_path(root)
     if not os.path.lexists(root) or not os.path.lexists(lock_path):
         raise FileNotFoundError("live_start_session_authority_missing")
@@ -522,17 +793,34 @@ def lease_live_start_session(
         lock_path,
         expected_parent_identity=lock_parent_identity,
         create_if_missing=False,
-    ):
+    ) as session_lock:
         lock_identity = path_identity(lock_path)
+        lock_status = lock_path.lstat()
+        if lock_status.st_size != 0:
+            raise SessionLayoutError("live_start_session_lock_not_empty")
+        try:
+            session_lock.validate_no_alternate_data_streams(
+                expected_size=0
+            )
+        except (OSError, ValueError) as error:
+            raise SessionLayoutError(
+                "live_start_layout_alternate_stream_forbidden"
+            ) from error
         if path_identity(root) != root_identity:
             raise SessionConflictError("live_start_session_root_changed")
+        _validate_authority_root_paths_no_ads(
+            root=root,
+            lock_path=lock_path,
+        )
         bearer = _SessionBearer(
             session_root=root,
             session_root_identity=root_identity,
             session_lock_path=lock_path,
             session_lock_identity=lock_identity,
+            session_lock=session_lock,
         )
         token = SessionLockToken._mint(bearer)
+        _register_session_context(bearer=bearer, token=token)
         lease = LiveStartSessionLease(
             session_root=root,
             session_root_identity=root_identity,
@@ -545,12 +833,21 @@ def lease_live_start_session(
             yield lease
         finally:
             # Invalidate authority before the OS lock is released.
+            _deactivate_opaque_bearers_for_session(bearer)
+            _deregister_session_context(bearer=bearer)
             bearer.active = False
             bearer.nonce = ""
 
 
-def load_live_start_session(session_root: Path) -> LiveStartSession:
-    with lease_live_start_session(session_root) as lease:
+def load_live_start_session(
+    session_root: Path,
+    *,
+    local_app_data_root: Path | None = None,
+) -> LiveStartSession:
+    with lease_live_start_session(
+        session_root,
+        local_app_data_root=local_app_data_root,
+    ) as lease:
         return load_live_start_session_under_lock(session_lease=lease)
 
 
@@ -573,6 +870,10 @@ def load_live_start_session_under_lock(
         session_lease=session_lease,
         session=session,
     )
+    _validate_bound_artifacts_under_lock(
+        session_lease=session_lease,
+        session=session,
+    )
     return session
 
 
@@ -581,6 +882,21 @@ def update_session_under_lock(
     session_lease: LiveStartSessionLease,
     expected_session: LiveStartSession,
     update: LiveStartSessionUpdate,
+) -> LiveStartSession:
+    return _update_session_under_lock(
+        session_lease=session_lease,
+        expected_session=expected_session,
+        update=update,
+        receipt_authorized=False,
+    )
+
+
+def _update_session_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_session: LiveStartSession,
+    update: LiveStartSessionUpdate,
+    receipt_authorized: bool,
 ) -> LiveStartSession:
     _require_session_lease(session_lease)
     if not isinstance(expected_session, LiveStartSession):
@@ -599,7 +915,11 @@ def update_session_under_lock(
         session_lease=session_lease,
         session=current,
     )
-    successor_value = _apply_session_update(current, update)
+    successor_value = _apply_session_update(
+        current,
+        update,
+        receipt_authorized=receipt_authorized,
+    )
     successor = _seal_session_value(successor_value, session_identity=None)
     try:
         published = atomic_write_reserved_bytes(
@@ -632,6 +952,21 @@ def transition_live_start_session_under_lock(
     )
 
 
+def _transition_receipt_authorized_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_session: LiveStartSession,
+    event: str,
+    changes: Mapping[str, Any] | None = None,
+) -> LiveStartSession:
+    return _update_session_under_lock(
+        session_lease=session_lease,
+        expected_session=expected_session,
+        update=LiveStartSessionUpdate(event=event, changes=changes or {}),
+        receipt_authorized=True,
+    )
+
+
 def validate_resume_under_lock(
     *,
     session_lease: LiveStartSessionLease,
@@ -649,24 +984,6 @@ def validate_resume_under_lock(
         != expected_input_snapshot_manifest_sha256
     ):
         raise SessionConflictError("live_start_resume_frozen_input_drift")
-    for logical_path, digest in session.artifact_bindings.items():
-        artifact_path = session_lease.session_root / logical_path
-        if not os.path.lexists(artifact_path):
-            # The input-manifest binding may precede its physical installation
-            # only in the narrow Task-2/Task-3 construction seam.
-            if (
-                logical_path == "inputs/input_snapshot_manifest.json"
-                and session.phase is LiveStartPhase.INPUT_FROZEN
-            ):
-                continue
-            raise SessionConflictError("live_start_resume_artifact_missing")
-        raw, _identity = _read_bound_file(
-            artifact_path,
-            expected_parent_identity=path_identity(artifact_path.parent),
-            maximum_size=64 * 1024 * 1024,
-        )
-        if _bytes_sha256(raw) != digest:
-            raise SessionConflictError("live_start_resume_artifact_drift")
     if (
         expected_runtime_grammar_version is not None
         or expected_compiler_contract_id is not None
@@ -679,7 +996,7 @@ def validate_resume_under_lock(
             expected_parent_identity=path_identity(manifest_path.parent),
             maximum_size=256 * 1024,
         )
-        value = _decode_json_document(raw)
+        value = _decode_frozen_input_json(raw)
         compiler_inputs = value.get("compiler_inputs")
         if not isinstance(compiler_inputs, dict):
             raise SessionValidationError("live_start_snapshot_manifest_invalid")
@@ -697,14 +1014,46 @@ def validate_resume_under_lock(
     return session
 
 
+def _validate_bound_artifacts_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    session: LiveStartSession,
+) -> None:
+    for logical_path, digest in session.artifact_bindings.items():
+        artifact_path = session_lease.session_root / logical_path
+        if not os.path.lexists(artifact_path):
+            raise SessionConflictError(
+                "live_start_resume_artifact_missing"
+            )
+        maximum_size = LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES.get(
+            logical_path,
+            64 * 1024 * 1024,
+        )
+        raw, _identity = _read_bound_file(
+            artifact_path,
+            expected_parent_identity=path_identity(artifact_path.parent),
+            maximum_size=maximum_size,
+        )
+        if _bytes_sha256(raw) != digest:
+            raise SessionConflictError("live_start_resume_artifact_drift")
+
+
 def _apply_session_update(
     session: LiveStartSession,
     update: LiveStartSessionUpdate,
+    *,
+    receipt_authorized: bool = False,
 ) -> dict[str, Any]:
     value = session.to_value()
     value.pop("content_sha256")
     event = update.event
     changes = _thaw(update.changes)
+    _validate_update_authority(
+        session=session,
+        event=event,
+        changes=changes,
+        receipt_authorized=receipt_authorized,
+    )
     if event in _EVENT_TRANSITIONS:
         expected_source, target = _EVENT_TRANSITIONS[event]
         if session.phase is not expected_source:
@@ -793,6 +1142,68 @@ def _apply_session_update(
     ):
         raise SessionValidationError("live_start_frozen_input_immutable")
     return value
+
+
+def _validate_update_authority(
+    *,
+    session: LiveStartSession,
+    event: str,
+    changes: Mapping[str, Any],
+    receipt_authorized: bool,
+) -> None:
+    expected_operation = _PHASE_FINAL_PENDING_OPERATIONS.get(event)
+    if expected_operation is not None:
+        pending = session.pending_transition
+        if (
+            not isinstance(pending, Mapping)
+            or pending.get("operation") != expected_operation
+            or pending.get("stage")
+            not in {"PRIMARY_APPLIED", "CLEANUP_DELETING"}
+            or changes.get("pending_transition", object()) is not None
+        ):
+            raise SessionConflictError(
+                "live_start_phase_transition_intent_missing_or_invalid"
+            )
+        target_phase = _EVENT_TRANSITIONS[event][1].value
+        if (
+            pending.get("source_phase") != session.phase.value
+            or pending.get("target_phase") != target_phase
+            or changes.get("artifact_bindings")
+            != pending.get("successor_artifact_bindings")
+        ):
+            raise SessionConflictError(
+                "live_start_phase_transition_intent_mismatch"
+            )
+
+    if event != "same_phase_cas":
+        return
+    if (
+        session.pending_transition is not None
+        and "pending_transition" in changes
+        and not receipt_authorized
+    ):
+        raise SessionCapabilityError(
+            "live_start_pending_transition_receipt_required"
+        )
+    for field_name, successor in changes.items():
+        predecessor = getattr(session, field_name)
+        if successor == predecessor:
+            if successor is None:
+                raise SessionValidationError(
+                    "live_start_same_phase_null_authority_invalid"
+                )
+            raise SessionValidationError(
+                "live_start_same_phase_noop_invalid"
+            )
+    successor_pending = changes.get("pending_transition", object())
+    if (
+        session.pending_transition is None
+        and isinstance(successor_pending, Mapping)
+        and successor_pending.get("stage") != "PREPARED"
+    ):
+        raise SessionValidationError(
+            "live_start_pending_initial_stage_invalid"
+        )
 
 
 def _seal_session_value(
@@ -938,6 +1349,8 @@ def _require_session_lease(lease: LiveStartSessionLease) -> _SessionBearer:
     bearer = token._bearer
     if not bearer.active or not bearer.nonce:
         raise SessionCapabilityError("live_start_session_capability_expired")
+    if not _session_context_is_registered(bearer=bearer, token=token):
+        raise SessionCapabilityError("live_start_session_capability_forged")
     if bearer.thread_id != threading.get_ident():
         raise SessionCapabilityError("live_start_session_capability_wrong_thread")
     if (
@@ -949,6 +1362,19 @@ def _require_session_lease(lease: LiveStartSessionLease) -> _SessionBearer:
         or path_identity(lease.session_lock_path) != bearer.session_lock_identity
     ):
         raise SessionCapabilityError("live_start_session_capability_context_mismatch")
+    lock_status = lease.session_lock_path.lstat()
+    if lock_status.st_size != 0 or bearer.session_lock is None:
+        raise SessionCapabilityError(
+            "live_start_session_capability_lock_invalid"
+        )
+    try:
+        bearer.session_lock.validate_no_alternate_data_streams(
+            expected_size=0
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionCapabilityError(
+            "live_start_session_capability_lock_invalid"
+        ) from error
     return bearer
 
 
@@ -958,6 +1384,27 @@ def _session_lock_path(session_root: Path) -> Path:
         / "locks"
         / f"live-start-{session_root.name}.lock"
     )
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    return left == right or left in right.parents or right in left.parents
+
+
+def _validate_existing_plain_ancestor_chain(path: Path) -> None:
+    current = Path(path).absolute()
+    existing: list[Path] = []
+    while True:
+        if os.path.lexists(current):
+            existing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for ancestor in reversed(existing):
+        status = ancestor.lstat()
+        if not stat.S_ISDIR(status.st_mode) or status_is_reparse(status):
+            raise SessionLayoutError(
+                "live_start_state_ancestor_invalid"
+            )
 
 
 def _require_or_create_plain_directory(path: Path) -> PathIdentity:
@@ -1471,6 +1918,12 @@ def _validate_session_nested_documents(
         if nested is not None:
             if not isinstance(nested, dict) or set(nested) != fields:
                 raise SessionValidationError(f"live_start_{name}_fields_invalid")
+            if name == "prepublication_work_binding":
+                _validate_prepublication_work_binding(nested)
+            elif name == "runtime_admission_binding":
+                _validate_runtime_admission_binding(nested)
+            else:
+                _validate_publication_binding(nested)
     apply_invocation = value.get("apply_invocation_sha256")
     if apply_invocation is not None:
         _require_sha256(apply_invocation, "apply_invocation_sha256")
@@ -1478,6 +1931,103 @@ def _validate_session_nested_documents(
     if apply_recovery is not None:
         _validate_apply_recovery_document(apply_recovery)
     _validate_session_binding_matrix(value=value, phase=phase)
+
+
+def _validate_prepublication_work_binding(
+    value: Mapping[str, Any],
+) -> None:
+    for key in ("work_parent_path", "work_root"):
+        _require_absolute_path(value.get(key), key)
+    for key in ("work_parent_identity", "work_root_identity"):
+        _require_identity(value.get(key), key)
+    for key in ("work_tree_sha256", "cleanup_manifest_sha256"):
+        _require_sha256(value.get(key), key)
+    _bounded_integer(
+        value.get("cleanup_entry_count"),
+        0,
+        MAX_FILESYSTEM_NODES,
+        "cleanup_entry_count",
+    )
+    if Path(value["work_root"]).parent != Path(value["work_parent_path"]):
+        raise SessionValidationError(
+            "live_start_prepublication_work_path_invalid"
+        )
+
+
+def _validate_runtime_admission_binding(
+    value: Mapping[str, Any],
+) -> None:
+    if set(value) != _RUNTIME_ADMISSION_BINDING_FIELDS:
+        raise SessionValidationError(
+            "live_start_runtime_admission_binding_fields_invalid"
+        )
+    for key in (
+        "admission_path",
+        "output_operation_admission_path",
+        "output_child_path",
+    ):
+        _require_absolute_path(value.get(key), key)
+    for key in (
+        "admission_parent_identity",
+        "admission_identity",
+        "output_operation_admission_identity",
+        "output_child_identity",
+    ):
+        _require_identity(value.get(key), key)
+    for key in (
+        "admission_sha256",
+        "output_operation_admission_sha256",
+        "output_child_binding_sha256",
+        "publication_content_root_sha256",
+    ):
+        _require_sha256(value.get(key), key)
+    revision = value.get("publication_revision")
+    if (
+        not isinstance(revision, str)
+        or re.fullmatch(r"revisions/sha256-[0-9a-f]{64}", revision)
+        is None
+    ):
+        raise SessionValidationError(
+            "live_start_runtime_admission_publication_revision_invalid"
+        )
+
+
+def _validate_publication_binding(value: Mapping[str, Any]) -> None:
+    if set(value) != _PUBLICATION_BINDING_FIELDS:
+        raise SessionValidationError(
+            "live_start_publication_binding_fields_invalid"
+        )
+    _require_absolute_path(
+        value.get("output_child_path"),
+        "publication_output_child_path",
+    )
+    _require_identity(
+        value.get("output_child_identity"),
+        "publication_output_child_identity",
+    )
+    _require_sha256(
+        value.get("output_child_binding_sha256"),
+        "publication_output_child_binding_sha256",
+    )
+    prior_current_identity = value.get("prior_current_identity")
+    if prior_current_identity is not None:
+        _require_identity(
+            prior_current_identity,
+            "publication_prior_current_identity",
+        )
+    revision = value.get("revision")
+    if (
+        not isinstance(revision, str)
+        or re.fullmatch(r"revisions/sha256-[0-9a-f]{64}", revision)
+        is None
+    ):
+        raise SessionValidationError(
+            "live_start_publication_revision_invalid"
+        )
+    _require_sha256(
+        value.get("content_root_sha256"),
+        "publication_content_root_sha256",
+    )
 
 
 def _validate_session_binding_matrix(
@@ -1489,7 +2039,16 @@ def _validate_session_binding_matrix(
     layout = value.get("runtime_layout_bootstrap")
     invocation = value.get("apply_invocation_sha256")
     ordinal = list(LiveStartPhase).index(phase)
+    publication_ordinal = list(LiveStartPhase).index(
+        LiveStartPhase.PUBLICATION_COMMITTED
+    )
     apply_ordinal = list(LiveStartPhase).index(LiveStartPhase.APPLY_STARTED)
+    if ordinal >= publication_ordinal and value.get(
+        "publication_binding"
+    ) is None:
+        raise SessionValidationError(
+            "live_start_publication_binding_missing"
+        )
     if ordinal >= apply_ordinal:
         if admission is None or layout is None or invocation is None:
             raise SessionValidationError("live_start_runtime_admission_binding_missing")
@@ -1509,6 +2068,228 @@ def _validate_session_binding_matrix(
         raise SessionValidationError("live_start_terminal_result_intent_missing")
     if value.get("terminal_status") is not None and value.get("pending_transition") is not None:
         raise SessionValidationError("live_start_terminal_pending_transition_invalid")
+    if value.get("result_intent") is not None:
+        _validate_terminal_status_matrix(value=value, phase=phase)
+
+
+def _validate_terminal_status_matrix(
+    *,
+    value: Mapping[str, Any],
+    phase: LiveStartPhase,
+) -> None:
+    intent = value.get("result_intent")
+    if not isinstance(intent, Mapping):
+        raise SessionValidationError("live_start_terminal_intent_invalid")
+    if (
+        intent.get("run_id") != value.get("run_id")
+        or intent.get("deck_name") != value.get("deck_name")
+        or intent.get("candidate_revision")
+        != value.get("candidate_revision")
+    ):
+        raise SessionValidationError("live_start_terminal_intent_binding_invalid")
+    status = intent.get("terminal_status")
+    terminal_status = value.get("terminal_status")
+    if terminal_status is not None and terminal_status != status:
+        raise SessionValidationError("live_start_terminal_status_mismatch")
+    acknowledgement = value.get("attempt_acknowledgement")
+    publication = value.get("publication_binding")
+    invocation = value.get("apply_invocation_sha256")
+    admission = value.get("runtime_admission_binding")
+    recovery = value.get("apply_recovery")
+    raw_status = intent.get("raw_apply_status")
+    disposition = intent.get("physical_disposition")
+    match_status = intent.get("runtime_match_status")
+    safe_state = intent.get("retained_safe_state")
+    if recovery is not None:
+        raise SessionValidationError(
+            "live_start_terminal_recovery_not_consumed"
+        )
+
+    intent_publication = (
+        intent.get("publication_revision"),
+        intent.get("publication_content_root_sha256"),
+    )
+    if publication is None:
+        if any(item is not None for item in intent_publication):
+            raise SessionValidationError(
+                "live_start_terminal_publication_binding_invalid"
+            )
+    elif (
+        intent_publication[0] != publication.get("revision")
+        or intent_publication[1]
+        != publication.get("content_root_sha256")
+    ):
+        raise SessionValidationError(
+            "live_start_terminal_publication_binding_invalid"
+        )
+
+    intent_admission = (
+        intent.get("runtime_admission_path"),
+        intent.get("runtime_admission_parent_identity"),
+        intent.get("runtime_admission_identity"),
+        intent.get("runtime_admission_sha256"),
+    )
+    if admission is None:
+        if any(item is not None for item in intent_admission):
+            raise SessionValidationError(
+                "live_start_terminal_admission_binding_invalid"
+            )
+    else:
+        session_admission = (
+            admission.get("admission_path"),
+            admission.get("admission_parent_identity"),
+            admission.get("admission_identity"),
+            admission.get("admission_sha256"),
+        )
+        if intent_admission != session_admission:
+            raise SessionValidationError(
+                "live_start_terminal_admission_binding_invalid"
+            )
+
+    apply_attempt_id = intent.get("apply_attempt_id")
+    if (invocation is None) != (apply_attempt_id is None):
+        raise SessionValidationError(
+            "live_start_terminal_attempt_binding_invalid"
+        )
+    phase_index = list(LiveStartPhase).index(phase)
+    review_index = list(LiveStartPhase).index(
+        LiveStartPhase.REVIEW_APPROVED
+    )
+    if phase_index >= review_index and (
+        intent.get("review_confidence") not in {"high", "limited"}
+        or intent.get("configured_cards") is None
+        or intent.get("deliberately_unconfigured_cards") is None
+    ):
+        raise SessionValidationError(
+            "live_start_terminal_review_or_coverage_invalid"
+        )
+
+    if status == "PREVIEW_READY":
+        if (
+            phase is not LiveStartPhase.PUBLICATION_COMMITTED
+            or value.get("preview_requested") is not True
+            or publication is None
+            or invocation is not None
+            or admission is not None
+            or value.get("runtime_layout_bootstrap") is not None
+            or raw_status is not None
+            or disposition is not None
+            or match_status != "not_run"
+            or intent.get("runtime_match_sha256") is not None
+            or acknowledgement is not None
+            or safe_state != "PUBLISHED_PREVIEW_RUNTIME_UNCHANGED"
+            or intent.get("review_confidence") not in {"high", "limited"}
+        ):
+            raise SessionValidationError(
+                "live_start_preview_terminal_matrix_invalid"
+            )
+        return
+
+    if status in {"LIVE_AND_MATCHED", "ALREADY_LIVE"}:
+        expected_raw = (
+            {"applied", "recovered"}
+            if status == "LIVE_AND_MATCHED"
+            else {"already_current"}
+        )
+        if (
+            phase is not LiveStartPhase.RUNTIME_MATCHED
+            or raw_status not in expected_raw
+            or disposition != "COMMITTED"
+            or match_status != "matched"
+            or safe_state != "ACTIVE_RUNTIME_MATCHED"
+            or acknowledgement is None
+            or invocation is None
+            or admission is None
+            or publication is None
+        ):
+            raise SessionValidationError(
+                "live_start_success_terminal_matrix_invalid"
+            )
+        for key in (
+            "runtime_match_sha256",
+            "package_root_sha256",
+            "last_apply_receipt_sha256",
+            "runtime_state_sha256",
+            "deck_config_ini_sha256",
+        ):
+            _require_sha256(intent.get(key), key)
+        return
+
+    if acknowledgement is not None:
+        raise SessionValidationError(
+            "live_start_failure_acknowledgement_forbidden"
+        )
+    if status == "FAILED_PRESERVED":
+        prepublication_index = list(LiveStartPhase).index(
+            LiveStartPhase.PREPUBLICATION_CHECK_PASSED
+        )
+        if phase_index <= prepublication_index:
+            valid = (
+                invocation is None
+                and admission is None
+                and publication is None
+                and raw_status is None
+                and disposition is None
+                and match_status == "not_run"
+                and safe_state == "NO_PUBLICATION_OR_RUNTIME_WRITE"
+            )
+        elif phase is LiveStartPhase.PUBLICATION_COMMITTED:
+            valid = (
+                publication is not None
+                and invocation is None
+                and admission is None
+                and raw_status is None
+                and disposition is None
+                and match_status == "not_run"
+                and safe_state
+                == "PUBLICATION_RETAINED_RUNTIME_UNCHANGED"
+            )
+        else:
+            valid = (
+                phase is LiveStartPhase.APPLY_STARTED
+                and invocation is not None
+                and admission is not None
+                and disposition == "NOT_COMMITTED"
+                and match_status == "not_run"
+                and safe_state == "PREVIOUS_RUNTIME_UNCHANGED"
+            )
+        if not valid:
+            raise SessionValidationError(
+                "live_start_failure_terminal_matrix_invalid"
+            )
+        return
+
+    if status == "APPLIED_BUT_NOT_VERIFIED":
+        committed_mismatch = (
+            phase is LiveStartPhase.APPLY_COMMITTED
+            and raw_status in {"applied", "already_current", "recovered"}
+            and disposition == "COMMITTED"
+            and match_status in {"mismatch", "unknown"}
+        )
+        pending_or_unknown = (
+            phase in {
+                LiveStartPhase.APPLY_STARTED,
+                LiveStartPhase.APPLY_COMMITTED,
+            }
+            and raw_status in {None, "committed_receipt_pending"}
+            and disposition
+            in {
+                "COMMITTED_RECOVERY_PENDING",
+                "UNKNOWN_REQUIRES_RECOVERY",
+            }
+        )
+        if (
+            not (committed_mismatch or pending_or_unknown)
+            or invocation is None
+            or admission is None
+            or safe_state != "ATTEMPT_EVIDENCE_RETAINED"
+        ):
+            raise SessionValidationError(
+                "live_start_unverified_terminal_matrix_invalid"
+            )
+        return
+
+    raise SessionValidationError("live_start_terminal_status_matrix_invalid")
 
 
 def _validate_external_file_action(value: Mapping[str, Any]) -> None:
@@ -1600,12 +2381,31 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
 
 def _validate_output_child_binding(value: Mapping[str, Any]) -> None:
     _require_run_id(value.get("run_id"))
+    for key in (
+        "output_base_path",
+        "output_child_path",
+        "claim_path",
+    ):
+        _require_absolute_path(value.get(key), key)
+    for key in (
+        "output_base_identity",
+        "output_child_identity",
+        "claim_parent_identity",
+    ):
+        _require_identity(value.get(key), key)
+    if (
+        Path(value["output_child_path"]).parent
+        != Path(value["output_base_path"])
+        or Path(value["claim_path"]).parent
+        != Path(value["output_base_path"])
+    ):
+        raise SessionValidationError(
+            "live_start_output_child_path_invalid"
+        )
     if value.get("predecessor_state") not in {"absent", "existing"}:
         raise SessionValidationError("live_start_output_child_predecessor_invalid")
     if value.get("claim_state") not in OUTPUT_CHILD_CLAIM_STATES:
         raise SessionValidationError("live_start_output_child_claim_state_invalid")
-    for key in ("output_base_identity", "output_child_identity", "claim_parent_identity"):
-        _require_identity(value.get(key), key)
     predecessor = value.get("predecessor_output_child_identity")
     if value["predecessor_state"] == "absent" and predecessor is not None:
         raise SessionValidationError("live_start_output_child_predecessor_invalid")
@@ -1624,6 +2424,57 @@ def _validate_output_operation_binding(value: Mapping[str, Any]) -> None:
     if state not in OUTPUT_OPERATION_ADMISSION_STATES:
         raise SessionValidationError("live_start_output_operation_state_invalid")
     _require_run_id(value.get("run_id"))
+    for key in (
+        "admission_path",
+        "session_root",
+        "operator_profile_path",
+        "output_base_root",
+        "output_child_path",
+        "output_bootstrap_lock_path",
+        "output_claim_path",
+    ):
+        _require_absolute_path(value.get(key), key)
+    for key in (
+        "admission_parent_identity",
+        "admission_identity",
+        "session_root_identity",
+        "operator_profile_parent_identity",
+        "operator_profile_identity",
+        "state_root_identity",
+        "output_base_root_identity",
+        "output_bootstrap_lock_identity",
+    ):
+        _require_identity(value.get(key), key)
+    _bounded_integer(
+        value.get("admission_size"),
+        1,
+        LIVE_START_OUTPUT_OPERATION_ADMISSION_BINDING_MAX_BYTES,
+        "output_operation_admission_size",
+    )
+    for key in (
+        "admission_sha256",
+        "expected_session_sha256",
+        "operator_profile_sha256",
+    ):
+        _require_sha256(value.get(key), key)
+    predecessor_state = value.get("output_child_predecessor_state")
+    predecessor_identity = value.get(
+        "output_child_predecessor_identity"
+    )
+    if predecessor_state == "absent":
+        if predecessor_identity is not None:
+            raise SessionValidationError(
+                "live_start_output_operation_predecessor_invalid"
+            )
+    elif predecessor_state == "existing":
+        _require_identity(
+            predecessor_identity,
+            "output_child_predecessor_identity",
+        )
+    else:
+        raise SessionValidationError(
+            "live_start_output_operation_predecessor_invalid"
+        )
     handoff_fields = (
         value.get("handoff_runtime_admission_path"),
         value.get("handoff_runtime_admission_parent_identity"),
@@ -1744,15 +2595,928 @@ def _validate_apply_recovery_document(value: Any) -> Mapping[str, Any]:
         raise SessionValidationError("live_start_apply_recovery_closed_action_invalid")
     if normalized.get("install_route") not in {"new_target", "prior_owner"}:
         raise SessionValidationError("live_start_apply_recovery_route_invalid")
+    _require_sha256(
+        normalized.get("apply_invocation_sha256"),
+        "apply_invocation_sha256",
+    )
+    _require_absolute_path(
+        normalized.get("runtime_admission_path"),
+        "runtime_admission_path",
+    )
+    _require_identity(
+        normalized.get("runtime_admission_parent_identity"),
+        "runtime_admission_parent_identity",
+    )
+    _require_identity(
+        normalized.get("runtime_admission_identity"),
+        "runtime_admission_identity",
+    )
+    _require_sha256(
+        normalized.get("runtime_admission_sha256"),
+        "runtime_admission_sha256",
+    )
+    _require_sha256(
+        normalized.get("package_root_sha256"), "package_root_sha256"
+    )
+    _require_absolute_path(normalized.get("runtime_root"), "runtime_root")
+    _require_identity(
+        normalized.get("runtime_root_identity"), "runtime_root_identity"
+    )
+    for prefix in (
+        "predecessor_attempt_record",
+        "predecessor_journal",
+        "predecessor_target_owner_journal",
+        "successor_attempt_record",
+        "successor_journal",
+        "successor_target_owner_journal",
+    ):
+        _validate_nullable_path_identity_digest(normalized, prefix)
+    for prefix in (
+        "predecessor_transaction_temp",
+        "successor_transaction_temp",
+    ):
+        _validate_nullable_transaction_temp(normalized, prefix)
+    candidate_fields = (
+        normalized.get("candidate_path"),
+        normalized.get("candidate_parent_identity"),
+        normalized.get("predecessor_candidate_identity"),
+        normalized.get("successor_candidate_identity"),
+    )
+    if any(item is not None for item in candidate_fields):
+        if (
+            candidate_fields[0] is None
+            or candidate_fields[1] is None
+            or (
+                candidate_fields[2] is None
+                and candidate_fields[3] is None
+            )
+        ):
+            raise SessionValidationError(
+                "live_start_apply_recovery_candidate_nullability_invalid"
+            )
+        _require_absolute_path(candidate_fields[0], "candidate_path")
+        _require_identity(
+            candidate_fields[1], "candidate_parent_identity"
+        )
+        for field_name, item in (
+            ("predecessor_candidate_identity", candidate_fields[2]),
+            ("successor_candidate_identity", candidate_fields[3]),
+        ):
+            if item is not None:
+                _require_identity(item, field_name)
+    planned_journal = (
+        normalized.get("planned_journal_successor_path"),
+        normalized.get("planned_journal_successor_parent_identity"),
+        normalized.get("planned_journal_successor_phase"),
+        normalized.get("planned_journal_successor_size"),
+        normalized.get("planned_journal_successor_sha256"),
+    )
+    if any(item is not None for item in planned_journal):
+        if any(item is None for item in planned_journal):
+            raise SessionValidationError(
+                "live_start_apply_recovery_planned_journal_invalid"
+            )
+        _require_absolute_path(
+            planned_journal[0], "planned_journal_successor_path"
+        )
+        _require_identity(
+            planned_journal[1],
+            "planned_journal_successor_parent_identity",
+        )
+        if (
+            not isinstance(planned_journal[2], str)
+            or _SAFE_TOKEN.fullmatch(planned_journal[2]) is None
+        ):
+            raise SessionValidationError(
+                "live_start_apply_recovery_planned_journal_phase_invalid"
+            )
+        _bounded_integer(
+            planned_journal[3],
+            0,
+            64 * 1024 * 1024,
+            "planned_journal_successor_size",
+        )
+        _require_sha256(
+            planned_journal[4], "planned_journal_successor_sha256"
+        )
+    for key in (
+        "last_apply_receipt_sha256",
+        "runtime_state_sha256",
+        "deck_config_ini_sha256",
+        "candidate_tree_manifest_sha256",
+        "candidate_tree_verified_sha256",
+    ):
+        digest = normalized.get(key)
+        if digest is not None:
+            _require_sha256(digest, key)
+    match_status = normalized.get("runtime_match_status")
+    if match_status not in {"not_run", "matched", "mismatch", "unknown"}:
+        raise SessionValidationError(
+            "live_start_apply_recovery_runtime_match_status_invalid"
+        )
+    match_sha256 = normalized.get("runtime_match_sha256")
+    if match_status in {"matched", "mismatch"}:
+        _require_sha256(match_sha256, "runtime_match_sha256")
+    elif match_sha256 is not None:
+        raise SessionValidationError(
+            "live_start_apply_recovery_runtime_match_digest_invalid"
+        )
+    disposition = normalized.get("stable_physical_disposition")
+    if disposition not in {
+        None,
+        "NOT_COMMITTED",
+        "COMMITTED",
+        "COMMITTED_RECOVERY_PENDING",
+        "UNKNOWN_REQUIRES_RECOVERY",
+    }:
+        raise SessionValidationError(
+            "live_start_apply_recovery_disposition_invalid"
+        )
     external = normalized.get("external_file_action")
     if external is not None:
         validate_embedded_document("external_file_action", external)
+    owner_retirement = normalized.get("owner_retirement")
+    if owner_retirement is not None:
+        _validate_owner_retirement_document(owner_retirement)
+    if stage == "ACTIVE" and (
+        (disposition is None) != (action is not None)
+        or (
+            disposition is not None
+            and (
+                external is not None
+                or any(
+                    normalized.get(field_name) is not None
+                    for field_name in _APPLY_RECOVERY_FIELDS
+                    if field_name.startswith("successor_")
+                )
+            )
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_apply_recovery_active_matrix_invalid"
+        )
+    if stage == "CLOSED" and (
+        action is not None
+        or disposition is None
+        or external is not None
+        or any(
+            normalized.get(field_name) is not None
+            for field_name in _APPLY_RECOVERY_FIELDS
+            if field_name.startswith("successor_")
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_apply_recovery_closed_matrix_invalid"
+        )
     claimed = normalized.get("content_sha256")
     unsigned = dict(normalized)
     unsigned.pop("content_sha256")
     if claimed != _self_digest(unsigned):
         raise SessionValidationError("live_start_apply_recovery_digest_invalid")
     return _freeze_mapping(normalized)
+
+
+_APPLY_RECOVERY_IMMUTABLE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "recovery_kind",
+        "run_id",
+        "apply_attempt_id",
+        "apply_invocation_sha256",
+        "runtime_admission_path",
+        "runtime_admission_parent_identity",
+        "runtime_admission_identity",
+        "runtime_admission_sha256",
+        "package_root_sha256",
+        "runtime_root",
+        "runtime_root_identity",
+        "install_route",
+    }
+)
+
+_APPLY_RECOVERY_CURSOR_FIELDS = frozenset(
+    {"action_index", "expected_action", "content_sha256"}
+)
+_APPLY_RECOVERY_ACTION_MUTABLE_FIELDS = MappingProxyType(
+    {
+        "observe_not_committed": frozenset(
+            {
+                "stable_physical_disposition",
+            }
+        ),
+        "materialize_file_action_staging": frozenset(
+            {"external_file_action"}
+        ),
+        "retire_unbound_file_action_staging": frozenset(
+            {"external_file_action"}
+        ),
+        "commit_bound_initial_attempt_record": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "commit_bound_candidate_planned_attempt_record": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "commit_bound_prior_owner_planned_attempt_record": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "advance_controller_transaction_journal_write": frozenset(
+            {
+                "external_file_action",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+                "successor_transaction_temp_path",
+                "successor_transaction_temp_parent_identity",
+                "successor_transaction_temp_identity",
+                "successor_transaction_temp_size",
+                "successor_transaction_temp_sha256",
+                "successor_transaction_temp_classification",
+                "successor_transaction_temp_origin",
+                "planned_journal_successor_path",
+                "planned_journal_successor_parent_identity",
+                "planned_journal_successor_phase",
+                "planned_journal_successor_size",
+                "planned_journal_successor_sha256",
+            }
+        ),
+        "promote_legacy_uuid_transaction_temp": frozenset(
+            {
+                "external_file_action",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+                "successor_transaction_temp_path",
+                "successor_transaction_temp_parent_identity",
+                "successor_transaction_temp_identity",
+                "successor_transaction_temp_size",
+                "successor_transaction_temp_sha256",
+                "successor_transaction_temp_classification",
+                "successor_transaction_temp_origin",
+            }
+        ),
+        "retire_legacy_uuid_transaction_temp": frozenset(
+            {
+                "successor_transaction_temp_path",
+                "successor_transaction_temp_parent_identity",
+                "successor_transaction_temp_identity",
+                "successor_transaction_temp_size",
+                "successor_transaction_temp_sha256",
+                "successor_transaction_temp_classification",
+                "successor_transaction_temp_origin",
+            }
+        ),
+        "bind_created_candidate": frozenset(
+            {
+                "candidate_path",
+                "candidate_parent_identity",
+                "predecessor_candidate_identity",
+                "successor_candidate_identity",
+            }
+        ),
+        "bind_candidate_fence": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "commit_bound_prior_owner_attempt_record": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "materialize_candidate_tree_entry": frozenset(
+            {
+                "candidate_tree_cursor",
+                "candidate_tree_next_relative_path",
+                "candidate_tree_next_kind",
+                "candidate_tree_next_source_identity",
+                "candidate_tree_next_size",
+                "candidate_tree_next_sha256",
+                "candidate_tree_next_parent_identity",
+                "candidate_tree_next_successor_identity",
+            }
+        ),
+        "verify_candidate_tree": frozenset(
+            {"candidate_tree_verified_sha256"}
+        ),
+        "rename_candidate_to_target": frozenset(
+            {
+                "candidate_path",
+                "predecessor_candidate_identity",
+                "successor_candidate_identity",
+                "renamed_target_path",
+                "predecessor_renamed_target_identity",
+                "successor_renamed_target_identity",
+            }
+        ),
+        "bind_renamed_target": frozenset(
+            {
+                "predecessor_renamed_target_identity",
+                "successor_renamed_target_identity",
+            }
+        ),
+        "write_deck_config_ini": frozenset(
+            {"external_file_action", "deck_config_ini_sha256"}
+        ),
+        "commit_ini_journal": frozenset(
+            {
+                "external_file_action",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+            }
+        ),
+        "write_runtime_state": frozenset(
+            {"external_file_action", "runtime_state_sha256"}
+        ),
+        "commit_state_journal": frozenset(
+            {
+                "external_file_action",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+            }
+        ),
+        "write_last_apply_receipt": frozenset(
+            {"external_file_action", "last_apply_receipt_sha256"}
+        ),
+        "finalize_journal": frozenset(
+            {
+                "external_file_action",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+                "successor_target_owner_journal_path",
+                "successor_target_owner_journal_identity",
+                "successor_target_owner_journal_sha256",
+            }
+        ),
+        "finalize_attempt_record": frozenset(
+            {
+                "external_file_action",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "commit_owner_retirement_prepared": frozenset(
+            {"external_file_action", "owner_retirement"}
+        ),
+        "initialize_owner_cleanup_journal": frozenset(
+            {"external_file_action", "owner_retirement"}
+        ),
+        "delete_owner_cleanup_entry": frozenset({"owner_retirement"}),
+        "advance_owner_cleanup_journal": frozenset(
+            {"external_file_action", "owner_retirement"}
+        ),
+        "retire_owner_target_root": frozenset({"owner_retirement"}),
+        "commit_owner_retirement_completed": frozenset(
+            {"external_file_action", "owner_retirement"}
+        ),
+        "retire_old_owner_journal": frozenset({"owner_retirement"}),
+        "observe_owner_retirement_completed": frozenset(
+            {"owner_retirement"}
+        ),
+        "observe_committed": frozenset(
+            {
+                "last_apply_receipt_sha256",
+                "runtime_state_sha256",
+                "deck_config_ini_sha256",
+                "runtime_match_status",
+                "runtime_match_sha256",
+                "stable_physical_disposition",
+            }
+        ),
+        "observe_pending": frozenset(
+            {"runtime_match_status", "stable_physical_disposition"}
+        ),
+        "observe_unknown": frozenset(
+            {"runtime_match_status", "stable_physical_disposition"}
+        ),
+    }
+)
+
+
+def _validate_apply_recovery_physical_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    action: str,
+) -> None:
+    current = _validate_apply_recovery_document(predecessor)
+    next_value = _validate_apply_recovery_document(successor)
+    if (
+        action not in RUNTIME_APPLY_RECOVERY_ACTIONS
+        or current.get("recovery_stage") != "ACTIVE"
+        or current.get("expected_action") != action
+        or next_value.get("recovery_stage") != "ACTIVE"
+        or next_value.get("action_index") != current.get("action_index") + 1
+    ):
+        raise SessionCapabilityError(
+            "live_start_apply_recovery_successor_invalid"
+        )
+    for field_name in _APPLY_RECOVERY_IMMUTABLE_FIELDS:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_apply_recovery_successor_history_changed"
+            )
+    mutable = _APPLY_RECOVERY_CURSOR_FIELDS | (
+        _APPLY_RECOVERY_ACTION_MUTABLE_FIELDS[action]
+    )
+    for field_name in _APPLY_RECOVERY_FIELDS - mutable:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_apply_recovery_successor_history_changed"
+            )
+    observation_dispositions = {
+        "observe_not_committed": "NOT_COMMITTED",
+        "observe_committed": "COMMITTED",
+        "observe_pending": "COMMITTED_RECOVERY_PENDING",
+        "observe_unknown": "UNKNOWN_REQUIRES_RECOVERY",
+    }
+    if action in observation_dispositions and (
+        current.get("stable_physical_disposition") is not None
+        or next_value.get("expected_action") is not None
+        or next_value.get("stable_physical_disposition")
+        != observation_dispositions[action]
+    ):
+        raise SessionCapabilityError(
+            "live_start_apply_recovery_observation_successor_invalid"
+        )
+
+
+def _validate_apply_recovery_closure_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+) -> None:
+    current = _validate_apply_recovery_document(predecessor)
+    next_value = _validate_apply_recovery_document(successor)
+    if (
+        current.get("recovery_stage") != "ACTIVE"
+        or current.get("expected_action") is not None
+        or current.get("stable_physical_disposition") is None
+        or current.get("external_file_action") is not None
+        or next_value.get("recovery_stage") != "CLOSED"
+    ):
+        raise SessionCapabilityError(
+            "live_start_apply_recovery_closure_invalid"
+        )
+    for field_name in _APPLY_RECOVERY_FIELDS - {
+        "recovery_stage",
+        "content_sha256",
+    }:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_apply_recovery_closure_changed"
+            )
+
+
+_TERMINAL_RETIREMENT_SUCCESSOR_STAGES = MappingProxyType(
+    {
+        "ack_success": frozenset(
+            {
+                ("PREPARED", "ack_journal_retired", "ACK_JOURNAL_RETIRED"),
+                ("PREPARED", "evidence_retired", "EVIDENCE_RETIRED"),
+                (
+                    "ACK_JOURNAL_RETIRED",
+                    "evidence_retired",
+                    "EVIDENCE_RETIRED",
+                ),
+                (
+                    "EVIDENCE_RETIRED",
+                    "admission_release_authorized",
+                    "ADMISSION_RELEASE_AUTHORIZED",
+                ),
+            }
+        ),
+        "release_not_committed": frozenset(
+            {
+                ("PREPARED", "evidence_retired", "EVIDENCE_RETIRED"),
+                (
+                    "EVIDENCE_RETIRED",
+                    "admission_release_authorized",
+                    "ADMISSION_RELEASE_AUTHORIZED",
+                ),
+            }
+        ),
+        "release_committed_mismatch": frozenset(
+            {
+                ("PREPARED", "evidence_retired", "EVIDENCE_RETIRED"),
+                (
+                    "EVIDENCE_RETIRED",
+                    "admission_release_authorized",
+                    "ADMISSION_RELEASE_AUTHORIZED",
+                ),
+            }
+        ),
+        "release_resolved_terminal": frozenset(
+            {
+                (
+                    "RECOVERY_STABILIZED",
+                    "evidence_retired",
+                    "EVIDENCE_RETIRED",
+                ),
+                (
+                    "EVIDENCE_RETIRED",
+                    "admission_release_authorized",
+                    "ADMISSION_RELEASE_AUTHORIZED",
+                ),
+            }
+        ),
+    }
+)
+
+
+def _validate_terminal_retirement_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    transition: str,
+) -> None:
+    current = validate_embedded_document(
+        "terminal_retirement", predecessor
+    )
+    next_value = validate_embedded_document(
+        "terminal_retirement", successor
+    )
+    operation = current["operation"]
+    edge = (current["stage"], transition, next_value["stage"])
+    if (
+        next_value["operation"] != operation
+        or edge not in _TERMINAL_RETIREMENT_SUCCESSOR_STAGES[operation]
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_retirement_successor_invalid"
+        )
+    for field_name in _TERMINAL_RETIREMENT_FIELDS - {
+        "stage",
+        "content_sha256",
+    }:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_retirement_successor_changed"
+            )
+
+
+_TERMINAL_RESOLUTION_OUTER_EDGES = MappingProxyType(
+    {
+        "cleanup_inventory_unbound_staging_retired": frozenset(
+            {("RECOVERY_PREPARED", "RECOVERY_PREPARED")}
+        ),
+        "cleanup_inventory_staging_bound": frozenset(
+            {("RECOVERY_PREPARED", "RECOVERY_PREPARED")}
+        ),
+        "inventory_bound": frozenset(
+            {("RECOVERY_PREPARED", "RECOVERY_INVENTORY_BOUND")}
+        ),
+        "cleaning_started": frozenset(
+            {("RECOVERY_INVENTORY_BOUND", "RECOVERY_CLEANING")}
+        ),
+        "cleanup_cursor_advanced": frozenset(
+            {("RECOVERY_CLEANING", "RECOVERY_CLEANING")}
+        ),
+        "journal_retired": frozenset(
+            {
+                ("RECOVERY_PREPARED", "RECOVERY_JOURNAL_RETIRED"),
+                ("RECOVERY_CLEANING", "RECOVERY_JOURNAL_RETIRED"),
+            }
+        ),
+        "fence_retired": frozenset(
+            {
+                ("RECOVERY_PREPARED", "RECOVERY_FENCE_RETIRED"),
+                (
+                    "RECOVERY_JOURNAL_RETIRED",
+                    "RECOVERY_FENCE_RETIRED",
+                ),
+            }
+        ),
+        "inventory_retired": frozenset(
+            {
+                (
+                    "RECOVERY_FENCE_RETIRED",
+                    "RECOVERY_INVENTORY_RETIRED",
+                )
+            }
+        ),
+        "physical_recovery_advanced": frozenset(
+            {("RECOVERY_PREPARED", "RECOVERY_PREPARED")}
+        ),
+        "stabilized": frozenset(
+            {
+                ("RECOVERY_PREPARED", "RECOVERY_STABILIZED"),
+                ("RECOVERY_FENCE_RETIRED", "RECOVERY_STABILIZED"),
+                ("RECOVERY_INVENTORY_RETIRED", "RECOVERY_STABILIZED"),
+            }
+        ),
+    }
+)
+
+_TERMINAL_RESOLUTION_MUTABLE_FIELDS = MappingProxyType(
+    {
+        "cleanup_inventory_unbound_staging_retired": frozenset(
+            {"external_file_action"}
+        ),
+        "cleanup_inventory_staging_bound": frozenset(
+            {"external_file_action"}
+        ),
+        "inventory_bound": frozenset(
+            {
+                "external_file_action",
+                "cleanup_stage",
+                "cleanup_inventory_identity",
+            }
+        ),
+        "cleaning_started": frozenset({"cleanup_stage"}),
+        "cleanup_cursor_advanced": frozenset({"cleanup_cursor"}),
+        "journal_retired": frozenset(
+            {
+                "cleanup_stage",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+            }
+        ),
+        "fence_retired": frozenset(
+            {
+                "cleanup_stage",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+            }
+        ),
+        "inventory_retired": frozenset({"cleanup_stage"}),
+        "physical_recovery_advanced": frozenset(
+            {
+                "allowed_attempt_record_successor_state",
+                "allowed_journal_successor_phase",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+                "successor_transaction_temp_path",
+                "successor_transaction_temp_parent_identity",
+                "successor_transaction_temp_identity",
+                "successor_transaction_temp_size",
+                "successor_transaction_temp_sha256",
+                "successor_transaction_temp_classification",
+                "successor_transaction_temp_origin",
+                "planned_journal_successor_path",
+                "planned_journal_successor_parent_identity",
+                "planned_journal_successor_phase",
+                "planned_journal_successor_size",
+                "planned_journal_successor_sha256",
+                "successor_target_owner_journal_path",
+                "successor_target_owner_journal_identity",
+                "successor_target_owner_journal_sha256",
+                "candidate_path",
+                "candidate_parent_identity",
+                "predecessor_candidate_identity",
+                "successor_candidate_identity",
+                "external_file_action",
+                "owner_retirement",
+                "resolved_physical_disposition",
+                "last_apply_receipt_sha256",
+                "runtime_state_sha256",
+                "deck_config_ini_sha256",
+                "runtime_match_status",
+                "runtime_match_sha256",
+            }
+        ),
+        "stabilized": frozenset(
+            {
+                "cleanup_stage",
+                "successor_attempt_record_path",
+                "successor_attempt_record_identity",
+                "successor_attempt_record_sha256",
+                "successor_journal_path",
+                "successor_journal_identity",
+                "successor_journal_sha256",
+                "successor_target_owner_journal_path",
+                "successor_target_owner_journal_identity",
+                "successor_target_owner_journal_sha256",
+                "external_file_action",
+                "owner_retirement",
+                "resolved_physical_disposition",
+                "last_apply_receipt_sha256",
+                "runtime_state_sha256",
+                "deck_config_ini_sha256",
+                "runtime_match_status",
+                "runtime_match_sha256",
+            }
+        ),
+    }
+)
+
+
+def _validate_terminal_resolution_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    transition: str,
+) -> None:
+    current = validate_embedded_document(
+        "terminal_retirement", predecessor
+    )
+    next_value = validate_embedded_document(
+        "terminal_retirement", successor
+    )
+    if (
+        current.get("operation") != "release_resolved_terminal"
+        or next_value.get("operation") != "release_resolved_terminal"
+        or transition not in _TERMINAL_RESOLUTION_OUTER_EDGES
+        or (current["stage"], next_value["stage"])
+        not in _TERMINAL_RESOLUTION_OUTER_EDGES[transition]
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_invalid"
+        )
+    for field_name in _TERMINAL_RETIREMENT_FIELDS - {
+        "stage",
+        "terminal_resolution_evidence",
+        "content_sha256",
+    }:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_successor_changed"
+            )
+    current_resolution = _validate_terminal_resolution_document(
+        current["terminal_resolution_evidence"]
+    )
+    next_resolution = _validate_terminal_resolution_document(
+        next_value["terminal_resolution_evidence"]
+    )
+    changed = {
+        field_name
+        for field_name in _TERMINAL_RESOLUTION_FIELDS - {"content_sha256"}
+        if current_resolution.get(field_name)
+        != next_resolution.get(field_name)
+    }
+    if (
+        not changed
+        or not changed
+        <= _TERMINAL_RESOLUTION_MUTABLE_FIELDS[transition]
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_changed"
+        )
+    if transition == "cleanup_inventory_unbound_staging_retired":
+        _validate_terminal_external_action_successor(
+            predecessor=current_resolution.get("external_file_action"),
+            successor=next_resolution.get("external_file_action"),
+            transition="unbound_retired",
+        )
+    elif transition == "cleanup_inventory_staging_bound":
+        _validate_terminal_external_action_successor(
+            predecessor=current_resolution.get("external_file_action"),
+            successor=next_resolution.get("external_file_action"),
+            transition="staging_bound",
+        )
+    elif transition == "inventory_bound":
+        if (
+            current_resolution.get("cleanup_stage") != "PREPARED"
+            or next_resolution.get("cleanup_stage") != "INVENTORY_BOUND"
+            or current_resolution.get("external_file_action") is None
+            or next_resolution.get("external_file_action") is not None
+            or current_resolution.get("cleanup_inventory_identity") is not None
+            or next_resolution.get("cleanup_inventory_identity") is None
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_successor_invalid"
+            )
+    elif transition == "cleaning_started":
+        _require_terminal_cleanup_stage_edge(
+            current_resolution,
+            next_resolution,
+            source="INVENTORY_BOUND",
+            target="CLEANING",
+        )
+    elif transition == "cleanup_cursor_advanced":
+        if (
+            current_resolution.get("cleanup_stage") != "CLEANING"
+            or next_resolution.get("cleanup_stage") != "CLEANING"
+            or next_resolution.get("cleanup_cursor")
+            != current_resolution.get("cleanup_cursor") + 1
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_successor_invalid"
+            )
+    elif transition == "journal_retired" and (
+        next_resolution.get("cleanup_stage")
+        not in {None, "JOURNAL_RETIRED"}
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_invalid"
+        )
+    elif transition == "fence_retired" and (
+        next_resolution.get("cleanup_stage")
+        not in {None, "FENCE_RETIRED"}
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_invalid"
+        )
+    elif transition == "inventory_retired":
+        _require_terminal_cleanup_stage_edge(
+            current_resolution,
+            next_resolution,
+            source="FENCE_RETIRED",
+            target="INVENTORY_RETIRED",
+        )
+    elif transition == "stabilized" and (
+        next_resolution.get("cleanup_stage")
+        not in {None, "COMPLETE"}
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_invalid"
+        )
+
+
+def _validate_terminal_external_action_successor(
+    *,
+    predecessor: Any,
+    successor: Any,
+    transition: str,
+) -> None:
+    if not isinstance(predecessor, Mapping) or not isinstance(
+        successor, Mapping
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_file_action_invalid"
+        )
+    current = validate_embedded_document(
+        "external_file_action", predecessor
+    )
+    next_value = validate_embedded_document(
+        "external_file_action", successor
+    )
+    if transition == "unbound_retired":
+        mutable = {"action_index", "action_kind", "content_sha256"}
+        if (
+            current["stage"] != "PLANNED"
+            or next_value["stage"] != "PLANNED"
+            or next_value["action_index"] != current["action_index"] + 1
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_file_action_invalid"
+            )
+    else:
+        mutable = {
+            "stage",
+            "staging_identity",
+            "staging_size",
+            "staging_sha256",
+            "content_sha256",
+        }
+        if (
+            current["stage"] != "PLANNED"
+            or next_value["stage"] != "STAGING_BOUND"
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_file_action_invalid"
+            )
+    for field_name in _EXTERNAL_FILE_ACTION_FIELDS - mutable:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_file_action_changed"
+            )
+
+
+def _require_terminal_cleanup_stage_edge(
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    *,
+    source: str,
+    target: str,
+) -> None:
+    if (
+        predecessor.get("cleanup_stage") != source
+        or successor.get("cleanup_stage") != target
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_resolution_successor_invalid"
+        )
 
 
 def _validate_result_intent(value: Mapping[str, Any]) -> None:
@@ -1768,6 +3532,27 @@ def _validate_result_intent(value: Mapping[str, Any]) -> None:
         raise SessionValidationError("live_start_result_status_invalid")
     _require_deck_name(value.get("deck_name"))
     _bounded_integer(value.get("candidate_revision"), 1, 3, "candidate_revision")
+    confidence = value.get("review_confidence")
+    if confidence is not None and confidence not in {"high", "limited"}:
+        raise SessionValidationError(
+            "live_start_result_review_confidence_invalid"
+        )
+    limitations = value.get("visible_limitations")
+    if (
+        not isinstance(limitations, list)
+        or len(limitations) > 32
+        or limitations != sorted(set(limitations))
+        or any(
+            not isinstance(item, str)
+            or not item
+            or len(item) > 256
+            or any(ord(character) < 32 for character in item)
+            for item in limitations
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_result_limitations_invalid"
+        )
     unique = _bounded_integer(
         value.get("unique_main_deck_cards"),
         0,
@@ -1806,6 +3591,48 @@ def _validate_result_intent(value: Mapping[str, Any]) -> None:
         _require_sha256(runtime_admission[3], "runtime_admission_sha256")
     if status == "PREVIEW_READY" and any(item is not None for item in runtime_admission):
         raise SessionValidationError("live_start_preview_runtime_admission_forbidden")
+    apply_attempt_id = value.get("apply_attempt_id")
+    if apply_attempt_id is not None:
+        _require_run_id(apply_attempt_id)
+    publication = (
+        value.get("publication_revision"),
+        value.get("publication_content_root_sha256"),
+    )
+    if (publication[0] is None) != (publication[1] is None):
+        raise SessionValidationError(
+            "live_start_result_publication_nullability_invalid"
+        )
+    if publication[0] is not None:
+        if (
+            not isinstance(publication[0], str)
+            or re.fullmatch(r"revisions/sha256-[0-9a-f]{64}", publication[0])
+            is None
+        ):
+            raise SessionValidationError(
+                "live_start_result_publication_revision_invalid"
+            )
+        _require_sha256(
+            publication[1], "publication_content_root_sha256"
+        )
+    raw_apply_status = value.get("raw_apply_status")
+    if raw_apply_status not in {
+        None,
+        "applied",
+        "already_current",
+        "recovered",
+        "committed_receipt_pending",
+    }:
+        raise SessionValidationError("live_start_raw_apply_status_invalid")
+    if value.get("physical_disposition") not in {
+        None,
+        "NOT_COMMITTED",
+        "COMMITTED",
+        "COMMITTED_RECOVERY_PENDING",
+        "UNKNOWN_REQUIRES_RECOVERY",
+    }:
+        raise SessionValidationError(
+            "live_start_physical_disposition_invalid"
+        )
     if value.get("runtime_match_status") not in {
         "not_run",
         "matched",
@@ -1813,6 +3640,28 @@ def _validate_result_intent(value: Mapping[str, Any]) -> None:
         "unknown",
     }:
         raise SessionValidationError("live_start_runtime_match_status_invalid")
+    runtime_match_sha256 = value.get("runtime_match_sha256")
+    if value["runtime_match_status"] in {"matched", "mismatch"}:
+        _require_sha256(runtime_match_sha256, "runtime_match_sha256")
+    elif runtime_match_sha256 is not None:
+        raise SessionValidationError(
+            "live_start_runtime_match_digest_invalid"
+        )
+    for key in (
+        "package_root_sha256",
+        "last_apply_receipt_sha256",
+        "runtime_state_sha256",
+        "deck_config_ini_sha256",
+    ):
+        digest = value.get(key)
+        if digest is not None:
+            _require_sha256(digest, key)
+    for prefix in (
+        "retained_attempt_record",
+        "retained_journal",
+        "retained_target_owner_journal",
+    ):
+        _validate_nullable_path_identity_digest(value, prefix)
     safe_states = {
         "NO_PUBLICATION_OR_RUNTIME_WRITE",
         "PUBLICATION_RETAINED_RUNTIME_UNCHANGED",
@@ -1888,6 +3737,12 @@ def _validate_terminal_retirement(value: Mapping[str, Any]) -> None:
     _require_identity(admission[1], "runtime_admission_parent_identity")
     _require_identity(admission[2], "runtime_admission_identity")
     _require_sha256(admission[3], "runtime_admission_sha256")
+    for prefix in (
+        "retained_attempt_record",
+        "retained_journal",
+        "retained_target_owner_journal",
+    ):
+        _validate_nullable_path_identity_digest(value, prefix)
 
 
 def _validate_terminal_resolution_document(value: Any) -> Mapping[str, Any]:
@@ -1997,10 +3852,12 @@ def _validate_terminal_resolution_document(value: Any) -> Mapping[str, Any]:
                 _require_identity(identity, name)
 
     disposition = normalized.get("resolved_physical_disposition")
-    if (
-        not isinstance(disposition, str)
-        or _SAFE_TOKEN.fullmatch(disposition) is None
-    ):
+    if disposition not in {
+        "NOT_COMMITTED",
+        "COMMITTED",
+        "COMMITTED_RECOVERY_PENDING",
+        "UNKNOWN_REQUIRES_RECOVERY",
+    }:
         raise SessionValidationError(
             "live_start_terminal_resolution_disposition_invalid"
         )
@@ -2565,14 +4422,72 @@ def validate_validation_receipt(
     if candidate_revision is not None and revision != candidate_revision:
         raise SessionConflictError("live_start_validation_receipt_revision_mismatch")
     if receipt_kind == "candidate_validation":
+        _require_validation_receipt_digests(
+            normalized,
+            "starter_context_sha256",
+            "candidate_sha256",
+        )
         if normalized.get("status") != "valid" or normalized.get("findings") != []:
             raise SessionValidationError("live_start_candidate_receipt_not_valid")
     elif receipt_kind == "review_validation":
+        _require_validation_receipt_digests(
+            normalized,
+            "starter_context_sha256",
+            "candidate_sha256",
+            "review_sha256",
+        )
         if normalized.get("review_status") != "approved" or normalized.get("confidence") not in {"high", "limited"}:
             raise SessionValidationError("live_start_review_receipt_not_approved")
-    elif type(normalized.get("apply_gate_allowed")) is not bool or not normalized["apply_gate_allowed"]:
-        raise SessionValidationError("live_start_package_receipt_gate_invalid")
+    else:
+        _require_validation_receipt_digests(
+            normalized,
+            "input_snapshot_manifest_sha256",
+            "starter_context_sha256",
+            "candidate_sha256",
+            "review_sha256",
+            "package_root_sha256",
+            "derivation_receipt_sha256",
+            "operator_summary_sha256",
+            "prepublication_work_tree_sha256",
+            "cleanup_manifest_sha256",
+        )
+        if (
+            type(normalized.get("apply_gate_allowed")) is not bool
+            or not normalized["apply_gate_allowed"]
+        ):
+            raise SessionValidationError(
+                "live_start_package_receipt_gate_invalid"
+            )
+        for key in (
+            "prepublication_work_root",
+            "prepublication_work_parent_path",
+        ):
+            _require_absolute_path(normalized.get(key), key)
+        for key in (
+            "prepublication_work_parent_identity",
+            "prepublication_work_root_identity",
+        ):
+            _require_identity(normalized.get(key), key)
+        _bounded_integer(
+            normalized.get("cleanup_entry_count"),
+            0,
+            MAX_FILESYSTEM_NODES,
+            "cleanup_entry_count",
+        )
     return _freeze_mapping(normalized)
+
+
+def _require_validation_receipt_digests(
+    value: Mapping[str, Any],
+    *field_names: str,
+) -> None:
+    try:
+        for field_name in field_names:
+            _require_sha256(value.get(field_name), field_name)
+    except SessionValidationError as error:
+        raise SessionValidationError(
+            "live_start_validation_receipt_digest_invalid"
+        ) from error
 
 
 def _validate_completed_phase_receipts(
@@ -2609,11 +4524,78 @@ def _validate_completed_phase_receipts(
             maximum_size=256 * 1024,
         )
         receipt = _decode_json_document(raw)
-        validate_validation_receipt(
+        receipt = validate_validation_receipt(
             receipt_kind=kind,  # type: ignore[arg-type]
             value=receipt,
             run_id=session.run_id,
             candidate_revision=session.candidate_revision,
+        )
+        _require_completed_receipt_binding(
+            session=session,
+            receipt_kind=kind,
+            receipt=receipt,
+            receipt_bytes_sha256=_bytes_sha256(raw),
+            receipt_logical_path=logical,
+        )
+
+
+def _require_completed_receipt_binding(
+    *,
+    session: LiveStartSession,
+    receipt_kind: str,
+    receipt: Mapping[str, Any],
+    receipt_bytes_sha256: str,
+    receipt_logical_path: str,
+) -> None:
+    bindings = session.artifact_bindings
+    expected: dict[str, Any] = {
+        "starter_context_sha256": bindings.get(
+            "starter/starter_context.json"
+        ),
+        "candidate_sha256": bindings.get(
+            "starter/starter_config_candidate.json"
+        ),
+    }
+    if receipt_kind in {"review_validation", "package_validation"}:
+        expected["review_sha256"] = bindings.get(
+            "starter/starter_config_review.json"
+        )
+    if receipt_kind == "package_validation":
+        expected["input_snapshot_manifest_sha256"] = (
+            session.input_snapshot_manifest_sha256
+        )
+        work = session.prepublication_work_binding
+        if not isinstance(work, Mapping):
+            raise SessionConflictError(
+                "live_start_validation_receipt_work_binding_missing"
+            )
+        expected.update(
+            {
+                "prepublication_work_root": work.get("work_root"),
+                "prepublication_work_parent_path": work.get(
+                    "work_parent_path"
+                ),
+                "prepublication_work_parent_identity": work.get(
+                    "work_parent_identity"
+                ),
+                "prepublication_work_root_identity": work.get(
+                    "work_root_identity"
+                ),
+                "prepublication_work_tree_sha256": work.get(
+                    "work_tree_sha256"
+                ),
+                "cleanup_manifest_sha256": work.get(
+                    "cleanup_manifest_sha256"
+                ),
+                "cleanup_entry_count": work.get("cleanup_entry_count"),
+            }
+        )
+    if (
+        bindings.get(receipt_logical_path) != receipt_bytes_sha256
+        or any(receipt.get(key) != item for key, item in expected.items())
+    ):
+        raise SessionConflictError(
+            "live_start_validation_receipt_artifact_binding_mismatch"
         )
 
 
@@ -2625,6 +4607,13 @@ def _validate_run_layout_under_lock(
     _require_session_lease(session_lease)
     root = session_lease.session_root
     allowed_reserved = _allowed_reserved_run_paths(root=root, session=session)
+    allowed_files = _allowed_logical_run_files(root=root, session=session)
+    allowed_directories = {
+        prefix
+        for logical in allowed_files | set(allowed_reserved)
+        for prefix in _logical_parent_prefixes(logical)
+    }
+    _validate_authority_roots_no_ads(session_lease=session_lease)
     result_reserved_seen = 0
     seen = 0
     pending = [(root, "")]
@@ -2642,8 +4631,15 @@ def _validate_run_layout_under_lock(
                 raise SessionLayoutError("live_start_layout_reparse_forbidden")
             logical = f"{prefix}{entry.name}"
             if stat.S_ISDIR(status.st_mode):
-                if logical not in RUN_LOGICAL_DIRECTORIES:
-                    raise SessionLayoutError("live_start_layout_directory_unknown")
+                if logical not in allowed_directories:
+                    raise SessionLayoutError(
+                        "live_start_layout_directory_unbound"
+                    )
+                _validate_path_no_ads(
+                    child,
+                    status=status,
+                    directory=True,
+                )
                 pending.append((child, f"{logical}/"))
                 continue
             if logical in {
@@ -2656,9 +4652,17 @@ def _validate_run_layout_under_lock(
             if (
                 not stat.S_ISREG(status.st_mode)
                 or status.st_nlink != 1
-                or (logical not in RUN_LOGICAL_FILES and logical not in allowed_reserved)
+                or (
+                    logical not in allowed_files
+                    and logical not in allowed_reserved
+                )
             ):
-                raise SessionLayoutError("live_start_layout_file_unknown")
+                raise SessionLayoutError("live_start_layout_file_unbound")
+            _validate_path_no_ads(
+                child,
+                status=status,
+                directory=False,
+            )
             if logical.startswith("result/.") and logical in allowed_reserved:
                 result_reserved_seen += 1
                 if result_reserved_seen > 1:
@@ -2672,6 +4676,95 @@ def _validate_run_layout_under_lock(
                 raise SessionLayoutError(
                     "live_start_terminal_cleanup_inventory_unexpected"
                 )
+
+
+def _allowed_logical_run_files(
+    *,
+    root: Path,
+    session: LiveStartSession,
+) -> set[str]:
+    allowed = {"session.json", *session.artifact_bindings.keys()}
+    pending = session.pending_transition
+    if isinstance(pending, Mapping) and pending.get("stage") in {
+        "PRIMARY_APPLIED",
+        "CLEANUP_DELETING",
+    }:
+        successor_bindings = pending.get("successor_artifact_bindings")
+        if isinstance(successor_bindings, Mapping):
+            allowed.update(successor_bindings.keys())
+    if session.result_intent is not None:
+        allowed.update({"result/summary.json", "result/summary.md"})
+    if _terminal_cleanup_final_permitted(session):
+        allowed.add("terminal-resolution-cleanup.json")
+    for external in _session_external_file_actions(session):
+        if external.get("stage") != "STAGING_BOUND":
+            continue
+        final_path = external.get("final_path")
+        if not isinstance(final_path, str):
+            continue
+        try:
+            allowed.add(Path(final_path).relative_to(root).as_posix())
+        except ValueError:
+            pass
+    return allowed
+
+
+def _logical_parent_prefixes(logical: str) -> tuple[str, ...]:
+    parts = logical.split("/")[:-1]
+    return tuple("/".join(parts[:index]) for index in range(1, len(parts) + 1))
+
+
+def _validate_authority_roots_no_ads(
+    *,
+    session_lease: LiveStartSessionLease,
+) -> None:
+    _validate_authority_root_paths_no_ads(
+        root=session_lease.session_root,
+        lock_path=session_lease.session_lock_path,
+    )
+
+
+def _validate_authority_root_paths_no_ads(
+    *,
+    root: Path,
+    lock_path: Path,
+) -> None:
+    if os.name != "nt":
+        return
+    for path in (
+        root.parent.parent,
+        root.parent,
+        lock_path.parent,
+        root,
+    ):
+        status = path.lstat()
+        _validate_path_no_ads(
+            path,
+            status=status,
+            directory=stat.S_ISDIR(status.st_mode),
+        )
+
+
+def _validate_path_no_ads(
+    path: Path,
+    *,
+    status: os.stat_result,
+    directory: bool,
+) -> None:
+    if os.name != "nt":
+        return
+    try:
+        require_no_alternate_data_streams(
+            path,
+            expected_identity=path_identity_from_status(status),
+            expected_parent_identity=path_identity(path.parent),
+            directory=directory,
+            expected_size=None if directory else status.st_size,
+        )
+    except (OSError, ValueError) as error:
+        raise SessionLayoutError(
+            "live_start_layout_alternate_stream_forbidden"
+        ) from error
 
 
 def _allowed_reserved_run_paths(
@@ -3418,6 +5511,7 @@ class _OpaqueCarrier:
     def __copy__(self):
         copied = object.__new__(type(self))
         object.__setattr__(copied, "_opaque", self._opaque)
+        _register_opaque_carrier_copy(source=self, copied=copied)
         return copied
 
     def __deepcopy__(self, _memo: dict[int, Any]):
@@ -3502,6 +5596,92 @@ class OutputChildBootstrapStepReceipt(_OpaqueCarrier):
     pass
 
 
+_ACTIVE_OPAQUE_BEARERS: dict[int, _OpaqueBearer] = {}
+_ACTIVE_OPAQUE_CARRIERS: dict[
+    int,
+    tuple[_OpaqueCarrier, _OpaqueBearer],
+] = {}
+
+
+def _mint_registered_opaque_carrier(
+    *,
+    carrier_type: type[_AuthorizationT],
+    bearer: _OpaqueBearer,
+) -> _AuthorizationT:
+    if not _session_context_is_registered(bearer=bearer.session_bearer):
+        raise SessionCapabilityError(
+            "live_start_physical_capability_session_forged"
+        )
+    carrier = carrier_type._mint(bearer)
+    with _AUTHORITY_REGISTRY_LOCK:
+        if id(bearer) in _ACTIVE_OPAQUE_BEARERS:
+            raise SessionCapabilityError(
+                "live_start_physical_capability_registry_conflict"
+            )
+        _ACTIVE_OPAQUE_BEARERS[id(bearer)] = bearer
+        _ACTIVE_OPAQUE_CARRIERS[id(carrier)] = (carrier, bearer)
+    return carrier
+
+
+def _register_opaque_carrier_copy(
+    *,
+    source: _OpaqueCarrier,
+    copied: _OpaqueCarrier,
+) -> None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        registered = _ACTIVE_OPAQUE_CARRIERS.get(id(source))
+        if (
+            registered is not None
+            and registered[0] is source
+            and registered[1].active
+            and _ACTIVE_OPAQUE_BEARERS.get(id(registered[1]))
+            is registered[1]
+        ):
+            _ACTIVE_OPAQUE_CARRIERS[id(copied)] = (
+                copied,
+                registered[1],
+            )
+
+
+def _opaque_carrier_is_registered(
+    *,
+    carrier: _OpaqueCarrier,
+    bearer: _OpaqueBearer,
+) -> bool:
+    with _AUTHORITY_REGISTRY_LOCK:
+        bearer_registered = _ACTIVE_OPAQUE_BEARERS.get(id(bearer))
+        carrier_registered = _ACTIVE_OPAQUE_CARRIERS.get(id(carrier))
+        return (
+            bearer_registered is bearer
+            and carrier_registered is not None
+            and carrier_registered[0] is carrier
+            and carrier_registered[1] is bearer
+        )
+
+
+def _deregister_opaque_bearer(*, bearer: _OpaqueBearer) -> None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        if _ACTIVE_OPAQUE_BEARERS.get(id(bearer)) is bearer:
+            del _ACTIVE_OPAQUE_BEARERS[id(bearer)]
+        for carrier_id, (_carrier, registered_bearer) in tuple(
+            _ACTIVE_OPAQUE_CARRIERS.items()
+        ):
+            if registered_bearer is bearer:
+                del _ACTIVE_OPAQUE_CARRIERS[carrier_id]
+
+
+def _deactivate_opaque_bearers_for_session(
+    session_bearer: _SessionBearer,
+) -> None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        bearers = tuple(_ACTIVE_OPAQUE_BEARERS.values())
+    for opaque_bearer in bearers:
+        if opaque_bearer.session_bearer is session_bearer:
+            _deregister_opaque_bearer(bearer=opaque_bearer)
+            opaque_bearer.active = False
+            opaque_bearer.nonce = ""
+
+
 _AuthorizationT = TypeVar("_AuthorizationT", bound=_OpaqueCarrier)
 _ReceiptT = TypeVar("_ReceiptT", bound=_OpaqueCarrier)
 _PostconditionT = TypeVar("_PostconditionT", bound=_PhysicalPostcondition)
@@ -3531,7 +5711,10 @@ def _mint_authorization_under_lock(
         cursor_sha256=current.content_sha256,
         action=action,
     )
-    return authorization_type._mint(bearer)
+    return _mint_registered_opaque_carrier(
+        carrier_type=authorization_type,
+        bearer=bearer,
+    )
 
 
 def _require_opaque_carrier(
@@ -3545,6 +5728,11 @@ def _require_opaque_carrier(
     if not isinstance(carrier, carrier_type) or not hasattr(carrier, "_opaque"):
         raise SessionCapabilityError("live_start_physical_capability_forged")
     bearer = carrier._opaque
+    if not isinstance(bearer, _OpaqueBearer) or not _opaque_carrier_is_registered(
+        carrier=carrier,
+        bearer=bearer,
+    ):
+        raise SessionCapabilityError("live_start_physical_capability_forged")
     if (
         not bearer.active
         or not bearer.nonce
@@ -3552,13 +5740,55 @@ def _require_opaque_carrier(
         or bearer.family != family
         or bearer.action != action
         or not bearer.session_bearer.active
+        or not _session_context_is_registered(
+            bearer=bearer.session_bearer
+        )
         or bearer.session_bearer.thread_id != threading.get_ident()
     ):
         raise SessionCapabilityError("live_start_physical_capability_invalid")
+    _require_opaque_cursor_current(bearer)
     if consume:
+        _deregister_opaque_bearer(bearer=bearer)
         bearer.active = False
         bearer.nonce = ""
     return bearer
+
+
+def _require_opaque_cursor_current(bearer: _OpaqueBearer) -> None:
+    session_bearer = bearer.session_bearer
+    try:
+        if (
+            session_bearer.session_lock is None
+            or path_identity(session_bearer.session_root)
+            != session_bearer.session_root_identity
+            or path_identity(session_bearer.session_lock_path)
+            != session_bearer.session_lock_identity
+        ):
+            raise SessionCapabilityError(
+                "live_start_physical_capability_context_changed"
+            )
+        session_bearer.session_lock.validate_no_alternate_data_streams(
+            expected_size=0
+        )
+        raw, identity = _read_bound_file(
+            session_bearer.session_root / "session.json",
+            expected_parent_identity=session_bearer.session_root_identity,
+            maximum_size=LIVE_START_SESSION_MAX_BYTES,
+        )
+        current = _load_session_bytes(raw, session_identity=identity)
+    except SessionCapabilityError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionCapabilityError(
+            "live_start_physical_capability_context_changed"
+        ) from error
+    if current.content_sha256 != bearer.cursor_sha256:
+        _deregister_opaque_bearer(bearer=bearer)
+        bearer.active = False
+        bearer.nonce = ""
+        raise SessionCapabilityError(
+            "live_start_physical_capability_cursor_stale"
+        )
 
 
 def _execute_physical_step(
@@ -3588,7 +5818,10 @@ def _execute_physical_step(
         action=action,
     )
     receipt_bearer.successor = result
-    return receipt_type._mint(receipt_bearer)
+    return _mint_registered_opaque_carrier(
+        carrier_type=receipt_type,
+        bearer=receipt_bearer,
+    )
 
 
 def _consume_receipt_under_lock(
@@ -3847,7 +6080,10 @@ def _execute_terminal_resolution_physical_step(
         action=action,
     )
     receipt_bearer.successor = result
-    return TerminalResolutionStepReceipt._mint(receipt_bearer)
+    return _mint_registered_opaque_carrier(
+        carrier_type=TerminalResolutionStepReceipt,
+        bearer=receipt_bearer,
+    )
 
 
 def _authorize_runtime_observation_under_lock(
@@ -3899,7 +6135,79 @@ def _execute_runtime_observation(
         action=bearer.action,
     )
     receipt_bearer.successor = result
-    return RuntimeObservationReceipt._mint(receipt_bearer)
+    return _mint_registered_opaque_carrier(
+        carrier_type=RuntimeObservationReceipt,
+        bearer=receipt_bearer,
+    )
+
+
+def _consume_runtime_observation_receipt_under_lock(
+    *,
+    receipt: RuntimeObservationReceipt,
+    session_lease: LiveStartSessionLease,
+    expected_session: LiveStartSession,
+    observation_family: RuntimeObservationFamily,
+    apply_attempt_id: str,
+) -> RuntimeObservationPostcondition:
+    _require_session_lease(session_lease)
+    _require_run_id(apply_attempt_id)
+    current = _load_expected_predecessor_under_lock(
+        session_lease=session_lease,
+        expected_session=expected_session,
+    )
+    if (
+        not isinstance(receipt, RuntimeObservationReceipt)
+        or not hasattr(receipt, "_opaque")
+        or not isinstance(receipt._opaque, _OpaqueBearer)
+    ):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_receipt_forged"
+        )
+    bearer = receipt._opaque
+    if not _opaque_carrier_is_registered(carrier=receipt, bearer=bearer):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_receipt_forged"
+        )
+    if (
+        bearer.session_bearer is not session_lease.lock_token._bearer
+        or bearer.cursor_sha256 != current.content_sha256
+    ):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_receipt_session_or_cursor_mismatch"
+        )
+    consumed = _require_opaque_carrier(
+        receipt,
+        carrier_type=RuntimeObservationReceipt,
+        family=f"runtime_observation_receipt:{observation_family}",
+        action=apply_attempt_id,
+        consume=True,
+    )
+    postcondition = consumed.successor
+    if (
+        not isinstance(postcondition, RuntimeObservationPostcondition)
+        or postcondition.observation_family != observation_family
+        or postcondition.action != apply_attempt_id
+    ):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_receipt_postcondition_invalid"
+        )
+    return postcondition
+
+
+def _session_apply_attempt_id(session: LiveStartSession) -> str:
+    for container in (
+        session.apply_recovery,
+        session.runtime_layout_bootstrap,
+        session.result_intent,
+        session.terminal_retirement,
+        session.pending_transition,
+    ):
+        if isinstance(container, Mapping):
+            attempt_id = container.get("apply_attempt_id")
+            if attempt_id is not None:
+                _require_run_id(attempt_id)
+                return attempt_id
+    raise SessionConflictError("live_start_apply_attempt_id_missing")
 
 
 def _execute_output_operation_admission_physical_step(
@@ -4238,7 +6546,7 @@ def prepare_output_operation_admission_under_lock(
             "output_bootstrap_lock_identity": output_bootstrap_lock_identity,
         }
     )
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_prepublication_session,
         event="same_phase_cas",
@@ -4335,7 +6643,7 @@ def advance_output_operation_admission_under_lock(
             "output_operation_admission_binding",
             binding,
         )
-        return transition_live_start_session_under_lock(
+        return _transition_receipt_authorized_under_lock(
             session_lease=session_lease,
             expected_session=expected_operation_session,
             event="same_phase_cas",
@@ -4344,7 +6652,7 @@ def advance_output_operation_admission_under_lock(
                 "output_operation_admission_binding": validated,
             },
         )
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_operation_session,
         event="same_phase_cas",
@@ -4446,7 +6754,7 @@ def prepare_output_child_bootstrap_under_lock(
             "output_bootstrap_lock_identity": output_bootstrap_lock_identity,
         }
     )
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_prepublication_session,
         event="same_phase_cas",
@@ -4563,7 +6871,7 @@ def advance_output_child_bootstrap_under_lock(
         if not isinstance(binding, Mapping):
             raise SessionCapabilityError("live_start_output_child_binding_receipt_invalid")
         validated = validate_embedded_document("output_child_binding", binding)
-        return transition_live_start_session_under_lock(
+        return _transition_receipt_authorized_under_lock(
             session_lease=session_lease,
             expected_session=expected_bootstrap_session,
             event="same_phase_cas",
@@ -4585,7 +6893,7 @@ def advance_output_child_bootstrap_under_lock(
         )
         if set(publication_binding) != _PUBLICATION_BINDING_FIELDS:
             raise SessionCapabilityError("live_start_publication_rebinding_invalid")
-        return transition_live_start_session_under_lock(
+        return _transition_receipt_authorized_under_lock(
             session_lease=session_lease,
             expected_session=expected_bootstrap_session,
             event="same_phase_cas",
@@ -4595,7 +6903,7 @@ def advance_output_child_bootstrap_under_lock(
                 "publication_binding": publication_binding,
             },
         )
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_bootstrap_session,
         event="same_phase_cas",
@@ -4625,7 +6933,7 @@ def prepare_runtime_layout_bootstrap_under_lock(
     )
     if validated.get("stage") != "INCOMPLETE":
         raise SessionValidationError("live_start_runtime_layout_initial_stage_invalid")
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_admission_committed_session,
         event="same_phase_cas",
@@ -4689,7 +6997,7 @@ def advance_runtime_layout_bootstrap_under_lock(
         validate_embedded_document("external_file_action", invocation_action)
         pending["external_file_action"] = invocation_action
         changes["pending_transition"] = _seal_pending(pending)
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_layout_session,
         event="same_phase_cas",
@@ -4786,7 +7094,7 @@ def advance_runtime_admission_under_lock(
     else:
         pending["external_file_action"] = None
         pending["next_action_index"] += 1
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_admission_session,
         event="same_phase_cas",
@@ -4834,25 +7142,20 @@ def _prepare_apply_recovery_from_observation_under_lock(
         LiveStartPhase.APPLY_COMMITTED,
     } or expected_session.apply_recovery is not None:
         raise SessionConflictError("live_start_apply_recovery_prepare_invalid")
-    if not isinstance(runtime_observation_receipt, RuntimeObservationReceipt):
-        raise SessionCapabilityError("live_start_runtime_observation_receipt_forged")
-    bearer = runtime_observation_receipt._opaque
-    postcondition = _require_opaque_carrier(
-        runtime_observation_receipt,
-        carrier_type=RuntimeObservationReceipt,
-        family=f"runtime_observation_receipt:{observation_family}",
-        action=bearer.action,
-        consume=True,
-    ).successor
-    if not isinstance(postcondition, RuntimeObservationPostcondition):
-        raise SessionCapabilityError("live_start_runtime_observation_receipt_invalid")
+    postcondition = _consume_runtime_observation_receipt_under_lock(
+        receipt=runtime_observation_receipt,
+        session_lease=session_lease,
+        expected_session=expected_session,
+        observation_family=observation_family,  # type: ignore[arg-type]
+        apply_attempt_id=_session_apply_attempt_id(expected_session),
+    )
     recovery = postcondition.evidence.get("apply_recovery")
     if not isinstance(recovery, Mapping):
         raise SessionCapabilityError("live_start_runtime_observation_recovery_missing")
     validated = _validate_apply_recovery_document(recovery)
     if validated.get("recovery_stage") != "ACTIVE":
         raise SessionCapabilityError("live_start_initial_recovery_not_active")
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_session,
         event="same_phase_cas",
@@ -4893,6 +7196,16 @@ def advance_nonterminal_apply_recovery_under_lock(
         if not isinstance(successor, Mapping):
             raise SessionCapabilityError("live_start_apply_recovery_successor_missing")
         validated = _validate_apply_recovery_document(successor)
+        current = expected_recovery_session.apply_recovery
+        if not isinstance(current, Mapping):
+            raise SessionConflictError(
+                "live_start_apply_recovery_cursor_missing"
+            )
+        _validate_apply_recovery_physical_successor(
+            predecessor=current,
+            successor=validated,
+            action=action,
+        )
     elif transition == "select_terminal_classification":
         if runtime_observation_receipt is None or any(
             item is not None
@@ -4903,17 +7216,15 @@ def advance_nonterminal_apply_recovery_under_lock(
             )
         ):
             raise SessionCapabilityError("live_start_classification_carrier_matrix_invalid")
-        bearer = runtime_observation_receipt._opaque
-        opaque = _require_opaque_carrier(
-            runtime_observation_receipt,
-            carrier_type=RuntimeObservationReceipt,
-            family="runtime_observation_receipt:terminal_classification",
-            action=bearer.action,
-            consume=True,
+        postcondition = _consume_runtime_observation_receipt_under_lock(
+            receipt=runtime_observation_receipt,
+            session_lease=session_lease,
+            expected_session=expected_recovery_session,
+            observation_family="terminal_classification",
+            apply_attempt_id=_session_apply_attempt_id(
+                expected_recovery_session
+            ),
         )
-        postcondition = opaque.successor
-        if not isinstance(postcondition, RuntimeObservationPostcondition):
-            raise SessionCapabilityError("live_start_classification_receipt_invalid")
         successor = postcondition.evidence.get("apply_recovery")
         if not isinstance(successor, Mapping):
             raise SessionCapabilityError("live_start_classification_successor_missing")
@@ -4940,19 +7251,10 @@ def advance_nonterminal_apply_recovery_under_lock(
         if not isinstance(current, Mapping):
             raise SessionConflictError("live_start_apply_recovery_cursor_missing")
         if transition == "recovery_closed":
-            if (
-                current.get("recovery_stage") != "ACTIVE"
-                or current.get("expected_action") is not None
-                or current.get("stable_physical_disposition") is None
-                or current.get("external_file_action") is not None
-                or validated.get("recovery_stage") != "CLOSED"
-            ):
-                raise SessionConflictError("live_start_apply_recovery_close_invalid")
-            current_copy = _thaw(current)
-            successor_copy = _thaw(validated)
-            for key in current_copy:
-                if key not in {"recovery_stage", "content_sha256"} and current_copy[key] != successor_copy[key]:
-                    raise SessionCapabilityError("live_start_apply_recovery_close_changed_evidence")
+            _validate_apply_recovery_closure_successor(
+                predecessor=current,
+                successor=validated,
+            )
     changes: dict[str, Any] = {"apply_recovery": validated}
     event = "same_phase_cas"
     if transition == "apply_committed":
@@ -4963,7 +7265,7 @@ def advance_nonterminal_apply_recovery_under_lock(
         if expected_recovery_session.phase is not LiveStartPhase.APPLY_COMMITTED:
             raise SessionConflictError("live_start_runtime_matched_phase_invalid")
         event = "runtime_matched"
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_recovery_session,
         event=event,
@@ -4999,7 +7301,7 @@ def bind_result_intent_under_lock(
         raise SessionValidationError("live_start_failure_acknowledgement_forbidden")
     else:
         validated_ack = None
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_session,
         event="same_phase_cas",
@@ -5024,7 +7326,7 @@ def record_terminal_status_under_lock(
         or expected_result_session.pending_transition is not None
     ):
         raise SessionConflictError("live_start_terminal_status_cursor_invalid")
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_result_session,
         event="bind_terminal",
@@ -5059,23 +7361,18 @@ def prepare_terminal_retirement_under_lock(
     if operation == "release_resolved_terminal":
         if runtime_observation_receipt is None:
             raise SessionCapabilityError("live_start_terminal_resolution_observation_missing")
-        opaque = runtime_observation_receipt._opaque
-        receipt_bearer = _require_opaque_carrier(
-            runtime_observation_receipt,
-            carrier_type=RuntimeObservationReceipt,
-            family="runtime_observation_receipt:terminal_resolution",
-            action=opaque.action,
-            consume=True,
+        postcondition = _consume_runtime_observation_receipt_under_lock(
+            receipt=runtime_observation_receipt,
+            session_lease=session_lease,
+            expected_session=expected_terminal_session,
+            observation_family="terminal_resolution",
+            apply_attempt_id=_session_apply_attempt_id(
+                expected_terminal_session
+            ),
         )
-        if (
-            receipt_bearer.session_bearer
-            is not session_lease.lock_token._bearer
-            or receipt_bearer.cursor_sha256
-            != expected_terminal_session.content_sha256
-            or not isinstance(receipt_bearer.successor, RuntimeObservationPostcondition)
-        ):
-            raise SessionCapabilityError("live_start_terminal_resolution_observation_stale")
-        resolved = receipt_bearer.successor.evidence.get("terminal_resolution_evidence")
+        resolved = postcondition.evidence.get(
+            "terminal_resolution_evidence"
+        )
         if not isinstance(resolved, Mapping):
             raise SessionCapabilityError("live_start_terminal_resolution_evidence_missing")
         resolved_evidence = _freeze_mapping(resolved)
@@ -5123,7 +7420,7 @@ def prepare_terminal_retirement_under_lock(
         ),
     }
     retirement = seal_embedded_document("terminal_retirement", value)
-    return transition_live_start_session_under_lock(
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_terminal_session,
         event="same_phase_cas",
@@ -5152,6 +7449,17 @@ def advance_terminal_retirement_under_lock(
         if terminal_authorization is not None:
             raise SessionCapabilityError("live_start_terminal_retirement_carrier_matrix_invalid")
         action = physical_step_receipt._opaque.action
+        expected_physical_action = {
+            "ack_journal_retired": "retire_ack_journal",
+            "evidence_retired": "retire_ack_fence",
+        }.get(transition)
+        if (
+            current.get("operation") != "ack_success"
+            or action != expected_physical_action
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_retirement_receipt_action_mismatch"
+            )
         postcondition = _consume_receipt_under_lock(
             receipt=physical_step_receipt,
             receipt_type=TerminalResolutionStepReceipt,
@@ -5173,6 +7481,11 @@ def advance_terminal_retirement_under_lock(
             raise SessionCapabilityError(
                 "live_start_terminal_retirement_receipt_transition_mismatch"
             )
+        _validate_terminal_retirement_successor(
+            predecessor=current,
+            successor=validated,
+            transition=transition,
+        )
     else:
         if terminal_authorization is None:
             raise SessionCapabilityError("live_start_terminal_retirement_authorization_missing")
@@ -5197,7 +7510,12 @@ def advance_terminal_retirement_under_lock(
             else "ADMISSION_RELEASE_AUTHORIZED"
         )
         validated = seal_embedded_document("terminal_retirement", value)
-    return transition_live_start_session_under_lock(
+        _validate_terminal_retirement_successor(
+            predecessor=current,
+            successor=validated,
+            transition=transition,
+        )
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_retirement_session,
         event="same_phase_cas",
@@ -5235,6 +7553,25 @@ def advance_terminal_resolution_under_lock(
         if terminal_authorization is not None or resolved_evidence is not None:
             raise SessionCapabilityError("live_start_terminal_resolution_carrier_matrix_invalid")
         action = physical_step_receipt._opaque.action
+        expected_action = {
+            "cleanup_inventory_unbound_staging_retired": (
+                "retire_unbound_terminal_cleanup_inventory_staging"
+            ),
+            "cleanup_inventory_staging_bound": (
+                "materialize_terminal_cleanup_inventory_staging"
+            ),
+            "inventory_bound": "commit_bound_terminal_cleanup_inventory",
+            "cleanup_cursor_advanced": "delete_cleanup_entry",
+            "journal_retired": "retire_cleanup_journal",
+            "fence_retired": "retire_cleanup_fence",
+            "inventory_retired": "retire_cleanup_inventory",
+        }.get(transition)
+        if transition == "physical_recovery_advanced":
+            expected_action = _terminal_action_for_retirement(current)
+        if action != expected_action:
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_receipt_action_mismatch"
+            )
         postcondition = _consume_receipt_under_lock(
             receipt=physical_step_receipt,
             receipt_type=TerminalResolutionStepReceipt,
@@ -5264,6 +7601,11 @@ def advance_terminal_resolution_under_lock(
             raise SessionCapabilityError(
                 "live_start_terminal_resolution_receipt_transition_mismatch"
             )
+        _validate_terminal_resolution_successor(
+            predecessor=current,
+            successor=validated,
+            transition=transition,
+        )
     else:
         if (
             transition not in {"cleaning_started", "stabilized"}
@@ -5288,7 +7630,12 @@ def advance_terminal_resolution_under_lock(
             else "RECOVERY_STABILIZED"
         )
         validated = seal_embedded_document("terminal_retirement", value)
-    return transition_live_start_session_under_lock(
+        _validate_terminal_resolution_successor(
+            predecessor=current,
+            successor=validated,
+            transition=transition,
+        )
+    return _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=expected_resolution_session,
         event="same_phase_cas",

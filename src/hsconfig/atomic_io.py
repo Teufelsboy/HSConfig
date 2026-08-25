@@ -19,6 +19,7 @@ from hsconfig.package_io import (
     path_identity,
     path_identity_from_status,
     require_no_alternate_data_streams,
+    require_open_file_descriptor_no_alternate_data_streams,
     secure_commit_sibling_no_replace,
     secure_open_file_descriptor,
     secure_replace,
@@ -279,6 +280,13 @@ def atomic_write_reserved_bytes(
         maximum_size=maximum_size,
     )
     fault_hook("before_replace")
+    _require_reserved_predecessor(
+        target,
+        expected_identity=expected_predecessor_identity,
+        expected_sha256=expected_predecessor_sha256,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=maximum_size,
+    )
     try:
         secure_replace(
             temp,
@@ -350,15 +358,20 @@ def _require_reserved_predecessor(
         if os.path.lexists(path):
             raise AtomicWriteConflictError("reserved target unexpectedly exists")
         return
-    _require_exact_bound_file(
-        path,
-        expected_identity=expected_identity,
-        expected_size=None,
-        expected_sha256=expected_sha256,
-        expected_parent_identity=expected_parent_identity,
-        allowed_links=frozenset({1}),
-        maximum_size=maximum_size,
-    )
+    try:
+        _require_exact_bound_file(
+            path,
+            expected_identity=expected_identity,
+            expected_size=None,
+            expected_sha256=expected_sha256,
+            expected_parent_identity=expected_parent_identity,
+            allowed_links=frozenset({1}),
+            maximum_size=maximum_size,
+        )
+    except (AtomicWriteConflictError, FileNotFoundError) as error:
+        raise AtomicWriteConflictError(
+            "reserved predecessor changed"
+        ) from error
 
 
 def _require_exact_bound_file(
@@ -724,6 +737,19 @@ class ExclusiveFileLock:
                     raise
         if release_error is not None:
             raise release_error
+
+    def validate_no_alternate_data_streams(
+        self,
+        *,
+        expected_size: int = 0,
+    ) -> None:
+        handle = self._handle
+        if handle is None:
+            raise RuntimeError(f"Lock is not acquired: {self.path}")
+        require_open_file_descriptor_no_alternate_data_streams(
+            handle.fileno(),
+            expected_size=expected_size,
+        )
 
 
 def _open_lock_file(

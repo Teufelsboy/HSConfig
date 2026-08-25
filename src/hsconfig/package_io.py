@@ -417,6 +417,11 @@ def secure_commit_sibling_no_replace(
             expected_identity=expected_source_identity,
             allowed_link_counts=allowed_source_links,
         )
+        if os.name != "nt":
+            _require_no_replace_link_state(
+                source_status=source_status,
+                target_status=target_status,
+            )
 
         if target_status is not None:
             if os.name == "nt":
@@ -499,6 +504,23 @@ def _optional_child_status(
         return parent.child_status(name)
     except FileNotFoundError:
         return None
+
+
+def _require_no_replace_link_state(
+    *,
+    source_status: os.stat_result,
+    target_status: os.stat_result | None,
+) -> None:
+    if target_status is None:
+        if source_status.st_nlink != 1:
+            raise ValueError(
+                "filesystem_sibling_no_replace_foreign_link_forbidden"
+            )
+        return
+    if source_status.st_nlink != 2 or target_status.st_nlink != 2:
+        raise ValueError(
+            "filesystem_sibling_no_replace_intermediate_link_invalid"
+        )
 
 
 def _require_bound_no_replace_file(
@@ -798,6 +820,28 @@ def require_no_alternate_data_streams(
             if streams != expected:
                 raise ValueError("filesystem_alternate_data_stream_forbidden")
         parent.validate()
+
+
+def require_open_file_descriptor_no_alternate_data_streams(
+    descriptor: int,
+    *,
+    expected_size: int,
+) -> None:
+    """Validate streams through an already-open, identity-bound file handle."""
+
+    if os.name != "nt":
+        return
+    if type(descriptor) is not int or descriptor < 0:
+        raise ValueError("filesystem_descriptor_invalid")
+    if type(expected_size) is not int or expected_size < 0:
+        raise ValueError("filesystem_stream_size_invalid")
+    import msvcrt
+
+    streams = _windows_native_handle_streams(
+        msvcrt.get_osfhandle(descriptor)
+    )
+    if streams != (("::$DATA", expected_size),):
+        raise ValueError("filesystem_alternate_data_stream_forbidden")
 
 
 def _require_no_alternate_data_streams_root(

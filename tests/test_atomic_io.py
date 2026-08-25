@@ -222,6 +222,40 @@ def test_reserved_predecessor_check_keeps_the_caller_bound_parent_identity(
         )
 
 
+def test_reserved_atomic_before_replace_rejects_target_substitution(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "session.json"
+    target.write_bytes(b"expected predecessor")
+    predecessor_identity = path_identity(target)
+    predecessor_sha256 = (
+        "sha256:"
+        + __import__("hashlib").sha256(b"expected predecessor").hexdigest()
+    )
+
+    def substitute_at_declared_hook(point: str) -> None:
+        if point == "before_replace":
+            target.unlink()
+            target.write_bytes(b"foreign successor")
+
+    with pytest.raises(
+        AtomicWriteConflictError,
+        match="reserved predecessor",
+    ):
+        atomic_io.atomic_write_reserved_bytes(
+            path=target,
+            payload=b"intended successor",
+            expected_parent_identity=path_identity(tmp_path),
+            expected_predecessor_identity=predecessor_identity,
+            expected_predecessor_sha256=predecessor_sha256,
+            maximum_size=1024,
+            fault_hook=substitute_at_declared_hook,
+        )
+
+    assert target.read_bytes() == b"foreign successor"
+    assert path_identity(target) != predecessor_identity
+
+
 class InjectedFault(RuntimeError):
     pass
 
