@@ -205,10 +205,29 @@ def lease_output_operation_admission() -> Iterator[OutputOperationAdmissionLease
     state_root = output_operation_state_root()
     _require_canonical_plain_directory(state_root)
     state_root_identity = path_identity(state_root)
+    with _lease_output_operation_admission_for_state_root(
+        state_root=state_root,
+        state_root_identity=state_root_identity,
+    ) as lease:
+        yield lease
+
+
+@contextmanager
+def _lease_output_operation_admission_for_state_root(
+    *,
+    state_root: Path,
+    state_root_identity: PathIdentity,
+) -> Iterator[OutputOperationAdmissionLease]:
+    """Hold the neutral lock under one already bound state-root authority."""
+
+    state_root = Path(state_root)
+    _require_canonical_plain_directory(state_root)
+    if path_identity(state_root) != state_root_identity:
+        raise ValueError("output_operation_state_root_identity_changed")
     locks_root = state_root / "locks"
     _require_canonical_plain_directory(locks_root)
     locks_root_identity = path_identity(locks_root)
-    lock_path = output_operation_lock_path()
+    lock_path = locks_root / OUTPUT_OPERATION_LOCK_NAME
     if path_lexists(lock_path):
         lock_identity = _require_empty_plain_lock(
             lock_path,
@@ -646,33 +665,56 @@ def _require_windows_safe_absolute_path(path: Path, *, error: str) -> Path:
         raise ValueError(error)
     drive = candidate.drive
     if drive.startswith("\\\\"):
-        drive_components = drive[2:].split("\\")
-        if (
-            len(drive_components) != 2
-            or drive_components[1].casefold() in _WINDOWS_UNC_IPC_SHARES
-        ):
+        authority_components = drive[2:].split("\\")
+        if len(authority_components) != 2:
+            raise ValueError(error)
+        server, share = authority_components
+        _require_windows_safe_component(
+            server,
+            error=error,
+            reject_device_name=False,
+        )
+        _require_windows_safe_component(
+            share,
+            error=error,
+            reject_device_name=False,
+        )
+        if share.casefold() in _WINDOWS_UNC_IPC_SHARES:
             raise ValueError(error)
     elif re.fullmatch(r"[A-Za-z]:", drive):
-        drive_components = []
+        pass
     else:
         raise ValueError(error)
-    components = [*drive_components, *candidate.parts[1:]]
-    for component in components:
-        if (
-            not component
-            or component in {".", ".."}
-            or component.endswith((".", " "))
-            or any(ord(character) < 32 for character in component)
-            or any(
-                character in _WINDOWS_INVALID_COMPONENT_CHARACTERS
-                for character in component
-            )
-        ):
-            raise ValueError(error)
+    for component in candidate.parts[1:]:
+        _require_windows_safe_component(
+            component,
+            error=error,
+            reject_device_name=True,
+        )
+    return candidate
+
+
+def _require_windows_safe_component(
+    component: str,
+    *,
+    error: str,
+    reject_device_name: bool,
+) -> None:
+    if (
+        not component
+        or component in {".", ".."}
+        or component.endswith((".", " "))
+        or any(ord(character) < 32 for character in component)
+        or any(
+            character in _WINDOWS_INVALID_COMPONENT_CHARACTERS
+            for character in component
+        )
+    ):
+        raise ValueError(error)
+    if reject_device_name:
         device_stem = component.split(".", 1)[0].rstrip(" .").casefold()
         if device_stem in _WINDOWS_RESERVED_NAMES:
             raise ValueError(error)
-    return candidate
 
 
 def _canonical_json(value: object) -> bytes:

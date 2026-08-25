@@ -125,6 +125,32 @@ def _long_windows_profile_root(parent: Path) -> Path:
     return current
 
 
+def _existing_directory_at_identity_row_depth(
+    parent: Path,
+    target_rows: int,
+) -> Path:
+    current = parent
+    current_rows = 1
+    ancestor = current
+    while ancestor.parent != ancestor:
+        current_rows += 1
+        ancestor = ancestor.parent
+    if current_rows > target_rows:
+        raise AssertionError("temporary root already exceeds requested identity depth")
+    for _ in range(target_rows - current_rows):
+        current /= "d"
+        current.mkdir()
+    return current
+
+
+def _nested_existing_directory(parent: Path, component_count: int) -> Path:
+    current = parent
+    for _ in range(component_count):
+        current /= "d"
+        current.mkdir()
+    return current
+
+
 def _active_admission_document(
     *,
     local_app_data: Path,
@@ -745,6 +771,253 @@ def test_profile_mutation_lock_order_is_profile_then_output_operation(
         "operation_exit",
         "profile_exit",
     ]
+
+
+@pytest.mark.parametrize("mutation", ("enable_absent", "rebind", "disable"))
+def test_profile_mutations_bind_neutral_lease_to_captured_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+):
+    local_app_data_a = tmp_path / "local-a"
+    local_app_data_b = tmp_path / "local-b"
+    runtime_root = tmp_path / "runtime"
+    output_base_root = tmp_path / "outputs"
+    rebound_output_root = tmp_path / "rebound-outputs"
+    for directory in (
+        local_app_data_a,
+        local_app_data_b,
+        runtime_root,
+        output_base_root,
+        rebound_output_root,
+    ):
+        directory.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data_a))
+
+    state_root_a = local_app_data_a / "HSConfig"
+    if mutation == "enable_absent":
+        locks_root = state_root_a / "locks"
+        locks_root.mkdir(parents=True)
+        (locks_root / "output-operation.lock").touch()
+        predecessor = None
+    else:
+        predecessor = _enable(runtime_root, output_base_root)
+    profile_path = state_root_a / "operator-profile.json"
+
+    def profile_observation() -> tuple[bytes, tuple[int, int, int], int] | None:
+        if not profile_path.exists():
+            return None
+        return (
+            profile_path.read_bytes(),
+            path_identity(profile_path),
+            profile_path.stat().st_mtime_ns,
+        )
+
+    profile_before = profile_observation()
+    local_b_before = (
+        tuple(local_app_data_b.iterdir()),
+        path_identity(local_app_data_b),
+        local_app_data_b.stat().st_mtime_ns,
+    )
+    holder_start = Event()
+    holder_acquired = Event()
+    release_holder = Event()
+    holder_errors: Queue[BaseException] = Queue()
+    boundary_reached = Event()
+    mutation_finished = Event()
+    mutation_results: Queue[object] = Queue()
+
+    def hold_a_operation_lease() -> None:
+        assert holder_start.wait(timeout=5)
+        try:
+            with output_operation_admission.lease_output_operation_admission():
+                holder_acquired.set()
+                assert release_holder.wait(timeout=10)
+        except BaseException as error:
+            holder_errors.put(error)
+            holder_acquired.set()
+
+    holder_thread = Thread(target=hold_a_operation_lease)
+    holder_thread.start()
+
+    bound_entrypoint = "_lease_output_operation_admission_for_state_root"
+    if hasattr(operator_profile, bound_entrypoint):
+        inner_lease = getattr(operator_profile, bound_entrypoint)
+    else:
+        bound_entrypoint = "lease_output_operation_admission"
+        inner_lease = getattr(operator_profile, bound_entrypoint)
+
+    @contextmanager
+    def switch_ambient_authority_at_inner_lease(*args: object, **kwargs: object):
+        holder_start.set()
+        assert holder_acquired.wait(timeout=5)
+        if not holder_errors.empty():
+            raise holder_errors.get_nowait()
+        os.environ["LOCALAPPDATA"] = str(local_app_data_b)
+        boundary_reached.set()
+        with inner_lease(*args, **kwargs) as lease:
+            yield lease
+
+    monkeypatch.setattr(
+        operator_profile,
+        bound_entrypoint,
+        switch_ambient_authority_at_inner_lease,
+    )
+
+    def mutate_profile() -> None:
+        try:
+            if mutation == "enable_absent":
+                result = _enable(runtime_root, output_base_root)
+            elif mutation == "rebind":
+                assert predecessor is not None
+                result = enable_operator_profile(
+                    runtime_root=runtime_root,
+                    output_base_root=rebound_output_root,
+                    expected_predecessor_sha256=predecessor.content_sha256,
+                )
+            else:
+                assert predecessor is not None
+                result = disable_operator_profile(
+                    expected_predecessor_sha256=predecessor.content_sha256
+                )
+            mutation_results.put(result)
+        except BaseException as error:
+            mutation_results.put(error)
+        finally:
+            mutation_finished.set()
+
+    mutation_thread = Thread(target=mutate_profile)
+    blocked_by_a = False
+    try:
+        mutation_thread.start()
+        assert boundary_reached.wait(timeout=5)
+        blocked_by_a = not mutation_finished.wait(timeout=0.2)
+        assert profile_observation() == profile_before
+        assert not (local_app_data_b / "HSConfig").exists()
+        assert (
+            tuple(local_app_data_b.iterdir()),
+            path_identity(local_app_data_b),
+            local_app_data_b.stat().st_mtime_ns,
+        ) == local_b_before
+    finally:
+        release_holder.set()
+        holder_thread.join(timeout=10)
+        mutation_thread.join(timeout=10)
+        os.environ["LOCALAPPDATA"] = str(local_app_data_a)
+
+    assert blocked_by_a
+    assert not holder_thread.is_alive()
+    assert not mutation_thread.is_alive()
+    assert holder_errors.empty()
+    outcome = mutation_results.get_nowait()
+    assert not isinstance(outcome, BaseException)
+    if mutation == "disable":
+        assert outcome.live_by_default is False
+    else:
+        assert outcome.live_by_default is True
+
+
+@pytest.mark.parametrize(
+    ("local_app_data_rows", "expected_success"),
+    ((255, True), (256, False)),
+)
+def test_enable_validates_prospective_state_root_depth_before_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    local_app_data_rows: int,
+    expected_success: bool,
+):
+    depth_base = tmp_path / f"local-depth-{local_app_data_rows}"
+    runtime_root = tmp_path / f"runtime-{local_app_data_rows}"
+    output_base_root = tmp_path / f"outputs-{local_app_data_rows}"
+    depth_base.mkdir()
+    runtime_root.mkdir()
+    output_base_root.mkdir()
+    local_app_data = _existing_directory_at_identity_row_depth(
+        depth_base,
+        local_app_data_rows,
+    )
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    state_root = local_app_data / "HSConfig"
+
+    if expected_success:
+        profile = _enable(runtime_root, output_base_root)
+        identities, remaining = operator_profile._physical_identity_mapping(state_root)
+        assert len(identities) == 256
+        assert remaining == ()
+        assert load_operator_profile() == profile
+        assert revalidate_operator_profile(profile) is profile
+        return
+
+    parent_before = (
+        tuple(local_app_data.iterdir()),
+        path_identity(local_app_data),
+        local_app_data.stat().st_mtime_ns,
+    )
+    with pytest.raises(ValueError, match="bound"):
+        _enable(runtime_root, output_base_root)
+    assert not state_root.exists()
+    assert (
+        tuple(local_app_data.iterdir()),
+        path_identity(local_app_data),
+        local_app_data.stat().st_mtime_ns,
+    ) == parent_before
+
+
+def test_over_limit_existing_authority_rejects_before_ads_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    depth_base = tmp_path / "over-limit-authority"
+    local_app_data = tmp_path / "local-app-data"
+    output_base_root = tmp_path / "outputs"
+    depth_base.mkdir()
+    local_app_data.mkdir()
+    output_base_root.mkdir()
+    runtime_root = _existing_directory_at_identity_row_depth(depth_base, 257)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    ads_paths: list[Path] = []
+    real_require_no_streams = operator_profile.require_no_alternate_data_streams
+
+    def record_ads_traversal(path: Path, **kwargs: object) -> None:
+        ads_paths.append(Path(path))
+        real_require_no_streams(path, **kwargs)
+
+    monkeypatch.setattr(
+        operator_profile,
+        "require_no_alternate_data_streams",
+        record_ads_traversal,
+    )
+
+    with pytest.raises(ValueError, match="bound"):
+        _enable(runtime_root, output_base_root)
+
+    assert ads_paths == []
+    assert tuple(local_app_data.iterdir()) == ()
+
+
+@pytest.mark.parametrize("authority_shape", ("exact_limit", "110_components"))
+def test_existing_authority_bound_accepts_declared_safe_depths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority_shape: str,
+):
+    depth_base = tmp_path / f"safe-authority-{authority_shape}"
+    local_app_data = tmp_path / f"local-{authority_shape}"
+    output_base_root = tmp_path / f"outputs-{authority_shape}"
+    depth_base.mkdir()
+    local_app_data.mkdir()
+    output_base_root.mkdir()
+    if authority_shape == "exact_limit":
+        runtime_root = _existing_directory_at_identity_row_depth(depth_base, 256)
+    else:
+        runtime_root = _nested_existing_directory(depth_base, 110)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    profile = _enable(runtime_root, output_base_root)
+
+    assert profile.runtime_root == runtime_root.resolve(strict=True)
+    assert revalidate_operator_profile(profile) is profile
 
 
 def test_absent_profile_enable_is_blocked_by_active_output_operation_admission(

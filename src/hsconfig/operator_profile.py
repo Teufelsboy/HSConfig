@@ -18,10 +18,10 @@ from weakref import ReferenceType, ref
 from hsconfig.atomic_io import ExclusiveFileLock, atomic_write_bytes
 from hsconfig.io import slugify_deck_name
 from hsconfig.output_operation_admission import (
+    OUTPUT_OPERATION_LOCK_NAME,
+    _lease_output_operation_admission_for_state_root,
     _require_lock_without_alternate_data_streams,
     _require_windows_safe_absolute_path,
-    lease_output_operation_admission,
-    output_operation_lock_path,
     require_output_operation_allows_profile_mutation,
 )
 from hsconfig.package_io import (
@@ -216,7 +216,10 @@ def enable_operator_profile(
             expected_identity=profile_lock_identity,
         )
         _bootstrap_output_operation_lock(state_root, state_root_identity)
-        with lease_output_operation_admission() as operation_lease:
+        with _lease_output_operation_admission_for_state_root(
+            state_root=state_root,
+            state_root_identity=state_root_identity,
+        ) as operation_lease:
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_optional_observation(
                 profile_path,
@@ -281,7 +284,10 @@ def disable_operator_profile(
             "operator_profile_lock_not_empty",
             expected_identity=profile_lock_identity,
         )
-        with lease_output_operation_admission() as operation_lease:
+        with _lease_output_operation_admission_for_state_root(
+            state_root=state_root,
+            state_root_identity=state_root_identity,
+        ) as operation_lease:
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_observation(
                 profile_path,
@@ -459,6 +465,14 @@ def _state_root_for_requested_roots(runtime_root: Path, output_base_root: Path) 
 
 
 def _ensure_state_root_for_enable(state_root: Path) -> PathIdentity:
+    prospective_identities, prospective_remaining = _physical_identity_mapping(
+        state_root
+    )
+    if (
+        len(prospective_identities) + len(prospective_remaining)
+        > _PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS
+    ):
+        raise ValueError("filesystem_identity_mapping_prospective_bound_exceeded")
     local_app_data = state_root.parent
     local_identity = path_identity(local_app_data)
     ancestor_guard = capture_plain_ancestor_guard(state_root)
@@ -472,7 +486,11 @@ def _ensure_state_root_for_enable(state_root: Path) -> PathIdentity:
             )
     ancestor_guard.validate()
     _require_canonical_plain_directory(state_root)
-    return path_identity(state_root)
+    state_root_identity = path_identity(state_root)
+    existing_identities, existing_remaining = _physical_identity_mapping(state_root)
+    if existing_remaining or existing_identities[0] != state_root_identity:
+        raise ValueError("filesystem_identity_mapping_state_root_changed")
+    return state_root_identity
 
 
 def _require_existing_state_root() -> tuple[Path, PathIdentity]:
@@ -496,7 +514,7 @@ def _bootstrap_output_operation_lock(
                 expected_parent_identity=state_root_identity,
             )
     locks_identity = path_identity(locks_root)
-    operation_lock = output_operation_lock_path()
+    operation_lock = locks_root / OUTPUT_OPERATION_LOCK_NAME
     if path_lexists(operation_lock):
         _require_empty_plain_file(
             operation_lock,
@@ -870,11 +888,18 @@ def _validated_plain_root(path: Path) -> Path:
         candidate,
         error="operator_profile_root_windows_namespace_invalid",
     )
+    _require_physical_identity_lexical_bound(candidate)
     require_plain_directory(candidate)
     require_same_identity_resolution(candidate)
     resolved = candidate.resolve(strict=True)
+    _require_physical_identity_lexical_bound(resolved)
     _require_canonical_plain_directory(resolved)
     return resolved
+
+
+def _require_physical_identity_lexical_bound(path: Path) -> None:
+    if len(Path(path).parts) > _PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS:
+        raise ValueError("filesystem_identity_mapping_ancestor_bound_exceeded")
 
 
 def _canonical_existing_root(value: object, field: str) -> Path:

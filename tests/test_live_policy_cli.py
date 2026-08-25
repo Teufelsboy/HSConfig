@@ -7,6 +7,7 @@ import pytest
 
 from hsconfig.cli import _build_parser, main
 from hsconfig.operator_profile import operator_profile_path
+from hsconfig.package_io import path_identity
 
 
 def _roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
@@ -18,6 +19,24 @@ def _roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]
     output_base_root.mkdir()
     monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
     return runtime_root, output_base_root
+
+
+def _existing_directory_at_identity_row_depth(
+    parent: Path,
+    target_rows: int,
+) -> Path:
+    current = parent
+    current_rows = 1
+    ancestor = current
+    while ancestor.parent != ancestor:
+        current_rows += 1
+        ancestor = ancestor.parent
+    if current_rows > target_rows:
+        raise AssertionError("temporary root already exceeds requested identity depth")
+    for _ in range(target_rows - current_rows):
+        current /= "d"
+        current.mkdir()
+    return current
 
 
 def test_enable_and_disable_round_trip_through_cli(
@@ -91,6 +110,50 @@ def test_disable_never_creates_a_missing_profile(
     assert payload["status"] == "failed"
     assert not operator_profile_path().exists()
     assert not operator_profile_path().parent.exists()
+
+
+def test_cli_enable_rejects_over_limit_prospective_state_root_without_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    depth_base = tmp_path / "cli-local-depth"
+    runtime_root = tmp_path / "cli-runtime"
+    output_base_root = tmp_path / "cli-outputs"
+    depth_base.mkdir()
+    runtime_root.mkdir()
+    output_base_root.mkdir()
+    local_app_data = _existing_directory_at_identity_row_depth(depth_base, 256)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    state_root = local_app_data / "HSConfig"
+    parent_before = (
+        tuple(local_app_data.iterdir()),
+        path_identity(local_app_data),
+        local_app_data.stat().st_mtime_ns,
+    )
+
+    code = main(
+        [
+            "live-policy",
+            "enable",
+            "--runtime-root",
+            str(runtime_root),
+            "--output-base-root",
+            str(output_base_root),
+            "--expected-absent",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert not state_root.exists()
+    assert (
+        tuple(local_app_data.iterdir()),
+        path_identity(local_app_data),
+        local_app_data.stat().st_mtime_ns,
+    ) == parent_before
 
 
 def test_profile_mutations_require_exact_predecessor_option():

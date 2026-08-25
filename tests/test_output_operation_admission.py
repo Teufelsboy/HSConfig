@@ -469,6 +469,41 @@ def test_windows_namespace_validator_preserves_ordinary_unc_shares(
 
 
 @pytest.mark.parametrize(
+    ("candidate_path", "accepted"),
+    (
+        ("\\\\COM1\\ordinary-share\\authority", True),
+        ("\\\\server\\CON\\authority", True),
+        ("\\\\NUL\\COM1.txt\\ordinary", True),
+        ("\\\\COM1\\ordinary-share\\CON", False),
+        ("\\\\server\\CON\\COM1.txt", False),
+        ("\\\\server\\ordinary-share\\LPT¹", False),
+        ("\\\\COM1\\PiPe\\authority", False),
+    ),
+)
+def test_windows_namespace_validator_applies_device_rules_only_after_unc_share(
+    candidate_path: str,
+    accepted: bool,
+):
+    if os.name != "nt":
+        pytest.skip("UNC namespaces are Windows-specific")
+    candidate = Path(candidate_path)
+    if accepted:
+        assert (
+            admission._require_windows_safe_absolute_path(
+                candidate,
+                error="windows_namespace_invalid",
+            )
+            == candidate
+        )
+    else:
+        with pytest.raises(ValueError, match="namespace"):
+            admission._require_windows_safe_absolute_path(
+                candidate,
+                error="windows_namespace_invalid",
+            )
+
+
+@pytest.mark.parametrize(
     "surface",
     ("admission", "staging", "reserved_temp"),
 )
