@@ -15,6 +15,7 @@ import pytest
 
 import hsconfig.operator_profile as operator_profile
 import hsconfig.output_operation_admission as output_operation_admission
+from hsconfig import package_io
 from hsconfig.operator_profile import (
     OperatorProfileLockToken,
     derive_deck_output_binding,
@@ -112,6 +113,23 @@ def _administrative_share_alias_or_skip(path: Path) -> Path:
     if not available:
         pytest.skip("local administrative share is unavailable")
     return alias
+
+
+def _administrative_root_share_or_skip() -> Path:
+    if os.name != "nt":
+        pytest.skip("administrative-share roots are Windows-specific")
+    root = Path(r"\\localhost\ADMIN$")
+    try:
+        status = root.lstat()
+    except OSError as error:
+        pytest.skip(f"local ADMIN$ share is unavailable: {error}")
+    if not status.st_mode or not root.is_dir():
+        pytest.fail("available local ADMIN$ authority is not a directory")
+    if package_io.status_is_reparse(status):
+        pytest.fail("available local ADMIN$ authority is a reparse point")
+    assert root.parent == root
+    assert root.name == ""
+    return root
 
 
 def _long_windows_profile_root(parent: Path) -> Path:
@@ -996,6 +1014,100 @@ def test_over_limit_existing_authority_rejects_before_ads_traversal(
     assert tuple(local_app_data.iterdir()) == ()
 
 
+def test_preexisting_over_limit_state_root_rejects_profile_reads_before_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    depth_base = tmp_path / "over-limit-state"
+    runtime_root = tmp_path / "runtime-over-limit-state"
+    output_base_root = tmp_path / "outputs-over-limit-state"
+    depth_base.mkdir()
+    runtime_root.mkdir()
+    output_base_root.mkdir()
+    local_app_data = _existing_directory_at_identity_row_depth(depth_base, 256)
+    state_root = local_app_data / "HSConfig"
+    state_root.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    boundary_events: list[tuple[str, Path]] = []
+    real_require_no_streams = operator_profile.require_no_alternate_data_streams
+    real_open_directory = package_io._open_plain_directory_descriptor
+
+    def record_ads_traversal(path: Path, **kwargs: object) -> None:
+        candidate = Path(path)
+        if candidate == state_root:
+            boundary_events.append(("ads", candidate))
+        real_require_no_streams(path, **kwargs)
+
+    def record_held_chain(path: Path, *args: object, **kwargs: object) -> int:
+        candidate = Path(path)
+        if candidate == local_app_data:
+            boundary_events.append(("held_chain", candidate))
+        return real_open_directory(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        operator_profile,
+        "require_no_alternate_data_streams",
+        record_ads_traversal,
+    )
+    monkeypatch.setattr(
+        package_io,
+        "_open_plain_directory_descriptor",
+        record_held_chain,
+    )
+
+    actions = (
+        ("load", load_operator_profile),
+        (
+            "disable",
+            lambda: disable_operator_profile(
+                expected_predecessor_sha256=STANDARD_DIGEST
+            ),
+        ),
+    )
+    for operation, action in actions:
+        boundary_events.clear()
+        outcome: BaseException | None = None
+        try:
+            action()
+        except BaseException as error:
+            outcome = error
+        assert boundary_events == [], operation
+        assert isinstance(outcome, ValueError), operation
+        assert "bound" in str(outcome), operation
+
+
+def test_preexisting_exact_limit_state_root_supports_read_lease_and_disable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    depth_base = tmp_path / "exact-limit-state"
+    runtime_root = tmp_path / "runtime-exact-limit-state"
+    output_base_root = tmp_path / "outputs-exact-limit-state"
+    depth_base.mkdir()
+    runtime_root.mkdir()
+    output_base_root.mkdir()
+    local_app_data = _existing_directory_at_identity_row_depth(depth_base, 255)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    state_root = local_app_data / "HSConfig"
+
+    profile = _enable(runtime_root, output_base_root)
+    identities, remaining = operator_profile._physical_identity_mapping(state_root)
+    assert len(identities) == 256
+    assert remaining == ()
+    loaded = load_operator_profile()
+    assert loaded == profile
+    with lease_operator_profile(expected_profile=loaded) as profile_lease:
+        assert revalidate_operator_profile_lease(profile_lease) is loaded
+    with output_operation_admission.lease_output_operation_admission() as operation_lease:
+        output_operation_admission.require_output_operation_allows_profile_mutation(
+            operation_lease
+        )
+    disabled = disable_operator_profile(
+        expected_predecessor_sha256=loaded.content_sha256
+    )
+    assert disabled.live_by_default is False
+
+
 @pytest.mark.parametrize("authority_shape", ("exact_limit", "110_components"))
 def test_existing_authority_bound_accepts_declared_safe_depths(
     tmp_path: Path,
@@ -1184,6 +1296,30 @@ def test_windows_drive_unc_aliases_cannot_bypass_root_disjointness(
 
     assert tuple(local_app_data.iterdir()) == ()
     assert not state_root.exists()
+
+
+def test_authority_only_unc_root_supports_public_profile_lifecycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_root = _administrative_root_share_or_skip()
+    local_app_data = tmp_path / "local-admin-root"
+    output_base_root = tmp_path / "outputs-admin-root"
+    local_app_data.mkdir()
+    output_base_root.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    profile = _enable(runtime_root, output_base_root)
+    loaded = load_operator_profile()
+
+    assert loaded == profile
+    assert loaded.runtime_root.parent == loaded.runtime_root
+    with lease_operator_profile(expected_profile=loaded) as lease:
+        assert revalidate_operator_profile_lease(lease) is loaded
+    disabled = disable_operator_profile(
+        expected_predecessor_sha256=loaded.content_sha256
+    )
+    assert disabled.live_by_default is False
 
 
 @pytest.mark.parametrize("authority", ("runtime_root", "output_base_root", "localappdata"))

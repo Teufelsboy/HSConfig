@@ -17,6 +17,51 @@ def _one_file_tree(tmp_path: Path) -> Path:
     return root
 
 
+def _windows_drive_root_or_skip(tmp_path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("drive-root ADS validation is Windows-specific")
+    root = Path(tmp_path.anchor)
+    assert root.is_absolute()
+    assert root.parent == root
+    assert root.name == ""
+    return root
+
+
+def _windows_admin_share_root_or_skip() -> Path:
+    if os.name != "nt":
+        pytest.skip("UNC-root ADS validation is Windows-specific")
+    root = Path(r"\\localhost\ADMIN$")
+    try:
+        status = root.lstat()
+    except OSError as error:
+        pytest.skip(f"local ADMIN$ share is unavailable: {error}")
+    if not stat.S_ISDIR(status.st_mode):
+        pytest.fail("available local ADMIN$ authority is not a directory")
+    if package_io.status_is_reparse(status):
+        pytest.fail("available local ADMIN$ authority is a reparse point")
+    assert root.parent == root
+    assert root.name == ""
+    return root
+
+
+def _create_ntfs_stream_or_skip(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("NTFS alternate data streams are Windows-specific")
+    probe_path = path.parent / ".hsconfig-package-io-ads-probe"
+    probe_stream_path = Path(f"{probe_path}:probe")
+    probe_path.write_bytes(b"")
+    try:
+        probe_stream_path.write_bytes(b"probe")
+    except OSError as error:
+        pytest.skip(f"test volume does not support NTFS ADS: {error}")
+    finally:
+        probe_stream_path.unlink(missing_ok=True)
+        probe_path.unlink(missing_ok=True)
+    stream_path = Path(f"{path}:review-fix")
+    stream_path.write_bytes(b"foreign-stream")
+    return stream_path
+
+
 def test_bounded_package_snapshot_returns_stable_sorted_content(tmp_path: Path) -> None:
     root = tmp_path / "package"
     (root / "reports").mkdir(parents=True)
@@ -147,6 +192,159 @@ def test_bounded_inventory_enforces_limits_and_entry_kinds(
 def test_secure_child_name_rejects_ambiguous_or_nested_names(name: object) -> None:
     with pytest.raises(ValueError, match="filesystem_child_name_invalid"):
         package_io._require_child_name(name)  # type: ignore[arg-type]
+
+
+def test_require_no_alternate_data_streams_accepts_local_drive_root(
+    tmp_path: Path,
+) -> None:
+    root = _windows_drive_root_or_skip(tmp_path)
+    identity = package_io.path_identity(root)
+
+    package_io.require_no_alternate_data_streams(
+        root,
+        expected_identity=identity,
+        expected_parent_identity=identity,
+        directory=True,
+    )
+
+
+def test_require_no_alternate_data_streams_accepts_authority_only_unc_root() -> None:
+    root = _windows_admin_share_root_or_skip()
+    identity = package_io.path_identity(root)
+
+    package_io.require_no_alternate_data_streams(
+        root,
+        expected_identity=identity,
+        expected_parent_identity=identity,
+        directory=True,
+    )
+
+
+def test_require_no_alternate_data_streams_root_contract_fails_closed(
+    tmp_path: Path,
+) -> None:
+    root = _windows_drive_root_or_skip(tmp_path)
+    identity = package_io.path_identity(root)
+    wrong_identity = identity[0], identity[1] ^ 1, identity[2]
+
+    with pytest.raises(ValueError, match="root_stream_validation_invalid"):
+        package_io.require_no_alternate_data_streams(
+            root,
+            expected_identity=identity,
+            expected_parent_identity=identity,
+            directory=False,
+            expected_size=0,
+        )
+    with pytest.raises(ValueError, match="root_stream_validation_invalid"):
+        package_io.require_no_alternate_data_streams(
+            root,
+            expected_identity=identity,
+            expected_parent_identity=identity,
+            directory=True,
+            expected_size=0,
+        )
+    with pytest.raises(ValueError, match="filesystem_path_identity_changed"):
+        package_io.require_no_alternate_data_streams(
+            root,
+            expected_identity=identity,
+            expected_parent_identity=wrong_identity,
+            directory=True,
+        )
+    with pytest.raises(ValueError, match="filesystem_path_identity_changed"):
+        package_io.require_no_alternate_data_streams(
+            root,
+            expected_identity=wrong_identity,
+            expected_parent_identity=wrong_identity,
+            directory=True,
+        )
+
+
+@pytest.mark.parametrize("failure_point", ("handle_state", "stream_inventory"))
+def test_require_no_alternate_data_streams_root_failure_closes_handle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    root = _windows_drive_root_or_skip(tmp_path)
+    identity = package_io.path_identity(root)
+    opened_descriptors: list[int] = []
+    strict_share_requests: list[bool] = []
+    real_open = package_io._open_plain_directory_descriptor
+
+    def recording_open(path: Path, **kwargs: object) -> int:
+        strict_share_requests.append(bool(kwargs.get("deny_write_share", False)))
+        descriptor = real_open(path, **kwargs) if kwargs else real_open(path)
+        opened_descriptors.append(descriptor)
+        return descriptor
+
+    monkeypatch.setattr(
+        package_io,
+        "_open_plain_directory_descriptor",
+        recording_open,
+    )
+
+    def fail_probe(_native_handle: int) -> object:
+        raise OSError(5, "root ADS probe failed")
+
+    if failure_point == "handle_state":
+        monkeypatch.setattr(package_io, "_windows_native_handle_state", fail_probe)
+    else:
+        monkeypatch.setattr(package_io, "_windows_native_handle_streams", fail_probe)
+
+    with pytest.raises(OSError, match="root ADS probe failed"):
+        package_io.require_no_alternate_data_streams(
+            root,
+            expected_identity=identity,
+            expected_parent_identity=identity,
+            directory=True,
+        )
+
+    assert strict_share_requests == [True]
+    assert opened_descriptors
+    for descriptor in opened_descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    assert package_io.path_identity(root) == identity
+
+
+@pytest.mark.parametrize("directory", (False, True))
+def test_require_no_alternate_data_streams_preserves_child_behavior(
+    tmp_path: Path,
+    directory: bool,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("NTFS alternate data streams are Windows-specific")
+    parent = tmp_path / "ads-child-parent"
+    parent.mkdir()
+    child = parent / ("directory" if directory else "file.bin")
+    if directory:
+        child.mkdir()
+        expected_size = None
+    else:
+        child.write_bytes(b"content")
+        expected_size = len(b"content")
+    identity = package_io.path_identity(child)
+    parent_identity = package_io.path_identity(parent)
+
+    package_io.require_no_alternate_data_streams(
+        child,
+        expected_identity=identity,
+        expected_parent_identity=parent_identity,
+        directory=directory,
+        expected_size=expected_size,
+    )
+    stream_path = _create_ntfs_stream_or_skip(child)
+    try:
+        with pytest.raises(ValueError, match="alternate_data_stream"):
+            package_io.require_no_alternate_data_streams(
+                child,
+                expected_identity=identity,
+                expected_parent_identity=parent_identity,
+                directory=directory,
+                expected_size=expected_size,
+            )
+    finally:
+        stream_path.unlink(missing_ok=True)
 
 
 def test_report_readers_require_mapping_documents(tmp_path: Path) -> None:

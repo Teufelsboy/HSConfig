@@ -81,6 +81,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
 _WINDOWS_INVALID_COMPONENT_CHARACTERS = frozenset('<>"/\\|?*:')
 _WINDOWS_UNC_IPC_SHARES = frozenset({"pipe", "mailslot", "ipc$"})
 _LOCK_STREAM_VALIDATION_TIMEOUT_SECONDS = 30.0
+_STATE_ROOT_MAX_IDENTITY_ROWS = 256
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -203,6 +204,7 @@ def lease_output_operation_admission() -> Iterator[OutputOperationAdmissionLease
     """Hold the pre-existing neutral lock without creating directory state."""
 
     state_root = output_operation_state_root()
+    _require_state_root_identity_row_bound(state_root)
     _require_canonical_plain_directory(state_root)
     state_root_identity = path_identity(state_root)
     with _lease_output_operation_admission_for_state_root(
@@ -221,6 +223,7 @@ def _lease_output_operation_admission_for_state_root(
     """Hold the neutral lock under one already bound state-root authority."""
 
     state_root = Path(state_root)
+    _require_state_root_identity_row_bound(state_root)
     _require_canonical_plain_directory(state_root)
     if path_identity(state_root) != state_root_identity:
         raise ValueError("output_operation_state_root_identity_changed")
@@ -382,6 +385,11 @@ def _revalidate_lease_filesystem(lease: OutputOperationAdmissionLease) -> None:
         lease.lock_path,
         expected_identity=lease.lock_identity,
     )
+
+
+def _require_state_root_identity_row_bound(path: Path) -> None:
+    if len(Path(path).parts) > _STATE_ROOT_MAX_IDENTITY_ROWS:
+        raise ValueError("filesystem_identity_mapping_ancestor_bound_exceeded")
 
 
 def _require_canonical_plain_directory(path: Path) -> None:

@@ -598,6 +598,15 @@ def require_no_alternate_data_streams(
     if os.name != "nt":
         return
     child = Path(path)
+    if child.is_absolute() and child.parent == child:
+        _require_no_alternate_data_streams_root(
+            child,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+            directory=directory,
+            expected_size=expected_size,
+        )
+        return
     with hold_plain_directory(
         child.parent,
         expected_identity=expected_parent_identity,
@@ -615,6 +624,70 @@ def require_no_alternate_data_streams(
             if streams != expected:
                 raise ValueError("filesystem_alternate_data_stream_forbidden")
         parent.validate()
+
+
+def _require_no_alternate_data_streams_root(
+    root: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    directory: bool,
+    expected_size: int | None,
+) -> None:
+    if not directory or expected_size is not None:
+        raise ValueError("filesystem_root_stream_validation_invalid")
+    if expected_parent_identity != expected_identity:
+        raise ValueError("filesystem_path_identity_changed")
+
+    import msvcrt
+
+    descriptor = _open_plain_directory_descriptor(
+        root,
+        deny_write_share=True,
+    )
+    try:
+        native_handle = msvcrt.get_osfhandle(descriptor)
+        _require_windows_root_directory_binding(
+            root,
+            descriptor=descriptor,
+            native_handle=native_handle,
+            expected_identity=expected_identity,
+        )
+        streams = _windows_native_handle_streams(native_handle)
+        _require_windows_root_directory_binding(
+            root,
+            descriptor=descriptor,
+            native_handle=native_handle,
+            expected_identity=expected_identity,
+        )
+        if streams != ():
+            raise ValueError("filesystem_alternate_data_stream_forbidden")
+    finally:
+        os.close(descriptor)
+
+
+def _require_windows_root_directory_binding(
+    root: Path,
+    *,
+    descriptor: int,
+    native_handle: int,
+    expected_identity: PathIdentity,
+) -> None:
+    opened_status = os.fstat(descriptor)
+    lexical_status = root.lstat()
+    opened = _windows_native_handle_state(native_handle)
+    if (
+        path_identity_from_status(opened_status) != expected_identity
+        or path_identity_from_status(lexical_status) != expected_identity
+        or (opened.volume_serial, opened.file_index) != expected_identity[:2]
+        or not stat.S_ISDIR(opened_status.st_mode)
+        or not stat.S_ISDIR(lexical_status.st_mode)
+        or status_is_reparse(opened_status)
+        or status_is_reparse(lexical_status)
+        or not bool(opened.attributes & 0x00000010)
+        or bool(opened.attributes & _REPARSE_ATTRIBUTE)
+    ):
+        raise ValueError("filesystem_path_identity_changed")
 
 
 def secure_rmdir(
@@ -691,7 +764,11 @@ def _replace_guarded(
     target_parent.validate()
 
 
-def _open_plain_directory_descriptor(path: Path) -> int:
+def _open_plain_directory_descriptor(
+    path: Path,
+    *,
+    deny_write_share: bool = False,
+) -> int:
     if os.name != "nt":
         flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -715,7 +792,7 @@ def _open_plain_directory_descriptor(path: Path) -> int:
     handle = create_file(
         str(path),
         0x80000000,
-        0x00000001 | 0x00000002,
+        0x00000001 | (0 if deny_write_share else 0x00000002),
         None,
         3,
         0x02000000 | 0x00200000,

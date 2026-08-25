@@ -12,6 +12,7 @@ from threading import Thread
 import pytest
 
 import hsconfig.output_operation_admission as admission
+from hsconfig import package_io
 from hsconfig.operator_profile import (
     enable_operator_profile,
     operator_profile_path,
@@ -82,6 +83,24 @@ def _create_ntfs_stream_or_skip(path: Path) -> Path:
     stream_path = Path(f"{path}:review-fix")
     stream_path.write_bytes(b"foreign-stream")
     return stream_path
+
+
+def _existing_directory_at_identity_row_depth(
+    parent: Path,
+    target_rows: int,
+) -> Path:
+    current = parent
+    current_rows = 1
+    ancestor = current
+    while ancestor.parent != ancestor:
+        current_rows += 1
+        ancestor = ancestor.parent
+    if current_rows > target_rows:
+        raise AssertionError("temporary root already exceeds requested identity depth")
+    for _ in range(target_rows - current_rows):
+        current /= "d"
+        current.mkdir()
+    return current
 
 
 def _enabled_layout(
@@ -212,6 +231,67 @@ def test_output_operation_admission_observation_is_read_only_and_never_bootstrap
     assert not output_operation_admission_path().exists()
     assert not (state_root / OUTPUT_OPERATION_ADMISSION_STAGING_NAME).exists()
     assert not (state_root / OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME).exists()
+
+
+def test_neutral_lease_entries_reject_over_limit_state_root_before_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    depth_base = tmp_path / "over-limit-neutral-state"
+    depth_base.mkdir()
+    local_app_data = _existing_directory_at_identity_row_depth(depth_base, 256)
+    state_root = local_app_data / "HSConfig"
+    state_root.mkdir()
+    state_root_identity = path_identity(state_root)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    boundary_events: list[tuple[str, Path]] = []
+    real_require_no_streams = admission.require_no_alternate_data_streams
+    real_open_directory = package_io._open_plain_directory_descriptor
+
+    def record_ads_traversal(path: Path, **kwargs: object) -> None:
+        candidate = Path(path)
+        if candidate == state_root:
+            boundary_events.append(("ads", candidate))
+        real_require_no_streams(path, **kwargs)
+
+    def record_held_chain(path: Path, *args: object, **kwargs: object) -> int:
+        candidate = Path(path)
+        if candidate == local_app_data:
+            boundary_events.append(("held_chain", candidate))
+        return real_open_directory(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        admission,
+        "require_no_alternate_data_streams",
+        record_ads_traversal,
+    )
+    monkeypatch.setattr(
+        package_io,
+        "_open_plain_directory_descriptor",
+        record_held_chain,
+    )
+
+    def public_lease() -> None:
+        with lease_output_operation_admission():
+            pass
+
+    def bound_lease() -> None:
+        with admission._lease_output_operation_admission_for_state_root(
+            state_root=state_root,
+            state_root_identity=state_root_identity,
+        ):
+            pass
+
+    for entry_name, entry in (("public", public_lease), ("bound", bound_lease)):
+        boundary_events.clear()
+        outcome: BaseException | None = None
+        try:
+            entry()
+        except BaseException as error:
+            outcome = error
+        assert boundary_events == [], entry_name
+        assert isinstance(outcome, ValueError), entry_name
+        assert "bound" in str(outcome), entry_name
 
 
 def test_output_operation_admission_lease_is_thread_bound_and_expires(
@@ -451,6 +531,9 @@ def test_windows_namespace_validator_rejects_unc_ipc_shares(
         "\\\\server\\ordinary-share\\authority",
         "\\\\server\\C$\\authority",
         "\\\\server\\ADMIN$\\authority",
+        "\\\\server\\ordinary-share",
+        "\\\\server\\C$",
+        "\\\\server\\ADMIN$",
     ),
 )
 def test_windows_namespace_validator_preserves_ordinary_unc_shares(
@@ -474,6 +557,8 @@ def test_windows_namespace_validator_preserves_ordinary_unc_shares(
         ("\\\\COM1\\ordinary-share\\authority", True),
         ("\\\\server\\CON\\authority", True),
         ("\\\\NUL\\COM1.txt\\ordinary", True),
+        ("\\\\COM1\\CON", True),
+        ("\\\\NUL\\COM1.txt", True),
         ("\\\\COM1\\ordinary-share\\CON", False),
         ("\\\\server\\CON\\COM1.txt", False),
         ("\\\\server\\ordinary-share\\LPT¹", False),

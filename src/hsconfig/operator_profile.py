@@ -496,6 +496,7 @@ def _ensure_state_root_for_enable(state_root: Path) -> PathIdentity:
 def _require_existing_state_root() -> tuple[Path, PathIdentity]:
     local_app_data = _validated_plain_root(operator_profile_path().parent.parent)
     state_root = local_app_data / "HSConfig"
+    _require_physical_identity_lexical_bound(state_root)
     _require_canonical_plain_directory(state_root)
     return state_root, path_identity(state_root)
 
