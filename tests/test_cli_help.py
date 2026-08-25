@@ -161,3 +161,28 @@ def test_contract_spine_sentinel_help_is_diagnostic_only(capsys):
     assert "does not grant apply permission" in help_text
     assert "--out" in help_text
     assert "--json" in help_text
+
+
+def test_live_policy_help_exposes_only_explicit_profile_mutations(capsys):
+    root_help = _subcommand_help("live-policy", capsys)
+    assert "enable" in root_help
+    assert "disable" in root_help
+
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["live-policy", "enable", "--help"])
+    enable_help = capsys.readouterr().out
+    assert "--runtime-root" in enable_help
+    assert "--output-base-root" in enable_help
+    assert "--expected-absent" in enable_help
+    assert "--expected-predecessor-sha256" in enable_help
+    assert "--json" in enable_help
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["live-policy", "disable", "--help"])
+    disable_help = capsys.readouterr().out
+    assert "--expected-predecessor-sha256" in disable_help
+    assert "--json" in disable_help
+    assert "--expected-absent" not in disable_help
+    assert "--runtime-root" not in disable_help
+    assert "--output-base-root" not in disable_help

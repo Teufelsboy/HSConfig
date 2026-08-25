@@ -110,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_source_closure_optimizer_command(args)
     if args.command == "validate":
         return run_validate_command(args)
+    if args.command == "live-policy":
+        from hsconfig.commands.live_policy import run_live_policy_command
+
+        return run_live_policy_command(args)
     from hsconfig.commands.common import emit_result
 
     return emit_result(

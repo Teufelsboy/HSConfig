@@ -436,4 +436,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Apply only if the package and runtime match this fake apply receipt.",
     )
     apply.add_argument("--json", action="store_true")
+
+    live_policy = subparsers.add_parser(
+        "live-policy",
+        help="explicitly enable or disable the canonical live operator policy",
+        description=(
+            "Explicitly mutate the one-time live operator policy. "
+            "Every mutation requires an absent or exact predecessor assertion."
+        ),
+    )
+    live_policy_actions = live_policy.add_subparsers(
+        dest="live_policy_action",
+        required=True,
+    )
+    live_policy_enable = live_policy_actions.add_parser(
+        "enable",
+        help="enable or explicitly rebind live-by-default roots",
+    )
+    live_policy_enable.add_argument("--runtime-root", required=True)
+    live_policy_enable.add_argument("--output-base-root", required=True)
+    enable_predecessor = live_policy_enable.add_mutually_exclusive_group(
+        required=True
+    )
+    enable_predecessor.add_argument("--expected-absent", action="store_true")
+    enable_predecessor.add_argument("--expected-predecessor-sha256")
+    live_policy_enable.add_argument("--json", action="store_true")
+
+    live_policy_disable = live_policy_actions.add_parser(
+        "disable",
+        help="disable live-by-default while preserving bound roots",
+    )
+    live_policy_disable.add_argument(
+        "--expected-predecessor-sha256",
+        required=True,
+    )
+    live_policy_disable.add_argument("--json", action="store_true")
     return parser
