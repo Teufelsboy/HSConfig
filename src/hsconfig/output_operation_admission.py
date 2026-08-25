@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from hsconfig.package_io import (
     path_lexists,
     plain_file_status,
     read_file_no_follow,
+    require_no_alternate_data_streams,
     require_plain_directory,
     require_same_identity_resolution,
 )
@@ -66,6 +68,13 @@ OUTPUT_OPERATION_ADMISSION_FIELDS = frozenset(
 _STANDARD_SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _RUN_ID = re.compile(r"[0-9a-f]{32}\Z")
 _TOKEN_AUTHORITY = object()
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
+_WINDOWS_INVALID_COMPONENT_CHARACTERS = frozenset('<>"/\\|?*:')
+_LOCK_STREAM_VALIDATION_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -95,6 +104,7 @@ class OutputOperationAdmissionLockToken:
 class OutputOperationAdmissionLease:
     state_root: Path
     state_root_identity: PathIdentity
+    locks_root_identity: PathIdentity
     lock_path: Path
     lock_identity: PathIdentity
     lock_token: OutputOperationAdmissionLockToken
@@ -148,6 +158,10 @@ def output_operation_state_root(
     root = Path(raw)
     if not root.is_absolute():
         raise ValueError("localappdata_not_absolute")
+    _require_windows_safe_absolute_path(
+        root,
+        error="localappdata_windows_namespace_invalid",
+    )
     return root / "HSConfig"
 
 
@@ -179,39 +193,43 @@ def output_operation_lock_path(
 
 
 @contextmanager
-def lease_output_operation_admission(
-    *, create_if_missing: bool
-) -> Iterator[OutputOperationAdmissionLease]:
+def lease_output_operation_admission() -> Iterator[OutputOperationAdmissionLease]:
     """Hold the pre-existing neutral lock without creating directory state."""
 
-    if type(create_if_missing) is not bool:
-        raise ValueError("output_operation_create_if_missing_invalid")
     state_root = output_operation_state_root()
     _require_canonical_plain_directory(state_root)
     state_root_identity = path_identity(state_root)
     locks_root = state_root / "locks"
     _require_canonical_plain_directory(locks_root)
+    locks_root_identity = path_identity(locks_root)
     lock_path = output_operation_lock_path()
     if path_lexists(lock_path):
-        _require_empty_plain_lock(lock_path)
-    elif not create_if_missing:
+        lock_identity = _require_empty_plain_lock(
+            lock_path,
+            expected_parent_identity=locks_root_identity,
+        )
+    else:
         raise FileNotFoundError(lock_path)
     path_guard = capture_plain_ancestor_guard(lock_path)
     with ExclusiveFileLock(
         lock_path,
-        expected_parent_identity=path_identity(locks_root),
+        expected_parent_identity=locks_root_identity,
         path_guard=path_guard,
-        create_if_missing=create_if_missing,
+        create_if_missing=False,
     ):
-        _require_empty_plain_lock(lock_path)
+        _require_empty_plain_lock_under_lock(
+            lock_path,
+            expected_identity=lock_identity,
+        )
         if path_identity(state_root) != state_root_identity:
             raise ValueError("output_operation_state_root_identity_changed")
         token = OutputOperationAdmissionLockToken(_TOKEN_AUTHORITY)
         lease = OutputOperationAdmissionLease(
             state_root=state_root,
             state_root_identity=state_root_identity,
+            locks_root_identity=locks_root_identity,
             lock_path=lock_path,
-            lock_identity=path_identity(lock_path),
+            lock_identity=lock_identity,
             lock_token=token,
         )
         with _active_leases_lock:
@@ -234,8 +252,13 @@ def observe_output_operation_admission_under_lease(
     reserved_temp_path = (
         lease.state_root / OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME
     )
-    if path_lexists(staging_path) or path_lexists(reserved_temp_path):
-        raise ValueError("output_operation_admission_residue_present")
+    for residue_path in (staging_path, reserved_temp_path):
+        if path_lexists(residue_path):
+            _require_plain_file_without_streams(
+                residue_path,
+                expected_parent_identity=lease.state_root_identity,
+            )
+            raise ValueError("output_operation_admission_residue_present")
     admission_path = lease.state_root / OUTPUT_OPERATION_ADMISSION_NAME
     if not path_lexists(admission_path):
         return None
@@ -244,6 +267,13 @@ def observe_output_operation_admission_under_lease(
         admission_path,
         expected_status=status,
         maximum_size=OUTPUT_OPERATION_ADMISSION_MAX_BYTES,
+    )
+    require_no_alternate_data_streams(
+        admission_path,
+        expected_identity=path_identity_from_status(status),
+        expected_parent_identity=lease.state_root_identity,
+        directory=False,
+        expected_size=len(raw),
     )
     document = _load_canonical_document(raw)
     evidence = _parse_admission_document(
@@ -319,25 +349,110 @@ def _revalidate_lease_filesystem(lease: OutputOperationAdmissionLease) -> None:
     _require_canonical_plain_directory(lease.state_root)
     if path_identity(lease.state_root) != lease.state_root_identity:
         raise ValueError("output_operation_state_root_identity_changed")
-    _require_empty_plain_lock(lease.lock_path)
-    if path_identity(lease.lock_path) != lease.lock_identity:
-        raise ValueError("output_operation_lock_identity_changed")
+    locks_root = lease.state_root / "locks"
+    _require_canonical_plain_directory(locks_root)
+    if path_identity(locks_root) != lease.locks_root_identity:
+        raise ValueError("output_operation_locks_root_identity_changed")
+    _require_empty_plain_lock_under_lock(
+        lease.lock_path,
+        expected_identity=lease.lock_identity,
+    )
 
 
 def _require_canonical_plain_directory(path: Path) -> None:
     candidate = Path(path)
     if not candidate.is_absolute():
         raise ValueError("filesystem_path_not_absolute")
+    _require_windows_safe_absolute_path(
+        candidate,
+        error="filesystem_windows_namespace_invalid",
+    )
     require_plain_directory(candidate)
     require_same_identity_resolution(candidate)
     if candidate.resolve(strict=True) != candidate:
         raise ValueError("filesystem_path_not_canonical")
+    identity = path_identity(candidate)
+    require_no_alternate_data_streams(
+        candidate,
+        expected_identity=identity,
+        expected_parent_identity=path_identity(candidate.parent),
+        directory=True,
+    )
+    if path_identity(candidate) != identity:
+        raise ValueError("filesystem_path_identity_changed")
 
 
-def _require_empty_plain_lock(path: Path) -> None:
+def _require_empty_plain_lock(
+    path: Path,
+    *,
+    expected_parent_identity: PathIdentity,
+) -> PathIdentity:
     status = plain_file_status(path)
     if status.st_size != 0:
         raise ValueError("output_operation_lock_not_empty")
+    identity = path_identity_from_status(status)
+    _require_lock_without_alternate_data_streams(
+        path,
+        expected_identity=identity,
+        expected_parent_identity=expected_parent_identity,
+    )
+    return identity
+
+
+def _require_empty_plain_lock_under_lock(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+) -> None:
+    status = plain_file_status(path)
+    if status.st_size != 0:
+        raise ValueError("output_operation_lock_not_empty")
+    if path_identity_from_status(status) != expected_identity:
+        raise ValueError("output_operation_lock_identity_changed")
+
+
+def _require_plain_file_without_streams(
+    path: Path,
+    *,
+    expected_parent_identity: PathIdentity,
+) -> os.stat_result:
+    status = plain_file_status(path)
+    require_no_alternate_data_streams(
+        path,
+        expected_identity=path_identity_from_status(status),
+        expected_parent_identity=expected_parent_identity,
+        directory=False,
+        expected_size=status.st_size,
+    )
+    return status
+
+
+def _require_lock_without_alternate_data_streams(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+) -> None:
+    deadline = time.monotonic() + _LOCK_STREAM_VALIDATION_TIMEOUT_SECONDS
+    while True:
+        try:
+            require_no_alternate_data_streams(
+                path,
+                expected_identity=expected_identity,
+                expected_parent_identity=expected_parent_identity,
+                directory=False,
+                expected_size=0,
+            )
+            return
+        except OSError as error:
+            remaining = deadline - time.monotonic()
+            if (
+                os.name != "nt"
+                or error.errno not in {32, 33}
+                or remaining <= 0
+            ):
+                raise
+            time.sleep(min(0.05, remaining))
 
 
 def _load_canonical_document(raw: bytes) -> dict[str, Any]:
@@ -501,9 +616,52 @@ def _canonical_absolute_path(value: object, field: str) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
         raise ValueError(f"output_operation_admission_{field}_invalid")
     path = Path(value)
-    if not path.is_absolute() or os.path.normpath(value) != value:
+    if (
+        not path.is_absolute()
+        or os.path.normpath(value) != value
+        or str(path) != value
+    ):
         raise ValueError(f"output_operation_admission_{field}_invalid")
-    return path
+    return _require_windows_safe_absolute_path(
+        path,
+        error=f"output_operation_admission_{field}_windows_namespace_invalid",
+    )
+
+
+def _require_windows_safe_absolute_path(path: Path, *, error: str) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        raise ValueError(error)
+    if os.name != "nt":
+        return candidate
+    text = str(candidate)
+    lowered = text.casefold()
+    if lowered.startswith(("\\\\?\\", "\\\\.\\", "\\??\\")):
+        raise ValueError(error)
+    drive = candidate.drive
+    if drive.startswith("\\\\"):
+        drive_components = drive[2:].split("\\")
+    elif re.fullmatch(r"[A-Za-z]:", drive):
+        drive_components = []
+    else:
+        raise ValueError(error)
+    components = [*drive_components, *candidate.parts[1:]]
+    for component in components:
+        if (
+            not component
+            or component in {".", ".."}
+            or component.endswith((".", " "))
+            or any(ord(character) < 32 for character in component)
+            or any(
+                character in _WINDOWS_INVALID_COMPONENT_CHARACTERS
+                for character in component
+            )
+        ):
+            raise ValueError(error)
+        device_stem = component.split(".", 1)[0].rstrip(" .").casefold()
+        if device_stem in _WINDOWS_RESERVED_NAMES:
+            raise ValueError(error)
+    return candidate
 
 
 def _canonical_json(value: object) -> bytes:

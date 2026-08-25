@@ -17,6 +17,8 @@ from typing import Any, Literal
 from hsconfig.atomic_io import ExclusiveFileLock, atomic_write_bytes
 from hsconfig.io import slugify_deck_name
 from hsconfig.output_operation_admission import (
+    _require_lock_without_alternate_data_streams,
+    _require_windows_safe_absolute_path,
     lease_output_operation_admission,
     output_operation_lock_path,
     require_output_operation_allows_profile_mutation,
@@ -30,6 +32,7 @@ from hsconfig.package_io import (
     path_lexists,
     plain_file_status,
     read_file_no_follow,
+    require_no_alternate_data_streams,
     require_plain_directory,
     require_same_identity_resolution,
     secure_create_directory,
@@ -105,6 +108,7 @@ class OperatorProfileLease:
     profile_identity: PathIdentity
     profile_parent_identity: PathIdentity
     profile_lock_path: Path
+    profile_lock_identity: PathIdentity
     lock_token: OperatorProfileLockToken
 
 
@@ -144,6 +148,10 @@ def operator_profile_path(
     local_app_data = Path(raw)
     if not local_app_data.is_absolute():
         raise ValueError("localappdata_not_absolute")
+    _require_windows_safe_absolute_path(
+        local_app_data,
+        error="localappdata_windows_namespace_invalid",
+    )
     return local_app_data / "HSConfig" / OPERATOR_PROFILE_NAME
 
 
@@ -168,16 +176,24 @@ def enable_operator_profile(
     state_root_identity = _ensure_state_root_for_enable(state_root)
     profile_path = state_root / OPERATOR_PROFILE_NAME
     profile_lock_path = state_root / OPERATOR_PROFILE_LOCK_NAME
+    profile_lock_identity = _bootstrap_profile_lock(
+        profile_lock_path,
+        expected_parent_identity=state_root_identity,
+    )
     state_guard = capture_plain_ancestor_guard(profile_lock_path)
     with ExclusiveFileLock(
         profile_lock_path,
         expected_parent_identity=state_root_identity,
         path_guard=state_guard,
-        create_if_missing=True,
+        create_if_missing=False,
     ):
-        _require_empty_plain_file(profile_lock_path, "operator_profile_lock_not_empty")
+        _require_empty_plain_file_under_lock(
+            profile_lock_path,
+            "operator_profile_lock_not_empty",
+            expected_identity=profile_lock_identity,
+        )
         _bootstrap_output_operation_lock(state_root, state_root_identity)
-        with lease_output_operation_admission(create_if_missing=False) as operation_lease:
+        with lease_output_operation_admission() as operation_lease:
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_optional_observation(
                 profile_path,
@@ -224,6 +240,12 @@ def disable_operator_profile(
     state_root, state_root_identity = _require_existing_state_root()
     profile_path = state_root / OPERATOR_PROFILE_NAME
     profile_lock_path = state_root / OPERATOR_PROFILE_LOCK_NAME
+    profile_lock_identity = _require_empty_plain_file(
+        profile_lock_path,
+        "operator_profile_lock_not_empty",
+        expected_parent_identity=state_root_identity,
+        wait_for_active_lock=True,
+    )
     state_guard = capture_plain_ancestor_guard(profile_lock_path)
     with ExclusiveFileLock(
         profile_lock_path,
@@ -231,8 +253,12 @@ def disable_operator_profile(
         path_guard=state_guard,
         create_if_missing=False,
     ):
-        _require_empty_plain_file(profile_lock_path, "operator_profile_lock_not_empty")
-        with lease_output_operation_admission(create_if_missing=False) as operation_lease:
+        _require_empty_plain_file_under_lock(
+            profile_lock_path,
+            "operator_profile_lock_not_empty",
+            expected_identity=profile_lock_identity,
+        )
+        with lease_output_operation_admission() as operation_lease:
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_observation(
                 profile_path,
@@ -301,6 +327,12 @@ def lease_operator_profile(
 ) -> Iterator[OperatorProfileLease]:
     expected = _registered_observation(expected_profile)
     profile_lock_path = expected.profile_path.with_name(OPERATOR_PROFILE_LOCK_NAME)
+    profile_lock_identity = _require_empty_plain_file(
+        profile_lock_path,
+        "operator_profile_lock_not_empty",
+        expected_parent_identity=expected.profile_parent_identity,
+        wait_for_active_lock=True,
+    )
     state_guard = capture_plain_ancestor_guard(profile_lock_path)
     with ExclusiveFileLock(
         profile_lock_path,
@@ -308,7 +340,11 @@ def lease_operator_profile(
         path_guard=state_guard,
         create_if_missing=False,
     ):
-        _require_empty_plain_file(profile_lock_path, "operator_profile_lock_not_empty")
+        _require_empty_plain_file_under_lock(
+            profile_lock_path,
+            "operator_profile_lock_not_empty",
+            expected_identity=profile_lock_identity,
+        )
         current = _read_observation(
             expected.profile_path,
             expected_parent_identity=expected.profile_parent_identity,
@@ -321,6 +357,7 @@ def lease_operator_profile(
             profile_identity=expected.profile_identity,
             profile_parent_identity=expected.profile_parent_identity,
             profile_lock_path=profile_lock_path,
+            profile_lock_identity=profile_lock_identity,
             lock_token=token,
         )
         with _active_leases_lock:
@@ -336,7 +373,11 @@ def revalidate_operator_profile_lease(
     lease: OperatorProfileLease,
 ) -> OperatorProfile:
     _require_active_lease(lease)
-    _require_empty_plain_file(lease.profile_lock_path, "operator_profile_lock_not_empty")
+    _require_empty_plain_file_under_lock(
+        lease.profile_lock_path,
+        "operator_profile_lock_not_empty",
+        expected_identity=lease.profile_lock_identity,
+    )
     expected = _registered_observation(lease.profile)
     if (
         expected.profile_path != lease.profile_path
@@ -437,6 +478,8 @@ def _bootstrap_output_operation_lock(
         _require_empty_plain_file(
             operation_lock,
             "output_operation_lock_not_empty",
+            expected_parent_identity=locks_identity,
+            wait_for_active_lock=True,
         )
         return
     descriptor = secure_open_file_descriptor(
@@ -446,7 +489,37 @@ def _bootstrap_output_operation_lock(
         expected_parent_identity=locks_identity,
     )
     os.close(descriptor)
-    _require_empty_plain_file(operation_lock, "output_operation_lock_not_empty")
+    _require_empty_plain_file(
+        operation_lock,
+        "output_operation_lock_not_empty",
+        expected_parent_identity=locks_identity,
+        wait_for_active_lock=True,
+    )
+
+
+def _bootstrap_profile_lock(
+    profile_lock_path: Path,
+    *,
+    expected_parent_identity: PathIdentity,
+) -> PathIdentity:
+    if not path_lexists(profile_lock_path):
+        try:
+            descriptor = secure_open_file_descriptor(
+                profile_lock_path,
+                create=True,
+                write=True,
+                expected_parent_identity=expected_parent_identity,
+            )
+        except FileExistsError:
+            pass
+        else:
+            os.close(descriptor)
+    return _require_empty_plain_file(
+        profile_lock_path,
+        "operator_profile_lock_not_empty",
+        expected_parent_identity=expected_parent_identity,
+        wait_for_active_lock=True,
+    )
 
 
 def _read_optional_observation(
@@ -477,6 +550,13 @@ def _read_observation(
         profile_path,
         expected_status=status,
         maximum_size=OPERATOR_PROFILE_MAX_BYTES,
+    )
+    require_no_alternate_data_streams(
+        profile_path,
+        expected_identity=path_identity_from_status(status),
+        expected_parent_identity=expected_parent_identity,
+        directory=False,
+        expected_size=len(raw),
     )
     document = _load_canonical_document(raw)
     profile = _parse_profile_document(document, state_root=parent)
@@ -736,6 +816,10 @@ def _validated_plain_root(path: Path) -> Path:
     candidate = Path(path)
     if not candidate.is_absolute():
         raise ValueError("operator_profile_root_not_absolute")
+    _require_windows_safe_absolute_path(
+        candidate,
+        error="operator_profile_root_windows_namespace_invalid",
+    )
     require_plain_directory(candidate)
     require_same_identity_resolution(candidate)
     resolved = candidate.resolve(strict=True)
@@ -746,7 +830,11 @@ def _validated_plain_root(path: Path) -> Path:
 def _canonical_existing_root(value: object, field: str) -> Path:
     if not isinstance(value, str) or not value or "\x00" in value:
         raise ValueError(f"operator_profile_{field}_invalid")
-    root = _validated_plain_root(Path(value))
+    candidate = _require_windows_safe_absolute_path(
+        Path(value),
+        error=f"operator_profile_{field}_windows_namespace_invalid",
+    )
+    root = _validated_plain_root(candidate)
     if str(root) != value:
         raise ValueError(f"operator_profile_{field}_not_canonical")
     return root
@@ -756,10 +844,23 @@ def _require_canonical_plain_directory(path: Path) -> None:
     candidate = Path(path)
     if not candidate.is_absolute():
         raise ValueError("filesystem_path_not_absolute")
+    _require_windows_safe_absolute_path(
+        candidate,
+        error="filesystem_windows_namespace_invalid",
+    )
     require_plain_directory(candidate)
     require_same_identity_resolution(candidate)
     if candidate.resolve(strict=True) != candidate:
         raise ValueError("filesystem_path_not_canonical")
+    identity = path_identity(candidate)
+    require_no_alternate_data_streams(
+        candidate,
+        expected_identity=identity,
+        expected_parent_identity=path_identity(candidate.parent),
+        directory=True,
+    )
+    if path_identity(candidate) != identity:
+        raise ValueError("filesystem_path_identity_changed")
 
 
 def _require_disjoint_roots(
@@ -801,10 +902,45 @@ def _require_standard_digest(value: object, field: str) -> str:
     return value
 
 
-def _require_empty_plain_file(path: Path, error: str) -> None:
+def _require_empty_plain_file(
+    path: Path,
+    error: str,
+    *,
+    expected_parent_identity: PathIdentity,
+    wait_for_active_lock: bool = False,
+) -> PathIdentity:
     status = plain_file_status(path)
     if status.st_size != 0:
         raise ValueError(error)
+    identity = path_identity_from_status(status)
+    if wait_for_active_lock:
+        _require_lock_without_alternate_data_streams(
+            path,
+            expected_identity=identity,
+            expected_parent_identity=expected_parent_identity,
+        )
+    else:
+        require_no_alternate_data_streams(
+            path,
+            expected_identity=identity,
+            expected_parent_identity=expected_parent_identity,
+            directory=False,
+            expected_size=0,
+        )
+    return identity
+
+
+def _require_empty_plain_file_under_lock(
+    path: Path,
+    error: str,
+    *,
+    expected_identity: PathIdentity,
+) -> None:
+    status = plain_file_status(path)
+    if status.st_size != 0:
+        raise ValueError(error)
+    if path_identity_from_status(status) != expected_identity:
+        raise ValueError("operator_profile_lock_identity_changed")
 
 
 def _require_safe_output_name(output_name: str) -> None:

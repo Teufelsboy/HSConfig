@@ -60,6 +60,24 @@ def _canonical_document(document: dict[str, object]) -> bytes:
     ).encode("utf-8")
 
 
+def _create_ntfs_stream_or_skip(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("NTFS alternate data streams are Windows-specific")
+    probe_path = path.parent / ".hsconfig-review-fix-ads-probe"
+    probe_stream_path = Path(f"{probe_path}:probe")
+    probe_path.write_bytes(b"")
+    try:
+        probe_stream_path.write_bytes(b"probe")
+    except OSError as error:
+        pytest.skip(f"test volume does not support NTFS ADS: {error}")
+    finally:
+        probe_stream_path.unlink(missing_ok=True)
+        probe_path.unlink(missing_ok=True)
+    stream_path = Path(f"{path}:review-fix")
+    stream_path.write_bytes(b"foreign-stream")
+    return stream_path
+
+
 def _active_admission_document(
     *,
     local_app_data: Path,
@@ -628,3 +646,76 @@ def test_absent_profile_enable_is_blocked_by_active_output_operation_admission(
     with pytest.raises(ValueError, match="output_operation"):
         _enable(runtime_root, output_base_root)
     assert not placeholder_profile.exists()
+
+
+def test_operator_profile_rejects_ntfs_alternate_data_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    _enable(runtime_root, output_base_root)
+    profile_path = operator_profile_path()
+    stream_path = _create_ntfs_stream_or_skip(profile_path)
+    try:
+        with pytest.raises(ValueError, match="alternate_data_stream"):
+            load_operator_profile()
+    finally:
+        stream_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ("state_root", "locks_root", "profile_lock", "output_operation_lock"),
+)
+def test_task1_state_and_lock_surfaces_reject_ntfs_alternate_data_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+):
+    local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    profile = _enable(runtime_root, output_base_root)
+    state_root = local_app_data / "HSConfig"
+    surfaces = {
+        "state_root": state_root,
+        "locks_root": state_root / "locks",
+        "profile_lock": state_root / "operator-profile.lock",
+        "output_operation_lock": state_root / "locks" / "output-operation.lock",
+    }
+    stream_path = _create_ntfs_stream_or_skip(surfaces[surface])
+    try:
+        with pytest.raises(ValueError, match="alternate_data_stream"):
+            if surface in {"state_root", "profile_lock"}:
+                with lease_operator_profile(expected_profile=profile):
+                    pass
+            else:
+                with output_operation_admission.lease_output_operation_admission():
+                    pass
+    finally:
+        stream_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("path_field", ("runtime_root", "output_base_root"))
+@pytest.mark.parametrize(
+    "unsafe_component",
+    ("alias.", "alias ", "payload:stream", "NUL", "COM1.txt"),
+)
+def test_operator_profile_rejects_unsafe_windows_namespace_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_field: str,
+    unsafe_component: str,
+):
+    _local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    _enable(runtime_root, output_base_root)
+    profile_path = operator_profile_path()
+    document = json.loads(profile_path.read_bytes())
+    document[path_field] = str(tmp_path / unsafe_component)
+    unsigned = dict(document)
+    unsigned.pop("content_sha256")
+    document["content_sha256"] = (
+        "sha256:" + sha256(_canonical_document(unsigned)).hexdigest()
+    )
+    profile_path.write_bytes(_canonical_document(document))
+
+    with pytest.raises(ValueError, match="namespace"):
+        load_operator_profile()

@@ -27,6 +27,8 @@ from hsconfig.output_operation_admission import (
     lease_output_operation_admission,
     observe_output_operation_admission_under_lease,
     output_operation_admission_path,
+    require_output_operation_allows_profile_mutation,
+    require_output_operation_allows_publication,
     require_output_operation_allows_runtime_mutation,
 )
 from hsconfig.package_io import path_identity
@@ -43,6 +45,24 @@ def _canonical(document: dict[str, object]) -> bytes:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("utf-8")
+
+
+def _create_ntfs_stream_or_skip(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("NTFS alternate data streams are Windows-specific")
+    probe_path = path.parent / ".hsconfig-review-fix-ads-probe"
+    probe_stream_path = Path(f"{probe_path}:probe")
+    probe_path.write_bytes(b"")
+    try:
+        probe_stream_path.write_bytes(b"probe")
+    except OSError as error:
+        pytest.skip(f"test volume does not support NTFS ADS: {error}")
+    finally:
+        probe_stream_path.unlink(missing_ok=True)
+        probe_path.unlink(missing_ok=True)
+    stream_path = Path(f"{path}:review-fix")
+    stream_path.write_bytes(b"foreign-stream")
+    return stream_path
 
 
 def _enabled_layout(
@@ -118,7 +138,7 @@ def test_output_operation_admission_fixed_path_schema_and_observation_are_closed
 
     assert path == state_root / OUTPUT_OPERATION_ADMISSION_NAME
     assert set(document) == OUTPUT_OPERATION_ADMISSION_FIELDS
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         observed = observe_output_operation_admission_under_lease(lease)
         assert observed is not None
         assert observed.admission_path == path
@@ -132,7 +152,7 @@ def test_output_operation_admission_fixed_path_schema_and_observation_are_closed
     unsigned.pop("content_sha256")
     document["content_sha256"] = "sha256:" + sha256(_canonical(unsigned)).hexdigest()
     path.write_bytes(_canonical(document))
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         with pytest.raises(ValueError, match="fields"):
             observe_output_operation_admission_under_lease(lease)
 
@@ -146,7 +166,7 @@ def test_output_operation_admission_observation_is_read_only_and_never_bootstrap
     state_root = local_app_data / "HSConfig"
 
     with pytest.raises(FileNotFoundError):
-        with lease_output_operation_admission(create_if_missing=False):
+        with lease_output_operation_admission():
             pass
     assert not state_root.exists()
 
@@ -161,7 +181,7 @@ def test_output_operation_admission_observation_is_read_only_and_never_bootstrap
         lock_path.stat().st_mtime_ns,
         state_root.stat().st_mtime_ns,
     )
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         assert observe_output_operation_admission_under_lease(lease) is None
         assert observe_output_operation_admission_under_lease(lease) is None
     assert (
@@ -181,7 +201,7 @@ def test_output_operation_admission_lease_is_thread_bound_and_expires(
     _enabled_layout(tmp_path, monkeypatch)
     cross_thread: Queue[BaseException | None] = Queue()
 
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         require_output_operation_allows_runtime_mutation(lease=lease)
         with pytest.raises(TypeError):
             OutputOperationAdmissionLockToken()
@@ -215,7 +235,7 @@ def test_runtime_mutation_gate_allows_only_absent_fixed_output_operation_family(
     )
     state_root = local_app_data / "HSConfig"
 
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         assert require_output_operation_allows_runtime_mutation(lease=lease) is None
         assert require_output_operation_allows_runtime_mutation(lease=lease) is None
 
@@ -239,13 +259,13 @@ def test_runtime_mutation_gate_rejects_final_staging_temp_malformed_or_replaced_
     )
 
     final_path.write_bytes(valid)
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         with pytest.raises(ValueError, match="output_operation"):
             require_output_operation_allows_runtime_mutation(lease=lease)
     final_path.unlink()
 
     final_path.write_bytes(b"{}")
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         with pytest.raises(ValueError):
             require_output_operation_allows_runtime_mutation(lease=lease)
     final_path.unlink()
@@ -256,7 +276,7 @@ def test_runtime_mutation_gate_rejects_final_staging_temp_malformed_or_replaced_
     ):
         residue = state_root / name
         residue.write_bytes(b"residue")
-        with lease_output_operation_admission(create_if_missing=False) as lease:
+        with lease_output_operation_admission() as lease:
             with pytest.raises(ValueError, match="output_operation"):
                 require_output_operation_allows_runtime_mutation(lease=lease)
         residue.unlink()
@@ -277,6 +297,132 @@ def test_runtime_mutation_gate_rejects_final_staging_temp_malformed_or_replaced_
         )
 
     monkeypatch.setattr(admission, "read_file_no_follow", replace_before_read)
-    with lease_output_operation_admission(create_if_missing=False) as lease:
+    with lease_output_operation_admission() as lease:
         with pytest.raises(ValueError, match="identity"):
             require_output_operation_allows_runtime_mutation(lease=lease)
+
+
+def test_public_output_operation_observation_never_creates_reserved_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    local_app_data = tmp_path / "local-app-data"
+    state_root = local_app_data / "HSConfig"
+    locks_root = state_root / "locks"
+    locks_root.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    lock_path = locks_root / "output-operation.lock"
+    before = (
+        path_identity(state_root),
+        path_identity(locks_root),
+        state_root.stat().st_mtime_ns,
+        locks_root.stat().st_mtime_ns,
+        tuple(state_root.iterdir()),
+        tuple(locks_root.iterdir()),
+    )
+
+    with pytest.raises(TypeError):
+        with lease_output_operation_admission(create_if_missing=True):
+            pass
+    with pytest.raises(FileNotFoundError):
+        with lease_output_operation_admission():
+            pass
+    for operation in (
+        lambda: observe_output_operation_admission_under_lease(None),
+        lambda: require_output_operation_allows_profile_mutation(None),
+        lambda: require_output_operation_allows_runtime_mutation(lease=None),
+        lambda: require_output_operation_allows_publication(
+            lease=None,
+            output_root=tmp_path / "output",
+            output_root_identity=None,
+        ),
+    ):
+        with pytest.raises(ValueError):
+            operation()
+
+    assert not lock_path.exists()
+    assert (
+        path_identity(state_root),
+        path_identity(locks_root),
+        state_root.stat().st_mtime_ns,
+        locks_root.stat().st_mtime_ns,
+        tuple(state_root.iterdir()),
+        tuple(locks_root.iterdir()),
+    ) == before
+
+
+@pytest.mark.parametrize(
+    "path_field",
+    (
+        "session_root",
+        "operator_profile_path",
+        "output_base_root",
+        "output_child_path",
+        "output_bootstrap_lock_path",
+        "output_claim_path",
+    ),
+)
+@pytest.mark.parametrize(
+    "unsafe_component",
+    ("alias.", "alias ", "payload:stream", "NUL", "COM1.txt"),
+)
+def test_output_operation_admission_rejects_unsafe_windows_namespace_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_field: str,
+    unsafe_component: str,
+):
+    local_app_data, _runtime_root, output_base_root, profile = _enabled_layout(
+        tmp_path, monkeypatch
+    )
+    document, _raw = _admission_document(
+        local_app_data=local_app_data,
+        output_base_root=output_base_root,
+        profile=profile,
+    )
+    document[path_field] = str(tmp_path / unsafe_component)
+    unsigned = dict(document)
+    unsigned.pop("content_sha256")
+    document["content_sha256"] = "sha256:" + sha256(_canonical(unsigned)).hexdigest()
+    output_operation_admission_path().write_bytes(_canonical(document))
+
+    with lease_output_operation_admission() as lease:
+        with pytest.raises(ValueError, match="namespace"):
+            observe_output_operation_admission_under_lease(lease)
+
+
+@pytest.mark.parametrize(
+    "surface",
+    ("admission", "staging", "reserved_temp"),
+)
+def test_output_operation_admission_rejects_ntfs_alternate_data_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+):
+    local_app_data, _runtime_root, output_base_root, profile = _enabled_layout(
+        tmp_path, monkeypatch
+    )
+    _document, raw = _admission_document(
+        local_app_data=local_app_data,
+        output_base_root=output_base_root,
+        profile=profile,
+    )
+    state_root = local_app_data / "HSConfig"
+    surfaces = {
+        "admission": output_operation_admission_path(),
+        "staging": state_root / OUTPUT_OPERATION_ADMISSION_STAGING_NAME,
+        "reserved_temp": state_root / OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME,
+    }
+    authority_path = surfaces[surface]
+    if surface == "admission":
+        authority_path.write_bytes(raw)
+    else:
+        authority_path.touch()
+    stream_path = _create_ntfs_stream_or_skip(authority_path)
+    try:
+        with lease_output_operation_admission() as lease:
+            with pytest.raises(ValueError, match="alternate_data_stream"):
+                observe_output_operation_admission_under_lease(lease)
+    finally:
+        stream_path.unlink(missing_ok=True)
