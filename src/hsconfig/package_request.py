@@ -27,6 +27,7 @@ from hsconfig.pre_run_metrics import build_source_acquisition_closure_report
 from hsconfig.preconfig_context import build_preconfig_context
 
 if TYPE_CHECKING:
+    from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
     from hsconfig.starter_decision import ValidatedStarterSelection
 
 
@@ -571,6 +572,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
     plan_overrides: PlanOverrides
     acquisition_closure_input: AcquisitionClosureInput
     mulligan_gap_input: MulliganGapInput
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None
     starter_selection: ValidatedStarterSelection | None = None
 
     def __post_init__(self) -> None:
@@ -588,6 +590,13 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         for field_name, value, expected_type in expected_types:
             if not isinstance(value, expected_type):
                 raise TypeError(f"resolved_package_request_{field_name}_invalid")
+        if self.frozen_compiler_inputs is not None:
+            from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+
+            if not isinstance(self.frozen_compiler_inputs, FrozenCompilerInputs):
+                raise TypeError(
+                    "resolved_package_request_frozen_compiler_inputs_invalid"
+                )
         strict_context = self.snapshot.strict_build_context
         invocation_hash = sha256(
             self.invocation.deck_code.encode("utf-8")
@@ -703,6 +712,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         plan_overrides: Any,
         acquisition_closure_input: Any,
         mulligan_gap_input: Any,
+        frozen_compiler_inputs: FrozenCompilerInputs | None = None,
         starter_selection: ValidatedStarterSelection | None = None,
     ) -> ResolvedPackageRequest:
         return cls(
@@ -715,6 +725,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
             mulligan_gap_input=MulliganGapInput.from_value(
                 mulligan_gap_input
             ),
+            frozen_compiler_inputs=frozen_compiler_inputs,
             starter_selection=starter_selection,
         )
 

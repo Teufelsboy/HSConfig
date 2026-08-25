@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from contextlib import contextmanager
 from datetime import date
 import json
@@ -41,6 +42,22 @@ def audited_request(
     *,
     fixture_paths: bool = False,
 ) -> ResolvedPackageRequest:
+    request, _projections = audited_request_with_frozen_input_projections(
+        tmp_path,
+        deck_name,
+        fixture_paths=fixture_paths,
+    )
+    return request
+
+
+def audited_request_with_frozen_input_projections(
+    tmp_path: Path,
+    deck_name: str,
+    *,
+    fixture_paths: bool = False,
+) -> tuple[ResolvedPackageRequest, dict[str, object]]:
+    """Build a request and return its same-observation compiler inputs."""
+
     deck = next(
         row
         for row in _load_audited_catalog()
@@ -128,7 +145,7 @@ def audited_request(
         audited_inputs=audited_inputs
     )
     strict_context = resolve_build_context(inputs, resources=resources)
-    return ResolvedPackageRequest.from_values(
+    request = ResolvedPackageRequest.from_values(
         snapshot=PackageResolutionSnapshot.from_strict(
             strict_context,
             preconfig,
@@ -149,6 +166,31 @@ def audited_request(
         mulligan_gap_input=[],
         starter_selection=None,
     )
+    projections = {
+        "deck": {
+            "cards_payload": deepcopy(preconfig["cards_payload"]),
+            "deck_identity": deepcopy(preconfig["deck_identity"]),
+        },
+        "full_cards": deepcopy(offline_cards),
+        "collectible_cards": [],
+        "source_acquisition": {
+            "guide_builder_receipt": deepcopy(
+                preconfig["guide_builder_receipt"]
+            ),
+            "source_evidence_report": deepcopy(
+                preconfig["source_evidence_report"]
+            ),
+        },
+        "source_documents": {
+            "guide_sources": deepcopy(
+                preconfig["guide_sources_generated"]
+            )
+        },
+        "globalvalues_baseline": deepcopy(
+            preconfig["globalvalues_baseline"]
+        ),
+    }
+    return request, projections
 
 
 @contextmanager
@@ -161,4 +203,7 @@ def _working_directory(path: Path) -> Iterator[None]:
         os.chdir(previous)
 
 
-__all__ = ("audited_request",)
+__all__ = (
+    "audited_request",
+    "audited_request_with_frozen_input_projections",
+)

@@ -124,6 +124,7 @@ def test_general_resolution_request_detaches_every_nested_mutable_input() -> Non
     closure["attempted_urls"].append("https://example.test/later")
     gaps[0]["reason"] = "later"
 
+    assert request.frozen_compiler_inputs is None
     assert request.snapshot.strict_build_context is None
     assert request.snapshot.general_preconfig is not None
     assert request.snapshot.general_preconfig.to_value()["deck_identity"] == {
