@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gc
 import json
 import os
 import pickle
@@ -29,6 +30,20 @@ from hsconfig.package_io import path_identity
 
 
 STANDARD_DIGEST = "sha256:" + ("1" * 64)
+SUPERSCRIPT_DOS_DEVICE_COMPONENTS = (
+    "COM¹",
+    "COM²",
+    "COM³",
+    "LPT¹",
+    "LPT²",
+    "LPT³",
+    "COM¹.txt",
+    "COM².txt",
+    "COM³.txt",
+    "LPT¹.txt",
+    "LPT².txt",
+    "LPT³.txt",
+)
 
 
 def _layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
@@ -76,6 +91,22 @@ def _create_ntfs_stream_or_skip(path: Path) -> Path:
     stream_path = Path(f"{path}:review-fix")
     stream_path.write_bytes(b"foreign-stream")
     return stream_path
+
+
+def _administrative_share_alias_or_skip(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("drive and administrative-share aliases are Windows-specific")
+    drive = path.drive
+    if len(drive) != 2 or drive[1] != ":":
+        pytest.skip("test path is not on a drive-backed Windows volume")
+    alias = Path(f"\\\\localhost\\{drive[0]}$").joinpath(*path.parts[1:])
+    try:
+        available = alias.is_dir() and path_identity(alias) == path_identity(path)
+    except OSError:
+        available = False
+    if not available:
+        pytest.skip("local administrative share is unavailable")
+    return alias
 
 
 def _active_admission_document(
@@ -697,7 +728,14 @@ def test_task1_state_and_lock_surfaces_reject_ntfs_alternate_data_streams(
 @pytest.mark.parametrize("path_field", ("runtime_root", "output_base_root"))
 @pytest.mark.parametrize(
     "unsafe_component",
-    ("alias.", "alias ", "payload:stream", "NUL", "COM1.txt"),
+    (
+        "alias.",
+        "alias ",
+        "payload:stream",
+        "NUL",
+        "COM1.txt",
+        *SUPERSCRIPT_DOS_DEVICE_COMPONENTS,
+    ),
 )
 def test_operator_profile_rejects_unsafe_windows_namespace_paths(
     tmp_path: Path,
@@ -719,3 +757,107 @@ def test_operator_profile_rejects_unsafe_windows_namespace_paths(
 
     with pytest.raises(ValueError, match="namespace"):
         load_operator_profile()
+
+
+@pytest.mark.parametrize(
+    ("left_identities", "left_remaining", "right_identities", "right_remaining", "expected"),
+    (
+        (((1, 10, 1), (1, 1, 1)), (), ((1, 10, 1), (2, 1, 1)), (), True),
+        (((1, 10, 1), (1, 1, 1)), (), ((1, 11, 1), (1, 10, 1), (1, 1, 1)), (), True),
+        (((1, 11, 1), (1, 10, 1), (1, 1, 1)), (), ((1, 10, 1), (1, 1, 1)), (), True),
+        (((1, 11, 1), (1, 10, 1), (1, 1, 1)), (), ((1, 12, 1), (1, 10, 1), (1, 1, 1)), (), False),
+        (((1, 10, 1), (1, 1, 1)), (), ((1, 10, 1), (1, 1, 1)), ("HSConfig",), True),
+        (((1, 11, 1), (1, 10, 1), (1, 1, 1)), (), ((1, 10, 1), (1, 1, 1)), ("HSConfig",), False),
+    ),
+)
+def test_physical_identity_mapping_detects_only_equal_or_containing_roots(
+    left_identities: tuple[tuple[int, int, int], ...],
+    left_remaining: tuple[str, ...],
+    right_identities: tuple[tuple[int, int, int], ...],
+    right_remaining: tuple[str, ...],
+    expected: bool,
+):
+    assert (
+        operator_profile._identity_mappings_overlap(
+            left_identities=left_identities,
+            left_remaining=left_remaining,
+            right_identities=right_identities,
+            right_remaining=right_remaining,
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize("alias_case", ("same", "parent_child", "state_parent"))
+def test_windows_drive_unc_aliases_cannot_bypass_root_disjointness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias_case: str,
+):
+    local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    if alias_case == "same":
+        requested_runtime = runtime_root
+        requested_output = _administrative_share_alias_or_skip(runtime_root)
+    elif alias_case == "parent_child":
+        physical_parent = tmp_path / "physical-parent"
+        physical_child = physical_parent / "child"
+        physical_child.mkdir(parents=True)
+        requested_runtime = physical_parent
+        requested_output = _administrative_share_alias_or_skip(physical_child)
+    else:
+        requested_runtime = _administrative_share_alias_or_skip(local_app_data)
+        requested_output = output_base_root
+    state_root = local_app_data / "HSConfig"
+    assert tuple(local_app_data.iterdir()) == ()
+
+    with pytest.raises(ValueError, match="overlap"):
+        enable_operator_profile(
+            runtime_root=requested_runtime,
+            output_base_root=requested_output,
+            expected_predecessor_sha256=None,
+        )
+
+    assert tuple(local_app_data.iterdir()) == ()
+    assert not state_root.exists()
+
+
+def test_profile_observation_registry_is_weak_identity_bound_and_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _local_app_data, runtime_root, output_base_root = _layout(tmp_path, monkeypatch)
+    profile = _enable(runtime_root, output_base_root)
+    with operator_profile._profile_observations_lock:
+        baseline_size = len(operator_profile._profile_observations)
+
+    for _ in range(25):
+        assert revalidate_operator_profile(profile) is profile
+    gc.collect()
+    with operator_profile._profile_observations_lock:
+        assert len(operator_profile._profile_observations) == baseline_size
+
+    forged = operator_profile.OperatorProfile(
+        schema_version=profile.schema_version,
+        live_by_default=profile.live_by_default,
+        runtime_root=profile.runtime_root,
+        runtime_root_identity=profile.runtime_root_identity,
+        output_base_root=profile.output_base_root,
+        output_base_root_identity=profile.output_base_root_identity,
+        content_sha256=profile.content_sha256,
+    )
+    assert forged == profile and forged is not profile
+    for unbound in (forged, copy.copy(profile), pickle.loads(pickle.dumps(profile))):
+        with pytest.raises(ValueError, match="unbound"):
+            revalidate_operator_profile(unbound)
+
+    transient = load_operator_profile()
+    transient_id = id(transient)
+    del transient
+    gc.collect()
+    with operator_profile._profile_observations_lock:
+        assert transient_id not in operator_profile._profile_observations
+
+    stale = load_operator_profile()
+    disable_operator_profile(expected_predecessor_sha256=stale.content_sha256)
+    with pytest.raises(ValueError):
+        revalidate_operator_profile(stale)

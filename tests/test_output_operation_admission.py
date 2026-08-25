@@ -35,6 +35,20 @@ from hsconfig.package_io import path_identity
 
 
 STANDARD_DIGEST = "sha256:" + ("2" * 64)
+SUPERSCRIPT_DOS_DEVICE_COMPONENTS = (
+    "COM¹",
+    "COM²",
+    "COM³",
+    "LPT¹",
+    "LPT²",
+    "LPT³",
+    "COM¹.txt",
+    "COM².txt",
+    "COM³.txt",
+    "LPT¹.txt",
+    "LPT².txt",
+    "LPT³.txt",
+)
 
 
 def _canonical(document: dict[str, object]) -> bytes:
@@ -364,7 +378,14 @@ def test_public_output_operation_observation_never_creates_reserved_lock(
 )
 @pytest.mark.parametrize(
     "unsafe_component",
-    ("alias.", "alias ", "payload:stream", "NUL", "COM1.txt"),
+    (
+        "alias.",
+        "alias ",
+        "payload:stream",
+        "NUL",
+        "COM1.txt",
+        *SUPERSCRIPT_DOS_DEVICE_COMPONENTS,
+    ),
 )
 def test_output_operation_admission_rejects_unsafe_windows_namespace_paths(
     tmp_path: Path,
@@ -389,6 +410,20 @@ def test_output_operation_admission_rejects_unsafe_windows_namespace_paths(
     with lease_output_operation_admission() as lease:
         with pytest.raises(ValueError, match="namespace"):
             observe_output_operation_admission_under_lease(lease)
+
+
+@pytest.mark.parametrize("unsafe_component", SUPERSCRIPT_DOS_DEVICE_COMPONENTS)
+def test_windows_namespace_validator_rejects_superscript_dos_devices(
+    tmp_path: Path,
+    unsafe_component: str,
+):
+    if os.name != "nt":
+        pytest.skip("Win32 device aliases are Windows-specific")
+    with pytest.raises(ValueError, match="namespace"):
+        admission._require_windows_safe_absolute_path(
+            tmp_path / unsafe_component,
+            error="windows_namespace_invalid",
+        )
 
 
 @pytest.mark.parametrize(

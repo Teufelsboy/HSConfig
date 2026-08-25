@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from threading import Lock, get_ident
 from typing import Any, Literal
+from weakref import ReferenceType, ref
 
 from hsconfig.atomic_io import ExclusiveFileLock, atomic_write_bytes
 from hsconfig.io import slugify_deck_name
@@ -64,10 +65,15 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     {"con", "prn", "aux", "nul"}
     | {f"com{index}" for index in range(1, 10)}
     | {f"lpt{index}" for index in range(1, 10)}
+    | {
+        f"{prefix}{suffix}"
+        for prefix in ("com", "lpt")
+        for suffix in ("¹", "²", "³")
+    }
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class OperatorProfile:
     schema_version: int
     live_by_default: bool
@@ -129,7 +135,18 @@ class _ProfileObservation:
     canonical_bytes: bytes
 
 
-_profile_observations: dict[int, tuple[OperatorProfile, _ProfileObservation]] = {}
+@dataclass(frozen=True, slots=True)
+class _ProfileObservationBinding:
+    profile_path: Path
+    profile_parent_identity: PathIdentity
+    profile_identity: PathIdentity
+    canonical_bytes: bytes
+
+
+_profile_observations: dict[
+    int,
+    tuple[ReferenceType[OperatorProfile], _ProfileObservationBinding],
+] = {}
 _profile_observations_lock = Lock()
 _active_leases: dict[
     int,
@@ -765,8 +782,23 @@ def _require_root_bindings_unchanged(
 
 def _register_observation(observation: _ProfileObservation) -> None:
     profile = observation.profile
+    profile_id = id(profile)
+    binding = _ProfileObservationBinding(
+        profile_path=observation.profile_path,
+        profile_parent_identity=observation.profile_parent_identity,
+        profile_identity=observation.profile_identity,
+        canonical_bytes=observation.canonical_bytes,
+    )
+
+    def discard(reference: ReferenceType[OperatorProfile]) -> None:
+        with _profile_observations_lock:
+            registered = _profile_observations.get(profile_id)
+            if registered is not None and registered[0] is reference:
+                _profile_observations.pop(profile_id, None)
+
+    reference = ref(profile, discard)
     with _profile_observations_lock:
-        _profile_observations[id(profile)] = (profile, observation)
+        _profile_observations[profile_id] = (reference, binding)
 
 
 def _registered_observation(profile: OperatorProfile) -> _ProfileObservation:
@@ -774,9 +806,16 @@ def _registered_observation(profile: OperatorProfile) -> _ProfileObservation:
         raise ValueError("operator_profile_expected_invalid")
     with _profile_observations_lock:
         registered = _profile_observations.get(id(profile))
-    if registered is None or registered[0] is not profile:
+    if registered is None or registered[0]() is not profile:
         raise ValueError("operator_profile_unbound")
-    return registered[1]
+    binding = registered[1]
+    return _ProfileObservation(
+        profile=profile,
+        profile_path=binding.profile_path,
+        profile_parent_identity=binding.profile_parent_identity,
+        profile_identity=binding.profile_identity,
+        canonical_bytes=binding.canonical_bytes,
+    )
 
 
 def _require_same_observation(
@@ -868,22 +907,79 @@ def _require_disjoint_roots(
     output_base_root: Path,
     state_root: Path,
 ) -> None:
-    if _paths_overlap(runtime_root, output_base_root):
+    runtime_mapping = _physical_identity_mapping(runtime_root)
+    output_mapping = _physical_identity_mapping(output_base_root)
+    state_mapping = _physical_identity_mapping(state_root)
+    if _identity_mappings_overlap(
+        left_identities=runtime_mapping[0],
+        left_remaining=runtime_mapping[1],
+        right_identities=output_mapping[0],
+        right_remaining=output_mapping[1],
+    ):
         raise ValueError("operator_profile_root_overlap")
-    if _paths_overlap(runtime_root, state_root) or _paths_overlap(
-        output_base_root, state_root
+    if _identity_mappings_overlap(
+        left_identities=runtime_mapping[0],
+        left_remaining=runtime_mapping[1],
+        right_identities=state_mapping[0],
+        right_remaining=state_mapping[1],
+    ) or _identity_mappings_overlap(
+        left_identities=output_mapping[0],
+        left_remaining=output_mapping[1],
+        right_identities=state_mapping[0],
+        right_remaining=state_mapping[1],
     ):
         raise ValueError("operator_profile_state_root_overlap")
 
 
-def _paths_overlap(left: Path, right: Path) -> bool:
-    left_text = os.path.normcase(str(Path(left).absolute()))
-    right_text = os.path.normcase(str(Path(right).absolute()))
-    try:
-        common = os.path.commonpath((left_text, right_text))
-    except ValueError:
+def _physical_identity_mapping(
+    path: Path,
+) -> tuple[tuple[PathIdentity, ...], tuple[str, ...]]:
+    nearest_existing = Path(path)
+    remaining: list[str] = []
+    while not path_lexists(nearest_existing):
+        parent = nearest_existing.parent
+        if parent == nearest_existing:
+            raise FileNotFoundError(nearest_existing)
+        remaining.append(nearest_existing.name)
+        nearest_existing = parent
+
+    identities: list[PathIdentity] = []
+    current = nearest_existing
+    while True:
+        require_plain_directory(current)
+        require_same_identity_resolution(current)
+        identities.append(path_identity(current))
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return tuple(identities), tuple(reversed(remaining))
+
+
+def _identity_mappings_overlap(
+    *,
+    left_identities: tuple[PathIdentity, ...],
+    left_remaining: tuple[str, ...],
+    right_identities: tuple[PathIdentity, ...],
+    right_remaining: tuple[str, ...],
+) -> bool:
+    if not left_identities or not right_identities:
+        raise ValueError("filesystem_identity_mapping_empty")
+    if not left_remaining and not right_remaining:
+        return (
+            left_identities[0] in right_identities
+            or right_identities[0] in left_identities
+        )
+    if not left_remaining:
+        return left_identities[0] in right_identities
+    if not right_remaining:
+        return right_identities[0] in left_identities
+    if left_identities[0] != right_identities[0]:
         return False
-    return common in {left_text, right_text}
+    left_suffix = tuple(os.path.normcase(part) for part in left_remaining)
+    right_suffix = tuple(os.path.normcase(part) for part in right_remaining)
+    shortest = min(len(left_suffix), len(right_suffix))
+    return left_suffix[:shortest] == right_suffix[:shortest]
 
 
 def _identity(value: object, field: str) -> PathIdentity:

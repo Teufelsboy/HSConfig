@@ -72,6 +72,11 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     {"con", "prn", "aux", "nul", "conin$", "conout$"}
     | {f"com{index}" for index in range(1, 10)}
     | {f"lpt{index}" for index in range(1, 10)}
+    | {
+        f"{prefix}{suffix}"
+        for prefix in ("com", "lpt")
+        for suffix in ("¹", "²", "³")
+    }
 )
 _WINDOWS_INVALID_COMPONENT_CHARACTERS = frozenset('<>"/\\|?*:')
 _LOCK_STREAM_VALIDATION_TIMEOUT_SECONDS = 30.0
