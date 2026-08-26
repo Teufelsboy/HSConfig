@@ -411,6 +411,7 @@ _PHASE_FINAL_PENDING_OPERATIONS = MappingProxyType(
         "replacement_draft": "install_candidate",
         "candidate_valid": "install_candidate_validation",
         "review_approved": "install_review_validation",
+        "review_revision": "review_revision",
         "package_validated": "install_package_validation",
         "prepublication_passed": "install_prepublication_validation",
         "publication_committed": "cleanup_prepublication",
@@ -421,6 +422,7 @@ _PHASE_FINAL_PENDING_OPERATIONS = MappingProxyType(
 _INTERNAL_TRANSITION_AUTHORITY = object()
 _PUBLIC_SENSITIVE_UPDATE_FIELDS = frozenset(
     {
+        "artifact_bindings",
         "prepublication_work_binding",
         "output_operation_admission_binding",
         "output_child_binding",
@@ -467,6 +469,9 @@ _INTERNAL_EVENT_FIELD_ALLOWLIST = MappingProxyType(
         ),
         "bind_terminal": frozenset({"terminal_status"}),
         "replacement_draft": frozenset(
+            {"artifact_bindings", "pending_transition"}
+        ),
+        "review_revision": frozenset(
             {"artifact_bindings", "pending_transition"}
         ),
     }
@@ -1143,12 +1148,38 @@ def _update_session_under_lock(
         session_lease=session_lease,
         session=current,
     )
+    successor = _build_session_successor(
+        current=current,
+        update=update,
+        transition_authority=transition_authority,
+    )
+    return _publish_session_successor_under_lock(
+        session_lease=session_lease,
+        current=current,
+        successor=successor,
+    )
+
+
+def _build_session_successor(
+    *,
+    current: LiveStartSession,
+    update: LiveStartSessionUpdate,
+    transition_authority: object | None,
+) -> LiveStartSession:
     successor_value = _apply_session_update(
         current,
         update,
         transition_authority=transition_authority,
     )
-    successor = _seal_session_value(successor_value, session_identity=None)
+    return _seal_session_value(successor_value, session_identity=None)
+
+
+def _publish_session_successor_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    successor: LiveStartSession,
+) -> LiveStartSession:
     try:
         published = atomic_write_reserved_bytes(
             path=session_lease.session_root / "session.json",
@@ -1250,6 +1281,12 @@ def _validate_bound_artifacts_under_lock(
     for logical_path, digest in session.artifact_bindings.items():
         artifact_path = session_lease.session_root / logical_path
         if not os.path.lexists(artifact_path):
+            if _review_revision_candidate_receipt_cleanup_pending(
+                session=session,
+                logical_path=logical_path,
+                artifact_path=artifact_path,
+            ):
+                continue
             raise SessionConflictError(
                 "live_start_resume_artifact_missing"
             )
@@ -1264,6 +1301,37 @@ def _validate_bound_artifacts_under_lock(
         )
         if _bytes_sha256(raw) != digest:
             raise SessionConflictError("live_start_resume_artifact_drift")
+
+
+def _review_revision_candidate_receipt_cleanup_pending(
+    *,
+    session: LiveStartSession,
+    logical_path: str,
+    artifact_path: Path,
+) -> bool:
+    if logical_path != "receipts/candidate_validation.json":
+        return False
+    pending = session.pending_transition
+    if (
+        not isinstance(pending, Mapping)
+        or pending.get("operation") != "review_revision"
+        or pending.get("stage") != "PRIMARY_APPLIED"
+        or pending.get("external_file_action") is not None
+    ):
+        return False
+    actions = pending.get("actions")
+    if not isinstance(actions, (list, tuple)) or len(actions) != 1:
+        return False
+    row = actions[0]
+    successor_bindings = pending.get("successor_artifact_bindings")
+    return (
+        isinstance(row, Mapping)
+        and isinstance(successor_bindings, Mapping)
+        and Path(str(row.get("path"))) == artifact_path.absolute()
+        and row.get("historical_sha256")
+        == session.artifact_bindings.get(logical_path)
+        and logical_path not in successor_bindings
+    )
 
 
 def _apply_session_update(
@@ -1327,10 +1395,11 @@ def _apply_session_update(
         ):
             raise SessionConflictError("live_start_candidate_revision_budget_exhausted")
         value["revisions_used"] = session.revisions_used + 1
-        bindings = dict(value["artifact_bindings"])
-        for logical in _DOWNSTREAM_REVISION_ARTIFACTS:
-            bindings.pop(logical, None)
-        value["artifact_bindings"] = bindings
+        if event == "technical_failure":
+            bindings = dict(value["artifact_bindings"])
+            for logical in _DOWNSTREAM_REVISION_ARTIFACTS:
+                bindings.pop(logical, None)
+            value["artifact_bindings"] = bindings
     elif event == "replacement_draft":
         expected_revision = session.candidate_revision + 1
         previous_candidate = session.artifact_bindings.get(
@@ -1393,14 +1462,7 @@ def _validate_update_authority(
                 "live_start_internal_transition_authority_scope_invalid"
             )
     else:
-        if event in {"apply_committed", "runtime_matched", "bind_terminal"}:
-            raise SessionCapabilityError(
-                "live_start_specialized_transition_authority_required"
-            )
-        if set(changes) & _PUBLIC_SENSITIVE_UPDATE_FIELDS:
-            raise SessionCapabilityError(
-                "live_start_specialized_field_authority_required"
-            )
+        _validate_public_update_scope(event=event, changes=changes)
         if session.pending_transition is not None and (
             event in _PHASE_FINAL_PENDING_OPERATIONS
             or "pending_transition" in changes
@@ -1473,6 +1535,33 @@ def _validate_update_authority(
     ):
         raise SessionValidationError(
             "live_start_pending_initial_stage_invalid"
+        )
+
+
+def _validate_public_update_scope(
+    *,
+    event: str,
+    changes: Mapping[str, Any],
+) -> None:
+    if event == "review_revision":
+        raise SessionCapabilityError(
+            "live_start_review_revision_specialized_authority_required"
+        )
+    if event in {"apply_committed", "runtime_matched", "bind_terminal"}:
+        raise SessionCapabilityError(
+            "live_start_specialized_transition_authority_required"
+        )
+    pending = changes.get("pending_transition")
+    if (
+        isinstance(pending, Mapping)
+        and pending.get("operation") == "review_revision"
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_specialized_authority_required"
+        )
+    if set(changes) & _PUBLIC_SENSITIVE_UPDATE_FIELDS:
+        raise SessionCapabilityError(
+            "live_start_specialized_field_authority_required"
         )
 
 
@@ -1858,12 +1947,32 @@ def _read_bound_file(
     expected_parent_identity: PathIdentity,
     maximum_size: int,
 ) -> tuple[bytes, PathIdentity]:
+    return _read_bound_file_with_links(
+        path,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=maximum_size,
+        allowed_links=frozenset({1}),
+    )
+
+
+def _read_bound_file_with_links(
+    path: Path,
+    *,
+    expected_parent_identity: PathIdentity,
+    maximum_size: int,
+    allowed_links: frozenset[int],
+) -> tuple[bytes, PathIdentity]:
+    if not allowed_links or any(
+        type(link_count) is not int or link_count < 1
+        for link_count in allowed_links
+    ):
+        raise ValueError("live_start_allowed_link_count_invalid")
     status = Path(path).lstat()
     identity = path_identity_from_status(status)
     if (
         not stat.S_ISREG(status.st_mode)
         or status_is_reparse(status)
-        or status.st_nlink != 1
+        or status.st_nlink not in allowed_links
         or status.st_size > maximum_size
         or path_identity(path.parent) != expected_parent_identity
     ):
@@ -1892,7 +2001,7 @@ def _read_bound_file(
         if (
             path_identity_from_status(after) != identity
             or after.st_size != len(raw)
-            or after.st_nlink != 1
+            or after.st_nlink not in allowed_links
         ):
             raise SessionConflictError("live_start_file_changed")
     finally:
@@ -1934,6 +2043,49 @@ _PENDING_TRANSITION_FIELDS = frozenset(
     output_claim_staging_sha256 output_claim_identity output_claim_sha256
     created_or_confirmed_output_child_identity output_bootstrap_lock_path
     output_bootstrap_lock_identity content_sha256""".split()
+)
+_REVIEW_REVISION_PENDING_ALLOWED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "transition_kind",
+        "run_id",
+        "operation",
+        "stage",
+        "expected_session_sha256",
+        "source_phase",
+        "target_phase",
+        "source_candidate_revision",
+        "target_candidate_revision",
+        "source_revisions_used",
+        "target_revisions_used",
+        "successor_artifact_bindings",
+        "actions",
+        "next_action_index",
+        "external_file_action",
+        "content_sha256",
+    }
+)
+_REVIEW_REVISION_RETIREMENT_ACTION_FIELDS = frozenset(
+    {
+        "action",
+        "materialization_source",
+        "path",
+        "parent_identity",
+        "historical_identity",
+        "historical_size",
+        "historical_sha256",
+        "directory_path",
+        "directory_parent_identity",
+        "directory_identity",
+        "review_path",
+        "review_parent_identity",
+        "review_identity",
+        "review_size",
+        "review_sha256",
+    }
+)
+_REVIEW_REVISION_MATERIALIZATION_SOURCE_FIELDS = frozenset(
+    {"path", "parent_identity", "identity", "size", "sha256"}
 )
 _EXTERNAL_FILE_ACTION_FIELDS = frozenset(
     """schema_version action_kind action_index stage final_path staging_path
@@ -2256,6 +2408,7 @@ PENDING_TRANSITION_OPERATIONS = frozenset(
         "retire_output_child_claim",
         "install_apply_invocation",
         "cleanup_prepublication",
+        "review_revision",
     }
 )
 PENDING_TRANSITION_STAGES = frozenset(
@@ -2849,12 +3002,19 @@ def _validate_phase_artifact_bindings(
             "live_start_phase_artifact_binding_missing"
         )
     extras = actual - mandatory
-    if extras - result_paths:
+    revision_request_path = "starter/starter_config_review.json"
+    revision_request_variant = (
+        phase is LiveStartPhase.CANDIDATE_DRAFTED
+        and extras == {revision_request_path}
+        and value.get("revisions_used") == value.get("candidate_revision")
+        and value.get("pending_transition") is None
+    )
+    if extras - result_paths and not revision_request_variant:
         raise SessionValidationError(
             "live_start_phase_artifact_binding_forbidden"
         )
     intent = value.get("result_intent")
-    if intent is None and extras:
+    if intent is None and extras and not revision_request_variant:
         raise SessionValidationError(
             "live_start_result_artifact_binding_phase_invalid"
         )
@@ -3190,6 +3350,11 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
             "PRIMARY_APPLIED",
             "CLEANUP_DELETING",
         },
+        "review_revision": {
+            "PREPARED",
+            "STAGING_BOUND",
+            "PRIMARY_APPLIED",
+        },
     }
     if stage not in allowed_stages.get(
         operation,
@@ -3250,6 +3415,12 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
             stage=stage,
             external=external,
         )
+    if operation == "review_revision":
+        _validate_review_revision_pending_matrix(
+            value=value,
+            stage=stage,
+            external=external,
+        )
     cleanup_authority_fields = (
         "cleanup_inventory_path",
         "cleanup_inventory_identity",
@@ -3270,6 +3441,232 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
         raise SessionValidationError(
             "live_start_pending_cleanup_authority_forbidden"
         )
+
+
+def _validate_review_revision_materialization_source(
+    *,
+    source: Any,
+    external: Any,
+) -> None:
+    if (
+        not isinstance(source, dict)
+        or set(source) != _REVIEW_REVISION_MATERIALIZATION_SOURCE_FIELDS
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_materialization_source_invalid"
+        )
+    _require_absolute_path(
+        source.get("path"),
+        "review_revision_materialization_source_path",
+    )
+    _require_identity(
+        source.get("parent_identity"),
+        "review_revision_materialization_source_parent_identity",
+    )
+    _require_identity(
+        source.get("identity"),
+        "review_revision_materialization_source_identity",
+    )
+    source_size = _bounded_integer(
+        source.get("size"),
+        1,
+        256 * 1024,
+        "review_revision_materialization_source_size",
+    )
+    source_sha256 = _require_sha256(
+        source.get("sha256"),
+        "review_revision_materialization_source_sha256",
+    )
+    if not isinstance(external, Mapping) or (
+        source_size != external.get("planned_successor_size")
+        or source_sha256 != external.get("planned_successor_sha256")
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_materialization_source_binding_invalid"
+        )
+
+
+def _validate_review_revision_pending_matrix(
+    *,
+    value: Mapping[str, Any],
+    stage: Any,
+    external: Any,
+) -> None:
+    if any(
+        value.get(field_name) is not None
+        for field_name in (
+            _PENDING_TRANSITION_FIELDS
+            - _REVIEW_REVISION_PENDING_ALLOWED_FIELDS
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_pending_field_forbidden"
+        )
+    source_revision = _bounded_integer(
+        value.get("source_candidate_revision"),
+        1,
+        2,
+        "source_candidate_revision",
+    )
+    source_revisions_used = _bounded_integer(
+        value.get("source_revisions_used"),
+        0,
+        1,
+        "source_revisions_used",
+    )
+    if (
+        value.get("source_phase") != LiveStartPhase.CANDIDATE_VALIDATED.value
+        or value.get("target_phase")
+        != LiveStartPhase.CANDIDATE_DRAFTED.value
+        or value.get("target_candidate_revision")
+        != source_revision
+        or value.get("target_revisions_used")
+        != source_revisions_used + 1
+        or value.get("target_revisions_used")
+        != source_revision
+        or value.get("next_action_index") != 0
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_cursor_invalid"
+        )
+    successor_bindings = _validate_artifact_bindings(
+        value.get("successor_artifact_bindings")
+    )
+    review_logical = "starter/starter_config_review.json"
+    review_sha256 = successor_bindings.get(review_logical)
+    if review_sha256 is None or (
+        frozenset(successor_bindings) & _DOWNSTREAM_REVISION_ARTIFACTS
+    ) != {review_logical}:
+        raise SessionValidationError(
+            "live_start_review_revision_successor_invalid"
+        )
+    actions = value.get("actions")
+    if not isinstance(actions, list) or len(actions) != 1:
+        raise SessionValidationError(
+            "live_start_review_revision_cleanup_action_invalid"
+        )
+    cleanup = actions[0]
+    if (
+        not isinstance(cleanup, dict)
+        or set(cleanup) != _REVIEW_REVISION_RETIREMENT_ACTION_FIELDS
+        or cleanup.get("action")
+        != "retire_candidate_validation_receipt"
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_cleanup_action_invalid"
+        )
+    _validate_review_revision_materialization_source(
+        source=cleanup.get("materialization_source"),
+        external=(
+            external
+            if isinstance(external, Mapping)
+            else {
+                "planned_successor_size": cleanup.get("review_size"),
+                "planned_successor_sha256": cleanup.get("review_sha256"),
+            }
+        ),
+    )
+    cleanup_path = _require_absolute_path(
+        cleanup.get("path"),
+        "review_revision_cleanup_path",
+    )
+    _require_identity(
+        cleanup.get("parent_identity"),
+        "review_revision_cleanup_parent_identity",
+    )
+    _require_identity(
+        cleanup.get("historical_identity"),
+        "review_revision_cleanup_identity",
+    )
+    _bounded_integer(
+        cleanup.get("historical_size"),
+        1,
+        256 * 1024,
+        "review_revision_cleanup_size",
+    )
+    _require_sha256(
+        cleanup.get("historical_sha256"),
+        "review_revision_cleanup_sha256",
+    )
+    directory_path = _require_absolute_path(
+        cleanup.get("directory_path"),
+        "review_revision_cleanup_directory_path",
+    )
+    _require_identity(
+        cleanup.get("directory_parent_identity"),
+        "review_revision_cleanup_directory_parent_identity",
+    )
+    _require_identity(
+        cleanup.get("directory_identity"),
+        "review_revision_cleanup_directory_identity",
+    )
+    if (
+        cleanup_path.name != "candidate_validation.json"
+        or cleanup_path.parent != directory_path
+        or directory_path.name != "receipts"
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_cleanup_path_invalid"
+        )
+    review_binding_values = (
+        cleanup.get("review_path"),
+        cleanup.get("review_parent_identity"),
+        cleanup.get("review_identity"),
+        cleanup.get("review_size"),
+        cleanup.get("review_sha256"),
+    )
+    if stage in {"PREPARED", "STAGING_BOUND"}:
+        if any(item is not None for item in review_binding_values):
+            raise SessionValidationError(
+                "live_start_review_revision_final_binding_invalid"
+            )
+        if (
+            not isinstance(external, Mapping)
+            or external.get("action_kind")
+            != "materialize_review_revision_staging"
+            or external.get("stage")
+            != ("PLANNED" if stage == "PREPARED" else "STAGING_BOUND")
+            or external.get("planned_successor_sha256") != review_sha256
+            or Path(str(external.get("final_path"))).name
+            != "starter_config_review.json"
+        ):
+            raise SessionValidationError(
+                "live_start_review_revision_external_action_invalid"
+            )
+    else:
+        if external is not None:
+            raise SessionValidationError(
+                "live_start_review_revision_external_action_invalid"
+            )
+        review_path = _require_absolute_path(
+            review_binding_values[0],
+            "review_revision_final_path",
+        )
+        _require_identity(
+            review_binding_values[1],
+            "review_revision_final_parent_identity",
+        )
+        _require_identity(
+            review_binding_values[2],
+            "review_revision_final_identity",
+        )
+        _bounded_integer(
+            review_binding_values[3],
+            1,
+            256 * 1024,
+            "review_revision_final_size",
+        )
+        review_digest = _require_sha256(
+            review_binding_values[4],
+            "review_revision_final_sha256",
+        )
+        if (
+            review_path.name != "starter_config_review.json"
+            or review_digest != review_sha256
+        ):
+            raise SessionValidationError(
+                "live_start_review_revision_final_binding_invalid"
+            )
 
 
 def _validate_prepublication_cleanup_pending_matrix(
@@ -7255,10 +7652,20 @@ def _validate_completed_phase_receipts(
     for required_phase, logical, kind in requirements:
         if phase_index < list(LiveStartPhase).index(required_phase):
             continue
+        receipt_path = session_lease.session_root / logical
+        if (
+            not os.path.lexists(receipt_path)
+            and _review_revision_candidate_receipt_cleanup_pending(
+                session=session,
+                logical_path=logical,
+                artifact_path=receipt_path,
+            )
+        ):
+            continue
         raw, _identity = _read_bound_file(
-            session_lease.session_root / logical,
+            receipt_path,
             expected_parent_identity=path_identity(
-                (session_lease.session_root / logical).parent
+                receipt_path.parent
             ),
             maximum_size=256 * 1024,
         )
@@ -7345,8 +7752,23 @@ def _validate_run_layout_under_lock(
 ) -> None:
     _require_session_lease(session_lease)
     root = session_lease.session_root
+    pending = session.pending_transition
+    if (
+        isinstance(pending, Mapping)
+        and pending.get("operation") == "review_revision"
+    ):
+        _require_exact_review_revision_run_locations(
+            session_lease=session_lease,
+            revision_session=session,
+        )
     allowed_reserved = _allowed_reserved_run_paths(root=root, session=session)
     allowed_files = _allowed_logical_run_files(root=root, session=session)
+    allowed_posix_two_link_files = (
+        _review_revision_posix_two_link_layout_paths(
+            root=root,
+            session=session,
+        )
+    )
     allowed_directories = {
         prefix
         for logical in allowed_files | set(allowed_reserved)
@@ -7390,7 +7812,10 @@ def _validate_run_layout_under_lock(
                 )
             if (
                 not stat.S_ISREG(status.st_mode)
-                or status.st_nlink != 1
+                or (
+                    status.st_nlink != 1
+                    and logical not in allowed_posix_two_link_files
+                )
                 or (
                     logical not in allowed_files
                     and logical not in allowed_reserved
@@ -7668,7 +8093,14 @@ def _decode_json_document(raw: bytes) -> dict[str, Any]:
             object_pairs_hook=unique_object,
             parse_constant=reject_constant,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+    except SessionValidationError:
+        raise
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as error:
         raise SessionValidationError("live_start_json_invalid") from error
     if not isinstance(value, dict):
         raise SessionValidationError("live_start_json_not_object")
@@ -7905,6 +8337,15 @@ OUTPUT_CHILD_BOOTSTRAP_ACTIONS = frozenset(
         "create_output_child",
         "retire_claim",
         "confirm_claim_absent_and_current_exact",
+    }
+)
+CANDIDATE_REVIEW_REVISION_ACTIONS = frozenset(
+    {
+        "retire_unbound_review_revision_staging",
+        "materialize_review_revision_staging",
+        "restore_review_revision_predecessor",
+        "commit_bound_review_revision_request",
+        "retire_candidate_validation_receipt",
     }
 )
 TERMINAL_RESOLUTION_PHYSICAL_ACTIONS = frozenset(RUNTIME_APPLY_RECOVERY_ACTIONS) | {
@@ -8153,6 +8594,11 @@ class OutputChildBootstrapPhysicalPostcondition(_PhysicalPostcondition):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class CandidateReviewRevisionPhysicalPostcondition(_PhysicalPostcondition):
+    pass
+
+
 RuntimeAdmissionReleaseDisposition = Literal[
     "old_unlinked", "already_absent", "valid_foreign_successor"
 ]
@@ -8207,6 +8653,7 @@ class _OpaqueBearer:
         "cursor_sha256",
         "family",
         "nonce",
+        "physical_precondition",
         "session_bearer",
         "thread_id",
         "successor",
@@ -8225,6 +8672,7 @@ class _OpaqueBearer:
         self.cursor_sha256 = cursor_sha256
         self.family = family
         self.nonce = secrets.token_hex(32)
+        self.physical_precondition: Mapping[str, Any] | None = None
         self.session_bearer = session_bearer
         self.thread_id = threading.get_ident()
         self.successor: Any = None
@@ -8302,6 +8750,11 @@ class OutputChildBootstrapAuthorization(_OpaqueCarrier):
 
 
 @dataclass(frozen=True, slots=True, init=False)
+class CandidateReviewRevisionAuthorization(_OpaqueCarrier):
+    pass
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class TerminalResolutionStepReceipt(_OpaqueCarrier):
     pass
 
@@ -8333,6 +8786,11 @@ class OutputOperationAdmissionStepReceipt(_OpaqueCarrier):
 
 @dataclass(frozen=True, slots=True, init=False)
 class OutputChildBootstrapStepReceipt(_OpaqueCarrier):
+    pass
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class CandidateReviewRevisionStepReceipt(_OpaqueCarrier):
     pass
 
 
@@ -8436,6 +8894,26 @@ def _mint_authorization_under_lock(
     family: str,
     action: str,
 ) -> _AuthorizationT:
+    session_bearer, current = (
+        _authenticate_authorization_cursor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_session,
+        )
+    )
+    return _mint_authorization_for_authenticated_cursor(
+        authorization_type=authorization_type,
+        session_bearer=session_bearer,
+        current=current,
+        family=family,
+        action=action,
+    )
+
+
+def _authenticate_authorization_cursor_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_session: LiveStartSession,
+) -> tuple[_SessionBearer, LiveStartSession]:
     session_bearer = _require_session_lease(session_lease)
     current = _load_expected_predecessor_under_lock(
         session_lease=session_lease,
@@ -8445,6 +8923,17 @@ def _mint_authorization_under_lock(
         session_lease=session_lease,
         session=current,
     )
+    return session_bearer, current
+
+
+def _mint_authorization_for_authenticated_cursor(
+    *,
+    authorization_type: type[_AuthorizationT],
+    session_bearer: _SessionBearer,
+    current: LiveStartSession,
+    family: str,
+    action: str,
+) -> _AuthorizationT:
     bearer = _OpaqueBearer(
         session_bearer=session_bearer,
         family=family,
@@ -8494,6 +8983,89 @@ def _require_opaque_carrier(
     return bearer
 
 
+def _require_candidate_review_revision_receipt_authority_without_observation(
+    *,
+    receipt: CandidateReviewRevisionStepReceipt,
+    session_lease: LiveStartSessionLease,
+    expected_revision_session: LiveStartSession,
+    allowed_actions: frozenset[str],
+) -> str:
+    if not isinstance(session_lease, LiveStartSessionLease):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    token = session_lease.lock_token
+    if not isinstance(token, SessionLockToken) or not hasattr(token, "_bearer"):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    session_bearer = token._bearer
+    if (
+        not isinstance(session_bearer, _SessionBearer)
+        or not session_bearer.active
+        or not session_bearer.nonce
+        or session_bearer.thread_id != threading.get_ident()
+        or not _session_context_is_registered(
+            bearer=session_bearer,
+            token=token,
+        )
+        or session_lease.session_root != session_bearer.session_root
+        or session_lease.session_root_identity
+        != session_bearer.session_root_identity
+        or session_lease.session_lock_path != session_bearer.session_lock_path
+        or session_lease.session_lock_identity
+        != session_bearer.session_lock_identity
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    if (
+        not isinstance(expected_revision_session, LiveStartSession)
+        or type(receipt) is not CandidateReviewRevisionStepReceipt
+        or not hasattr(receipt, "_opaque")
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    bearer = receipt._opaque
+    if (
+        not isinstance(bearer, _OpaqueBearer)
+        or not _opaque_carrier_is_registered(
+            carrier=receipt,
+            bearer=bearer,
+        )
+        or not bearer.active
+        or not bearer.nonce
+        or bearer.family != "candidate_review_revision_receipt"
+        or bearer.session_bearer is not session_bearer
+        or bearer.cursor_sha256
+        != expected_revision_session.content_sha256
+        or bearer.thread_id != threading.get_ident()
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    action = bearer.action
+    if type(action) is not str or action not in allowed_actions:
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    physical_precondition = bearer.physical_precondition
+    if (
+        not isinstance(physical_precondition, Mapping)
+        or physical_precondition.get("action") != action
+        or not isinstance(
+            bearer.successor,
+            CandidateReviewRevisionPhysicalPostcondition,
+        )
+        or bearer.successor.action != action
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    return action
+
+
 def _require_opaque_cursor_current(bearer: _OpaqueBearer) -> None:
     session_bearer = bearer.session_bearer
     try:
@@ -8540,7 +9112,18 @@ def _execute_physical_step(
     family: str,
     action: str,
     physical_action: Callable[[], _PostconditionT],
+    before_authorization_consume: Callable[[], None] | None = None,
+    before_physical_action: Callable[[], None] | None = None,
 ) -> _ReceiptT:
+    if before_authorization_consume is not None:
+        _require_opaque_carrier(
+            authorization,
+            carrier_type=authorization_type,
+            family=family,
+            action=action,
+            consume=False,
+        )
+        before_authorization_consume()
     bearer = _require_opaque_carrier(
         authorization,
         carrier_type=authorization_type,
@@ -8548,6 +9131,8 @@ def _execute_physical_step(
         action=action,
         consume=True,
     )
+    if before_physical_action is not None:
+        before_physical_action()
     result = physical_action()
     if not isinstance(result, postcondition_type) or result.action != action:
         raise SessionCapabilityError("live_start_physical_postcondition_invalid")
@@ -9406,7 +9991,13 @@ def _authorize_nonterminal_apply_recovery_under_lock(
         NONTERMINAL_PURE_TRANSITIONS - {"select_terminal_classification"}
     ):
         raise SessionValidationError("live_start_apply_recovery_action_invalid")
-    recovery = expected_recovery_session.apply_recovery
+    session_bearer, current = (
+        _authenticate_authorization_cursor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_recovery_session,
+        )
+    )
+    recovery = current.apply_recovery
     if not isinstance(recovery, Mapping) or recovery.get("recovery_stage") != "ACTIVE":
         raise SessionConflictError("live_start_apply_recovery_cursor_invalid")
     if expected_action in RUNTIME_APPLY_RECOVERY_ACTIONS and recovery.get("expected_action") != expected_action:
@@ -9415,13 +10006,7 @@ def _authorize_nonterminal_apply_recovery_under_lock(
         recovery=recovery,
         action=expected_action,
     )
-    authorization = _mint_authorization_under_lock(
-        authorization_type=RuntimeAttemptRecoveryAuthorization,
-        session_lease=session_lease,
-        expected_session=expected_recovery_session,
-        family="nonterminal_apply_recovery",
-        action=expected_action,
-    )
+    owner_context: dict[str, Any] | None = None
     if expected_action in {
         "delete_owner_cleanup_entry",
         "retire_owner_target_root",
@@ -9441,9 +10026,18 @@ def _authorize_nonterminal_apply_recovery_under_lock(
             path = Path(owner["retired_target_path"])
         else:
             path = Path(owner["initial_owner_journal_path"])
-        authorization._opaque.successor = {
+        owner_context = {
             "owner_object_preexisting": os.path.lexists(path)
         }
+    authorization = _mint_authorization_for_authenticated_cursor(
+        authorization_type=RuntimeAttemptRecoveryAuthorization,
+        session_bearer=session_bearer,
+        current=current,
+        family="nonterminal_apply_recovery",
+        action=expected_action,
+    )
+    if owner_context is not None:
+        authorization._opaque.successor = owner_context
     return authorization
 
 
@@ -9509,13 +10103,19 @@ def authorize_terminal_retirement_under_lock(
     session_lease: LiveStartSessionLease,
     expected_retirement_session: LiveStartSession,
 ) -> TerminalRetirementAuthorization:
-    retirement = expected_retirement_session.terminal_retirement
+    session_bearer, current = (
+        _authenticate_authorization_cursor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_retirement_session,
+        )
+    )
+    retirement = current.terminal_retirement
     if not isinstance(retirement, Mapping):
         raise SessionConflictError("live_start_terminal_retirement_missing")
     action = _terminal_action_for_retirement(
         retirement,
         attempt_acknowledgement=(
-            expected_retirement_session.attempt_acknowledgement
+            current.attempt_acknowledgement
         ),
     )
     owner_context: dict[str, Any] | None = None
@@ -9576,10 +10176,10 @@ def authorize_terminal_retirement_under_lock(
             Path(external["inner_temp_path"])
         ):
             action = "retire_unbound_terminal_cleanup_inventory_staging"
-    authorization = _mint_authorization_under_lock(
+    authorization = _mint_authorization_for_authenticated_cursor(
         authorization_type=TerminalRetirementAuthorization,
-        session_lease=session_lease,
-        expected_session=expected_retirement_session,
+        session_bearer=session_bearer,
+        current=current,
         family="terminal_retirement",
         action=action,
     )
@@ -10135,6 +10735,1576 @@ def _bind_external_staging_from_receipt(
         }
     )
     return seal_embedded_document("external_file_action", value)
+
+
+def _review_revision_run_paths(
+    session_lease: LiveStartSessionLease,
+) -> tuple[Path, Path, Path, Path, Path]:
+    root = session_lease.session_root
+    final_path = root / "starter/starter_config_review.json"
+    staging_path = final_path.with_name(f"{final_path.name}.staged")
+    inner_temp_path = staging_path.with_name(
+        f".{staging_path.name}.live-start-atomic.tmp"
+    )
+    cleanup_directory = root / "receipts"
+    cleanup_path = cleanup_directory / "candidate_validation.json"
+    return (
+        final_path,
+        staging_path,
+        inner_temp_path,
+        cleanup_path,
+        cleanup_directory,
+    )
+
+
+def _require_exact_review_revision_run_locations(
+    *,
+    session_lease: LiveStartSessionLease,
+    revision_session: LiveStartSession,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    pending = revision_session.pending_transition
+    if (
+        not isinstance(pending, Mapping)
+        or pending.get("operation") != "review_revision"
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_pending_missing"
+        )
+    actions = pending.get("actions")
+    if not isinstance(actions, (list, tuple)) or len(actions) != 1:
+        raise SessionConflictError(
+            "live_start_review_revision_cleanup_missing"
+        )
+    cleanup = actions[0]
+    if not isinstance(cleanup, Mapping):
+        raise SessionConflictError(
+            "live_start_review_revision_cleanup_missing"
+        )
+    (
+        final_path,
+        staging_path,
+        inner_temp_path,
+        cleanup_path,
+        cleanup_directory,
+    ) = _review_revision_run_paths(session_lease)
+    validation_binding = revision_session.artifact_bindings.get(
+        "receipts/candidate_validation.json"
+    )
+    if (
+        cleanup.get("path") != str(cleanup_path)
+        or cleanup.get("directory_path") != str(cleanup_directory)
+        or cleanup.get("historical_sha256") != validation_binding
+        or _require_identity(
+            cleanup.get("parent_identity"),
+            "review_revision_cleanup_parent_identity",
+        )
+        != _require_identity(
+            cleanup.get("directory_identity"),
+            "review_revision_cleanup_directory_identity",
+        )
+        or _require_identity(
+            cleanup.get("directory_parent_identity"),
+            "review_revision_cleanup_directory_parent_identity",
+        )
+        != session_lease.session_root_identity
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_run_location_changed"
+        )
+    stage = pending.get("stage")
+    external = pending.get("external_file_action")
+    if stage in {"PREPARED", "STAGING_BOUND"}:
+        if not isinstance(external, Mapping) or (
+            external.get("final_path") != str(final_path)
+            or external.get("staging_path") != str(staging_path)
+            or external.get("inner_temp_path") != str(inner_temp_path)
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_run_location_changed"
+            )
+    elif stage == "PRIMARY_APPLIED":
+        if external is not None or cleanup.get("review_path") != str(
+            final_path
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_run_location_changed"
+            )
+    else:
+        raise SessionConflictError(
+            "live_start_review_revision_stage_invalid"
+        )
+    return pending, cleanup
+
+
+def _require_review_revision_source_ancestry_external(
+    *,
+    source_path: Path,
+    session_lease: LiveStartSessionLease,
+    expected_parent_identity: PathIdentity | None = None,
+) -> PathIdentity:
+    snapshots: list[tuple[Path, PathIdentity]] = []
+    ancestor = source_path.parent
+    for _index in range(MAX_FILESYSTEM_NODES):
+        try:
+            status = ancestor.lstat()
+        except OSError as error:
+            raise SessionConflictError(
+                "live_start_review_revision_source_parent_missing"
+            ) from error
+        if not stat.S_ISDIR(status.st_mode) or status_is_reparse(status):
+            raise SessionLayoutError(
+                "live_start_review_revision_source_parent_invalid"
+            )
+        identity = path_identity_from_status(status)
+        if identity == session_lease.session_root_identity:
+            raise SessionValidationError(
+                "live_start_review_revision_source_must_be_external"
+            )
+        if not snapshots:
+            _validate_path_no_ads(
+                ancestor,
+                status=status,
+                directory=True,
+            )
+        snapshots.append((ancestor, identity))
+        parent = ancestor.parent
+        if parent == ancestor:
+            break
+        ancestor = parent
+    else:
+        raise SessionLayoutError(
+            "live_start_review_revision_source_ancestry_invalid"
+        )
+    for index, (path, identity) in enumerate(snapshots):
+        try:
+            status = path.lstat()
+        except OSError as error:
+            raise SessionConflictError(
+                "live_start_review_revision_source_parent_changed"
+            ) from error
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or status_is_reparse(status)
+            or path_identity_from_status(status) != identity
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_source_parent_changed"
+            )
+        if index == 0:
+            _validate_path_no_ads(
+                path,
+                status=status,
+                directory=True,
+            )
+    parent_identity = snapshots[0][1]
+    if (
+        expected_parent_identity is not None
+        and parent_identity != expected_parent_identity
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_source_parent_changed"
+        )
+    return parent_identity
+
+
+def _require_canonical_local_review_revision_source_namespace(
+    source_path: Path,
+) -> None:
+    if not isinstance(source_path, Path) or not source_path.is_absolute():
+        raise SessionValidationError(
+            "live_start_review_revision_source_path_invalid"
+        )
+    if os.name == "nt" and (
+        re.fullmatch(r"[A-Za-z]:", source_path.drive) is None
+        or str(source_path).startswith(("\\\\", "//"))
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_source_path_invalid"
+        )
+
+
+def _require_external_review_revision_source_path(
+    *,
+    source_path: Path,
+    session_root: Path,
+    forbidden_paths: Sequence[Path],
+) -> Path:
+    _require_canonical_local_review_revision_source_namespace(source_path)
+    try:
+        canonical_source = source_path.resolve(strict=False)
+    except (OSError, RuntimeError) as error:
+        raise SessionValidationError(
+            "live_start_review_revision_source_path_invalid"
+        ) from error
+    if (
+        str(canonical_source) != str(source_path)
+    ):
+        raise SessionValidationError(
+            "live_start_review_revision_source_path_invalid"
+        )
+    source = canonical_source
+    try:
+        source.relative_to(session_root)
+    except ValueError:
+        pass
+    else:
+        raise SessionValidationError(
+            "live_start_review_revision_source_must_be_external"
+        )
+    if source in {Path(path) for path in forbidden_paths}:
+        raise SessionValidationError(
+            "live_start_review_revision_source_alias_invalid"
+        )
+    return source
+
+
+def _review_revision_materialization_source(
+    pending: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    actions = pending.get("actions")
+    if not isinstance(actions, (list, tuple)) or len(actions) != 1:
+        raise SessionConflictError(
+            "live_start_review_revision_materialization_source_missing"
+        )
+    row = actions[0]
+    if not isinstance(row, Mapping):
+        raise SessionConflictError(
+            "live_start_review_revision_materialization_source_missing"
+        )
+    source = row.get("materialization_source")
+    if not isinstance(source, Mapping):
+        raise SessionConflictError(
+            "live_start_review_revision_materialization_source_missing"
+        )
+    return source
+
+
+def _observe_review_revision_materialization_source(
+    *,
+    session_lease: LiveStartSessionLease,
+    pending: Mapping[str, Any],
+) -> bytes | None:
+    external = pending.get("external_file_action")
+    if not isinstance(external, Mapping):
+        raise SessionConflictError(
+            "live_start_review_revision_external_missing"
+        )
+    source = _review_revision_materialization_source(pending)
+    source_path = _require_external_review_revision_source_path(
+        source_path=Path(source["path"]),
+        session_root=session_lease.session_root,
+        forbidden_paths=(
+            Path(external["final_path"]),
+            Path(external["staging_path"]),
+            Path(external["inner_temp_path"]),
+        ),
+    )
+    expected_parent_identity = _require_identity(
+        source.get("parent_identity"),
+        "review_revision_materialization_source_parent_identity",
+    )
+    _require_review_revision_source_ancestry_external(
+        source_path=source_path,
+        session_lease=session_lease,
+        expected_parent_identity=expected_parent_identity,
+    )
+    if not os.path.lexists(source_path):
+        return None
+    try:
+        raw, identity = _read_bound_file(
+            source_path,
+            expected_parent_identity=expected_parent_identity,
+            maximum_size=256 * 1024,
+        )
+    except SessionValidationError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionConflictError(
+            "live_start_review_revision_source_changed"
+        ) from error
+    if (
+        identity
+        != _require_identity(
+            source.get("identity"),
+            "review_revision_materialization_source_identity",
+        )
+        or len(raw) != source.get("size")
+        or _bytes_sha256(raw) != source.get("sha256")
+        or len(raw) != external.get("planned_successor_size")
+        or _bytes_sha256(raw) != external.get("planned_successor_sha256")
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_source_changed"
+        )
+    _validate_request_review_bytes(raw=raw)
+    return raw
+
+
+def _validate_request_review_bytes(
+    *,
+    raw: bytes,
+) -> Mapping[str, Any]:
+    if not isinstance(raw, bytes) or not 1 <= len(raw) <= 256 * 1024:
+        raise SessionValidationError(
+            "live_start_review_revision_request_size_invalid"
+        )
+    value = _decode_canonical_json(raw)
+    if not value:
+        raise SessionValidationError(
+            "live_start_review_revision_request_empty"
+        )
+    try:
+        return _freeze_mapping(value)
+    except RecursionError as error:
+        raise SessionValidationError("live_start_json_invalid") from error
+
+
+def _require_review_revision_expected_cursor_integrity(
+    expected_session: LiveStartSession,
+) -> None:
+    error_code = "live_start_review_revision_expected_cursor_mutated"
+    try:
+        if type(expected_session) is not LiveStartSession:
+            raise SessionCapabilityError(error_code)
+        canonical_session = _load_session_bytes(
+            expected_session.canonical_json,
+            session_identity=expected_session.session_identity,
+        )
+        if expected_session != canonical_session:
+            raise SessionCapabilityError(error_code)
+    except SessionCapabilityError:
+        raise
+    except (
+        SessionConflictError,
+        SessionLayoutError,
+        SessionValidationError,
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise SessionCapabilityError(error_code) from error
+
+
+def prepare_candidate_review_revision_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_validated_session: LiveStartSession,
+    request_review_source_path: Path,
+) -> LiveStartSession:
+    _require_review_revision_expected_cursor_integrity(
+        expected_validated_session
+    )
+    _session_bearer, current = (
+        _authenticate_authorization_cursor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_validated_session,
+        )
+    )
+    if (
+        current.phase is not LiveStartPhase.CANDIDATE_VALIDATED
+        or current.pending_transition is not None
+        or current.revisions_used >= 2
+        or current.candidate_revision >= 3
+        or current.revisions_used != current.candidate_revision - 1
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_cursor_invalid"
+        )
+    review_path = (
+        session_lease.session_root / "starter/starter_config_review.json"
+    )
+    validation_path = (
+        session_lease.session_root / "receipts/candidate_validation.json"
+    )
+    staging_path = review_path.with_name(f"{review_path.name}.staged")
+    inner_temp_path = staging_path.with_name(
+        f".{staging_path.name}.live-start-atomic.tmp"
+    )
+    source_path = _require_external_review_revision_source_path(
+        source_path=request_review_source_path,
+        session_root=session_lease.session_root,
+        forbidden_paths=(review_path, staging_path, inner_temp_path),
+    )
+    source_parent_identity = (
+        _require_review_revision_source_ancestry_external(
+            source_path=source_path,
+            session_lease=session_lease,
+        )
+    )
+    try:
+        request_review_bytes, source_identity = _read_bound_file(
+            source_path,
+            expected_parent_identity=source_parent_identity,
+            maximum_size=256 * 1024,
+        )
+    except SessionValidationError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionLayoutError(
+            "live_start_review_revision_source_invalid"
+        ) from error
+    _validate_request_review_bytes(raw=request_review_bytes)
+    review_parent_identity = path_identity(review_path.parent)
+    validation_parent_identity = path_identity(validation_path.parent)
+    validation_raw, validation_identity = _read_bound_file(
+        validation_path,
+        expected_parent_identity=validation_parent_identity,
+        maximum_size=256 * 1024,
+    )
+    validation_sha256 = _bytes_sha256(validation_raw)
+    validation_receipt = validate_validation_receipt(
+        receipt_kind="candidate_validation",
+        value=_decode_canonical_json(validation_raw),
+        run_id=current.run_id,
+        candidate_revision=current.candidate_revision,
+    )
+    _require_completed_receipt_binding(
+        session=current,
+        receipt_kind="candidate_validation",
+        receipt=validation_receipt,
+        receipt_bytes_sha256=validation_sha256,
+        receipt_logical_path="receipts/candidate_validation.json",
+    )
+    if any(
+        os.path.lexists(path)
+        for path in (review_path, staging_path, inner_temp_path)
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_target_not_absent"
+        )
+    request_sha256 = _bytes_sha256(request_review_bytes)
+    external = _build_external_file_action(
+        action_kind="materialize_review_revision_staging",
+        action_index=0,
+        final_path=review_path,
+        staging_path=staging_path,
+        inner_temp_path=inner_temp_path,
+        parent_identity=review_parent_identity,
+        predecessor_identity=None,
+        predecessor_size=None,
+        predecessor_sha256=None,
+        planned_successor_size=len(request_review_bytes),
+        planned_successor_sha256=request_sha256,
+        commit_mode="create_no_replace",
+    )
+    successor_bindings = dict(current.artifact_bindings)
+    for logical in _DOWNSTREAM_REVISION_ARTIFACTS:
+        successor_bindings.pop(logical, None)
+    successor_bindings["starter/starter_config_review.json"] = (
+        request_sha256
+    )
+    pending = _empty_pending_transition(
+        session=current,
+        operation="review_revision",
+        external_file_action=external,
+    )
+    pending.update(
+        {
+            "target_phase": LiveStartPhase.CANDIDATE_DRAFTED.value,
+            "target_revisions_used": current.revisions_used + 1,
+            "successor_artifact_bindings": successor_bindings,
+            "actions": [
+                {
+                    "action": "retire_candidate_validation_receipt",
+                    "materialization_source": {
+                        "path": str(source_path),
+                        "parent_identity": list(source_parent_identity),
+                        "identity": list(source_identity),
+                        "size": len(request_review_bytes),
+                        "sha256": request_sha256,
+                    },
+                    "path": str(validation_path.absolute()),
+                    "parent_identity": list(validation_parent_identity),
+                    "historical_identity": list(validation_identity),
+                    "historical_size": len(validation_raw),
+                    "historical_sha256": validation_sha256,
+                    "directory_path": str(
+                        validation_path.parent.absolute()
+                    ),
+                    "directory_parent_identity": list(
+                        path_identity(validation_path.parent.parent)
+                    ),
+                    "directory_identity": list(
+                        validation_parent_identity
+                    ),
+                    "review_path": None,
+                    "review_parent_identity": None,
+                    "review_identity": None,
+                    "review_size": None,
+                    "review_sha256": None,
+                }
+            ],
+        }
+    )
+    return _transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=current,
+        event="same_phase_cas",
+        changes={"pending_transition": _seal_pending(pending)},
+    )
+
+
+def _candidate_review_revision_action(
+    pending: Mapping[str, Any],
+) -> str:
+    if pending.get("operation") != "review_revision":
+        raise SessionConflictError(
+            "live_start_review_revision_pending_missing"
+        )
+    stage = pending.get("stage")
+    if stage == "PREPARED":
+        return "materialize_review_revision_staging"
+    if stage == "STAGING_BOUND":
+        return "commit_bound_review_revision_request"
+    if stage == "PRIMARY_APPLIED":
+        return "retire_candidate_validation_receipt"
+    raise SessionConflictError("live_start_review_revision_stage_invalid")
+
+
+def _candidate_review_revision_allowed_actions(
+    pending: Mapping[str, Any],
+) -> frozenset[str]:
+    if pending.get("operation") != "review_revision":
+        return frozenset()
+    return {
+        "PREPARED": frozenset(
+            {
+                "retire_unbound_review_revision_staging",
+                "materialize_review_revision_staging",
+                "restore_review_revision_predecessor",
+            }
+        ),
+        "STAGING_BOUND": frozenset(
+            {"commit_bound_review_revision_request"}
+        ),
+        "PRIMARY_APPLIED": frozenset(
+            {"retire_candidate_validation_receipt"}
+        ),
+    }.get(pending.get("stage"), frozenset())
+
+
+def _require_review_revision_final_binding(
+    *,
+    cleanup_row: Mapping[str, Any],
+    expected_sha256: str,
+) -> tuple[bytes, PathIdentity]:
+    final_path = Path(cleanup_row["review_path"])
+    expected_parent_identity = _require_identity(
+        cleanup_row["review_parent_identity"],
+        "review_revision_final_parent_identity",
+    )
+    try:
+        raw, identity = _read_bound_file(
+            final_path,
+            expected_parent_identity=expected_parent_identity,
+            maximum_size=256 * 1024,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionConflictError(
+            "live_start_review_revision_final_binding_changed"
+        ) from error
+    if (
+        identity
+        != _require_identity(
+            cleanup_row["review_identity"],
+            "review_revision_final_identity",
+        )
+        or len(raw) != cleanup_row["review_size"]
+        or _bytes_sha256(raw) != cleanup_row["review_sha256"]
+        or cleanup_row["review_sha256"] != expected_sha256
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_final_binding_changed"
+        )
+    return raw, identity
+
+
+def _require_review_revision_run_physical_bindings(
+    *,
+    session_lease: LiveStartSessionLease,
+    revision_session: LiveStartSession,
+) -> None:
+    pending, cleanup = _require_exact_review_revision_run_locations(
+        session_lease=session_lease,
+        revision_session=revision_session,
+    )
+    (
+        _final_path,
+        _staging_path,
+        _inner_temp_path,
+        cleanup_path,
+        cleanup_directory,
+    ) = _review_revision_run_paths(session_lease)
+    expected_directory_parent_identity = _require_identity(
+        cleanup["directory_parent_identity"],
+        "review_revision_cleanup_directory_parent_identity",
+    )
+    expected_directory_identity = _require_identity(
+        cleanup["directory_identity"],
+        "review_revision_cleanup_directory_identity",
+    )
+    expected_cleanup_identity = _require_identity(
+        cleanup["historical_identity"],
+        "review_revision_cleanup_identity",
+    )
+    allow_absent = pending.get("stage") == "PRIMARY_APPLIED"
+    try:
+        if (
+            path_identity(cleanup_directory.parent)
+            != expected_directory_parent_identity
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_cleanup_directory_changed"
+            )
+        directory_present = os.path.lexists(cleanup_directory)
+        if directory_present:
+            directory_status = cleanup_directory.lstat()
+            if (
+                not stat.S_ISDIR(directory_status.st_mode)
+                or status_is_reparse(directory_status)
+                or path_identity_from_status(directory_status)
+                != expected_directory_identity
+            ):
+                raise SessionConflictError(
+                    "live_start_review_revision_cleanup_directory_changed"
+                )
+            _validate_path_no_ads(
+                cleanup_directory,
+                status=directory_status,
+                directory=True,
+            )
+            if os.path.lexists(cleanup_path):
+                cleanup_raw, cleanup_identity = _read_bound_file(
+                    cleanup_path,
+                    expected_parent_identity=expected_directory_identity,
+                    maximum_size=256 * 1024,
+                )
+                if (
+                    cleanup_identity != expected_cleanup_identity
+                    or len(cleanup_raw) != cleanup["historical_size"]
+                    or _bytes_sha256(cleanup_raw)
+                    != cleanup["historical_sha256"]
+                ):
+                    raise SessionConflictError(
+                        "live_start_review_revision_cleanup_changed"
+                    )
+            else:
+                if not allow_absent:
+                    raise SessionConflictError(
+                        "live_start_review_revision_cleanup_missing"
+                    )
+                with os.scandir(cleanup_directory) as iterator:
+                    if next(iterator, None) is not None:
+                        raise SessionConflictError(
+                            "live_start_review_revision_cleanup_directory_changed"
+                        )
+                if path_identity(cleanup_directory) != expected_directory_identity:
+                    raise SessionConflictError(
+                        "live_start_review_revision_cleanup_directory_changed"
+                    )
+        elif not allow_absent or os.path.lexists(cleanup_path):
+            raise SessionConflictError(
+                "live_start_review_revision_cleanup_directory_missing"
+            )
+        elif (
+            path_identity(cleanup_directory.parent)
+            != expected_directory_parent_identity
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_cleanup_directory_changed"
+            )
+    except SessionConflictError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionConflictError(
+            "live_start_review_revision_cleanup_changed"
+        ) from error
+    if pending.get("stage") == "PRIMARY_APPLIED":
+        successor = pending.get("successor_artifact_bindings")
+        if not isinstance(successor, Mapping):
+            raise SessionConflictError(
+                "live_start_review_revision_successor_missing"
+            )
+        _require_review_revision_final_binding(
+            cleanup_row=cleanup,
+            expected_sha256=successor[
+                "starter/starter_config_review.json"
+            ],
+        )
+
+
+def _require_exact_review_revision_posix_two_link_state(
+    external: Mapping[str, Any],
+) -> tuple[bytes, PathIdentity]:
+    if os.name == "nt":
+        raise SessionConflictError(
+            "live_start_review_revision_posix_two_link_forbidden"
+        )
+    final_path = Path(external["final_path"])
+    staging_path = Path(external["staging_path"])
+    inner_path = Path(external["inner_temp_path"])
+    expected_parent_identity = _require_identity(
+        external["parent_identity"],
+        "review_revision_parent_identity",
+    )
+    if (
+        final_path.parent != staging_path.parent
+        or path_identity(final_path.parent) != expected_parent_identity
+        or os.path.lexists(inner_path)
+        or not os.path.lexists(final_path)
+        or not os.path.lexists(staging_path)
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_posix_two_link_invalid"
+        )
+    try:
+        final_raw, final_identity = _read_bound_file_with_links(
+            final_path,
+            expected_parent_identity=expected_parent_identity,
+            maximum_size=256 * 1024,
+            allowed_links=frozenset({2}),
+        )
+        staging_raw, staging_identity = _read_bound_file_with_links(
+            staging_path,
+            expected_parent_identity=expected_parent_identity,
+            maximum_size=256 * 1024,
+            allowed_links=frozenset({2}),
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionConflictError(
+            "live_start_review_revision_posix_two_link_invalid"
+        ) from error
+    expected_identity = _require_identity(
+        external["staging_identity"],
+        "review_revision_staging_identity",
+    )
+    expected_size = external["staging_size"]
+    expected_sha256 = external["staging_sha256"]
+    if (
+        final_identity != expected_identity
+        or staging_identity != expected_identity
+        or final_raw != staging_raw
+        or len(final_raw) != expected_size
+        or _bytes_sha256(final_raw) != expected_sha256
+        or expected_size != external["planned_successor_size"]
+        or expected_sha256 != external["planned_successor_sha256"]
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_posix_two_link_changed"
+        )
+    return final_raw, final_identity
+
+
+def _observe_review_revision_staging_bound(
+    external: Mapping[str, Any],
+) -> tuple[bytes, PathIdentity]:
+    final_path = Path(external["final_path"])
+    staging_path = Path(external["staging_path"])
+    inner_path = Path(external["inner_temp_path"])
+    expected_parent_identity = _require_identity(
+        external["parent_identity"],
+        "review_revision_parent_identity",
+    )
+    if path_identity(final_path.parent) != expected_parent_identity:
+        raise SessionConflictError(
+            "live_start_review_revision_parent_changed"
+        )
+    if os.path.lexists(inner_path):
+        raise SessionConflictError(
+            "live_start_review_revision_bound_state_invalid"
+        )
+    staging_present = os.path.lexists(staging_path)
+    final_present = os.path.lexists(final_path)
+    if staging_present and final_present:
+        return _require_exact_review_revision_posix_two_link_state(external)
+    if not staging_present and not final_present:
+        raise SessionConflictError(
+            "live_start_review_revision_bound_state_invalid"
+        )
+    bound_path = staging_path if staging_present else final_path
+    bound_raw, bound_identity = _read_bound_file(
+        bound_path,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=256 * 1024,
+    )
+    if (
+        bound_identity
+        != _require_identity(
+            external["staging_identity"],
+            "review_revision_staging_identity",
+        )
+        or len(bound_raw) != external["staging_size"]
+        or _bytes_sha256(bound_raw) != external["staging_sha256"]
+    ):
+        raise SessionConflictError(
+            "live_start_review_revision_staging_changed"
+        )
+    return bound_raw, bound_identity
+
+
+def _review_revision_posix_two_link_layout_paths(
+    *,
+    root: Path,
+    session: LiveStartSession,
+) -> frozenset[str]:
+    if os.name == "nt":
+        return frozenset()
+    pending = session.pending_transition
+    if (
+        not isinstance(pending, Mapping)
+        or pending.get("operation") != "review_revision"
+        or pending.get("stage") != "STAGING_BOUND"
+    ):
+        return frozenset()
+    external = pending.get("external_file_action")
+    if not isinstance(external, Mapping):
+        return frozenset()
+    expected_final = root / "starter/starter_config_review.json"
+    expected_staging = expected_final.with_name(
+        f"{expected_final.name}.staged"
+    )
+    expected_inner = expected_staging.with_name(
+        f".{expected_staging.name}.live-start-atomic.tmp"
+    )
+    if (
+        external.get("final_path") != str(expected_final)
+        or external.get("staging_path") != str(expected_staging)
+        or external.get("inner_temp_path") != str(expected_inner)
+    ):
+        return frozenset()
+    try:
+        _require_exact_review_revision_posix_two_link_state(external)
+        final_logical = Path(external["final_path"]).relative_to(root).as_posix()
+        staging_logical = (
+            Path(external["staging_path"]).relative_to(root).as_posix()
+        )
+    except (OSError, RuntimeError, ValueError):
+        return frozenset()
+    if final_logical == staging_logical:
+        return frozenset()
+    return frozenset({final_logical, staging_logical})
+
+
+def authorize_candidate_review_revision_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_revision_session: LiveStartSession,
+) -> CandidateReviewRevisionAuthorization:
+    _require_review_revision_expected_cursor_integrity(
+        expected_revision_session
+    )
+    session_bearer, current = (
+        _authenticate_authorization_cursor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_revision_session,
+        )
+    )
+    pending = current.pending_transition
+    if not isinstance(pending, Mapping):
+        raise SessionConflictError(
+            "live_start_review_revision_pending_missing"
+        )
+    action = _candidate_review_revision_action(pending)
+    _require_review_revision_run_physical_bindings(
+        session_lease=session_lease,
+        revision_session=current,
+    )
+    external = pending.get("external_file_action")
+    if action in {
+        "materialize_review_revision_staging",
+        "commit_bound_review_revision_request",
+    }:
+        if not isinstance(external, Mapping):
+            raise SessionConflictError(
+                "live_start_review_revision_external_missing"
+            )
+        final_path = Path(external["final_path"])
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        if path_identity(final_path.parent) != _require_identity(
+            external["parent_identity"],
+            "review_revision_parent_identity",
+        ):
+            raise SessionConflictError(
+                "live_start_review_revision_parent_changed"
+            )
+        if pending.get("stage") == "PREPARED":
+            source_raw = _observe_review_revision_materialization_source(
+                session_lease=session_lease,
+                pending=pending,
+            )
+            if os.path.lexists(final_path):
+                raise SessionConflictError(
+                    "live_start_review_revision_direct_final_invalid"
+                )
+            if os.path.lexists(staging_path) or os.path.lexists(inner_path):
+                action = "retire_unbound_review_revision_staging"
+            elif source_raw is None:
+                action = "restore_review_revision_predecessor"
+            else:
+                action = "materialize_review_revision_staging"
+        else:
+            _observe_review_revision_staging_bound(external)
+    return _mint_authorization_for_authenticated_cursor(
+        authorization_type=CandidateReviewRevisionAuthorization,
+        session_bearer=session_bearer,
+        current=current,
+        family="candidate_review_revision",
+        action=action,
+    )
+
+
+def _require_candidate_review_revision_execution_context(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_revision_session: LiveStartSession,
+    revision_authorization: CandidateReviewRevisionAuthorization,
+    action: str,
+) -> None:
+    session_bearer = _require_session_lease(session_lease)
+    if (
+        not isinstance(
+            revision_authorization,
+            CandidateReviewRevisionAuthorization,
+        )
+        or not hasattr(revision_authorization, "_opaque")
+        or not isinstance(revision_authorization._opaque, _OpaqueBearer)
+        or revision_authorization._opaque.session_bearer
+        is not session_bearer
+        or revision_authorization._opaque.cursor_sha256
+        != expected_revision_session.content_sha256
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_execution_context_invalid"
+        )
+    _require_review_revision_expected_cursor_integrity(
+        expected_revision_session
+    )
+    pending = expected_revision_session.pending_transition
+    if (
+        not isinstance(pending, Mapping)
+        or action not in _candidate_review_revision_allowed_actions(pending)
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_execution_stage_invalid"
+        )
+
+
+def _execute_candidate_review_revision_physical_step(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_revision_session: LiveStartSession,
+    revision_authorization: CandidateReviewRevisionAuthorization,
+    action: str,
+    physical_action: Callable[
+        [], CandidateReviewRevisionPhysicalPostcondition
+    ],
+) -> CandidateReviewRevisionStepReceipt:
+    if action not in CANDIDATE_REVIEW_REVISION_ACTIONS:
+        raise SessionValidationError(
+            "live_start_review_revision_action_invalid"
+        )
+    _require_candidate_review_revision_execution_context(
+        session_lease=session_lease,
+        expected_revision_session=expected_revision_session,
+        revision_authorization=revision_authorization,
+        action=action,
+    )
+    physical_precondition: Mapping[str, Any] | None = None
+
+    def require_physical_precondition() -> None:
+        nonlocal physical_precondition
+        try:
+            _session_bearer, current = (
+                _authenticate_authorization_cursor_under_lock(
+                    session_lease=session_lease,
+                    expected_session=expected_revision_session,
+                )
+            )
+            pending = current.pending_transition
+            if (
+                not isinstance(pending, Mapping)
+                or action
+                not in _candidate_review_revision_allowed_actions(pending)
+            ):
+                raise SessionConflictError(
+                    "live_start_review_revision_execution_stage_invalid"
+                )
+            _require_review_revision_run_physical_bindings(
+                session_lease=session_lease,
+                revision_session=current,
+            )
+            external = pending.get("external_file_action")
+            observed_precondition: dict[str, Any] = {"action": action}
+            if action in {
+                "materialize_review_revision_staging",
+                "restore_review_revision_predecessor",
+            }:
+                source_raw = _observe_review_revision_materialization_source(
+                    session_lease=session_lease,
+                    pending=pending,
+                )
+                if not isinstance(external, Mapping):
+                    raise SessionConflictError(
+                        "live_start_review_revision_external_missing"
+                    )
+                target_present = any(
+                    os.path.lexists(Path(external[field_name]))
+                    for field_name in (
+                        "final_path",
+                        "staging_path",
+                        "inner_temp_path",
+                    )
+                )
+                if (
+                    action == "materialize_review_revision_staging"
+                    and (source_raw is None or target_present)
+                ) or (
+                    action == "restore_review_revision_predecessor"
+                    and (source_raw is not None or target_present)
+                ):
+                    raise SessionConflictError(
+                        "live_start_review_revision_source_precondition_changed"
+                    )
+            elif action == "commit_bound_review_revision_request":
+                if not isinstance(external, Mapping):
+                    raise SessionConflictError(
+                        "live_start_review_revision_external_missing"
+                    )
+                _observe_review_revision_staging_bound(external)
+            elif action == "retire_candidate_validation_receipt":
+                cleanup = pending.get("actions")
+                if not isinstance(cleanup, (list, tuple)) or len(cleanup) != 1:
+                    raise SessionConflictError(
+                        "live_start_review_revision_cleanup_missing"
+                    )
+                successor = pending.get("successor_artifact_bindings")
+                if not isinstance(successor, Mapping):
+                    raise SessionConflictError(
+                        "live_start_review_revision_successor_missing"
+                    )
+                _require_review_revision_final_binding(
+                    cleanup_row=cleanup[0],
+                    expected_sha256=successor[
+                        "starter/starter_config_review.json"
+                    ],
+                )
+                observed_precondition.update(
+                    {
+                        "receipt_present": os.path.lexists(
+                            Path(cleanup[0]["path"])
+                        ),
+                        "directory_present": os.path.lexists(
+                            Path(cleanup[0]["directory_path"])
+                        ),
+                    }
+                )
+            physical_precondition = _freeze_mapping(
+                observed_precondition
+            )
+        except (
+            SessionCapabilityError,
+            SessionConflictError,
+            SessionLayoutError,
+            SessionValidationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            IndexError,
+        ) as error:
+            raise SessionCapabilityError(
+                "live_start_review_revision_physical_precondition_changed"
+            ) from error
+
+    receipt = _execute_physical_step(
+        authorization=revision_authorization,
+        authorization_type=CandidateReviewRevisionAuthorization,
+        receipt_type=CandidateReviewRevisionStepReceipt,
+        postcondition_type=CandidateReviewRevisionPhysicalPostcondition,
+        family="candidate_review_revision",
+        action=action,
+        physical_action=physical_action,
+        before_authorization_consume=require_physical_precondition,
+    )
+    if physical_precondition is None:
+        raise SessionCapabilityError(
+            "live_start_review_revision_physical_precondition_missing"
+        )
+    receipt._opaque.physical_precondition = physical_precondition
+    return receipt
+
+
+def _require_exact_revision_step_evidence(
+    *,
+    evidence: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> None:
+    if _normalize_json(evidence) != _normalize_json(expected):
+        raise SessionCapabilityError(
+            "live_start_review_revision_postcondition_invalid"
+        )
+
+
+def _validate_candidate_review_revision_receipt_postcondition_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    receipt: CandidateReviewRevisionStepReceipt,
+    action: str,
+) -> None:
+    error_code = "live_start_review_revision_receipt_postcondition_invalid"
+    try:
+        pending = current.pending_transition
+        if not isinstance(pending, Mapping):
+            raise SessionCapabilityError(error_code)
+        postcondition = receipt._opaque.successor
+        physical_precondition = receipt._opaque.physical_precondition
+        if (
+            not isinstance(
+                postcondition,
+                CandidateReviewRevisionPhysicalPostcondition,
+            )
+            or postcondition.action != action
+            or not isinstance(physical_precondition, Mapping)
+            or physical_precondition.get("action") != action
+        ):
+            raise SessionCapabilityError(error_code)
+        expected_precondition_fields = {"action"}
+        if action == "retire_candidate_validation_receipt":
+            expected_precondition_fields.update(
+                {"receipt_present", "directory_present"}
+            )
+        if set(physical_precondition) != expected_precondition_fields:
+            raise SessionCapabilityError(error_code)
+
+        evidence = postcondition.evidence
+        external = pending.get("external_file_action")
+        if action == "restore_review_revision_predecessor":
+            if not isinstance(external, Mapping):
+                raise SessionCapabilityError(error_code)
+            source = _review_revision_materialization_source(pending)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            expected_evidence = {
+                "source_path": source["path"],
+                "source_parent_identity": source["parent_identity"],
+                "historical_source_identity": source["identity"],
+                "historical_source_size": source["size"],
+                "historical_source_sha256": source["sha256"],
+                "final_path": str(final_path),
+                "staging_path": str(staging_path),
+                "inner_temp_path": str(inner_path),
+                "target_parent_identity": external["parent_identity"],
+                "source_absent": True,
+                "final_absent": True,
+                "staging_absent": True,
+                "inner_temp_absent": True,
+            }
+            _require_exact_revision_step_evidence(
+                evidence=evidence,
+                expected=expected_evidence,
+            )
+            if (
+                _observe_review_revision_materialization_source(
+                    session_lease=session_lease,
+                    pending=pending,
+                )
+                is not None
+                or path_identity(final_path.parent)
+                != _require_identity(
+                    external["parent_identity"],
+                    "review_revision_parent_identity",
+                )
+                or any(
+                    os.path.lexists(path)
+                    for path in (final_path, staging_path, inner_path)
+                )
+            ):
+                raise SessionCapabilityError(error_code)
+            predecessor_value = current.to_value()
+            predecessor_value.pop("content_sha256")
+            predecessor_value["pending_transition"] = None
+            predecessor = _seal_session_value(
+                predecessor_value,
+                session_identity=None,
+            )
+            if predecessor.content_sha256 != pending.get(
+                "expected_session_sha256"
+            ):
+                raise SessionCapabilityError(error_code)
+            return
+
+        if action == "retire_unbound_review_revision_staging":
+            if not isinstance(external, Mapping):
+                raise SessionCapabilityError(error_code)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            _require_exact_revision_step_evidence(
+                evidence=evidence,
+                expected={
+                    "final_path": str(final_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": external["parent_identity"],
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+            if (
+                path_identity(final_path.parent)
+                != _require_identity(
+                    external["parent_identity"],
+                    "review_revision_parent_identity",
+                )
+                or any(
+                    os.path.lexists(path)
+                    for path in (final_path, staging_path, inner_path)
+                )
+            ):
+                raise SessionCapabilityError(error_code)
+            return
+
+        if action == "materialize_review_revision_staging":
+            if not isinstance(external, Mapping):
+                raise SessionCapabilityError(error_code)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            _require_exact_revision_step_evidence(
+                evidence=evidence,
+                expected={
+                    "staging_path": str(staging_path),
+                    "staging_parent_identity": external["parent_identity"],
+                    "staging_identity": evidence.get("staging_identity"),
+                    "staging_size": external["planned_successor_size"],
+                    "staging_sha256": external["planned_successor_sha256"],
+                },
+            )
+            expected_parent_identity = _require_identity(
+                external["parent_identity"],
+                "review_revision_parent_identity",
+            )
+            staging_raw, staging_identity = _read_bound_file(
+                staging_path,
+                expected_parent_identity=expected_parent_identity,
+                maximum_size=256 * 1024,
+            )
+            if (
+                path_identity(final_path.parent) != expected_parent_identity
+                or os.path.lexists(final_path)
+                or os.path.lexists(inner_path)
+                or staging_identity
+                != _require_identity(
+                    evidence.get("staging_identity"),
+                    "review_revision_staging_identity",
+                )
+                or len(staging_raw) != external["planned_successor_size"]
+                or _bytes_sha256(staging_raw)
+                != external["planned_successor_sha256"]
+            ):
+                raise SessionCapabilityError(error_code)
+            return
+
+        if action == "commit_bound_review_revision_request":
+            if not isinstance(external, Mapping):
+                raise SessionCapabilityError(error_code)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            _require_exact_revision_step_evidence(
+                evidence=evidence,
+                expected={
+                    "final_path": str(final_path),
+                    "final_parent_identity": external["parent_identity"],
+                    "final_identity": external["staging_identity"],
+                    "final_size": external["planned_successor_size"],
+                    "final_sha256": external["planned_successor_sha256"],
+                    "staging_absent": True,
+                },
+            )
+            expected_parent_identity = _require_identity(
+                external["parent_identity"],
+                "review_revision_parent_identity",
+            )
+            final_raw, final_identity = _read_bound_file(
+                final_path,
+                expected_parent_identity=expected_parent_identity,
+                maximum_size=256 * 1024,
+            )
+            if (
+                path_identity(final_path.parent) != expected_parent_identity
+                or final_identity
+                != _require_identity(
+                    external["staging_identity"],
+                    "review_revision_final_identity",
+                )
+                or len(final_raw) != external["planned_successor_size"]
+                or _bytes_sha256(final_raw)
+                != external["planned_successor_sha256"]
+                or os.path.lexists(staging_path)
+                or os.path.lexists(inner_path)
+            ):
+                raise SessionCapabilityError(error_code)
+            return
+
+        if action != "retire_candidate_validation_receipt":
+            raise SessionCapabilityError(error_code)
+        cleanup = pending.get("actions")
+        successor = pending.get("successor_artifact_bindings")
+        if (
+            not isinstance(cleanup, (list, tuple))
+            or len(cleanup) != 1
+            or not isinstance(successor, Mapping)
+        ):
+            raise SessionCapabilityError(error_code)
+        row = cleanup[0]
+        receipt_present = physical_precondition.get("receipt_present")
+        directory_present = physical_precondition.get("directory_present")
+        if type(receipt_present) is not bool or type(directory_present) is not bool:
+            raise SessionCapabilityError(error_code)
+        expected_disposition = "removed" if receipt_present else "already_absent"
+        expected_directory_disposition = (
+            "removed" if directory_present else "already_absent"
+        )
+        _require_exact_revision_step_evidence(
+            evidence=evidence,
+            expected={
+                "path": row["path"],
+                "parent_identity": row["parent_identity"],
+                "historical_identity": row["historical_identity"],
+                "historical_size": row["historical_size"],
+                "historical_sha256": row["historical_sha256"],
+                "directory_path": row["directory_path"],
+                "directory_parent_identity": row[
+                    "directory_parent_identity"
+                ],
+                "directory_identity": row["directory_identity"],
+                "disposition": expected_disposition,
+                "directory_disposition": expected_directory_disposition,
+            },
+        )
+        if os.path.lexists(Path(row["path"])) or os.path.lexists(
+            Path(row["directory_path"])
+        ):
+            raise SessionCapabilityError(error_code)
+        _require_review_revision_final_binding(
+            cleanup_row=row,
+            expected_sha256=successor[
+                "starter/starter_config_review.json"
+            ],
+        )
+    except (
+        SessionCapabilityError,
+        SessionConflictError,
+        SessionLayoutError,
+        SessionValidationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        IndexError,
+    ) as error:
+        raise SessionCapabilityError(error_code) from error
+
+
+def _build_candidate_review_revision_update(
+    *,
+    current: LiveStartSession,
+    postcondition: CandidateReviewRevisionPhysicalPostcondition,
+    action: str,
+) -> LiveStartSessionUpdate:
+    pending = current.pending_transition
+    assert isinstance(pending, Mapping)
+    external = pending.get("external_file_action")
+    evidence = postcondition.evidence
+    pending_value = _thaw(pending)
+    pending_value.pop("content_sha256")
+    if action == "restore_review_revision_predecessor":
+        return LiveStartSessionUpdate(
+            event="same_phase_cas",
+            changes={"pending_transition": None},
+        )
+    if action == "retire_unbound_review_revision_staging":
+        assert isinstance(external, Mapping)
+        pending_value["external_file_action"] = _thaw(
+            _retire_unbound_external_from_receipt(
+                external=external,
+                next_action_kind="materialize_review_revision_staging",
+            )
+        )
+    elif action == "materialize_review_revision_staging":
+        assert isinstance(external, Mapping)
+        pending_value.update(
+            {
+                "stage": "STAGING_BOUND",
+                "external_file_action": _bind_external_staging_from_receipt(
+                    external=external,
+                    evidence=evidence,
+                ),
+            }
+        )
+    elif action == "commit_bound_review_revision_request":
+        assert isinstance(external, Mapping)
+        final_path = Path(external["final_path"])
+        pending_value.update(
+            {
+                "stage": "PRIMARY_APPLIED",
+                "external_file_action": None,
+            }
+        )
+        actions = pending_value["actions"]
+        actions[0].update(
+            {
+                "review_path": str(final_path),
+                "review_parent_identity": external["parent_identity"],
+                "review_identity": external["staging_identity"],
+                "review_size": external["planned_successor_size"],
+                "review_sha256": external["planned_successor_sha256"],
+            }
+        )
+    else:
+        assert action == "retire_candidate_validation_receipt"
+        return LiveStartSessionUpdate(
+            event="review_revision",
+            changes={
+                "artifact_bindings": pending[
+                    "successor_artifact_bindings"
+                ],
+                "pending_transition": None,
+            },
+        )
+    return LiveStartSessionUpdate(
+        event="same_phase_cas",
+        changes={"pending_transition": _seal_pending(pending_value)},
+    )
+
+
+def advance_candidate_review_revision_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_revision_session: LiveStartSession,
+    revision_step_receipt: CandidateReviewRevisionStepReceipt,
+) -> LiveStartSession:
+    action = (
+        _require_candidate_review_revision_receipt_authority_without_observation(
+            receipt=revision_step_receipt,
+            session_lease=session_lease,
+            expected_revision_session=expected_revision_session,
+            allowed_actions=CANDIDATE_REVIEW_REVISION_ACTIONS,
+        )
+    )
+    _require_review_revision_expected_cursor_integrity(
+        expected_revision_session
+    )
+    expected_pending = expected_revision_session.pending_transition
+    if (
+        not isinstance(expected_pending, Mapping)
+        or action
+        not in _candidate_review_revision_allowed_actions(expected_pending)
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_invalid"
+        )
+    try:
+        current = _load_expected_predecessor_under_lock(
+            session_lease=session_lease,
+            expected_session=expected_revision_session,
+        )
+    except (
+        SessionConflictError,
+        SessionLayoutError,
+        SessionValidationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        IndexError,
+    ) as error:
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_cursor_stale"
+        ) from error
+    current_pending = current.pending_transition
+    if (
+        not isinstance(current_pending, Mapping)
+        or action
+        not in _candidate_review_revision_allowed_actions(current_pending)
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_cursor_stale"
+        )
+    try:
+        _reconcile_session_temp_under_lock(
+            session_lease=session_lease,
+            expected_session=current,
+        )
+        _session_bearer, current = (
+            _authenticate_authorization_cursor_under_lock(
+                session_lease=session_lease,
+                expected_session=current,
+            )
+        )
+        _require_review_revision_run_physical_bindings(
+            session_lease=session_lease,
+            revision_session=current,
+        )
+    except SessionCapabilityError:
+        raise
+    except (
+        SessionConflictError,
+        SessionLayoutError,
+        SessionValidationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as error:
+        raise SessionCapabilityError(
+            "live_start_review_revision_physical_postcondition_changed"
+        ) from error
+    postcondition = revision_step_receipt._opaque.successor
+    assert isinstance(
+        postcondition,
+        CandidateReviewRevisionPhysicalPostcondition,
+    )
+    _validate_candidate_review_revision_receipt_postcondition_under_lock(
+        session_lease=session_lease,
+        current=current,
+        receipt=revision_step_receipt,
+        action=action,
+    )
+    update = _build_candidate_review_revision_update(
+        current=current,
+        postcondition=postcondition,
+        action=action,
+    )
+    successor = _build_session_successor(
+        current=current,
+        update=update,
+        transition_authority=_INTERNAL_TRANSITION_AUTHORITY,
+    )
+    _consume_receipt_under_lock(
+        receipt=revision_step_receipt,
+        receipt_type=CandidateReviewRevisionStepReceipt,
+        session_lease=session_lease,
+        expected_session=expected_revision_session,
+        family="candidate_review_revision",
+        action=action,
+    )
+    return _publish_session_successor_under_lock(
+        session_lease=session_lease,
+        current=current,
+        successor=successor,
+    )
 
 
 def _validate_output_operation_binding_from_pending(

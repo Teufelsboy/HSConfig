@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from copy import copy, deepcopy
+from functools import partial
 from hashlib import sha256
 import json
 import multiprocessing
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
@@ -18,6 +21,9 @@ from unittest.mock import patch
 import pytest
 
 from hsconfig import live_start_session as session
+from hsconfig.atomic_io import (
+    atomic_commit_bound_staging_no_replace,
+)
 from hsconfig.input_snapshot_manifest import (
     FrozenCompilerInputs,
     freeze_compiler_inputs,
@@ -538,10 +544,40 @@ def test_session_allows_only_the_declared_phase_transitions() -> None:
             )
 
 
+def _assert_public_artifact_binding_guard(base: Path) -> None:
+    root, predecessor = _new_session(base)
+    with _lease(root) as lease:
+        session_path = root / "session.json"
+        deck_path = root / "inputs" / "deck.json"
+        predecessor_bytes = session_path.read_bytes()
+        deck_bytes = deck_path.read_bytes()
+        forged_bindings = dict(predecessor.artifact_bindings)
+        forged_bindings["inputs/deck.json"] = "sha256:" + "f" * 64
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="artifact|specialized|authority",
+        ):
+            session.transition_live_start_session_under_lock(
+                session_lease=lease,
+                expected_session=predecessor,
+                event="same_phase_cas",
+                changes={"artifact_bindings": forged_bindings},
+            )
+        assert session_path.read_bytes() == predecessor_bytes
+        assert deck_path.read_bytes() == deck_bytes
+        unchanged = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert unchanged.canonical_json == predecessor.canonical_json
+
+
 def test_session_cas_rejects_stale_bytes_identity_or_digest() -> None:
     with TemporaryDirectory() as temporary:
-        root, predecessor = _new_session(Path(temporary))
+        base = Path(temporary)
+        _assert_public_artifact_binding_guard(base / "binding-guard")
+        root, predecessor = _new_session(base / "stale-cas")
         with _lease(root) as lease:
+
             successor_value = predecessor.to_value()
             successor_value.pop("content_sha256")
             successor_value["phase"] = "CANDIDATE_DRAFTED"
@@ -4096,6 +4132,4637 @@ def _exercise_revision_contract(base: Path, *, case: str) -> None:
                 expected_session=cursor,
                 event="replacement_draft",
             )
+
+        starter_root = root / "starter"
+        receipts_root = root / "receipts"
+        starter_root.mkdir()
+        receipts_root.mkdir()
+        context_path = starter_root / "starter_context.json"
+        candidate_path = starter_root / "starter_config_candidate.json"
+        validation_path = receipts_root / "candidate_validation.json"
+        review_path = starter_root / "starter_config_review.json"
+        context_raw = b'{"context":"revision-request"}\n'
+        candidate_raw = b'{"candidate":"revision-one"}\n'
+        context_path.write_bytes(context_raw)
+        candidate_path.write_bytes(candidate_raw)
+        context_sha256 = "sha256:" + sha256(context_raw).hexdigest()
+        candidate_sha256 = "sha256:" + sha256(candidate_raw).hexdigest()
+        candidate_receipt = session.seal_validation_receipt(
+            receipt_kind="candidate_validation",
+            unsigned_value={
+                "run_id": cursor.run_id,
+                "candidate_revision": cursor.candidate_revision,
+                "starter_context_sha256": context_sha256,
+                "candidate_sha256": candidate_sha256,
+                "status": "valid",
+                "findings": [],
+            },
+        )
+        candidate_receipt_raw = session._canonical_json(
+            session._thaw(candidate_receipt)
+        )
+        validation_path.write_bytes(candidate_receipt_raw)
+        validated_value = cursor.to_value()
+        validated_value.pop("content_sha256")
+        validated_value.update(
+            {
+                "phase": "CANDIDATE_VALIDATED",
+                "artifact_bindings": {
+                    **dict(cursor.artifact_bindings),
+                    "starter/starter_context.json": context_sha256,
+                    "starter/starter_config_candidate.json": (
+                        candidate_sha256
+                    ),
+                    "receipts/candidate_validation.json": (
+                        "sha256:"
+                        + sha256(candidate_receipt_raw).hexdigest()
+                    ),
+                },
+            }
+        )
+        validated = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=cursor,
+            value=validated_value,
+        )
+        loaded_validated = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert loaded_validated.canonical_json == validated.canonical_json
+
+        request_review_raw = session._canonical_json(
+            {
+                "candidate_revision": validated.candidate_revision,
+                "findings": ["revise the candidate"],
+                "review_status": "revision_requested",
+                "run_id": validated.run_id,
+            }
+        )
+        request_review_sha256 = (
+            "sha256:" + sha256(request_review_raw).hexdigest()
+        )
+        request_review_source_path = (
+            base / "caller-review-source.json"
+        ).absolute()
+        request_review_source_path.write_bytes(request_review_raw)
+        forged_successor_bindings = dict(validated.artifact_bindings)
+        forged_successor_bindings.pop(
+            "receipts/candidate_validation.json"
+        )
+        forged_successor_bindings[
+            "starter/starter_config_review.json"
+        ] = request_review_sha256
+        validated_session_bytes = (root / "session.json").read_bytes()
+        candidate_receipt_bytes = validation_path.read_bytes()
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="review|specialized|authority",
+        ):
+            session.transition_live_start_session_under_lock(
+                session_lease=lease,
+                expected_session=validated,
+                event="review_revision",
+                changes={
+                    "artifact_bindings": forged_successor_bindings,
+                },
+            )
+        assert (root / "session.json").read_bytes() == validated_session_bytes
+        assert validation_path.read_bytes() == candidate_receipt_bytes
+        assert not review_path.exists()
+
+        prepared = session.prepare_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_validated_session=validated,
+            request_review_source_path=request_review_source_path,
+        )
+        assert prepared.phase is session.LiveStartPhase.CANDIDATE_VALIDATED
+        assert prepared.pending_transition is not None
+        assert prepared.pending_transition["operation"] == "review_revision"
+        assert prepared.pending_transition["stage"] == "PREPARED"
+        assert validation_path.exists()
+        assert not review_path.exists()
+
+        observed_actions: list[str] = []
+        current = prepared
+        while current.pending_transition is not None:
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=current,
+                )
+            )
+            action = authorization._opaque.action
+            observed_actions.append(action)
+            pending = current.pending_transition
+            assert pending is not None
+            external = pending.get("external_file_action")
+
+            def perform_revision_step() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                if action == "materialize_review_revision_staging":
+                    assert isinstance(external, Mapping)
+                    staging_path = Path(external["staging_path"])
+                    action_row = pending["actions"][0]
+                    source = action_row["materialization_source"]
+                    staging_payload = Path(source["path"]).read_bytes()
+                    staging_path.write_bytes(staging_payload)
+                    evidence = {
+                        "staging_path": str(staging_path),
+                        "staging_parent_identity": list(
+                            path_identity(staging_path.parent)
+                        ),
+                        "staging_identity": list(
+                            path_identity(staging_path)
+                        ),
+                        "staging_size": len(staging_payload),
+                        "staging_sha256": (
+                            "sha256:" + sha256(staging_payload).hexdigest()
+                        ),
+                    }
+                elif action == "commit_bound_review_revision_request":
+                    assert isinstance(external, Mapping)
+                    staging_path = Path(external["staging_path"])
+                    staging_path.replace(review_path)
+                    evidence = {
+                        "final_path": str(review_path),
+                        "final_parent_identity": list(
+                            path_identity(review_path.parent)
+                        ),
+                        "final_identity": list(path_identity(review_path)),
+                        "final_size": len(request_review_raw),
+                        "final_sha256": request_review_sha256,
+                        "staging_absent": not staging_path.exists(),
+                    }
+                else:
+                    assert action == (
+                        "retire_candidate_validation_receipt"
+                    )
+                    historical_identity = path_identity(validation_path)
+                    directory_identity = path_identity(
+                        validation_path.parent
+                    )
+                    directory_parent_identity = path_identity(
+                        validation_path.parent.parent
+                    )
+                    validation_path.unlink()
+                    validation_path.parent.rmdir()
+                    evidence = {
+                        "path": str(validation_path),
+                        "parent_identity": list(directory_identity),
+                        "historical_identity": list(historical_identity),
+                        "historical_size": len(candidate_receipt_raw),
+                        "historical_sha256": (
+                            "sha256:"
+                            + sha256(candidate_receipt_raw).hexdigest()
+                        ),
+                        "directory_path": str(
+                            validation_path.parent.absolute()
+                        ),
+                        "directory_parent_identity": list(
+                            directory_parent_identity
+                        ),
+                        "directory_identity": list(directory_identity),
+                        "disposition": "removed",
+                        "directory_disposition": "removed",
+                    }
+                return (
+                    session.CandidateReviewRevisionPhysicalPostcondition(
+                        action=action,
+                        evidence=evidence,
+                    )
+                )
+
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=current,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=perform_revision_step,
+                )
+            )
+            predecessor = current
+            current = session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=current,
+                revision_step_receipt=receipt,
+            )
+            if action == "materialize_review_revision_staging":
+                assert current.pending_transition is not None
+                assert current.pending_transition["stage"] == "STAGING_BOUND"
+                assert validation_path.exists()
+                assert not review_path.exists()
+            elif action == "commit_bound_review_revision_request":
+                assert current.pending_transition is not None
+                assert current.pending_transition["stage"] == "PRIMARY_APPLIED"
+                assert validation_path.exists()
+                assert review_path.read_bytes() == request_review_raw
+            else:
+                assert predecessor.pending_transition is not None
+                assert current.pending_transition is None
+
+        assert observed_actions == [
+            "materialize_review_revision_staging",
+            "commit_bound_review_revision_request",
+            "retire_candidate_validation_receipt",
+        ]
+        assert current.phase is session.LiveStartPhase.CANDIDATE_DRAFTED
+        assert current.candidate_revision == validated.candidate_revision
+        assert current.revisions_used == validated.revisions_used + 1
+        assert current.artifact_bindings[
+            "starter/starter_config_review.json"
+        ] == request_review_sha256
+        assert "receipts/candidate_validation.json" not in (
+            current.artifact_bindings
+        )
+        assert review_path.read_bytes() == request_review_raw
+        assert not validation_path.exists()
+        resumed = session.validate_resume_under_lock(
+            session_lease=lease,
+            expected_deck_code_sha256=current.deck_code_sha256,
+            expected_input_snapshot_manifest_sha256=(
+                current.input_snapshot_manifest_sha256
+            ),
+        )
+        reloaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert resumed.canonical_json == current.canonical_json
+        assert reloaded.canonical_json == current.canonical_json
+
+
+def _prepare_review_revision_fixture(
+    base: Path,
+    *,
+    request_review_raw: bytes = (
+        b'{"candidate_revision":1,"findings":["revise"],'
+        b'"review_status":"revision_requested",'
+        b'"run_id":"00000000000000000000000000000000"}\n'
+    ),
+) -> SimpleNamespace:
+    root, frozen = _new_session(base)
+    starter_root = root / "starter"
+    receipts_root = root / "receipts"
+    starter_root.mkdir()
+    receipts_root.mkdir()
+    context_path = starter_root / "starter_context.json"
+    candidate_path = starter_root / "starter_config_candidate.json"
+    review_path = starter_root / "starter_config_review.json"
+    validation_path = receipts_root / "candidate_validation.json"
+    context_raw = b'{"context":"review-revision-addendum"}\n'
+    candidate_raw = b'{"candidate":"revision-one"}\n'
+    context_path.write_bytes(context_raw)
+    candidate_path.write_bytes(candidate_raw)
+    context_sha256 = f"sha256:{sha256(context_raw).hexdigest()}"
+    candidate_sha256 = f"sha256:{sha256(candidate_raw).hexdigest()}"
+    candidate_receipt = session.seal_validation_receipt(
+        receipt_kind="candidate_validation",
+        unsigned_value={
+            "run_id": frozen.run_id,
+            "candidate_revision": frozen.candidate_revision,
+            "starter_context_sha256": context_sha256,
+            "candidate_sha256": candidate_sha256,
+            "status": "valid",
+            "findings": [],
+        },
+    )
+    candidate_receipt_raw = session._canonical_json(
+        session._thaw(candidate_receipt)
+    )
+    validation_path.write_bytes(candidate_receipt_raw)
+    validated_value = frozen.to_value()
+    validated_value.pop("content_sha256")
+    validated_value.update(
+        {
+            "phase": "CANDIDATE_VALIDATED",
+            "artifact_bindings": {
+                **dict(frozen.artifact_bindings),
+                "starter/starter_context.json": context_sha256,
+                "starter/starter_config_candidate.json": candidate_sha256,
+                "receipts/candidate_validation.json": (
+                    f"sha256:{sha256(candidate_receipt_raw).hexdigest()}"
+                ),
+            },
+        }
+    )
+    with _lease(root) as lease:
+        validated = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=frozen,
+            value=validated_value,
+        )
+    request_review_raw = request_review_raw.replace(
+        b"00000000000000000000000000000000",
+        validated.run_id.encode("ascii"),
+    )
+    source_root = base / "caller-owned-review-source"
+    source_root.mkdir()
+    request_review_source_path = (
+        source_root / "request-review.json"
+    ).absolute()
+    request_review_source_path.write_bytes(request_review_raw)
+    return SimpleNamespace(
+        root=root,
+        validated=validated,
+        request_review_raw=request_review_raw,
+        request_review_sha256=(
+            f"sha256:{sha256(request_review_raw).hexdigest()}"
+        ),
+        request_review_source_path=request_review_source_path,
+        context_path=context_path,
+        candidate_path=candidate_path,
+        review_path=review_path,
+        validation_path=validation_path,
+        candidate_receipt_raw=candidate_receipt_raw,
+    )
+
+
+def _prepare_review_revision_under_lock(
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+) -> session.LiveStartSession:
+    return session.prepare_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_validated_session=fixture.validated,
+        request_review_source_path=fixture.request_review_source_path,
+    )
+
+
+def _review_revision_source_descriptor(
+    cursor: session.LiveStartSession,
+) -> Mapping[str, object]:
+    pending = cursor.pending_transition
+    assert pending is not None
+    actions = pending["actions"]
+    assert isinstance(actions, (list, tuple)) and len(actions) == 1
+    source = actions[0]["materialization_source"]
+    assert isinstance(source, Mapping)
+    assert set(source) == {
+        "path",
+        "parent_identity",
+        "identity",
+        "size",
+        "sha256",
+    }
+    return source
+
+
+def _review_revision_source_bytes(
+    cursor: session.LiveStartSession,
+) -> bytes:
+    source = _review_revision_source_descriptor(cursor)
+    return Path(str(source["path"])).read_bytes()
+
+
+def _publish_review_revision_pending_mutation_under_lock(
+    *,
+    lease: session.LiveStartSessionLease,
+    cursor: session.LiveStartSession,
+    mutate: Callable[[dict[str, object]], None],
+) -> session.LiveStartSession:
+    value = cursor.to_value()
+    value.pop("content_sha256")
+    pending = session._thaw(cursor.pending_transition)
+    pending.pop("content_sha256")
+    mutate(pending)
+    value["pending_transition"] = session._seal_pending(pending)
+    return _publish_session_fixture_under_lock(
+        lease=lease,
+        predecessor=cursor,
+        value=value,
+    )
+
+
+def _redirect_review_revision_external_paths(
+    *,
+    pending: dict[str, object],
+    foreign_parent: Path,
+) -> None:
+    external = session._thaw(pending["external_file_action"])
+    external.pop("content_sha256")
+    final_path = foreign_parent / "starter_config_review.json"
+    staging_path = foreign_parent / "starter_config_review.json.staged"
+    inner_path = foreign_parent / (
+        ".starter_config_review.json.staged.live-start-atomic.tmp"
+    )
+    external.update(
+        {
+            "final_path": str(final_path),
+            "staging_path": str(staging_path),
+            "inner_temp_path": str(inner_path),
+            "parent_identity": list(path_identity(foreign_parent)),
+        }
+    )
+    pending["external_file_action"] = session.seal_embedded_document(
+        "external_file_action",
+        external,
+    )
+
+
+@pytest.mark.parametrize(
+    "redirect_kind",
+    (
+        "external_paths",
+        "cleanup_paths",
+        "cleanup_logical_binding",
+        "retained_final_path",
+    ),
+)
+def test_review_revision_persisted_locations_are_exact_run_paths_before_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    redirect_kind: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"persisted-location-{redirect_kind}"
+    )
+    foreign_root = tmp_path / f"foreign-{redirect_kind}"
+    foreign_root.mkdir()
+    foreign_sentinel = foreign_root / "sentinel.bin"
+    foreign_sentinel.write_bytes(b"foreign-sentinel")
+    observation_count = 0
+
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        cursor = prepared
+
+        if redirect_kind == "retained_final_path":
+            staging_bound = _materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            )
+            cursor = _commit_review_revision_request(
+                fixture=fixture,
+                lease=lease,
+                staging_bound=staging_bound,
+            )
+            foreign_review = foreign_root / "starter_config_review.json"
+            foreign_review.write_bytes(fixture.request_review_raw)
+
+            def redirect_retained_final(pending: dict[str, object]) -> None:
+                row = pending["actions"][0]
+                row.update(
+                    {
+                        "review_path": str(foreign_review),
+                        "review_parent_identity": list(
+                            path_identity(foreign_review.parent)
+                        ),
+                        "review_identity": list(path_identity(foreign_review)),
+                        "review_size": len(fixture.request_review_raw),
+                        "review_sha256": fixture.request_review_sha256,
+                    }
+                )
+
+            cursor = _publish_review_revision_pending_mutation_under_lock(
+                lease=lease,
+                cursor=cursor,
+                mutate=redirect_retained_final,
+            )
+            real_observer = session._require_review_revision_final_binding
+
+            def count_final_observation(*args: object, **kwargs: object) -> object:
+                nonlocal observation_count
+                observation_count += 1
+                return real_observer(*args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                "_require_review_revision_final_binding",
+                count_final_observation,
+            )
+        else:
+            foreign_receipts = foreign_root / "receipts"
+            foreign_receipts.mkdir()
+            foreign_validation = foreign_receipts / "candidate_validation.json"
+            foreign_validation.write_bytes(fixture.candidate_receipt_raw)
+
+            def redirect_prepared(pending: dict[str, object]) -> None:
+                if redirect_kind == "external_paths":
+                    foreign_starter = foreign_root / "starter"
+                    foreign_starter.mkdir()
+                    _redirect_review_revision_external_paths(
+                        pending=pending,
+                        foreign_parent=foreign_starter,
+                    )
+                    return
+                row = pending["actions"][0]
+                if redirect_kind == "cleanup_paths":
+                    row.update(
+                        {
+                            "path": str(foreign_validation),
+                            "parent_identity": list(
+                                path_identity(foreign_receipts)
+                            ),
+                            "historical_identity": list(
+                                path_identity(foreign_validation)
+                            ),
+                            "historical_size": len(
+                                fixture.candidate_receipt_raw
+                            ),
+                            "historical_sha256": (
+                                "sha256:"
+                                + sha256(
+                                    fixture.candidate_receipt_raw
+                                ).hexdigest()
+                            ),
+                            "directory_path": str(foreign_receipts),
+                            "directory_parent_identity": list(
+                                path_identity(foreign_root)
+                            ),
+                            "directory_identity": list(
+                                path_identity(foreign_receipts)
+                            ),
+                        }
+                    )
+                    return
+                assert redirect_kind == "cleanup_logical_binding"
+                row["historical_sha256"] = "sha256:" + "f" * 64
+
+            cursor = _publish_review_revision_pending_mutation_under_lock(
+                lease=lease,
+                cursor=cursor,
+                mutate=redirect_prepared,
+            )
+            real_observer = session._observe_review_revision_materialization_source
+
+            def count_source_observation(*args: object, **kwargs: object) -> object:
+                nonlocal observation_count
+                observation_count += 1
+                return real_observer(*args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                "_observe_review_revision_materialization_source",
+                count_source_observation,
+            )
+
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        real_review_bytes = (
+            fixture.review_path.read_bytes()
+            if fixture.review_path.exists()
+            else None
+        )
+        real_validation_bytes = fixture.validation_path.read_bytes()
+        foreign_files = {
+            path: path.read_bytes()
+            for path in foreign_root.rglob("*")
+            if path.is_file()
+        }
+
+        with pytest.raises(
+            (
+                session.SessionCapabilityError,
+                session.SessionConflictError,
+                session.SessionValidationError,
+            )
+        ):
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=cursor,
+            )
+
+        assert observation_count == 0
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert (
+            fixture.review_path.read_bytes()
+            if fixture.review_path.exists()
+            else None
+        ) == real_review_bytes
+        assert fixture.validation_path.read_bytes() == real_validation_bytes
+        assert foreign_sentinel.read_bytes() == b"foreign-sentinel"
+        assert {
+            path: path.read_bytes()
+            for path in foreign_root.rglob("*")
+            if path.is_file()
+        } == foreign_files
+
+
+def _execute_review_revision_step_under_lock(
+    *,
+    lease: session.LiveStartSessionLease,
+    cursor: session.LiveStartSession,
+    physical_action: Callable[
+        [], session.CandidateReviewRevisionPhysicalPostcondition
+    ],
+) -> tuple[str, session.LiveStartSession]:
+    authorization = session.authorize_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=cursor,
+    )
+    action = authorization._opaque.action
+    receipt = session._execute_candidate_review_revision_physical_step(
+        session_lease=lease,
+        expected_revision_session=cursor,
+        revision_authorization=authorization,
+        action=action,
+        physical_action=physical_action,
+    )
+    return action, session.advance_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=cursor,
+        revision_step_receipt=receipt,
+    )
+
+
+def _materialize_review_revision_staging(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    prepared: session.LiveStartSession,
+) -> session.LiveStartSession:
+    receipt = _materialize_review_revision_receipt(
+        fixture=fixture,
+        lease=lease,
+        prepared=prepared,
+    )
+    staging_bound = session.advance_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=prepared,
+        revision_step_receipt=receipt,
+    )
+    assert staging_bound.pending_transition is not None
+    assert staging_bound.pending_transition["stage"] == "STAGING_BOUND"
+    return staging_bound
+
+
+def _materialize_review_revision_receipt(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    prepared: session.LiveStartSession,
+) -> session.CandidateReviewRevisionStepReceipt:
+    pending = prepared.pending_transition
+    assert pending is not None
+    external = pending["external_file_action"]
+    assert isinstance(external, Mapping)
+    staging_path = Path(external["staging_path"])
+
+    def materialize() -> session.CandidateReviewRevisionPhysicalPostcondition:
+        staging_payload = _review_revision_source_bytes(prepared)
+        staging_path.write_bytes(staging_payload)
+        return session.CandidateReviewRevisionPhysicalPostcondition(
+            action="materialize_review_revision_staging",
+            evidence={
+                "staging_path": str(staging_path),
+                "staging_parent_identity": list(
+                    path_identity(staging_path.parent)
+                ),
+                "staging_identity": list(path_identity(staging_path)),
+                "staging_size": len(staging_payload),
+                "staging_sha256": (
+                    f"sha256:{sha256(staging_payload).hexdigest()}"
+                ),
+            },
+        )
+
+    authorization = session.authorize_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=prepared,
+    )
+    assert authorization._opaque.action == "materialize_review_revision_staging"
+    return session._execute_candidate_review_revision_physical_step(
+        session_lease=lease,
+        expected_revision_session=prepared,
+        revision_authorization=authorization,
+        action="materialize_review_revision_staging",
+        physical_action=materialize,
+    )
+
+
+def _commit_review_revision_request(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    staging_bound: session.LiveStartSession,
+) -> session.LiveStartSession:
+    pending = staging_bound.pending_transition
+    assert pending is not None
+    external = pending["external_file_action"]
+    assert isinstance(external, Mapping)
+    staging_path = Path(external["staging_path"])
+
+    def commit() -> session.CandidateReviewRevisionPhysicalPostcondition:
+        staging_path.replace(fixture.review_path)
+        return session.CandidateReviewRevisionPhysicalPostcondition(
+            action="commit_bound_review_revision_request",
+            evidence={
+                "final_path": str(fixture.review_path),
+                "final_parent_identity": list(
+                    path_identity(fixture.review_path.parent)
+                ),
+                "final_identity": list(path_identity(fixture.review_path)),
+                "final_size": len(fixture.request_review_raw),
+                "final_sha256": fixture.request_review_sha256,
+                "staging_absent": not staging_path.exists(),
+            },
+        )
+
+    action, primary = _execute_review_revision_step_under_lock(
+        lease=lease,
+        cursor=staging_bound,
+        physical_action=commit,
+    )
+    assert action == "commit_bound_review_revision_request"
+    assert primary.pending_transition is not None
+    assert primary.pending_transition["stage"] == "PRIMARY_APPLIED"
+    return primary
+
+
+_REVIEW_REVISION_PENDING_ALLOWED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "transition_kind",
+        "run_id",
+        "operation",
+        "stage",
+        "expected_session_sha256",
+        "source_phase",
+        "target_phase",
+        "source_candidate_revision",
+        "target_candidate_revision",
+        "source_revisions_used",
+        "target_revisions_used",
+        "successor_artifact_bindings",
+        "actions",
+        "next_action_index",
+        "external_file_action",
+        "content_sha256",
+    }
+)
+_REVIEW_REVISION_INHERITED_PENDING_FIELDS = tuple(
+    sorted(
+        session._PENDING_TRANSITION_FIELDS
+        - _REVIEW_REVISION_PENDING_ALLOWED_FIELDS
+    )
+)
+
+
+def test_review_revision_pending_rejects_every_inherited_operation_field(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "pending-inherited-field-closure"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = session._thaw(prepared.pending_transition)
+
+        assert set(pending) == session._PENDING_TRANSITION_FIELDS
+        assert {
+            field_name
+            for field_name, field_value in pending.items()
+            if field_value is not None
+        } == _REVIEW_REVISION_PENDING_ALLOWED_FIELDS
+        assert len(_REVIEW_REVISION_INHERITED_PENDING_FIELDS) == 59
+
+        for inherited_field in _REVIEW_REVISION_INHERITED_PENDING_FIELDS:
+            mixed = deepcopy(pending)
+            mixed.pop("content_sha256")
+            # Zero is intentionally falsey: every inherited field must be
+            # exactly null, independent of truthiness or family semantics.
+            mixed[inherited_field] = 0
+            with pytest.raises(
+                session.SessionValidationError,
+                match=(
+                    "^live_start_review_revision_pending_field_forbidden$"
+                ),
+            ):
+                session._seal_pending(mixed)
+
+
+def test_review_revision_request_is_opaque_bounded_canonical_json_object(
+    tmp_path: Path,
+) -> None:
+    opaque = (
+        b'{"opaque":{"rows":[1,true,null]},'
+        b'"task4_owned":"not-interpreted-by-task3"}\n'
+    )
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "opaque",
+        request_review_raw=opaque,
+    )
+    with _lease(fixture.root) as lease:
+        for index, invalid in enumerate(
+            (
+                b"{}\n",
+                b'[{"not":"an-object"}]\n',
+                b'{"z":1, "a":2}\n',
+                b'{"x":"' + (b"a" * (256 * 1024)) + b'"}\n',
+            )
+        ):
+            invalid_path = fixture.request_review_source_path.with_name(
+                f"invalid-{index}.json"
+            )
+            invalid_path.write_bytes(invalid)
+            with pytest.raises(session.SessionValidationError):
+                session.prepare_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_validated_session=fixture.validated,
+                    request_review_source_path=invalid_path,
+                )
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        assert prepared.pending_transition is not None
+        assert prepared.pending_transition["stage"] == "PREPARED"
+        assert not fixture.review_path.exists()
+
+
+def test_review_revision_prepare_forbids_process_local_bytes_only_contract(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "bytes-only")
+    with _lease(fixture.root) as lease:
+        with pytest.raises(TypeError):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_bytes=fixture.request_review_raw,
+            )
+
+
+def test_review_revision_prepared_fresh_load_uses_only_persisted_source(
+    tmp_path: Path,
+) -> None:
+    marker = b"fresh-load-source-authority-7f9e5c"
+    opaque = b'{"opaque":"' + marker + b'"}\n'
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "fresh-load-source",
+        request_review_raw=opaque,
+    )
+    expected_size = len(opaque)
+    expected_sha256 = f"sha256:{sha256(opaque).hexdigest()}"
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        source = _review_revision_source_descriptor(prepared)
+        assert source == {
+            "path": str(fixture.request_review_source_path),
+            "parent_identity": tuple(
+                path_identity(fixture.request_review_source_path.parent)
+            ),
+            "identity": tuple(
+                path_identity(fixture.request_review_source_path)
+            ),
+            "size": expected_size,
+            "sha256": expected_sha256,
+        }
+        assert marker not in prepared.canonical_json
+    del prepared
+    fixture.request_review_raw = None
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "materialize_review_revision_staging"
+        )
+        pending = loaded.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        staging_path = Path(external["staging_path"])
+
+        def materialize_from_persisted_source() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            payload = _review_revision_source_bytes(loaded)
+            staging_path.write_bytes(payload)
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="materialize_review_revision_staging",
+                evidence={
+                    "staging_path": str(staging_path),
+                    "staging_parent_identity": tuple(
+                        path_identity(staging_path.parent)
+                    ),
+                    "staging_identity": tuple(path_identity(staging_path)),
+                    "staging_size": len(payload),
+                    "staging_sha256": (
+                        f"sha256:{sha256(payload).hexdigest()}"
+                    ),
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="materialize_review_revision_staging",
+            physical_action=materialize_from_persisted_source,
+        )
+        staging_bound = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        assert staging_bound.pending_transition is not None
+        assert staging_bound.pending_transition["stage"] == "STAGING_BOUND"
+        assert staging_path.read_bytes() == opaque
+        primary = _commit_bound_review_revision_with_atomic_primitive(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+        revised = _finish_review_revision_cleanup_under_lock(
+            fixture=fixture,
+            lease=lease,
+            primary=primary,
+        )
+        assert revised.pending_transition is None
+        assert revised.revisions_used == fixture.validated.revisions_used + 1
+        assert fixture.review_path.read_bytes() == opaque
+
+
+def test_review_revision_near_64k_source_persists_only_small_descriptor(
+    tmp_path: Path,
+) -> None:
+    opaque = b'{"opaque":"' + (b"z" * (63 * 1024)) + b'"}\n'
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "near-64k",
+        request_review_raw=opaque,
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        descriptor = _review_revision_source_descriptor(prepared)
+        assert descriptor["size"] == len(opaque)
+        assert descriptor["sha256"] == (
+            f"sha256:{sha256(opaque).hexdigest()}"
+        )
+        assert len(session._canonical_json(session._thaw(pending))) < 64 * 1024
+        assert b"z" * 1024 not in prepared.canonical_json
+        assert len(prepared.canonical_json) < 256 * 1024
+
+
+def test_review_revision_materialization_source_descriptor_matrix_is_closed(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "descriptor-matrix")
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+    pending = session._thaw(prepared.pending_transition)
+    pending.pop("content_sha256")
+    mutations: tuple[Callable[[dict[str, object]], None], ...] = (
+        lambda value: value["actions"][0]["materialization_source"].pop(
+            "identity"
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"payload": {"forbidden": True}}
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"path": "relative-review.json"}
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"parent_identity": None}
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"identity": None}
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"size": 0}
+        ),
+        lambda value: value["actions"][0]["materialization_source"].update(
+            {"sha256": "sha256:" + "f" * 64}
+        ),
+        lambda value: value["actions"][0].update(
+            {"materialization_source": None}
+        ),
+    )
+    for mutate in mutations:
+        candidate = deepcopy(pending)
+        mutate(candidate)
+        with pytest.raises(session.SessionValidationError):
+            session._seal_pending(candidate)
+
+
+@pytest.mark.parametrize("evidence_mutation", ("missing", "extra", "wrong"))
+def test_review_revision_exact_step_evidence_rejects_missing_extra_or_wrong_before_cas(
+    tmp_path: Path,
+    evidence_mutation: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"exact-evidence-{evidence_mutation}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+            )
+        )
+
+        def materialize_with_invalid_evidence() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            payload = _review_revision_source_bytes(prepared)
+            staging_path.write_bytes(payload)
+            evidence: dict[str, object] = {
+                "staging_path": str(staging_path),
+                "staging_parent_identity": tuple(
+                    path_identity(staging_path.parent)
+                ),
+                "staging_identity": tuple(path_identity(staging_path)),
+                "staging_size": len(payload),
+                "staging_sha256": f"sha256:{sha256(payload).hexdigest()}",
+            }
+            if evidence_mutation == "missing":
+                evidence.pop("staging_path")
+            elif evidence_mutation == "extra":
+                evidence["smuggled"] = True
+            else:
+                evidence["staging_parent_identity"] = (1, 2, 3)
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="materialize_review_revision_staging",
+                evidence=evidence,
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=prepared,
+            revision_authorization=authorization,
+            action="materialize_review_revision_staging",
+            physical_action=materialize_with_invalid_evidence,
+        )
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        with pytest.raises(session.SessionCapabilityError):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_step_receipt=receipt,
+            )
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+
+
+def _substitute_review_revision_source(
+    fixture: SimpleNamespace,
+    substitution: str,
+) -> None:
+    source_path = fixture.request_review_source_path
+    original_identity = path_identity(source_path)
+    original_parent_identity = path_identity(source_path.parent)
+    if substitution == "identity":
+        source_path.unlink()
+        source_path.write_bytes(fixture.request_review_raw)
+        assert path_identity(source_path) != original_identity
+        return
+    if substitution == "content":
+        source_path.write_bytes(b'{"substituted":"different-bytes"}\n')
+        return
+    if substitution == "parent":
+        displaced = source_path.parent.with_name(
+            f"{source_path.parent.name}-displaced"
+        )
+        source_path.parent.replace(displaced)
+        source_path.parent.mkdir()
+        source_path.write_bytes(fixture.request_review_raw)
+        assert path_identity(source_path.parent) != original_parent_identity
+        return
+    if substitution == "hardlink":
+        source_path.unlink()
+        donor = source_path.with_name("hardlink-donor.json")
+        donor.write_bytes(fixture.request_review_raw)
+        os.link(donor, source_path)
+        assert source_path.stat().st_nlink == 2
+        return
+    raise AssertionError(f"unknown source substitution: {substitution}")
+
+
+@pytest.mark.parametrize(
+    ("checkpoint", "substitution"),
+    tuple(
+        (checkpoint, substitution)
+        for checkpoint in ("authorization", "before_callback")
+        for substitution in ("identity", "content", "parent", "hardlink")
+    ),
+)
+def test_review_revision_source_substitution_is_tamper_before_target_observation_or_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint: str,
+    substitution: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"source-{checkpoint}-{substitution}"
+    )
+    callback_count = 0
+    target_observations = 0
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        target_paths = {
+            str(Path(external[field_name]).absolute())
+            for field_name in ("final_path", "staging_path", "inner_temp_path")
+        }
+        authorization: session.CandidateReviewRevisionAuthorization | None = None
+        if checkpoint == "before_callback":
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=prepared,
+                )
+            )
+        _substitute_review_revision_source(fixture, substitution)
+
+        original_lexists = os.path.lexists
+
+        def count_target_lexists(path: object) -> bool:
+            nonlocal target_observations
+            if str(Path(path).absolute()) in target_paths:
+                target_observations += 1
+            return original_lexists(path)
+
+        monkeypatch.setattr(session.os.path, "lexists", count_target_lexists)
+        if checkpoint == "authorization":
+            with pytest.raises(
+                (session.SessionConflictError, session.SessionLayoutError)
+            ):
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=prepared,
+                )
+            assert target_observations == 0
+            return
+
+        assert authorization is not None
+
+        def forbidden() -> session.CandidateReviewRevisionPhysicalPostcondition:
+            nonlocal callback_count
+            callback_count += 1
+            raise AssertionError("substituted source reached callback")
+
+        with pytest.raises(
+            (session.SessionCapabilityError, session.SessionConflictError)
+        ):
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_authorization=authorization,
+                action="materialize_review_revision_staging",
+                physical_action=forbidden,
+            )
+        assert callback_count == 0
+
+
+@pytest.mark.parametrize(
+    "source_kind",
+    (
+        "relative",
+        "noncanonical_external",
+        "noncanonical_session_artifact",
+        "session_artifact",
+        "review_target",
+        "review_staging",
+        "review_inner_temp",
+        "hardlink",
+    ),
+)
+def test_review_revision_prepare_rejects_unsafe_or_target_alias_source(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"unsafe-source-{source_kind}"
+    )
+    source_path: Path
+    if source_kind == "relative":
+        source_path = Path("relative-request-review.json")
+    elif source_kind == "noncanonical_external":
+        alias_parent = fixture.request_review_source_path.parent / "alias-hop"
+        alias_parent.mkdir()
+        source_path = (
+            alias_parent / ".." / fixture.request_review_source_path.name
+        )
+        assert source_path.resolve(strict=True) == (
+            fixture.request_review_source_path.resolve(strict=True)
+        )
+    elif source_kind == "noncanonical_session_artifact":
+        alias_parent = fixture.root.parent / "alias-hop"
+        alias_parent.mkdir()
+        source_path = (
+            alias_parent
+            / ".."
+            / fixture.root.name
+            / fixture.context_path.relative_to(fixture.root)
+        )
+        assert source_path.resolve(strict=True) == fixture.context_path.resolve(
+            strict=True
+        )
+    elif source_kind == "session_artifact":
+        source_path = fixture.context_path
+    elif source_kind == "review_target":
+        source_path = fixture.review_path
+        source_path.write_bytes(fixture.request_review_raw)
+    else:
+        staging_path = fixture.review_path.with_name(
+            f"{fixture.review_path.name}.staged"
+        )
+        inner_path = staging_path.with_name(
+            f".{staging_path.name}.live-start-atomic.tmp"
+        )
+        if source_kind == "review_staging":
+            source_path = staging_path
+            source_path.write_bytes(fixture.request_review_raw)
+        elif source_kind == "review_inner_temp":
+            source_path = inner_path
+            source_path.write_bytes(fixture.request_review_raw)
+        else:
+            source_path = fixture.request_review_source_path.with_name(
+                "hardlinked-request-review.json"
+            )
+            os.link(fixture.request_review_source_path, source_path)
+            assert source_path.stat().st_nlink == 2
+    before = (fixture.root / "session.json").read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(
+            (
+                session.SessionConflictError,
+                session.SessionLayoutError,
+                session.SessionValidationError,
+            )
+        ):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=source_path,
+            )
+    assert (fixture.root / "session.json").read_bytes() == before
+
+
+def test_review_revision_prepare_rejects_symlink_source(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "symlink-source")
+    link_path = fixture.request_review_source_path.with_name(
+        "symlinked-request-review.json"
+    )
+    try:
+        link_path.symlink_to(fixture.request_review_source_path)
+    except OSError as error:
+        pytest.skip(f"symlink creation unavailable: {error}")
+    before = (fixture.root / "session.json").read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(
+            (session.SessionLayoutError, session.SessionValidationError)
+        ):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=link_path,
+            )
+    assert (fixture.root / "session.json").read_bytes() == before
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ADS contract")
+def test_review_revision_prepare_rejects_source_with_alternate_data_stream(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "ads-source")
+    ads_path = Path(f"{fixture.request_review_source_path}:forbidden")
+    ads_path.write_bytes(b"forbidden")
+    before = (fixture.root / "session.json").read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(session.SessionLayoutError):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=fixture.request_review_source_path,
+            )
+    assert (fixture.root / "session.json").read_bytes() == before
+
+
+def _windows_review_revision_alias(
+    canonical_path: Path,
+    namespace: str,
+) -> Path:
+    canonical = canonical_path.resolve(strict=True)
+    if namespace == "extended_dos":
+        return Path("\\\\?\\" + str(canonical))
+    if namespace == "administrative_unc":
+        drive = canonical.drive.removesuffix(":")
+        tail = str(canonical)[len(canonical.anchor) :]
+        return Path(f"\\\\localhost\\{drive}$\\{tail}")
+    if namespace == "volume_guid":
+        result = subprocess.run(
+            ["mountvol", canonical.drive, "/L"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        volume_root = result.stdout.strip()
+        if result.returncode != 0 or not volume_root:
+            pytest.skip("Windows volume GUID path unavailable")
+        tail = str(canonical)[len(canonical.anchor) :]
+        return Path(volume_root + tail)
+    if namespace == "case_variant":
+        value = str(canonical)
+        index = next(
+            index
+            for index, character in enumerate(value[3:], start=3)
+            if character.isalpha()
+        )
+        return Path(
+            value[:index]
+            + value[index].swapcase()
+            + value[index + 1 :]
+        )
+    raise AssertionError(f"unknown Windows namespace: {namespace}")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows namespace contract")
+@pytest.mark.parametrize(
+    "namespace",
+    (
+        "extended_dos",
+        "administrative_unc",
+        "volume_guid",
+        "case_variant",
+    ),
+)
+@pytest.mark.parametrize("source_location", ("external", "session_artifact"))
+def test_review_revision_windows_source_namespaces_reject_physical_alias_before_prepare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    namespace: str,
+    source_location: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"namespace-{namespace}-{source_location}"
+    )
+    canonical_source = (
+        fixture.request_review_source_path
+        if source_location == "external"
+        else fixture.context_path
+    )
+    aliased_source = _windows_review_revision_alias(
+        canonical_source,
+        namespace,
+    )
+    if not aliased_source.exists():
+        pytest.skip(f"Windows alias unavailable: {namespace}")
+    assert aliased_source.read_bytes() == canonical_source.read_bytes()
+    target_paths = {
+        fixture.review_path,
+        fixture.review_path.with_name(f"{fixture.review_path.name}.staged"),
+        fixture.review_path.with_name(
+            f".{fixture.review_path.name}.staged.live-start-atomic.tmp"
+        ),
+    }
+    target_observations = 0
+    real_lexists = os.path.lexists
+
+    def count_target_observation(path: object) -> bool:
+        nonlocal target_observations
+        if Path(path) in target_paths:
+            target_observations += 1
+        return real_lexists(path)
+
+    monkeypatch.setattr(session.os.path, "lexists", count_target_observation)
+    session_bytes = (fixture.root / "session.json").read_bytes()
+    source_bytes = canonical_source.read_bytes()
+    validation_bytes = fixture.validation_path.read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(
+            (
+                session.SessionConflictError,
+                session.SessionLayoutError,
+                session.SessionValidationError,
+            )
+        ):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=aliased_source,
+            )
+    assert target_observations == 0
+    assert (fixture.root / "session.json").read_bytes() == session_bytes
+    assert canonical_source.read_bytes() == source_bytes
+    assert fixture.validation_path.read_bytes() == validation_bytes
+    assert not any(path.exists() for path in target_paths)
+
+
+def test_review_revision_source_identity_ancestry_rejects_portable_run_alias(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "portable-run-alias")
+    session_bytes = (fixture.root / "session.json").read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(session.SessionValidationError):
+            session._require_review_revision_source_ancestry_external(
+                source_path=fixture.context_path,
+                session_lease=lease,
+            )
+        with pytest.raises(session.SessionValidationError):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=fixture.context_path,
+            )
+    assert (fixture.root / "session.json").read_bytes() == session_bytes
+    assert not fixture.review_path.exists()
+
+
+@pytest.mark.parametrize("parser_failure", ("huge_integer", "deep_nesting"))
+def test_review_revision_opaque_parser_failures_are_normalized_before_prepare_cas(
+    tmp_path: Path,
+    parser_failure: str,
+) -> None:
+    if parser_failure == "huge_integer":
+        request_review_raw = b'{"opaque":' + b"9" * 5_000 + b"}\n"
+    else:
+        request_review_raw = (
+            b'{"opaque":'
+            + b"[" * 1_500
+            + b"0"
+            + b"]" * 1_500
+            + b"}\n"
+        )
+    assert len(request_review_raw) < 64 * 1024
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"parser-{parser_failure}",
+        request_review_raw=request_review_raw,
+    )
+    session_bytes = (fixture.root / "session.json").read_bytes()
+    validation_bytes = fixture.validation_path.read_bytes()
+    with _lease(fixture.root) as lease:
+        with pytest.raises(session.SessionValidationError):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=fixture.request_review_source_path,
+            )
+    assert (fixture.root / "session.json").read_bytes() == session_bytes
+    assert fixture.validation_path.read_bytes() == validation_bytes
+    assert not fixture.review_path.exists()
+    assert not fixture.review_path.with_name(
+        f"{fixture.review_path.name}.staged"
+    ).exists()
+
+
+@pytest.mark.parametrize(
+    ("nested_shape", "depth"),
+    (("array", 600), ("object", 500)),
+)
+def test_review_revision_opaque_freeze_recursion_is_normalized_before_prepare_cas(
+    tmp_path: Path,
+    nested_shape: str,
+    depth: int,
+) -> None:
+    if nested_shape == "array":
+        request_review_raw = (
+            b'{"opaque":'
+            + b"[" * depth
+            + b"0"
+            + b"]" * depth
+            + b"}\n"
+        )
+    else:
+        request_review_raw = (
+            b'{"opaque":'
+            + b'{"nested":' * depth
+            + b"0"
+            + b"}" * depth
+            + b"}\n"
+        )
+    assert len(request_review_raw) < 64 * 1024
+    decoded = session._decode_json_document(request_review_raw)
+    assert session._canonical_json(decoded) == request_review_raw
+
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"freeze-recursion-{nested_shape}",
+        request_review_raw=request_review_raw,
+    )
+    session_bytes = (fixture.root / "session.json").read_bytes()
+    validation_bytes = fixture.validation_path.read_bytes()
+    source_bytes = fixture.request_review_source_path.read_bytes()
+    staging_path = fixture.review_path.with_name(
+        f"{fixture.review_path.name}.staged"
+    )
+    inner_path = staging_path.with_name(
+        f".{staging_path.name}.live-start-atomic.tmp"
+    )
+    with _lease(fixture.root) as lease:
+        with pytest.raises(session.SessionValidationError):
+            session.prepare_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_validated_session=fixture.validated,
+                request_review_source_path=(
+                    fixture.request_review_source_path
+                ),
+            )
+    assert (fixture.root / "session.json").read_bytes() == session_bytes
+    assert fixture.validation_path.read_bytes() == validation_bytes
+    assert fixture.request_review_source_path.read_bytes() == source_bytes
+    assert not fixture.review_path.exists()
+    assert not staging_path.exists()
+    assert not inner_path.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid_receipt",
+    (
+        "missing_opaque",
+        "malformed_opaque",
+        "forged_unregistered",
+        "foreign_session",
+        "stale_cursor",
+        "wrong_action",
+        "wrong_family",
+        "wrong_thread",
+        "reused",
+    ),
+)
+def test_review_revision_receipt_authority_precedes_every_physical_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_receipt: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"receipt-order-{invalid_receipt}"
+    )
+
+    def snapshot_files() -> dict[str, bytes]:
+        return {
+            path.relative_to(tmp_path).as_posix(): path.read_bytes()
+            for path in tmp_path.rglob("*")
+            if path.is_file() and path.suffix != ".lock"
+        }
+
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        receipt: object = _materialize_review_revision_receipt(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        expected = prepared
+
+        if invalid_receipt == "missing_opaque":
+            receipt = object.__new__(
+                session.CandidateReviewRevisionStepReceipt
+            )
+        elif invalid_receipt == "malformed_opaque":
+            receipt = object.__new__(
+                session.CandidateReviewRevisionStepReceipt
+            )
+            object.__setattr__(receipt, "_opaque", object())
+        elif invalid_receipt == "forged_unregistered":
+            forged = object.__new__(
+                session.CandidateReviewRevisionStepReceipt
+            )
+            object.__setattr__(forged, "_opaque", receipt._opaque)
+            receipt = forged
+        elif invalid_receipt == "stale_cursor":
+            receipt._opaque.cursor_sha256 = "sha256:" + "f" * 64
+        elif invalid_receipt == "wrong_action":
+            receipt._opaque.action = "commit_bound_review_revision_request"
+        elif invalid_receipt == "wrong_family":
+            receipt._opaque.family = "terminal_retirement_receipt"
+        elif invalid_receipt == "reused":
+            expected = session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_step_receipt=receipt,
+            )
+            receipt._opaque.action = "commit_bound_review_revision_request"
+
+        def assert_rejected_before_observation() -> None:
+            observations = {
+                "path_identity": 0,
+                "bound_file": 0,
+                "review_revision_binding": 0,
+            }
+            real_path_identity = session.path_identity
+            real_read_bound_file = session._read_bound_file
+            real_require_bindings = (
+                session._require_review_revision_run_physical_bindings
+            )
+
+            def count_path_identity(*args: object, **kwargs: object) -> object:
+                observations["path_identity"] += 1
+                return real_path_identity(*args, **kwargs)
+
+            def count_bound_file(*args: object, **kwargs: object) -> object:
+                observations["bound_file"] += 1
+                return real_read_bound_file(*args, **kwargs)
+
+            def count_review_revision_binding(
+                *args: object,
+                **kwargs: object,
+            ) -> object:
+                observations["review_revision_binding"] += 1
+                return real_require_bindings(*args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                "path_identity",
+                count_path_identity,
+            )
+            monkeypatch.setattr(
+                session,
+                "_read_bound_file",
+                count_bound_file,
+            )
+            monkeypatch.setattr(
+                session,
+                "_require_review_revision_run_physical_bindings",
+                count_review_revision_binding,
+            )
+            before = snapshot_files()
+
+            def invoke() -> None:
+                session.advance_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                    revision_step_receipt=receipt,
+                )
+
+            if invalid_receipt == "wrong_thread":
+                errors: list[BaseException] = []
+
+                def invoke_in_thread() -> None:
+                    try:
+                        invoke()
+                    except BaseException as error:
+                        errors.append(error)
+
+                worker = Thread(target=invoke_in_thread)
+                worker.start()
+                worker.join()
+                assert len(errors) == 1
+                assert isinstance(errors[0], session.SessionCapabilityError)
+            else:
+                with pytest.raises(session.SessionCapabilityError):
+                    invoke()
+
+            assert observations == {
+                "path_identity": 0,
+                "bound_file": 0,
+                "review_revision_binding": 0,
+            }
+            assert snapshot_files() == before
+
+        if invalid_receipt == "foreign_session":
+            foreign = _prepare_review_revision_fixture(
+                tmp_path / "receipt-order-foreign-session-source"
+            )
+            with _lease(foreign.root) as foreign_lease:
+                foreign_prepared = _prepare_review_revision_under_lock(
+                    foreign,
+                    foreign_lease,
+                )
+                receipt = _materialize_review_revision_receipt(
+                    fixture=foreign,
+                    lease=foreign_lease,
+                    prepared=foreign_prepared,
+                )
+                assert_rejected_before_observation()
+        else:
+            assert_rejected_before_observation()
+
+
+def test_review_revision_valid_receipt_physical_failure_observes_then_stays_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "receipt-order-valid-physical-failure"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        primary = _commit_review_revision_request(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+            )
+        )
+        row = primary.pending_transition["actions"][0]
+
+        def cleanup() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            fixture.validation_path.unlink()
+            fixture.validation_path.parent.rmdir()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_candidate_validation_receipt",
+                evidence={
+                    "path": row["path"],
+                    "parent_identity": row["parent_identity"],
+                    "historical_identity": row["historical_identity"],
+                    "historical_size": row["historical_size"],
+                    "historical_sha256": row["historical_sha256"],
+                    "directory_path": row["directory_path"],
+                    "directory_parent_identity": row[
+                        "directory_parent_identity"
+                    ],
+                    "directory_identity": row["directory_identity"],
+                    "disposition": "removed",
+                    "directory_disposition": "removed",
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=primary,
+            revision_authorization=authorization,
+            action="retire_candidate_validation_receipt",
+            physical_action=cleanup,
+        )
+        fixture.review_path.unlink()
+        fixture.review_path.write_bytes(fixture.request_review_raw)
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        observation_count = 0
+        real_require_bindings = (
+            session._require_review_revision_run_physical_bindings
+        )
+
+        def count_review_revision_binding(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            nonlocal observation_count
+            observation_count += 1
+            return real_require_bindings(*args, **kwargs)
+
+        monkeypatch.setattr(
+            session,
+            "_require_review_revision_run_physical_bindings",
+            count_review_revision_binding,
+        )
+        with pytest.raises(session.SessionCapabilityError):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+                revision_step_receipt=receipt,
+            )
+        assert observation_count == 1
+        assert receipt._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+
+
+@pytest.mark.parametrize(
+    ("stage", "residue_surface"),
+    (
+        ("PREPARED", "final"),
+        ("STAGING_BOUND", "inner_temp"),
+    ),
+)
+def test_review_revision_physical_executor_normalizes_real_residue_before_spending_authorization(
+    tmp_path: Path,
+    stage: str,
+    residue_surface: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"executor-residue-{stage.lower()}-{residue_surface}"
+    )
+    callback_count = 0
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        if stage == "PREPARED":
+            cursor = prepared
+            action = "materialize_review_revision_staging"
+        else:
+            cursor = _materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            )
+            action = "commit_bound_review_revision_request"
+        pending = cursor.pending_transition
+        assert pending is not None
+        assert pending["stage"] == stage
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        final_path = Path(external["final_path"])
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=cursor,
+            )
+        )
+        assert authorization._opaque.action == action
+        residue_path = final_path if residue_surface == "final" else inner_path
+        residue_bytes = f"real-{residue_surface}-residue".encode("ascii")
+        residue_path.write_bytes(residue_bytes)
+        session_bytes = (fixture.root / "session.json").read_bytes()
+
+        def physical_action() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            nonlocal callback_count
+            callback_count += 1
+            if action == "materialize_review_revision_staging":
+                payload = _review_revision_source_bytes(cursor)
+                staging_path.write_bytes(payload)
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action=action,
+                    evidence={
+                        "staging_path": str(staging_path),
+                        "staging_parent_identity": list(
+                            path_identity(staging_path.parent)
+                        ),
+                        "staging_identity": list(path_identity(staging_path)),
+                        "staging_size": len(payload),
+                        "staging_sha256": (
+                            f"sha256:{sha256(payload).hexdigest()}"
+                        ),
+                    },
+                )
+            staging_path.replace(final_path)
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action=action,
+                evidence={
+                    "final_path": str(final_path),
+                    "final_parent_identity": list(
+                        path_identity(final_path.parent)
+                    ),
+                    "final_identity": list(path_identity(final_path)),
+                    "final_size": len(fixture.request_review_raw),
+                    "final_sha256": fixture.request_review_sha256,
+                    "staging_absent": not os.path.lexists(staging_path),
+                },
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match=(
+                "^live_start_review_revision_"
+                "physical_precondition_changed$"
+            ),
+        ):
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=cursor,
+                revision_authorization=authorization,
+                action=action,
+                physical_action=physical_action,
+            )
+        assert callback_count == 0
+        assert authorization._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert residue_path.read_bytes() == residue_bytes
+
+        residue_path.unlink()
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=cursor,
+            revision_authorization=authorization,
+            action=action,
+            physical_action=physical_action,
+        )
+        assert callback_count == 1
+        assert authorization._opaque.active is False
+        assert receipt._opaque.active is True
+        assert receipt._opaque.action == action
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+
+
+def _review_revision_execution_case(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    action: str,
+) -> tuple[
+    session.LiveStartSession,
+    session.CandidateReviewRevisionAuthorization,
+    Callable[[], session.CandidateReviewRevisionPhysicalPostcondition],
+    Counter[str],
+]:
+    prepared = _prepare_review_revision_under_lock(fixture, lease)
+    cursor = prepared
+    if action == "restore_review_revision_predecessor":
+        fixture.request_review_source_path.unlink()
+    elif action == "retire_unbound_review_revision_staging":
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        Path(external["staging_path"]).write_bytes(b"unreceipted-residue")
+    elif action == "commit_bound_review_revision_request":
+        cursor = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+    elif action == "retire_candidate_validation_receipt":
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        cursor = _commit_review_revision_request(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+    else:
+        assert action == "materialize_review_revision_staging"
+
+    pending = cursor.pending_transition
+    assert pending is not None
+    external = pending.get("external_file_action")
+    authorization = session.authorize_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=cursor,
+    )
+    assert authorization._opaque.action == action
+    callback_counts: Counter[str] = Counter()
+
+    def physical_action() -> (
+        session.CandidateReviewRevisionPhysicalPostcondition
+    ):
+        callback_counts["physical_action"] += 1
+        if action == "restore_review_revision_predecessor":
+            return _review_revision_restore_postcondition(cursor)
+        if action == "retire_unbound_review_revision_staging":
+            assert isinstance(external, Mapping)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            staging_path.unlink()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action=action,
+                evidence={
+                    "final_path": str(final_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": list(path_identity(final_path.parent)),
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+        if action == "materialize_review_revision_staging":
+            assert isinstance(external, Mapping)
+            staging_path = Path(external["staging_path"])
+            payload = _review_revision_source_bytes(cursor)
+            staging_path.write_bytes(payload)
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action=action,
+                evidence={
+                    "staging_path": str(staging_path),
+                    "staging_parent_identity": list(
+                        path_identity(staging_path.parent)
+                    ),
+                    "staging_identity": list(path_identity(staging_path)),
+                    "staging_size": len(payload),
+                    "staging_sha256": f"sha256:{sha256(payload).hexdigest()}",
+                },
+            )
+        if action == "commit_bound_review_revision_request":
+            assert isinstance(external, Mapping)
+            final_path = Path(external["final_path"])
+            staging_path = Path(external["staging_path"])
+            staging_path.replace(final_path)
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action=action,
+                evidence={
+                    "final_path": str(final_path),
+                    "final_parent_identity": list(path_identity(final_path.parent)),
+                    "final_identity": list(path_identity(final_path)),
+                    "final_size": len(fixture.request_review_raw),
+                    "final_sha256": fixture.request_review_sha256,
+                    "staging_absent": True,
+                },
+            )
+
+        assert action == "retire_candidate_validation_receipt"
+        actions = pending["actions"]
+        assert isinstance(actions, (list, tuple)) and len(actions) == 1
+        row = actions[0]
+        fixture.validation_path.unlink()
+        fixture.validation_path.parent.rmdir()
+        return session.CandidateReviewRevisionPhysicalPostcondition(
+            action=action,
+            evidence={
+                "path": row["path"],
+                "parent_identity": row["parent_identity"],
+                "historical_identity": row["historical_identity"],
+                "historical_size": row["historical_size"],
+                "historical_sha256": row["historical_sha256"],
+                "directory_path": row["directory_path"],
+                "directory_parent_identity": row[
+                    "directory_parent_identity"
+                ],
+                "directory_identity": row["directory_identity"],
+                "disposition": "removed",
+                "directory_disposition": "removed",
+            },
+        )
+
+    return cursor, authorization, physical_action, callback_counts
+
+
+def _redirect_mutated_review_revision_expected_cursor(
+    *,
+    cursor: session.LiveStartSession,
+    fixture: SimpleNamespace,
+    foreign_root: Path,
+    redirect: str,
+) -> session.LiveStartSession:
+    pending = session._thaw(cursor.pending_transition)
+    actions = pending["actions"]
+    assert isinstance(actions, list) and len(actions) == 1
+    row = actions[0]
+    assert isinstance(row, dict)
+    foreign_root.mkdir(exist_ok=True)
+
+    if redirect in {"restore_source", "materialize_source"}:
+        source_root = foreign_root / "source"
+        source_root.mkdir()
+        source_path = source_root / "request-review.json"
+        source_path.write_bytes(fixture.request_review_raw)
+        row["materialization_source"] = {
+            "path": str(source_path.absolute()),
+            "parent_identity": list(path_identity(source_root)),
+            "identity": list(path_identity(source_path)),
+            "size": len(fixture.request_review_raw),
+            "sha256": fixture.request_review_sha256,
+        }
+    elif redirect in {
+        "retire_target",
+        "materialize_target",
+        "commit_target",
+    }:
+        target_root = foreign_root / "starter"
+        target_root.mkdir()
+        external = pending["external_file_action"]
+        assert isinstance(external, dict)
+        external.update(
+            {
+                "final_path": str(
+                    (target_root / "starter_config_review.json").absolute()
+                ),
+                "staging_path": str(
+                    (
+                        target_root
+                        / "starter_config_review.json.staged"
+                    ).absolute()
+                ),
+                "inner_temp_path": str(
+                    (
+                        target_root
+                        / (
+                            ".starter_config_review.json.staged"
+                            ".live-start-atomic.tmp"
+                        )
+                    ).absolute()
+                ),
+                "parent_identity": list(path_identity(target_root)),
+            }
+        )
+        if redirect == "commit_target":
+            staging_path = Path(external["staging_path"])
+            staging_path.write_bytes(fixture.request_review_raw)
+            external["staging_identity"] = list(path_identity(staging_path))
+    elif redirect == "cleanup_target":
+        receipts_root = foreign_root / "receipts"
+        receipts_root.mkdir()
+        cleanup_path = receipts_root / "candidate_validation.json"
+        cleanup_path.write_bytes(fixture.candidate_receipt_raw)
+        row.update(
+            {
+                "path": str(cleanup_path.absolute()),
+                "parent_identity": list(path_identity(receipts_root)),
+                "historical_identity": list(path_identity(cleanup_path)),
+                "historical_size": len(fixture.candidate_receipt_raw),
+                "historical_sha256": (
+                    f"sha256:{sha256(fixture.candidate_receipt_raw).hexdigest()}"
+                ),
+                "directory_path": str(receipts_root.absolute()),
+                "directory_parent_identity": list(
+                    path_identity(foreign_root)
+                ),
+                "directory_identity": list(path_identity(receipts_root)),
+            }
+        )
+    else:
+        assert redirect == "cleanup_retained_final"
+        retained_root = foreign_root / "starter"
+        retained_root.mkdir()
+        retained_path = retained_root / "starter_config_review.json"
+        retained_path.write_bytes(fixture.request_review_raw)
+        row.update(
+            {
+                "review_path": str(retained_path.absolute()),
+                "review_parent_identity": list(path_identity(retained_root)),
+                "review_identity": list(path_identity(retained_path)),
+                "review_size": len(fixture.request_review_raw),
+                "review_sha256": fixture.request_review_sha256,
+            }
+        )
+
+    mutated = copy(cursor)
+    object.__setattr__(
+        mutated,
+        "pending_transition",
+        session._freeze_mapping(pending),
+    )
+    assert mutated.canonical_json == cursor.canonical_json
+    assert mutated.content_sha256 == cursor.content_sha256
+    assert mutated.session_identity == cursor.session_identity
+    assert mutated.pending_transition != cursor.pending_transition
+    return mutated
+
+
+def _review_revision_file_snapshot(base: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(base).as_posix(): path.read_bytes()
+        for path in base.rglob("*")
+        if path.is_file() and path.suffix != ".lock"
+    }
+
+
+def _install_review_revision_action_observation_counters(
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    observations: Counter[str],
+) -> None:
+    for observed_name in (
+        "_require_review_revision_run_physical_bindings",
+        "_observe_review_revision_materialization_source",
+        "_observe_review_revision_staging_bound",
+        "_require_review_revision_final_binding",
+    ):
+        original = getattr(session, observed_name)
+
+        def count_observation(
+            *args: object,
+            _name: str = observed_name,
+            _original: Callable[..., object] = original,
+            **kwargs: object,
+        ) -> object:
+            observations[_name] += 1
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(session, observed_name, count_observation)
+
+
+@pytest.mark.parametrize(
+    ("action", "redirect"),
+    (
+        ("restore_review_revision_predecessor", "restore_source"),
+        ("retire_unbound_review_revision_staging", "retire_target"),
+        ("materialize_review_revision_staging", "materialize_source"),
+        ("materialize_review_revision_staging", "materialize_target"),
+        ("commit_bound_review_revision_request", "commit_target"),
+        ("retire_candidate_validation_receipt", "cleanup_target"),
+        (
+            "retire_candidate_validation_receipt",
+            "cleanup_retained_final",
+        ),
+    ),
+)
+def test_review_revision_mutated_expected_cursor_cannot_redirect_authenticated_physical_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    redirect: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"mutated-expected-{action}-{redirect}"
+    )
+    foreign_root = tmp_path / f"foreign-{action}-{redirect}"
+
+    with _lease(fixture.root) as lease:
+        cursor, authorization, physical_action, callback_counts = (
+            _review_revision_execution_case(
+                fixture=fixture,
+                lease=lease,
+                action=action,
+            )
+        )
+        mutated = _redirect_mutated_review_revision_expected_cursor(
+            cursor=cursor,
+            fixture=fixture,
+            foreign_root=foreign_root,
+            redirect=redirect,
+        )
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        before = _review_revision_file_snapshot(tmp_path)
+        observations: Counter[str] = Counter()
+        with monkeypatch.context() as guarded:
+            _install_review_revision_action_observation_counters(
+                monkeypatch=guarded,
+                observations=observations,
+            )
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match=(
+                    "^live_start_review_revision_"
+                    "expected_cursor_mutated$"
+                ),
+            ):
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=mutated,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=physical_action,
+                )
+        assert observations == Counter()
+        assert callback_counts == Counter()
+        assert authorization._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert _review_revision_file_snapshot(tmp_path) == before
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=cursor,
+            revision_authorization=authorization,
+            action=action,
+            physical_action=physical_action,
+        )
+        assert callback_counts == Counter({"physical_action": 1})
+        assert authorization._opaque.active is False
+        assert receipt._opaque.active is True
+        before_advance = _review_revision_file_snapshot(tmp_path)
+        observations.clear()
+        with monkeypatch.context() as guarded:
+            _install_review_revision_action_observation_counters(
+                monkeypatch=guarded,
+                observations=observations,
+            )
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match=(
+                    "^live_start_review_revision_"
+                    "expected_cursor_mutated$"
+                ),
+            ):
+                session.advance_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=mutated,
+                    revision_step_receipt=receipt,
+                )
+        assert observations == Counter()
+        assert receipt._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert _review_revision_file_snapshot(tmp_path) == before_advance
+
+
+@pytest.mark.parametrize(
+    ("action", "redirect"),
+    (
+        ("restore_review_revision_predecessor", "restore_source"),
+        ("materialize_review_revision_staging", "materialize_source"),
+        ("materialize_review_revision_staging", "materialize_target"),
+        ("commit_bound_review_revision_request", "commit_target"),
+        ("retire_candidate_validation_receipt", "cleanup_target"),
+        (
+            "retire_candidate_validation_receipt",
+            "cleanup_retained_final",
+        ),
+    ),
+)
+def test_review_revision_executor_uses_authenticated_current_after_entry_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    redirect: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"authenticated-current-{action}-{redirect}"
+    )
+    foreign_root = tmp_path / f"authenticated-current-foreign-{redirect}"
+
+    with _lease(fixture.root) as lease:
+        cursor, authorization, physical_action, callback_counts = (
+            _review_revision_execution_case(
+                fixture=fixture,
+                lease=lease,
+                action=action,
+            )
+        )
+        expected = copy(cursor)
+        redirected = _redirect_mutated_review_revision_expected_cursor(
+            cursor=cursor,
+            fixture=fixture,
+            foreign_root=foreign_root,
+            redirect=redirect,
+        )
+        redirected_pending = redirected.pending_transition
+        assert redirected_pending is not None
+        foreign_before = _review_revision_file_snapshot(foreign_root)
+        passed_expected_pending = Counter()
+        real_authenticate = (
+            session._authenticate_authorization_cursor_under_lock
+        )
+        real_source_observer = (
+            session._observe_review_revision_materialization_source
+        )
+        real_staging_observer = session._observe_review_revision_staging_bound
+        real_final_observer = session._require_review_revision_final_binding
+
+        def authenticate_then_mutate_expected(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            result = real_authenticate(*args, **kwargs)
+            if kwargs.get("expected_session") is expected:
+                object.__setattr__(
+                    expected,
+                    "pending_transition",
+                    redirected_pending,
+                )
+            return result
+
+        def count_source_pending(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            if kwargs.get("pending") is redirected_pending:
+                passed_expected_pending["source"] += 1
+            return real_source_observer(*args, **kwargs)
+
+        def count_staging_external(external: object) -> object:
+            if external is redirected_pending.get("external_file_action"):
+                passed_expected_pending["staging"] += 1
+            return real_staging_observer(external)
+
+        def count_final_row(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            redirected_actions = redirected_pending["actions"]
+            if kwargs.get("cleanup_row") is redirected_actions[0]:
+                passed_expected_pending["final"] += 1
+            return real_final_observer(*args, **kwargs)
+
+        monkeypatch.setattr(
+            session,
+            "_authenticate_authorization_cursor_under_lock",
+            authenticate_then_mutate_expected,
+        )
+        monkeypatch.setattr(
+            session,
+            "_observe_review_revision_materialization_source",
+            count_source_pending,
+        )
+        monkeypatch.setattr(
+            session,
+            "_observe_review_revision_staging_bound",
+            count_staging_external,
+        )
+        monkeypatch.setattr(
+            session,
+            "_require_review_revision_final_binding",
+            count_final_row,
+        )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=expected,
+            revision_authorization=authorization,
+            action=action,
+            physical_action=physical_action,
+        )
+        assert passed_expected_pending == Counter()
+        assert callback_counts == Counter({"physical_action": 1})
+        assert authorization._opaque.active is False
+        assert receipt._opaque.active is True
+        assert _review_revision_file_snapshot(foreign_root) == foreign_before
+
+
+@pytest.mark.parametrize("entrypoint", ("prepare", "authorize"))
+def test_review_revision_mutated_expected_cursor_is_rejected_at_public_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"mutated-expected-public-{entrypoint}"
+    )
+    authentication_count = 0
+
+    with _lease(fixture.root) as lease:
+        if entrypoint == "prepare":
+            expected = copy(fixture.validated)
+            bindings = dict(expected.artifact_bindings)
+            bindings["foreign/not-canonical.json"] = "sha256:" + "f" * 64
+            object.__setattr__(
+                expected,
+                "artifact_bindings",
+                session._freeze_mapping(bindings),
+            )
+        else:
+            prepared = _prepare_review_revision_under_lock(fixture, lease)
+            expected = _redirect_mutated_review_revision_expected_cursor(
+                cursor=prepared,
+                fixture=fixture,
+                foreign_root=tmp_path / "mutated-authorize-foreign",
+                redirect="materialize_target",
+            )
+
+        real_authenticate = (
+            session._authenticate_authorization_cursor_under_lock
+        )
+
+        def count_authentication(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            nonlocal authentication_count
+            authentication_count += 1
+            return real_authenticate(*args, **kwargs)
+
+        monkeypatch.setattr(
+            session,
+            "_authenticate_authorization_cursor_under_lock",
+            count_authentication,
+        )
+        before = _review_revision_file_snapshot(tmp_path)
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_review_revision_expected_cursor_mutated$",
+        ):
+            if entrypoint == "prepare":
+                session.prepare_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_validated_session=expected,
+                    request_review_source_path=(
+                        fixture.request_review_source_path
+                    ),
+                )
+            else:
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                )
+        assert authentication_count == 0
+        assert _review_revision_file_snapshot(tmp_path) == before
+
+
+def test_review_revision_stale_genuine_receipt_is_rejected_before_temp_or_layout_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "stale-genuine-receipt-before-temp"
+    )
+    observations: Counter[str] = Counter()
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        stale_materialize_receipt = _materialize_review_revision_receipt(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        final_path = Path(external["final_path"])
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        retirement_authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+            )
+        )
+        assert retirement_authorization._opaque.action == (
+            "retire_unbound_review_revision_staging"
+        )
+
+        def retire_unbound() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            staging_path.unlink()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_unbound_review_revision_staging",
+                evidence={
+                    "final_path": str(final_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": list(path_identity(final_path.parent)),
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+
+        retirement_receipt = (
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_authorization=retirement_authorization,
+                action="retire_unbound_review_revision_staging",
+                physical_action=retire_unbound,
+            )
+        )
+        current = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=prepared,
+            revision_step_receipt=retirement_receipt,
+        )
+        assert current.content_sha256 != prepared.content_sha256
+        current_bytes = (fixture.root / "session.json").read_bytes()
+        session_temp = (
+            fixture.root / ".session.json.live-start-atomic.tmp"
+        )
+        session_temp_bytes = b"stale-receipt-must-not-observe-this-temp"
+        session_temp.write_bytes(session_temp_bytes)
+
+        for observed_name in (
+            "_reconcile_session_temp_under_lock",
+            "_validate_run_layout_under_lock",
+            "_require_review_revision_run_physical_bindings",
+            "_validate_candidate_review_revision_receipt_postcondition_under_lock",
+        ):
+            original = getattr(session, observed_name)
+
+            def count_observation(
+                *args: object,
+                _name: str = observed_name,
+                _original: Callable[..., object] = original,
+                **kwargs: object,
+            ) -> object:
+                observations[_name] += 1
+                return _original(*args, **kwargs)
+
+            monkeypatch.setattr(session, observed_name, count_observation)
+
+        action_paths = {
+            final_path,
+            staging_path,
+            inner_path,
+            fixture.request_review_source_path,
+            fixture.validation_path,
+            fixture.validation_path.parent,
+        }
+        real_lexists = session.os.path.lexists
+
+        def count_direct_observation(path: object) -> bool:
+            candidate = Path(os.fsdecode(os.fspath(path)))
+            if candidate == session_temp:
+                observations["reserved_session_temp"] += 1
+            elif candidate in action_paths:
+                observations["action_path"] += 1
+            return real_lexists(path)
+
+        monkeypatch.setattr(
+            session.os.path,
+            "lexists",
+            count_direct_observation,
+        )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_review_revision_receipt_cursor_stale$",
+        ):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_step_receipt=stale_materialize_receipt,
+            )
+        assert observations == Counter()
+        assert stale_materialize_receipt._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == current_bytes
+        assert session_temp.read_bytes() == session_temp_bytes
+        assert not any(
+            os.path.lexists(path)
+            for path in (final_path, staging_path, inner_path)
+        )
+
+
+@pytest.mark.parametrize(
+    "action",
+    (
+        "restore_review_revision_predecessor",
+        "retire_unbound_review_revision_staging",
+        "materialize_review_revision_staging",
+        "commit_bound_review_revision_request",
+        "retire_candidate_validation_receipt",
+    ),
+)
+def test_review_revision_action_postcondition_is_validated_before_receipt_consumption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"preconsume-{action}"
+    )
+    foreign_root = tmp_path / f"preconsume-{action}-foreign"
+    foreign_root.mkdir()
+    foreign_sentinel = foreign_root / "sentinel.bin"
+    foreign_sentinel.write_bytes(b"foreign-unchanged")
+
+    def snapshot_files() -> dict[str, bytes]:
+        return {
+            path.relative_to(tmp_path).as_posix(): path.read_bytes()
+            for path in tmp_path.rglob("*")
+            if path.is_file() and path.suffix != ".lock"
+        }
+
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        expected = prepared
+
+        if action == "restore_review_revision_predecessor":
+            fixture.request_review_source_path.unlink()
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                )
+            )
+            assert authorization._opaque.action == action
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=lambda: (
+                        _review_revision_restore_postcondition(expected)
+                    ),
+                )
+            )
+        elif action == "retire_unbound_review_revision_staging":
+            pending = expected.pending_transition
+            assert pending is not None
+            external = pending["external_file_action"]
+            staging_path = Path(external["staging_path"])
+            inner_path = Path(external["inner_temp_path"])
+            staging_path.write_bytes(b"unreceipted-residue")
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                )
+            )
+            assert authorization._opaque.action == action
+
+            def retire_unbound() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                staging_path.unlink()
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action=action,
+                    evidence={
+                        "final_path": str(fixture.review_path),
+                        "staging_path": str(staging_path),
+                        "inner_temp_path": str(inner_path),
+                        "parent_identity": tuple(
+                            path_identity(fixture.review_path.parent)
+                        ),
+                        "final_absent": True,
+                        "staging_absent": True,
+                        "inner_temp_absent": True,
+                    },
+                )
+
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=retire_unbound,
+                )
+            )
+        elif action == "materialize_review_revision_staging":
+            receipt = _materialize_review_revision_receipt(
+                fixture=fixture,
+                lease=lease,
+                prepared=expected,
+            )
+        elif action == "commit_bound_review_revision_request":
+            expected = _materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            )
+            pending = expected.pending_transition
+            assert pending is not None
+            external = pending["external_file_action"]
+            staging_path = Path(external["staging_path"])
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                )
+            )
+            assert authorization._opaque.action == action
+
+            def commit_bound() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                staging_path.replace(fixture.review_path)
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action=action,
+                    evidence={
+                        "final_path": str(fixture.review_path),
+                        "final_parent_identity": tuple(
+                            path_identity(fixture.review_path.parent)
+                        ),
+                        "final_identity": tuple(
+                            path_identity(fixture.review_path)
+                        ),
+                        "final_size": len(fixture.request_review_raw),
+                        "final_sha256": fixture.request_review_sha256,
+                        "staging_absent": True,
+                    },
+                )
+
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=commit_bound,
+                )
+            )
+        else:
+            assert action == "retire_candidate_validation_receipt"
+            staging_bound = _materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            )
+            expected = _commit_review_revision_request(
+                fixture=fixture,
+                lease=lease,
+                staging_bound=staging_bound,
+            )
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                )
+            )
+            assert authorization._opaque.action == action
+            row = expected.pending_transition["actions"][0]
+
+            def cleanup() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                fixture.validation_path.unlink()
+                fixture.validation_path.parent.rmdir()
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action=action,
+                    evidence={
+                        "path": row["path"],
+                        "parent_identity": row["parent_identity"],
+                        "historical_identity": row["historical_identity"],
+                        "historical_size": row["historical_size"],
+                        "historical_sha256": row["historical_sha256"],
+                        "directory_path": row["directory_path"],
+                        "directory_parent_identity": row[
+                            "directory_parent_identity"
+                        ],
+                        "directory_identity": row["directory_identity"],
+                        "disposition": "removed",
+                        "directory_disposition": "removed",
+                    },
+                )
+
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=expected,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=cleanup,
+                )
+            )
+
+        postcondition = receipt._opaque.successor
+        assert isinstance(
+            postcondition,
+            session.CandidateReviewRevisionPhysicalPostcondition,
+        )
+        invalid_evidence = dict(postcondition.evidence)
+        if action == "restore_review_revision_predecessor":
+            invalid_evidence["source_parent_identity"] = (1, 2, 3)
+        elif action == "retire_unbound_review_revision_staging":
+            invalid_evidence["final_absent"] = False
+        elif action == "materialize_review_revision_staging":
+            invalid_evidence["staging_identity"] = (1, 2, 3)
+        elif action == "commit_bound_review_revision_request":
+            invalid_evidence["final_parent_identity"] = (1, 2, 3)
+        else:
+            invalid_evidence["disposition"] = "already_absent"
+            invalid_evidence["directory_disposition"] = "already_absent"
+        receipt._opaque.successor = (
+            session.CandidateReviewRevisionPhysicalPostcondition(
+                action=action,
+                evidence=invalid_evidence,
+            )
+        )
+
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        before = snapshot_files()
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match=(
+                "^live_start_review_revision_receipt_"
+                "postcondition_invalid$"
+            ),
+        ):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=expected,
+                revision_step_receipt=receipt,
+            )
+        assert receipt._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert snapshot_files() == before
+        assert foreign_sentinel.read_bytes() == b"foreign-unchanged"
+
+        receipt._opaque.successor = postcondition
+        postconsume_observations: list[str] = []
+        pending_for_observation = expected.pending_transition
+        assert pending_for_observation is not None
+        action_row = pending_for_observation["actions"][0]
+        action_paths = {
+            Path(action_row["materialization_source"]["path"]),
+            Path(action_row["path"]),
+            Path(action_row["directory_path"]),
+        }
+        external_for_observation = pending_for_observation.get(
+            "external_file_action"
+        )
+        if isinstance(external_for_observation, Mapping):
+            action_paths.update(
+                Path(external_for_observation[field_name])
+                for field_name in (
+                    "final_path",
+                    "staging_path",
+                    "inner_temp_path",
+                )
+            )
+        if action_row.get("review_path") is not None:
+            action_paths.add(Path(action_row["review_path"]))
+        action_observation_paths = action_paths | {
+            path.parent for path in action_paths
+        }
+        session_cas_paths = {
+            fixture.root,
+            fixture.root / "session.json",
+            fixture.root / ".session.json.live-start-atomic.tmp",
+            fixture.root / "session.lock",
+        }
+
+        def is_action_observation_path(value: object) -> bool:
+            try:
+                raw_path = os.fspath(value)
+            except TypeError:
+                return False
+            candidate = Path(os.fsdecode(raw_path))
+            return (
+                candidate in action_observation_paths
+                and candidate not in session_cas_paths
+            )
+
+        for observed_name in (
+            "_observe_review_revision_materialization_source",
+            "_read_bound_file",
+            "_require_review_revision_final_binding",
+            "path_identity",
+        ):
+            original = getattr(session, observed_name)
+
+            def reject_postconsume_observation(
+                *args: object,
+                _name: str = observed_name,
+                _original: Callable[..., object] = original,
+                **kwargs: object,
+            ) -> object:
+                if receipt._opaque.active is False:
+                    postconsume_observations.append(_name)
+                    raise AssertionError(
+                        f"postconsume physical observation: {_name}"
+                    )
+                return _original(*args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                observed_name,
+                reject_postconsume_observation,
+            )
+        real_lexists = session.os.path.lexists
+        real_os_lstat = session.os.lstat
+        real_path_lstat = Path.lstat
+        real_scandir = session.os.scandir
+
+        def reject_postconsume_lexists(path: object) -> bool:
+            if (
+                receipt._opaque.active is False
+                and is_action_observation_path(path)
+            ):
+                postconsume_observations.append("os.path.lexists")
+                raise AssertionError(
+                    "postconsume physical observation: os.path.lexists"
+                )
+            return real_lexists(path)
+
+        def reject_postconsume_os_lstat(
+            path: object,
+            *args: object,
+            **kwargs: object,
+        ) -> os.stat_result:
+            if (
+                receipt._opaque.active is False
+                and is_action_observation_path(path)
+            ):
+                postconsume_observations.append("os.lstat")
+                raise AssertionError(
+                    "postconsume physical observation: os.lstat"
+                )
+            return real_os_lstat(path, *args, **kwargs)
+
+        def reject_postconsume_path_lstat(
+            path: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> os.stat_result:
+            if (
+                receipt._opaque.active is False
+                and is_action_observation_path(path)
+            ):
+                postconsume_observations.append("Path.lstat")
+                raise AssertionError(
+                    "postconsume physical observation: Path.lstat"
+                )
+            return real_path_lstat(path, *args, **kwargs)
+
+        def reject_postconsume_scandir(
+            path: object = ".",
+        ) -> os.ScandirIterator[str]:
+            if (
+                receipt._opaque.active is False
+                and is_action_observation_path(path)
+            ):
+                postconsume_observations.append("os.scandir")
+                raise AssertionError(
+                    "postconsume physical observation: os.scandir"
+                )
+            return real_scandir(path)
+
+        monkeypatch.setattr(
+            session.os.path,
+            "lexists",
+            reject_postconsume_lexists,
+        )
+        monkeypatch.setattr(session.os, "lstat", reject_postconsume_os_lstat)
+        monkeypatch.setattr(Path, "lstat", reject_postconsume_path_lstat)
+        monkeypatch.setattr(session.os, "scandir", reject_postconsume_scandir)
+        successor = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=expected,
+            revision_step_receipt=receipt,
+        )
+        assert receipt._opaque.active is False
+        assert successor.content_sha256 != expected.content_sha256
+        assert postconsume_observations == []
+
+
+def _commit_bound_review_revision_with_atomic_primitive(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    staging_bound: session.LiveStartSession,
+    fault_hook: Callable[[str], None] | None = None,
+) -> session.LiveStartSession:
+    pending = staging_bound.pending_transition
+    assert pending is not None
+    external = pending["external_file_action"]
+    assert isinstance(external, Mapping)
+    authorization = session.authorize_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=staging_bound,
+    )
+    assert authorization._opaque.action == (
+        "commit_bound_review_revision_request"
+    )
+
+    def commit() -> session.CandidateReviewRevisionPhysicalPostcondition:
+        kwargs: dict[str, object] = {}
+        if fault_hook is not None:
+            kwargs["fault_hook"] = fault_hook
+        published = atomic_commit_bound_staging_no_replace(
+            path=fixture.review_path,
+            staging_path=Path(external["staging_path"]),
+            expected_staging_identity=tuple(external["staging_identity"]),
+            expected_size=external["staging_size"],
+            expected_sha256=external["staging_sha256"],
+            expected_parent_identity=tuple(external["parent_identity"]),
+            **kwargs,
+        )
+        return session.CandidateReviewRevisionPhysicalPostcondition(
+            action="commit_bound_review_revision_request",
+            evidence={
+                "final_path": str(published.path),
+                "final_parent_identity": tuple(external["parent_identity"]),
+                "final_identity": tuple(published.identity),
+                "final_size": published.size,
+                "final_sha256": published.sha256,
+                "staging_absent": True,
+            },
+        )
+
+    receipt = session._execute_candidate_review_revision_physical_step(
+        session_lease=lease,
+        expected_revision_session=staging_bound,
+        revision_authorization=authorization,
+        action="commit_bound_review_revision_request",
+        physical_action=commit,
+    )
+    return session.advance_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=staging_bound,
+        revision_step_receipt=receipt,
+    )
+
+
+def _finish_review_revision_cleanup_under_lock(
+    *,
+    fixture: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    primary: session.LiveStartSession,
+) -> session.LiveStartSession:
+    pending = primary.pending_transition
+    assert pending is not None
+    cleanup_row = pending["actions"][0]
+
+    def cleanup() -> session.CandidateReviewRevisionPhysicalPostcondition:
+        fixture.validation_path.unlink()
+        fixture.validation_path.parent.rmdir()
+        return session.CandidateReviewRevisionPhysicalPostcondition(
+            action="retire_candidate_validation_receipt",
+            evidence={
+                "path": cleanup_row["path"],
+                "parent_identity": cleanup_row["parent_identity"],
+                "historical_identity": cleanup_row["historical_identity"],
+                "historical_size": cleanup_row["historical_size"],
+                "historical_sha256": cleanup_row["historical_sha256"],
+                "directory_path": cleanup_row["directory_path"],
+                "directory_parent_identity": cleanup_row[
+                    "directory_parent_identity"
+                ],
+                "directory_identity": cleanup_row["directory_identity"],
+                "disposition": "removed",
+                "directory_disposition": "removed",
+            },
+        )
+
+    action, revised = _execute_review_revision_step_under_lock(
+        lease=lease,
+        cursor=primary,
+        physical_action=cleanup,
+    )
+    assert action == "retire_candidate_validation_receipt"
+    return revised
+
+
+def test_review_revision_source_is_irrelevant_after_staging_bound(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "source-irrelevant-after-bound"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+    fixture.request_review_source_path.unlink()
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        primary = _commit_bound_review_revision_with_atomic_primitive(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=loaded,
+        )
+        assert primary.pending_transition is not None
+        assert primary.pending_transition["stage"] == "PRIMARY_APPLIED"
+        assert fixture.review_path.read_bytes() == fixture.request_review_raw
+        revised = _finish_review_revision_cleanup_under_lock(
+            fixture=fixture,
+            lease=lease,
+            primary=primary,
+        )
+        assert revised.pending_transition is None
+        assert revised.revisions_used == fixture.validated.revisions_used + 1
+
+
+def test_public_update_cannot_install_review_revision_prepared_pending(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "public-pending")
+    before = (fixture.root / "session.json").read_bytes()
+    forged_pending = {
+        "operation": "review_revision",
+        "stage": "PREPARED",
+    }
+    with _lease(fixture.root) as lease:
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="review|specialized|authority",
+        ):
+            session.transition_live_start_session_under_lock(
+                session_lease=lease,
+                expected_session=fixture.validated,
+                event="same_phase_cas",
+                changes={"pending_transition": forged_pending},
+            )
+    assert (fixture.root / "session.json").read_bytes() == before
+    assert not fixture.review_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("surface", "payload"),
+    (
+        ("staging", b"exact"),
+        ("staging", b"foreign"),
+        ("inner", b"partial"),
+    ),
+)
+def test_review_revision_prepared_restart_is_delete_only(
+    tmp_path: Path,
+    surface: str,
+    payload: bytes,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"prepared-{surface}-{payload.decode('ascii')}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        target = staging_path if surface == "staging" else inner_path
+        target.write_bytes(
+            fixture.request_review_raw if payload == b"exact" else payload
+        )
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "retire_unbound_review_revision_staging"
+        )
+
+        def retire() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            if staging_path.exists():
+                staging_path.unlink()
+            if inner_path.exists():
+                inner_path.unlink()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_unbound_review_revision_staging",
+                evidence={
+                    "final_path": str(fixture.review_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": list(
+                        path_identity(fixture.review_path.parent)
+                    ),
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="retire_unbound_review_revision_staging",
+            physical_action=retire,
+        )
+        recovered = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        assert recovered.pending_transition is not None
+        assert recovered.pending_transition["stage"] == "PREPARED"
+        assert recovered.revisions_used == fixture.validated.revisions_used
+        assert not fixture.review_path.exists()
+        retry = session.authorize_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=recovered,
+        )
+        assert retry._opaque.action == "materialize_review_revision_staging"
+
+
+@pytest.mark.parametrize("residue", ("exact_staging", "partial_staging", "inner"))
+def test_review_revision_unbound_staging_cleanup_then_restart_reuses_persisted_source(
+    tmp_path: Path,
+    residue: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"unbound-restart-{residue}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        if residue == "inner":
+            inner_path.write_bytes(b"partial-inner")
+        else:
+            staging_path.write_bytes(
+                fixture.request_review_raw
+                if residue == "exact_staging"
+                else b"partial-staging"
+            )
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "retire_unbound_review_revision_staging"
+        )
+
+        def retire() -> session.CandidateReviewRevisionPhysicalPostcondition:
+            if staging_path.exists():
+                staging_path.unlink()
+            if inner_path.exists():
+                inner_path.unlink()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_unbound_review_revision_staging",
+                evidence={
+                    "final_path": str(fixture.review_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": tuple(
+                        path_identity(fixture.review_path.parent)
+                    ),
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="retire_unbound_review_revision_staging",
+            physical_action=retire,
+        )
+        recovered = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        assert recovered.pending_transition is not None
+        assert recovered.pending_transition["stage"] == "PREPARED"
+    del prepared
+    fixture.request_review_raw = None
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=loaded,
+        )
+        assert staging_bound.pending_transition is not None
+        assert staging_bound.pending_transition["stage"] == "STAGING_BOUND"
+        assert staging_path.read_bytes() == _review_revision_source_bytes(
+            staging_bound
+        )
+        primary = _commit_bound_review_revision_with_atomic_primitive(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+        revised = _finish_review_revision_cleanup_under_lock(
+            fixture=fixture,
+            lease=lease,
+            primary=primary,
+        )
+        assert revised.pending_transition is None
+        assert revised.revisions_used == fixture.validated.revisions_used + 1
+
+
+def _review_revision_restore_postcondition(
+    cursor: session.LiveStartSession,
+) -> session.CandidateReviewRevisionPhysicalPostcondition:
+    pending = cursor.pending_transition
+    assert pending is not None
+    external = pending["external_file_action"]
+    source = _review_revision_source_descriptor(cursor)
+    return session.CandidateReviewRevisionPhysicalPostcondition(
+        action="restore_review_revision_predecessor",
+        evidence={
+            "source_path": source["path"],
+            "source_parent_identity": source["parent_identity"],
+            "historical_source_identity": source["identity"],
+            "historical_source_size": source["size"],
+            "historical_source_sha256": source["sha256"],
+            "final_path": external["final_path"],
+            "staging_path": external["staging_path"],
+            "inner_temp_path": external["inner_temp_path"],
+            "target_parent_identity": external["parent_identity"],
+            "source_absent": True,
+            "final_absent": True,
+            "staging_absent": True,
+            "inner_temp_absent": True,
+        },
+    )
+
+
+def _restore_review_revision_predecessor_under_lock(
+    *,
+    lease: session.LiveStartSessionLease,
+    cursor: session.LiveStartSession,
+) -> session.LiveStartSession:
+    authorization = session.authorize_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=cursor,
+    )
+    assert authorization._opaque.action == (
+        "restore_review_revision_predecessor"
+    )
+
+    def confirm_absence() -> (
+        session.CandidateReviewRevisionPhysicalPostcondition
+    ):
+        return _review_revision_restore_postcondition(cursor)
+
+    receipt = session._execute_candidate_review_revision_physical_step(
+        session_lease=lease,
+        expected_revision_session=cursor,
+        revision_authorization=authorization,
+        action="restore_review_revision_predecessor",
+        physical_action=confirm_absence,
+    )
+    return session.advance_candidate_review_revision_under_lock(
+        session_lease=lease,
+        expected_revision_session=cursor,
+        revision_step_receipt=receipt,
+    )
+
+
+def test_review_revision_missing_source_restores_exact_predecessor_without_charge(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "missing-source")
+    with _lease(fixture.root) as lease:
+        _prepare_review_revision_under_lock(fixture, lease)
+    fixture.request_review_source_path.unlink()
+    prepared_bytes = (fixture.root / "session.json").read_bytes()
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert loaded.canonical_json == prepared_bytes
+        restored = _restore_review_revision_predecessor_under_lock(
+            lease=lease,
+            cursor=loaded,
+        )
+        restored_value = restored.to_value()
+        restored_value.pop("content_sha256")
+        predecessor_value = fixture.validated.to_value()
+        predecessor_value.pop("content_sha256")
+        assert restored_value == predecessor_value
+        assert restored.revisions_used == fixture.validated.revisions_used
+        assert restored.candidate_revision == fixture.validated.candidate_revision
+        assert restored.pending_transition is None
+        assert not fixture.review_path.exists()
+        reloaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert reloaded.canonical_json == restored.canonical_json
+
+
+def test_review_revision_missing_source_after_unbound_retirement_restores_predecessor(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / "missing-after-retirement"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        pending = prepared.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        staging_path.write_bytes(b"partial-unreceipted")
+    fixture.request_review_source_path.unlink()
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "retire_unbound_review_revision_staging"
+        )
+
+        def retire() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            staging_path.unlink()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_unbound_review_revision_staging",
+                evidence={
+                    "final_path": str(fixture.review_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(inner_path),
+                    "parent_identity": tuple(
+                        path_identity(fixture.review_path.parent)
+                    ),
+                    "final_absent": True,
+                    "staging_absent": True,
+                    "inner_temp_absent": True,
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="retire_unbound_review_revision_staging",
+            physical_action=retire,
+        )
+        recovered = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        assert recovered.pending_transition is not None
+        assert recovered.revisions_used == fixture.validated.revisions_used
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        restored = _restore_review_revision_predecessor_under_lock(
+            lease=lease,
+            cursor=loaded,
+        )
+        assert restored.pending_transition is None
+        assert restored.revisions_used == fixture.validated.revisions_used
+
+
+@pytest.mark.parametrize(
+    "invalid_carrier",
+    (
+        "forged",
+        "stale",
+        "reused",
+        "cross_session",
+        "cross_thread",
+        "wrong_stage",
+        "wrong_action",
+        "wrong_family",
+    ),
+)
+def test_review_revision_predecessor_restore_carriers_reject_before_callback_or_cas(
+    tmp_path: Path,
+    invalid_carrier: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"restore-carrier-{invalid_carrier}"
+    )
+    foreign = _prepare_review_revision_fixture(
+        tmp_path / f"restore-carrier-{invalid_carrier}-foreign"
+    )
+    with _lease(fixture.root) as lease:
+        _prepare_review_revision_under_lock(fixture, lease)
+    fixture.request_review_source_path.unlink()
+    callback_count = 0
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization: object = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        expected = loaded
+        action = "restore_review_revision_predecessor"
+        if invalid_carrier == "forged":
+            authorization = object()
+        elif invalid_carrier == "stale":
+            restored = _restore_review_revision_predecessor_under_lock(
+                lease=lease,
+                cursor=loaded,
+            )
+            expected = restored
+        elif invalid_carrier == "reused":
+            assert isinstance(
+                authorization,
+                session.CandidateReviewRevisionAuthorization,
+            )
+            with pytest.raises(AssertionError, match="spend restore bearer"):
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=loaded,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=lambda: (_ for _ in ()).throw(
+                        AssertionError("spend restore bearer")
+                    ),
+                )
+        elif invalid_carrier == "wrong_action":
+            action = "materialize_review_revision_staging"
+        elif invalid_carrier == "wrong_family":
+            assert isinstance(
+                authorization,
+                session.CandidateReviewRevisionAuthorization,
+            )
+            authorization._opaque.family = "terminal_retirement"
+        elif invalid_carrier == "wrong_stage":
+            expected = copy(loaded)
+            wrong_pending = session._thaw(loaded.pending_transition)
+            wrong_pending["stage"] = "STAGING_BOUND"
+            object.__setattr__(
+                expected,
+                "pending_transition",
+                session._freeze_mapping(wrong_pending),
+            )
+
+        def forbidden() -> session.CandidateReviewRevisionPhysicalPostcondition:
+            nonlocal callback_count
+            callback_count += 1
+            raise AssertionError("invalid restore carrier reached callback")
+
+        def invoke() -> None:
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=expected,
+                revision_authorization=authorization,
+                action=action,
+                physical_action=forbidden,
+            )
+
+        before = (fixture.root / "session.json").read_bytes()
+        if invalid_carrier == "cross_session":
+            with _lease(foreign.root) as foreign_lease:
+                _prepare_review_revision_under_lock(
+                    foreign,
+                    foreign_lease,
+                )
+            foreign.request_review_source_path.unlink()
+            with _lease(foreign.root) as foreign_lease:
+                foreign_loaded = session.load_live_start_session_under_lock(
+                    session_lease=foreign_lease
+                )
+                authorization = (
+                    session.authorize_candidate_review_revision_under_lock(
+                        session_lease=foreign_lease,
+                        expected_revision_session=foreign_loaded,
+                    )
+                )
+                with pytest.raises(session.SessionCapabilityError):
+                    invoke()
+        elif invalid_carrier == "cross_thread":
+            errors: list[BaseException] = []
+
+            def invoke_in_thread() -> None:
+                try:
+                    invoke()
+                except BaseException as error:
+                    errors.append(error)
+
+            worker = Thread(target=invoke_in_thread)
+            worker.start()
+            worker.join()
+            assert len(errors) == 1
+            assert isinstance(errors[0], session.SessionCapabilityError)
+        else:
+            with pytest.raises(
+                (session.SessionCapabilityError, session.SessionConflictError)
+            ):
+                invoke()
+        assert callback_count == 0
+        assert (fixture.root / "session.json").read_bytes() == before
+
+
+def test_review_revision_predecessor_restore_receipt_is_exact_and_single_use(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "restore-receipt")
+    with _lease(fixture.root) as lease:
+        _prepare_review_revision_under_lock(fixture, lease)
+    fixture.request_review_source_path.unlink()
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        before = (fixture.root / "session.json").read_bytes()
+        with pytest.raises(session.SessionCapabilityError):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+                revision_step_receipt=object(),
+            )
+        assert (fixture.root / "session.json").read_bytes() == before
+
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="restore_review_revision_predecessor",
+            physical_action=lambda: _review_revision_restore_postcondition(
+                loaded
+            ),
+        )
+        restored = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        restored_bytes = (fixture.root / "session.json").read_bytes()
+        with pytest.raises(
+            (session.SessionCapabilityError, session.SessionConflictError)
+        ):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=restored,
+                revision_step_receipt=receipt,
+            )
+        assert (fixture.root / "session.json").read_bytes() == restored_bytes
+
+
+@pytest.mark.parametrize("substitution", ("none", "identity", "parent"))
+def test_review_revision_staging_bound_restart_requires_exact_final_identity(
+    tmp_path: Path,
+    substitution: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"staging-bound-{substitution}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        persisted_staging_identity = tuple(external["staging_identity"])
+        if substitution == "identity":
+            staging_path.unlink()
+            fixture.review_path.write_bytes(fixture.request_review_raw)
+            assert path_identity(fixture.review_path) != persisted_staging_identity
+        elif substitution == "parent":
+            old_starter = tmp_path / "displaced-starter"
+            fixture.review_path.parent.replace(old_starter)
+            fixture.review_path.parent.mkdir()
+            fixture.context_path.write_bytes(
+                (old_starter / fixture.context_path.name).read_bytes()
+            )
+            fixture.candidate_path.write_bytes(
+                (old_starter / fixture.candidate_path.name).read_bytes()
+            )
+            (old_starter / staging_path.name).replace(fixture.review_path)
+            assert path_identity(fixture.review_path) == persisted_staging_identity
+        else:
+            staging_path.replace(fixture.review_path)
+            assert path_identity(fixture.review_path) == persisted_staging_identity
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        if substitution != "none":
+            with pytest.raises(session.SessionConflictError):
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=loaded,
+                )
+            return
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "commit_bound_review_revision_request"
+        )
+
+        def confirm() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="commit_bound_review_revision_request",
+                evidence={
+                    "final_path": str(fixture.review_path),
+                    "final_parent_identity": list(
+                        path_identity(fixture.review_path.parent)
+                    ),
+                    "final_identity": list(
+                        path_identity(fixture.review_path)
+                    ),
+                    "final_size": len(fixture.request_review_raw),
+                    "final_sha256": fixture.request_review_sha256,
+                    "staging_absent": True,
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="commit_bound_review_revision_request",
+            physical_action=confirm,
+        )
+        primary = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        row = primary.pending_transition["actions"][0]
+        assert tuple(row["review_identity"]) == persisted_staging_identity
+        assert row["review_path"] == str(fixture.review_path)
+        assert tuple(row["review_parent_identity"]) == path_identity(
+            fixture.review_path.parent
+        )
+        assert row["review_size"] == len(fixture.request_review_raw)
+        assert row["review_sha256"] == fixture.request_review_sha256
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX two-link crash state")
+def test_review_revision_posix_two_link_restart_converges_to_exact_final_identity(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "posix-two-link")
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        persisted_identity = tuple(external["staging_identity"])
+        os.link(staging_path, fixture.review_path)
+        assert path_identity(fixture.review_path) == persisted_identity
+        assert path_identity(staging_path) == persisted_identity
+        assert fixture.review_path.stat().st_nlink == 2
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        primary = _commit_bound_review_revision_with_atomic_primitive(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=loaded,
+        )
+        assert primary.pending_transition is not None
+        assert primary.pending_transition["stage"] == "PRIMARY_APPLIED"
+        assert not staging_path.exists()
+        assert path_identity(fixture.review_path) == persisted_identity
+        assert fixture.review_path.stat().st_nlink == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-kill fault point")
+def test_review_revision_posix_hard_kill_two_link_state_resumes(
+    tmp_path: Path,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / "posix-hard-kill")
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        persisted_identity = tuple(external["staging_identity"])
+
+    child = """
+import json
+import os
+import sys
+from pathlib import Path
+from hsconfig.atomic_io import (
+    NO_REPLACE_POSIX_LINK_FAULT_POINT,
+    atomic_commit_bound_staging_no_replace,
+)
+
+def hard_kill(point):
+    if point != NO_REPLACE_POSIX_LINK_FAULT_POINT:
+        raise AssertionError(point)
+    os._exit(73)
+
+atomic_commit_bound_staging_no_replace(
+    path=Path(sys.argv[1]),
+    staging_path=Path(sys.argv[2]),
+    expected_staging_identity=tuple(json.loads(sys.argv[3])),
+    expected_size=int(sys.argv[4]),
+    expected_sha256=sys.argv[5],
+    expected_parent_identity=tuple(json.loads(sys.argv[6])),
+    fault_hook=hard_kill,
+)
+"""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            child,
+            str(fixture.review_path),
+            str(staging_path),
+            json.dumps(list(persisted_identity)),
+            str(external["staging_size"]),
+            str(external["staging_sha256"]),
+            json.dumps(list(external["parent_identity"])),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+    )
+    assert completed.returncode == 73
+    assert path_identity(fixture.review_path) == persisted_identity
+    assert path_identity(staging_path) == persisted_identity
+    assert fixture.review_path.stat().st_nlink == 2
+
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        primary = _commit_bound_review_revision_with_atomic_primitive(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=loaded,
+        )
+        assert primary.pending_transition is not None
+        assert primary.pending_transition["stage"] == "PRIMARY_APPLIED"
+        assert not staging_path.exists()
+        assert path_identity(fixture.review_path) == persisted_identity
+        assert fixture.review_path.stat().st_nlink == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_layout",
+    (
+        "distinct_final",
+        "inner_temp",
+        "foreign_hardlink",
+        "double_wrong_bytes",
+    ),
+)
+def test_review_revision_staging_bound_rejects_every_other_double_or_temp_layout(
+    tmp_path: Path,
+    invalid_layout: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"invalid-bound-layout-{invalid_layout}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        assert isinstance(external, Mapping)
+        staging_path = Path(external["staging_path"])
+        inner_path = Path(external["inner_temp_path"])
+        if invalid_layout == "distinct_final":
+            fixture.review_path.write_bytes(fixture.request_review_raw)
+            assert path_identity(fixture.review_path) != path_identity(
+                staging_path
+            )
+        elif invalid_layout == "inner_temp":
+            inner_path.write_bytes(b"foreign-inner-temp")
+        elif invalid_layout == "foreign_hardlink":
+            foreign = tmp_path / "foreign-hardlink.json"
+            os.link(staging_path, foreign)
+            assert staging_path.stat().st_nlink == 2
+        else:
+            try:
+                os.link(staging_path, fixture.review_path)
+            except OSError as error:
+                pytest.skip(f"hardlink creation unavailable: {error}")
+            fixture.review_path.write_bytes(b"wrong-after-double-link")
+            assert fixture.review_path.stat().st_nlink == 2
+
+    with _lease(fixture.root) as lease:
+        try:
+            loaded = session.load_live_start_session_under_lock(
+                session_lease=lease
+            )
+        except (session.SessionConflictError, session.SessionLayoutError):
+            return
+        with pytest.raises(
+            (session.SessionConflictError, session.SessionLayoutError)
+        ):
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+
+
+@pytest.mark.parametrize(
+    "cleanup_state",
+    ("present", "absent_empty_directory", "absent_directory"),
+)
+def test_review_revision_primary_restart_cleanup_is_exact_and_charged_once(
+    tmp_path: Path,
+    cleanup_state: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"primary-{cleanup_state}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        primary = _commit_review_revision_request(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+        assert primary.revisions_used == fixture.validated.revisions_used
+        if cleanup_state != "present":
+            fixture.validation_path.unlink()
+        if cleanup_state == "absent_directory":
+            fixture.validation_path.parent.rmdir()
+    with _lease(fixture.root) as lease:
+        loaded = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=loaded,
+            )
+        )
+        assert authorization._opaque.action == (
+            "retire_candidate_validation_receipt"
+        )
+        pending = loaded.pending_transition
+        assert pending is not None
+        row = pending["actions"][0]
+
+        def cleanup() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            receipt_present = fixture.validation_path.exists()
+            directory_present = fixture.validation_path.parent.exists()
+            if receipt_present:
+                fixture.validation_path.unlink()
+            if fixture.validation_path.parent.exists():
+                fixture.validation_path.parent.rmdir()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_candidate_validation_receipt",
+                evidence={
+                    "path": row["path"],
+                    "parent_identity": row["parent_identity"],
+                    "historical_identity": row["historical_identity"],
+                    "historical_size": row["historical_size"],
+                    "historical_sha256": row["historical_sha256"],
+                    "directory_path": row["directory_path"],
+                    "directory_parent_identity": row[
+                        "directory_parent_identity"
+                    ],
+                    "directory_identity": row["directory_identity"],
+                    "disposition": (
+                        "removed" if receipt_present else "already_absent"
+                    ),
+                    "directory_disposition": (
+                        "removed" if directory_present else "already_absent"
+                    ),
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_authorization=authorization,
+            action="retire_candidate_validation_receipt",
+            physical_action=cleanup,
+        )
+        if cleanup_state == "present":
+            # Crash after physical cleanup but before the final session CAS.
+            del receipt
+            loaded = session.load_live_start_session_under_lock(
+                session_lease=lease
+            )
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=loaded,
+                )
+            )
+            receipt = (
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=loaded,
+                    revision_authorization=authorization,
+                    action="retire_candidate_validation_receipt",
+                    physical_action=cleanup,
+                )
+            )
+        revised = session.advance_candidate_review_revision_under_lock(
+            session_lease=lease,
+            expected_revision_session=loaded,
+            revision_step_receipt=receipt,
+        )
+        assert revised.phase is session.LiveStartPhase.CANDIDATE_DRAFTED
+        assert revised.pending_transition is None
+        assert revised.revisions_used == fixture.validated.revisions_used + 1
+        assert revised.candidate_revision == fixture.validated.candidate_revision
+        assert fixture.review_path.read_bytes() == fixture.request_review_raw
+
+
+@pytest.mark.parametrize("substitution_kind", ("identity", "parent"))
+@pytest.mark.parametrize("substitution_point", ("authorization", "final_cas"))
+def test_review_revision_primary_revalidates_persisted_final_binding(
+    tmp_path: Path,
+    substitution_point: str,
+    substitution_kind: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path
+        / f"primary-{substitution_kind}-substitution-{substitution_point}"
+    )
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        staging_bound = _materialize_review_revision_staging(
+            fixture=fixture,
+            lease=lease,
+            prepared=prepared,
+        )
+        primary = _commit_review_revision_request(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=staging_bound,
+        )
+        original_identity = path_identity(fixture.review_path)
+        original_parent_identity = path_identity(fixture.review_path.parent)
+
+        def substitute_final_binding() -> None:
+            if substitution_kind == "identity":
+                fixture.review_path.unlink()
+                fixture.review_path.write_bytes(fixture.request_review_raw)
+                assert path_identity(fixture.review_path) != original_identity
+                return
+            displaced = tmp_path / (
+                f"displaced-starter-{substitution_point}-{substitution_kind}"
+            )
+            fixture.review_path.parent.replace(displaced)
+            fixture.review_path.parent.mkdir()
+            for source in displaced.iterdir():
+                if source.is_file():
+                    (fixture.review_path.parent / source.name).write_bytes(
+                        source.read_bytes()
+                    )
+            assert (
+                path_identity(fixture.review_path.parent)
+                != original_parent_identity
+            )
+
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        if substitution_point == "authorization":
+            substitute_final_binding()
+            with pytest.raises(session.SessionConflictError):
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=primary,
+                )
+            assert (fixture.root / "session.json").read_bytes() == session_bytes
+            assert primary.revisions_used == fixture.validated.revisions_used
+            return
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+            )
+        )
+        row = primary.pending_transition["actions"][0]
+
+        def cleanup() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            fixture.validation_path.unlink()
+            fixture.validation_path.parent.rmdir()
+            return session.CandidateReviewRevisionPhysicalPostcondition(
+                action="retire_candidate_validation_receipt",
+                evidence={
+                    "path": row["path"],
+                    "parent_identity": row["parent_identity"],
+                    "historical_identity": row["historical_identity"],
+                    "historical_size": row["historical_size"],
+                    "historical_sha256": row["historical_sha256"],
+                    "directory_path": row["directory_path"],
+                    "directory_parent_identity": row[
+                        "directory_parent_identity"
+                    ],
+                    "directory_identity": row["directory_identity"],
+                    "disposition": "removed",
+                    "directory_disposition": "removed",
+                },
+            )
+
+        receipt = session._execute_candidate_review_revision_physical_step(
+            session_lease=lease,
+            expected_revision_session=primary,
+            revision_authorization=authorization,
+            action="retire_candidate_validation_receipt",
+            physical_action=cleanup,
+        )
+        substitute_final_binding()
+        with pytest.raises(session.SessionCapabilityError):
+            session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+                revision_step_receipt=receipt,
+            )
+        assert receipt._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert primary.revisions_used == fixture.validated.revisions_used
+
+
+@pytest.mark.parametrize("action_stage", ("materialize", "restore", "cleanup"))
+def test_review_revision_executor_reauthenticates_current_cursor_before_callback(
+    tmp_path: Path,
+    action_stage: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"executor-current-cursor-{action_stage}"
+    )
+    callback_count = 0
+    with _lease(fixture.root) as lease:
+        cursor = _prepare_review_revision_under_lock(fixture, lease)
+        if action_stage == "restore":
+            fixture.request_review_source_path.unlink()
+        elif action_stage == "cleanup":
+            cursor = _commit_review_revision_request(
+                fixture=fixture,
+                lease=lease,
+                staging_bound=_materialize_review_revision_staging(
+                    fixture=fixture,
+                    lease=lease,
+                    prepared=cursor,
+                ),
+            )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=cursor,
+            )
+        )
+        action = authorization._opaque.action
+
+        changed_value = cursor.to_value()
+        changed_value.pop("content_sha256")
+        changed_value["deck_name"] = f"{cursor.deck_name}-changed"
+        changed = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=cursor,
+            value=changed_value,
+        )
+        changed_bytes = (fixture.root / "session.json").read_bytes()
+
+        def forbidden() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            nonlocal callback_count
+            callback_count += 1
+            raise AssertionError("stale review revision cursor reached callback")
+
+        with pytest.raises(session.SessionCapabilityError):
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=cursor,
+                revision_authorization=authorization,
+                action=action,
+                physical_action=forbidden,
+            )
+        assert callback_count == 0
+        assert (fixture.root / "session.json").read_bytes() == changed_bytes
+        assert changed.content_sha256 != cursor.content_sha256
+
+
+@pytest.mark.parametrize("substitution_kind", ("file", "parent"))
+def test_review_revision_cleanup_rechecks_post_authorization_binding_before_callback(
+    tmp_path: Path,
+    substitution_kind: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"cleanup-post-authorization-{substitution_kind}"
+    )
+    callback_count = 0
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        primary = _commit_review_revision_request(
+            fixture=fixture,
+            lease=lease,
+            staging_bound=_materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            ),
+        )
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+            )
+        )
+        assert authorization._opaque.action == (
+            "retire_candidate_validation_receipt"
+        )
+        original_file_identity = path_identity(fixture.validation_path)
+        original_parent_identity = path_identity(fixture.validation_path.parent)
+        validation_bytes = fixture.validation_path.read_bytes()
+        if substitution_kind == "file":
+            displaced = tmp_path / "displaced-candidate-validation.json"
+            fixture.validation_path.replace(displaced)
+            fixture.validation_path.write_bytes(validation_bytes)
+            assert path_identity(fixture.validation_path) != original_file_identity
+        else:
+            displaced = tmp_path / "displaced-receipts"
+            fixture.validation_path.parent.replace(displaced)
+            fixture.validation_path.parent.mkdir()
+            fixture.validation_path.write_bytes(validation_bytes)
+            assert (
+                path_identity(fixture.validation_path.parent)
+                != original_parent_identity
+            )
+        session_bytes = (fixture.root / "session.json").read_bytes()
+        real_bytes = fixture.validation_path.read_bytes()
+        foreign_bytes = (
+            displaced.read_bytes()
+            if displaced.is_file()
+            else (displaced / fixture.validation_path.name).read_bytes()
+        )
+
+        def forbidden() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            nonlocal callback_count
+            callback_count += 1
+            raise AssertionError(
+                "substituted cleanup binding reached physical callback"
+            )
+
+        with pytest.raises(
+            (session.SessionCapabilityError, session.SessionConflictError)
+        ):
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=primary,
+                revision_authorization=authorization,
+                action="retire_candidate_validation_receipt",
+                physical_action=forbidden,
+            )
+        assert callback_count == 0
+        assert authorization._opaque.active is True
+        assert (fixture.root / "session.json").read_bytes() == session_bytes
+        assert fixture.validation_path.read_bytes() == real_bytes
+        assert (
+            displaced.read_bytes()
+            if displaced.is_file()
+            else (displaced / fixture.validation_path.name).read_bytes()
+        ) == foreign_bytes
+
+
+@pytest.mark.parametrize(
+    "source_state",
+    ("materialize_identity", "restore_parent"),
+)
+def test_review_revision_source_recheck_precedes_authorization_consumption(
+    tmp_path: Path,
+    source_state: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        tmp_path / f"source-preconsume-{source_state}"
+    )
+    callback_count = 0
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        if source_state == "restore_parent":
+            fixture.request_review_source_path.unlink()
+        authorization = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+            )
+        )
+        action = authorization._opaque.action
+        if source_state == "materialize_identity":
+            _substitute_review_revision_source(fixture, "identity")
+        else:
+            source_parent = fixture.request_review_source_path.parent
+            displaced_parent = source_parent.with_name(
+                f"{source_parent.name}-post-authorization"
+            )
+            source_parent.replace(displaced_parent)
+            source_parent.mkdir()
+
+        def forbidden() -> (
+            session.CandidateReviewRevisionPhysicalPostcondition
+        ):
+            nonlocal callback_count
+            callback_count += 1
+            raise AssertionError("changed source state reached physical callback")
+
+        with pytest.raises(
+            (session.SessionCapabilityError, session.SessionConflictError)
+        ):
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=prepared,
+                revision_authorization=authorization,
+                action=action,
+                physical_action=forbidden,
+            )
+        assert callback_count == 0
+        assert authorization._opaque.active is True
+
+
+def _assert_review_revision_carrier_rejected_before_callback(
+    base: Path,
+    invalid_carrier: str,
+    *,
+    monkeypatch: pytest.MonkeyPatch | None = None,
+    bypass_carrier_guards: bool = False,
+) -> None:
+    fixture = _prepare_review_revision_fixture(
+        base / f"carrier-{invalid_carrier}"
+    )
+    foreign = _prepare_review_revision_fixture(
+        base / f"carrier-{invalid_carrier}-foreign"
+    )
+    callback_count = 0
+
+    def forbidden() -> session.CandidateReviewRevisionPhysicalPostcondition:
+        nonlocal callback_count
+        callback_count += 1
+        raise AssertionError("invalid revision carrier reached callback")
+
+    with _lease(fixture.root) as lease:
+        prepared = _prepare_review_revision_under_lock(fixture, lease)
+        authorization: object = (
+            session.authorize_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=prepared,
+            )
+        )
+        expected = prepared
+        action = "materialize_review_revision_staging"
+        if invalid_carrier == "forged":
+            authorization = object()
+        elif invalid_carrier == "stale":
+            pending = prepared.pending_transition
+            assert pending is not None
+            external = pending["external_file_action"]
+            assert isinstance(external, Mapping)
+            staging_path = Path(external["staging_path"])
+
+            def materialize() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                staging_path.write_bytes(fixture.request_review_raw)
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action=action,
+                    evidence={
+                        "staging_path": str(staging_path),
+                        "staging_parent_identity": list(
+                            path_identity(staging_path.parent)
+                        ),
+                        "staging_identity": list(
+                            path_identity(staging_path)
+                        ),
+                        "staging_size": len(fixture.request_review_raw),
+                        "staging_sha256": fixture.request_review_sha256,
+                    },
+                )
+
+            _setup_action, expected = _execute_review_revision_step_under_lock(
+                lease=lease,
+                cursor=prepared,
+                physical_action=materialize,
+            )
+        elif invalid_carrier == "reused":
+            assert isinstance(
+                authorization,
+                session.CandidateReviewRevisionAuthorization,
+            )
+            with pytest.raises(AssertionError, match="consumed once"):
+                session._execute_candidate_review_revision_physical_step(
+                    session_lease=lease,
+                    expected_revision_session=prepared,
+                    revision_authorization=authorization,
+                    action=action,
+                    physical_action=lambda: (_ for _ in ()).throw(
+                        AssertionError("consumed once")
+                    ),
+                )
+        elif invalid_carrier == "wrong_action":
+            action = "commit_bound_review_revision_request"
+        elif invalid_carrier == "wrong_family":
+            assert isinstance(
+                authorization,
+                session.CandidateReviewRevisionAuthorization,
+            )
+            authorization._opaque.family = "terminal_retirement"
+
+        if bypass_carrier_guards:
+            assert monkeypatch is not None
+            monkeypatch.setattr(
+                session,
+                "_require_candidate_review_revision_execution_context",
+                lambda **_kwargs: None,
+            )
+
+            def bypass_generic_carrier_guard(**kwargs: object) -> object:
+                callback = kwargs["physical_action"]
+                assert callable(callback)
+                return callback()
+
+            monkeypatch.setattr(
+                session,
+                "_execute_physical_step",
+                bypass_generic_carrier_guard,
+            )
+
+        def invoke() -> None:
+            session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=expected,
+                revision_authorization=authorization,
+                action=action,
+                physical_action=forbidden,
+            )
+
+        if invalid_carrier == "cross_session":
+            with _lease(foreign.root) as foreign_lease:
+                foreign_prepared = _prepare_review_revision_under_lock(
+                    foreign,
+                    foreign_lease,
+                )
+                authorization = (
+                    session.authorize_candidate_review_revision_under_lock(
+                        session_lease=foreign_lease,
+                        expected_revision_session=foreign_prepared,
+                    )
+                )
+                with pytest.raises(session.SessionCapabilityError):
+                    invoke()
+        elif invalid_carrier == "cross_thread":
+            errors: list[BaseException] = []
+
+            def invoke_in_thread() -> None:
+                try:
+                    invoke()
+                except BaseException as error:
+                    errors.append(error)
+
+            worker = Thread(target=invoke_in_thread)
+            worker.start()
+            worker.join()
+            assert len(errors) == 1
+            if bypass_carrier_guards:
+                raise errors[0]
+            assert isinstance(errors[0], session.SessionCapabilityError)
+        else:
+            with pytest.raises(session.SessionCapabilityError):
+                invoke()
+        assert callback_count == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_carrier",
+    (
+        "forged",
+        "stale",
+        "reused",
+        "cross_session",
+        "cross_thread",
+        "wrong_action",
+        "wrong_family",
+    ),
+)
+def test_review_revision_carriers_reject_before_physical_callback(
+    tmp_path: Path,
+    invalid_carrier: str,
+) -> None:
+    _assert_review_revision_carrier_rejected_before_callback(
+        tmp_path,
+        invalid_carrier,
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_carrier",
+    (
+        "forged",
+        "stale",
+        "reused",
+        "cross_session",
+        "cross_thread",
+        "wrong_action",
+        "wrong_family",
+    ),
+)
+def test_review_revision_carrier_behavior_kills_guard_bypasses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_carrier: str,
+) -> None:
+    with pytest.raises(
+        AssertionError,
+        match="^invalid revision carrier reached callback$",
+    ):
+        _assert_review_revision_carrier_rejected_before_callback(
+            tmp_path,
+            invalid_carrier,
+            monkeypatch=monkeypatch,
+            bypass_carrier_guards=True,
+        )
 
 
 def _exercise_capability_contract(base: Path, *, case: str) -> None:
@@ -12966,6 +17633,112 @@ def _owner_old_journal_postcondition(
     }
 
 
+def _assert_owner_authority_precedes_observation(
+    *,
+    owner: Mapping[str, object],
+    session_json_path: Path,
+    invalid_authorizers: Sequence[Callable[[], object]],
+    authorize_valid: Callable[[], object],
+) -> object:
+    owner_paths = {
+        Path(str(owner["tombstone_path"])),
+        Path(str(owner["initial_owner_journal_path"])),
+        Path(str(owner["retired_target_path"])),
+        Path(str(owner["successor_owner_journal_path"])),
+    }
+    relative_entry = owner.get("next_entry_relative_path")
+    if isinstance(relative_entry, str):
+        owner_paths.add(
+            Path(str(owner["retired_target_path"])) / relative_entry
+        )
+    owner_paths.update(path.parent for path in tuple(owner_paths))
+    owner_paths = {path.absolute() for path in owner_paths}
+    owner_files = {
+        path: path.read_bytes()
+        for path in owner_paths
+        if path.is_file()
+    }
+    session_bytes = session_json_path.read_bytes()
+    counters = {
+        "read_exact": 0,
+        "identity": 0,
+        "lexists": 0,
+        "directory": 0,
+    }
+    original_read_exact = session._read_exact_owner_file
+    original_identity = session.path_identity
+    original_lexists = session.os.path.lexists
+    original_directory = session._require_owner_directory
+
+    def is_owner_path(value: object) -> bool:
+        try:
+            return Path(value).absolute() in owner_paths
+        except (TypeError, ValueError):
+            return False
+
+    def counted_read_exact(*args: object, **kwargs: object) -> object:
+        counters["read_exact"] += 1
+        return original_read_exact(*args, **kwargs)
+
+    def counted_identity(path: object) -> object:
+        if is_owner_path(path):
+            counters["identity"] += 1
+        return original_identity(path)
+
+    def counted_lexists(path: object) -> bool:
+        if is_owner_path(path):
+            counters["lexists"] += 1
+        return original_lexists(path)
+
+    def counted_directory(*args: object, **kwargs: object) -> object:
+        counters["directory"] += 1
+        return original_directory(*args, **kwargs)
+
+    with patch.object(
+        session,
+        "_read_exact_owner_file",
+        side_effect=counted_read_exact,
+    ), patch.object(
+        session,
+        "path_identity",
+        side_effect=counted_identity,
+    ), patch.object(
+        session.os.path,
+        "lexists",
+        side_effect=counted_lexists,
+    ), patch.object(
+        session,
+        "_require_owner_directory",
+        side_effect=counted_directory,
+    ):
+        for invoke_invalid in invalid_authorizers:
+            with pytest.raises(
+                (
+                    session.SessionConflictError,
+                    session.SessionCapabilityError,
+                ),
+                match=(
+                    "stale|cursor|capability|expected|forged|thread|action"
+                ),
+            ):
+                invoke_invalid()
+            assert counters == {
+                "read_exact": 0,
+                "identity": 0,
+                "lexists": 0,
+                "directory": 0,
+            }
+        authorization = authorize_valid()
+        assert all(value > 0 for value in counters.values())
+
+    assert {
+        path: path.read_bytes()
+        for path in owner_files
+    } == owner_files
+    assert session_json_path.read_bytes() == session_bytes
+    return authorization
+
+
 def _execute_owner_action_case(
     base: Path,
     *,
@@ -13226,12 +17999,84 @@ def _execute_owner_action_case(
         )
 
     with _lease(root) as lease:
-        authorization = (
-            session._authorize_nonterminal_apply_recovery_under_lock(
-                session_lease=lease,
-                expected_recovery_session=active,
-                expected_action=action,
+        if action == "delete_owner_cleanup_entry":
+            _foreign_root, foreign_cursor = _new_session(
+                base / "foreign-owner-authority"
             )
+            stale_value = active.to_value()
+            stale_value.pop("content_sha256")
+            stale_value["preview_requested"] = not active.preview_requested
+            stale = session._seal_session_value(
+                stale_value,
+                session_identity=active.session_identity,
+            )
+
+            def cross_thread_nonterminal_authorize() -> object:
+                errors: list[BaseException] = []
+
+                def invoke() -> None:
+                    try:
+                        session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=lease,
+                            expected_recovery_session=active,
+                            expected_action=action,
+                        )
+                    except BaseException as error:
+                        errors.append(error)
+
+                worker = Thread(target=invoke)
+                worker.start()
+                worker.join()
+                assert len(errors) == 1
+                raise errors[0]
+
+            authorization = (
+                _assert_owner_authority_precedes_observation(
+                    owner=owner,
+                    session_json_path=root / "session.json",
+                    invalid_authorizers=(
+                        lambda: session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=lease,
+                            expected_recovery_session=stale,
+                            expected_action=action,
+                        ),
+                        lambda: session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=object(),
+                            expected_recovery_session=active,
+                            expected_action=action,
+                        ),
+                        lambda: session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=lease,
+                            expected_recovery_session=active,
+                            expected_action="retire_owner_target_root",
+                        ),
+                        lambda: session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=lease,
+                            expected_recovery_session=foreign_cursor,
+                            expected_action=action,
+                        ),
+                        cross_thread_nonterminal_authorize,
+                    ),
+                    authorize_valid=lambda: (
+                        session._authorize_nonterminal_apply_recovery_under_lock(
+                            session_lease=lease,
+                            expected_recovery_session=active,
+                            expected_action=action,
+                        )
+                    ),
+                )
+            )
+        else:
+            authorization = (
+                session._authorize_nonterminal_apply_recovery_under_lock(
+                    session_lease=lease,
+                    expected_recovery_session=active,
+                    expected_action=action,
+                )
+            )
+        assert isinstance(
+            authorization,
+            session.RuntimeAttemptRecoveryAuthorization,
         )
         receipt = session._execute_apply_recovery_physical_step(
             recovery_authorization=authorization,
@@ -15235,9 +20080,87 @@ def _terminal_owner_noop_is_accepted(base: Path, *, action: str) -> bool:
             predecessor=prepared,
             value=value,
         )
-        authorization = session.authorize_terminal_retirement_under_lock(
-            session_lease=lease,
-            expected_retirement_session=cursor,
+        if action == "delete_owner_cleanup_entry":
+            _foreign_root, foreign_cursor = _new_session(
+                base / "foreign-terminal-owner-authority"
+            )
+            stale_value = cursor.to_value()
+            stale_value.pop("content_sha256")
+            stale_value["preview_requested"] = not cursor.preview_requested
+            stale = session._seal_session_value(
+                stale_value,
+                session_identity=cursor.session_identity,
+            )
+            wrong_stage = copy(cursor)
+            object.__setattr__(wrong_stage, "phase", session.LiveStartPhase.INPUT_FROZEN)
+            object.__setattr__(wrong_stage, "canonical_json", b'{"wrong":"stage"}\n')
+            wrong_action = copy(cursor)
+            object.__setattr__(wrong_action, "terminal_retirement", None)
+            object.__setattr__(wrong_action, "canonical_json", b'{"wrong":"action"}\n')
+
+            def cross_thread_terminal_authorize() -> object:
+                errors: list[BaseException] = []
+
+                def invoke() -> None:
+                    try:
+                        session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=cursor,
+                        )
+                    except BaseException as error:
+                        errors.append(error)
+
+                worker = Thread(target=invoke)
+                worker.start()
+                worker.join()
+                assert len(errors) == 1
+                raise errors[0]
+
+            authorization = (
+                _assert_owner_authority_precedes_observation(
+                    owner=owner,
+                    session_json_path=root / "session.json",
+                    invalid_authorizers=(
+                        lambda: session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=stale,
+                        ),
+                        lambda: session.authorize_terminal_retirement_under_lock(
+                            session_lease=object(),
+                            expected_retirement_session=cursor,
+                        ),
+                        lambda: session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=foreign_cursor,
+                        ),
+                        lambda: session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=wrong_stage,
+                        ),
+                        lambda: session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=wrong_action,
+                        ),
+                        cross_thread_terminal_authorize,
+                    ),
+                    authorize_valid=lambda: (
+                        session.authorize_terminal_retirement_under_lock(
+                            session_lease=lease,
+                            expected_retirement_session=cursor,
+                        )
+                    ),
+                )
+            )
+        else:
+            authorization = (
+                session.authorize_terminal_retirement_under_lock(
+                    session_lease=lease,
+                    expected_retirement_session=cursor,
+                )
+            )
+        assert isinstance(
+            authorization,
+            session.TerminalRetirementAuthorization,
         )
         current_resolution = retirement["terminal_resolution_evidence"]
         next_owner = session._thaw(owner)
@@ -17624,6 +22547,327 @@ def test_terminal_retirement_authority_is_persisted_thread_bound_and_single_use(
 
 class _FindingGMutationSentinel(RuntimeError):
     """Prove that a signed family reached its specialized API."""
+
+
+@pytest.mark.parametrize(
+    "family",
+    (
+        "public_artifact_guard",
+        "nonterminal_owner_authority_first",
+        "terminal_owner_authority_first",
+    ),
+)
+def test_task3_round5_guards_reach_surgical_mutation_controls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+) -> None:
+    if family == "public_artifact_guard":
+        monkeypatch.setattr(
+            session,
+            "_validate_public_update_scope",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                _FindingGMutationSentinel(family)
+            ),
+        )
+
+        exercise = partial(
+            _assert_public_artifact_binding_guard,
+            tmp_path / family,
+        )
+    elif family == "nonterminal_owner_authority_first":
+        original = session._authenticate_authorization_cursor_under_lock
+
+        def nonterminal_authority_mutant(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            original(*args, **kwargs)
+            raise _FindingGMutationSentinel(family)
+
+        monkeypatch.setattr(
+            session,
+            "_authenticate_authorization_cursor_under_lock",
+            nonterminal_authority_mutant,
+        )
+        exercise = partial(
+            _execute_owner_action_case,
+            tmp_path / family,
+            action="delete_owner_cleanup_entry",
+        )
+    else:
+        assert family == "terminal_owner_authority_first"
+        original = session._authenticate_authorization_cursor_under_lock
+
+        def terminal_authority_mutant(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            original(*args, **kwargs)
+            raise _FindingGMutationSentinel(family)
+
+        monkeypatch.setattr(
+            session,
+            "_authenticate_authorization_cursor_under_lock",
+            terminal_authority_mutant,
+        )
+        exercise = partial(
+            _terminal_owner_noop_is_accepted,
+            tmp_path / family,
+            action="delete_owner_cleanup_entry",
+        )
+
+    with pytest.raises(
+        _FindingGMutationSentinel,
+        match=f"^{re.escape(family)}$",
+    ):
+        exercise()
+
+
+@pytest.mark.parametrize(
+    "guard",
+    (
+        "pending_matrix",
+        "exact_step_evidence",
+        "public_pending_smuggle",
+        "commit_final_identity",
+        "prepared_unbound_recovery",
+        "final_cleanup_cas",
+    ),
+)
+def test_review_revision_behavior_controls_kill_guard_bypasses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    guard: str,
+) -> None:
+    fixture = _prepare_review_revision_fixture(tmp_path / guard)
+    with pytest.raises(
+        _FindingGMutationSentinel,
+        match=f"^{re.escape(guard)}$",
+    ):
+        with _lease(fixture.root) as lease:
+            prepared = _prepare_review_revision_under_lock(fixture, lease)
+            if guard == "pending_matrix":
+                invalid_pending = session._thaw(prepared.pending_transition)
+                invalid_pending.pop("content_sha256")
+                invalid_pending["actions"][0]["review_path"] = str(
+                    fixture.review_path
+                )
+                monkeypatch.setattr(
+                    session,
+                    "_validate_review_revision_pending_matrix",
+                    lambda **_kwargs: None,
+                )
+                accepted = session._seal_pending(invalid_pending)
+                assert accepted["actions"][0]["review_path"] == str(
+                    fixture.review_path
+                )
+                raise _FindingGMutationSentinel(guard)
+
+            if guard == "public_pending_smuggle":
+                installable_pending = prepared.pending_transition
+                cleared = session._transition_receipt_authorized_under_lock(
+                    session_lease=lease,
+                    expected_session=prepared,
+                    event="same_phase_cas",
+                    changes={"pending_transition": None},
+                )
+                monkeypatch.setattr(
+                    session,
+                    "_validate_public_update_scope",
+                    lambda **_kwargs: None,
+                )
+                accepted = session.transition_live_start_session_under_lock(
+                    session_lease=lease,
+                    expected_session=cleared,
+                    event="same_phase_cas",
+                    changes={
+                        "pending_transition": installable_pending,
+                    },
+                )
+                assert accepted.pending_transition is not None
+                assert accepted.pending_transition["operation"] == (
+                    "review_revision"
+                )
+                raise _FindingGMutationSentinel(guard)
+
+            pending = prepared.pending_transition
+            assert pending is not None
+            external = pending["external_file_action"]
+            assert isinstance(external, Mapping)
+            staging_path = Path(external["staging_path"])
+            if guard == "prepared_unbound_recovery":
+                staging_path.write_bytes(fixture.request_review_raw)
+                real_lexists = os.path.lexists
+
+                def hide_unbound_residue(path: object) -> bool:
+                    if Path(path) == staging_path:
+                        return False
+                    return real_lexists(path)
+
+                monkeypatch.setattr(session.os.path, "lexists", hide_unbound_residue)
+                authorization = (
+                    session.authorize_candidate_review_revision_under_lock(
+                        session_lease=lease,
+                        expected_revision_session=prepared,
+                    )
+                )
+                assert authorization._opaque.action == (
+                    "materialize_review_revision_staging"
+                )
+                raise _FindingGMutationSentinel(guard)
+
+            staging_bound = _materialize_review_revision_staging(
+                fixture=fixture,
+                lease=lease,
+                prepared=prepared,
+            )
+            if guard in {"exact_step_evidence", "commit_final_identity"}:
+                pending = staging_bound.pending_transition
+                assert pending is not None
+                external = pending["external_file_action"]
+                assert isinstance(external, Mapping)
+                staging_path = Path(external["staging_path"])
+                persisted_identity = tuple(external["staging_identity"])
+                if guard == "commit_final_identity":
+                    staging_path.unlink()
+                    fixture.review_path.write_bytes(
+                        fixture.request_review_raw
+                    )
+                    assert path_identity(fixture.review_path) != (
+                        persisted_identity
+                    )
+                    real_read_bound_file = session._read_bound_file
+
+                    def hide_final_identity(
+                        path: Path,
+                        **kwargs: object,
+                    ) -> tuple[bytes, tuple[int, ...]]:
+                        raw, identity = real_read_bound_file(path, **kwargs)
+                        if Path(path) == fixture.review_path:
+                            return raw, persisted_identity
+                        return raw, identity
+
+                    monkeypatch.setattr(
+                        session,
+                        "_read_bound_file",
+                        hide_final_identity,
+                    )
+                else:
+                    staging_path.replace(fixture.review_path)
+                authorization = (
+                    session.authorize_candidate_review_revision_under_lock(
+                        session_lease=lease,
+                        expected_revision_session=staging_bound,
+                    )
+                )
+                evidence = {
+                    "final_path": str(fixture.review_path),
+                    "final_parent_identity": external["parent_identity"],
+                    "final_identity": list(persisted_identity),
+                    "final_size": len(fixture.request_review_raw),
+                    "final_sha256": fixture.request_review_sha256,
+                    "staging_absent": True,
+                }
+                if guard == "exact_step_evidence":
+                    evidence["smuggled"] = True
+                    monkeypatch.setattr(
+                        session,
+                        "_require_exact_revision_step_evidence",
+                        lambda **_kwargs: None,
+                    )
+
+                def confirm_commit() -> (
+                    session.CandidateReviewRevisionPhysicalPostcondition
+                ):
+                    return session.CandidateReviewRevisionPhysicalPostcondition(
+                        action="commit_bound_review_revision_request",
+                        evidence=evidence,
+                    )
+
+                receipt = (
+                    session._execute_candidate_review_revision_physical_step(
+                        session_lease=lease,
+                        expected_revision_session=staging_bound,
+                        revision_authorization=authorization,
+                        action="commit_bound_review_revision_request",
+                        physical_action=confirm_commit,
+                    )
+                )
+                accepted = (
+                    session.advance_candidate_review_revision_under_lock(
+                        session_lease=lease,
+                        expected_revision_session=staging_bound,
+                        revision_step_receipt=receipt,
+                    )
+                )
+                assert accepted.pending_transition is not None
+                assert accepted.pending_transition["stage"] == (
+                    "PRIMARY_APPLIED"
+                )
+                raise _FindingGMutationSentinel(guard)
+
+            assert guard == "final_cleanup_cas"
+            primary = _commit_review_revision_request(
+                fixture=fixture,
+                lease=lease,
+                staging_bound=staging_bound,
+            )
+            authorization = (
+                session.authorize_candidate_review_revision_under_lock(
+                    session_lease=lease,
+                    expected_revision_session=primary,
+                )
+            )
+            row = primary.pending_transition["actions"][0]
+
+            def cleanup() -> (
+                session.CandidateReviewRevisionPhysicalPostcondition
+            ):
+                fixture.validation_path.unlink()
+                fixture.validation_path.parent.rmdir()
+                return session.CandidateReviewRevisionPhysicalPostcondition(
+                    action="retire_candidate_validation_receipt",
+                    evidence={
+                        "path": row["path"],
+                        "parent_identity": row["parent_identity"],
+                        "historical_identity": row["historical_identity"],
+                        "historical_size": row["historical_size"],
+                        "historical_sha256": row["historical_sha256"],
+                        "directory_path": row["directory_path"],
+                        "directory_parent_identity": row[
+                            "directory_parent_identity"
+                        ],
+                        "directory_identity": row["directory_identity"],
+                        "disposition": "removed",
+                        "directory_disposition": "removed",
+                    },
+                )
+
+            receipt = session._execute_candidate_review_revision_physical_step(
+                session_lease=lease,
+                expected_revision_session=primary,
+                revision_authorization=authorization,
+                action="retire_candidate_validation_receipt",
+                physical_action=cleanup,
+            )
+            fixture.review_path.unlink()
+            fixture.review_path.write_bytes(fixture.request_review_raw)
+            monkeypatch.setattr(
+                session,
+                "_require_review_revision_final_binding",
+                lambda **_kwargs: (
+                    fixture.request_review_raw,
+                    path_identity(fixture.review_path),
+                ),
+            )
+            accepted = session.advance_candidate_review_revision_under_lock(
+                session_lease=lease,
+                expected_revision_session=primary,
+                revision_step_receipt=receipt,
+            )
+            assert accepted.phase is session.LiveStartPhase.CANDIDATE_DRAFTED
+            raise _FindingGMutationSentinel(guard)
 
 
 @pytest.mark.parametrize(
