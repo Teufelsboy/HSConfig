@@ -35,12 +35,17 @@ from hsconfig.atomic_io import (
     atomic_write_reserved_bytes,
 )
 from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+from hsconfig.output_operation_admission import (
+    _require_windows_safe_absolute_path,
+)
 from hsconfig.package_io import (
     MAX_FILESYSTEM_NODES,
     PathIdentity,
     path_identity,
     path_identity_from_status,
     require_no_alternate_data_streams,
+    require_plain_directory,
+    require_same_identity_resolution,
     secure_create_directory,
     secure_open_file_descriptor,
     secure_unlink,
@@ -117,6 +122,8 @@ LIVE_START_FROZEN_INPUT_FILES = (
     "inputs/cards.json",
     "inputs/sources.json",
 )
+_PHYSICAL_IDENTITY_MAX_MISSING_COMPONENTS = 256
+_PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS = 256
 LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES = MappingProxyType(
     {
         "inputs/input_snapshot_manifest.json": 256 * 1024,
@@ -800,15 +807,69 @@ def _decode_frozen_input_json(raw: bytes) -> dict[str, Any]:
     return value
 
 
-def _resolve_local_app_data_root(configured: Path | None) -> Path:
+def _canonical_absolute_root(
+    path: os.PathLike[str] | str,
+    *,
+    field: str,
+) -> Path:
+    original_is_string = isinstance(path, str)
+    try:
+        text = os.fspath(path)
+    except TypeError as error:
+        raise SessionValidationError(
+            f"live_start_{field}_not_canonical"
+        ) from error
+    if (
+        type(text) is not str
+        or not text
+        or "\x00" in text
+        or os.path.normpath(text) != text
+    ):
+        raise SessionValidationError(f"live_start_{field}_not_canonical")
+    candidate = Path(text)
+    serialized = str(candidate)
+    bare_unc_share_serialization = (
+        text == candidate.drive
+        and candidate.root == "\\"
+        and candidate.anchor == text + "\\"
+        and serialized == text + "\\"
+    )
+    explicit_unc_share_root_separator = (
+        original_is_string
+        and candidate.drive.startswith("\\\\")
+        and candidate.root == "\\"
+        and text == candidate.anchor
+        and serialized == text
+    )
+    if (
+        not candidate.is_absolute()
+        or explicit_unc_share_root_separator
+        or (serialized != text and not bare_unc_share_serialization)
+    ):
+        raise SessionValidationError(f"live_start_{field}_not_canonical")
+    try:
+        return _require_windows_safe_absolute_path(
+            candidate,
+            error=f"live_start_{field}_windows_namespace_invalid",
+        )
+    except ValueError as error:
+        raise SessionValidationError(str(error)) from error
+
+
+def _resolve_local_app_data_root(
+    configured: os.PathLike[str] | str | None,
+) -> Path:
     if configured is None:
         environment_value = os.environ.get("LOCALAPPDATA")
         if not environment_value:
             raise SessionValidationError(
                 "live_start_local_app_data_missing"
             )
-        configured = Path(environment_value)
-    return Path(configured).absolute()
+        configured = environment_value
+    return _canonical_absolute_root(
+        configured,
+        field="local_app_data_root",
+    )
 
 
 def create_live_start_session(
@@ -830,7 +891,35 @@ def create_live_start_session(
 ) -> LiveStartSession:
     """Create one run, its external persistent lock, and initial cursor."""
 
-    root = Path(session_root).absolute()
+    root = _canonical_absolute_root(session_root, field="session_root")
+    local_root = _resolve_local_app_data_root(local_app_data_root)
+    canonical_repository_root = _canonical_absolute_root(
+        repository_root,
+        field="repository_root",
+    )
+    canonical_runtime_root = _canonical_absolute_root(
+        runtime_root,
+        field="runtime_root",
+    )
+    canonical_output_base_root = _canonical_absolute_root(
+        output_base_root,
+        field="output_base_root",
+    )
+    canonical_output_deck_root = _canonical_absolute_root(
+        output_deck_root,
+        field="output_deck_root",
+    )
+    canonical_installed_skill_root = _canonical_absolute_root(
+        installed_skill_root,
+        field="installed_skill_root",
+    )
+    forbidden_roots = (
+        canonical_repository_root,
+        canonical_runtime_root,
+        canonical_output_base_root,
+        canonical_output_deck_root,
+        canonical_installed_skill_root,
+    )
     run_id = root.name
     _require_run_id(run_id)
     _require_deck_name(deck_name)
@@ -840,9 +929,9 @@ def create_live_start_session(
             frozen_compiler_inputs,  # type: ignore[arg-type]
             deck_name=deck_name,
             deck_code_sha256=deck_code_sha256,
-            runtime_root=runtime_root,
-            output_base_root=output_base_root,
-            output_deck_root=output_deck_root,
+            runtime_root=canonical_runtime_root,
+            output_base_root=canonical_output_base_root,
+            output_deck_root=canonical_output_deck_root,
         )
     )
     if (
@@ -860,29 +949,11 @@ def create_live_start_session(
         raise TypeError("live_start_creation_fault_hook_invalid")
     if type(preview_requested) is not bool:
         raise SessionValidationError("live_start_preview_requested_invalid")
-    local_root = _resolve_local_app_data_root(local_app_data_root)
     state_root = local_root / "HSConfig"
     expected_root = state_root / "runs" / run_id
     if root != expected_root:
         raise SessionValidationError(
             "live_start_session_root_not_canonical"
-        )
-    forbidden_roots = tuple(
-        Path(path).absolute()
-        for path in (
-            repository_root,
-            runtime_root,
-            output_base_root,
-            output_deck_root,
-            installed_skill_root,
-        )
-    )
-    if any(
-        _paths_overlap(state_root, forbidden_root)
-        for forbidden_root in forbidden_roots
-    ):
-        raise SessionValidationError(
-            "live_start_session_forbidden_root_overlap"
         )
     runs_root = state_root / "runs"
     locks_root = state_root / "locks"
@@ -894,6 +965,13 @@ def create_live_start_session(
         root,
     )
     _validate_existing_plain_ancestor_chain(local_root)
+    if any(
+        _paths_overlap(state_root, forbidden_root)
+        for forbidden_root in forbidden_roots
+    ):
+        raise SessionValidationError(
+            "live_start_session_forbidden_root_overlap"
+        )
     _require_or_create_plain_directory(state_root)
     _validate_existing_creation_authority_roots_no_ads(state_root)
     _require_or_create_plain_directory(runs_root)
@@ -1007,10 +1085,10 @@ def lease_live_start_session(
     *,
     local_app_data_root: Path | None = None,
 ) -> Iterator[LiveStartSessionLease]:
-    root = Path(session_root).absolute()
+    root = _canonical_absolute_root(session_root, field="session_root")
+    local_root = _resolve_local_app_data_root(local_app_data_root)
     run_id = root.name
     _require_run_id(run_id)
-    local_root = _resolve_local_app_data_root(local_app_data_root)
     expected_root = local_root / "HSConfig" / "runs" / run_id
     if root != expected_root:
         raise SessionValidationError(
@@ -1020,6 +1098,10 @@ def lease_live_start_session(
     lock_path = _session_lock_path(root)
     if not os.path.lexists(root) or not os.path.lexists(lock_path):
         raise FileNotFoundError("live_start_session_authority_missing")
+    _require_existing_live_start_root_ancestry(
+        local_root=local_root,
+        session_root=root,
+    )
     root_identity = path_identity(root)
     lock_parent_identity = path_identity(lock_path.parent)
     with ExclusiveFileLock(
@@ -1886,24 +1968,118 @@ def _session_lock_path(session_root: Path) -> Path:
 
 
 def _paths_overlap(left: Path, right: Path) -> bool:
-    return left == right or left in right.parents or right in left.parents
+    left_mapping = _physical_identity_mapping(left)
+    right_mapping = _physical_identity_mapping(right)
+    return _identity_mappings_overlap(
+        left_identities=left_mapping[0],
+        left_remaining=left_mapping[1],
+        right_identities=right_mapping[0],
+        right_remaining=right_mapping[1],
+    )
+
+
+def _physical_identity_mapping(
+    path: Path,
+) -> tuple[tuple[PathIdentity, ...], tuple[str, ...]]:
+    nearest_existing = Path(path)
+    remaining: list[str] = []
+    while not os.path.lexists(nearest_existing):
+        if len(remaining) >= _PHYSICAL_IDENTITY_MAX_MISSING_COMPONENTS:
+            raise SessionValidationError(
+                "live_start_physical_identity_mapping_missing_bound_exceeded"
+            )
+        parent = nearest_existing.parent
+        if parent == nearest_existing:
+            raise FileNotFoundError(nearest_existing)
+        remaining.append(nearest_existing.name)
+        nearest_existing = parent
+
+    identities: list[PathIdentity] = []
+    current = nearest_existing
+    while True:
+        if len(identities) >= _PHYSICAL_IDENTITY_MAX_ANCESTOR_ROWS:
+            raise SessionValidationError(
+                "live_start_physical_identity_mapping_ancestor_bound_exceeded"
+            )
+        try:
+            require_plain_directory(current)
+            require_same_identity_resolution(current)
+            identity = path_identity(current)
+        except (OSError, ValueError) as error:
+            raise SessionLayoutError(
+                "live_start_physical_identity_mapping_ancestor_invalid"
+            ) from error
+        identities.append(identity)
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return tuple(identities), tuple(reversed(remaining))
+
+
+def _identity_mappings_overlap(
+    *,
+    left_identities: tuple[PathIdentity, ...],
+    left_remaining: tuple[str, ...],
+    right_identities: tuple[PathIdentity, ...],
+    right_remaining: tuple[str, ...],
+) -> bool:
+    if not left_identities or not right_identities:
+        raise SessionValidationError(
+            "live_start_physical_identity_mapping_empty"
+        )
+    if not left_remaining and not right_remaining:
+        return (
+            left_identities[0] in right_identities
+            or right_identities[0] in left_identities
+        )
+    if not left_remaining:
+        return left_identities[0] in right_identities
+    if not right_remaining:
+        return right_identities[0] in left_identities
+    if left_identities[0] != right_identities[0]:
+        return False
+    left_suffix = tuple(os.path.normcase(part) for part in left_remaining)
+    right_suffix = tuple(os.path.normcase(part) for part in right_remaining)
+    shortest = min(len(left_suffix), len(right_suffix))
+    return left_suffix[:shortest] == right_suffix[:shortest]
+
+
+def _require_existing_live_start_root_ancestry(
+    *,
+    local_root: Path,
+    session_root: Path,
+) -> None:
+    state_root = local_root / "HSConfig"
+    runs_root = state_root / "runs"
+    local_mapping = _physical_identity_mapping(local_root)
+    state_mapping = _physical_identity_mapping(state_root)
+    runs_mapping = _physical_identity_mapping(runs_root)
+    session_mapping = _physical_identity_mapping(session_root)
+    if any(
+        remaining
+        for _identities, remaining in (
+            local_mapping,
+            state_mapping,
+            runs_mapping,
+            session_mapping,
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_session_physical_ancestry_missing"
+        )
+    if (
+        state_mapping[0][1:] != local_mapping[0]
+        or runs_mapping[0][1:] != state_mapping[0]
+        or session_mapping[0][1:] != runs_mapping[0]
+    ):
+        raise SessionValidationError(
+            "live_start_session_physical_ancestry_invalid"
+        )
 
 
 def _validate_existing_plain_ancestor_chain(path: Path) -> None:
-    current = Path(path).absolute()
-    existing: list[Path] = []
-    while True:
-        if os.path.lexists(current):
-            existing.append(current)
-        if current.parent == current:
-            break
-        current = current.parent
-    for ancestor in reversed(existing):
-        status = ancestor.lstat()
-        if not stat.S_ISDIR(status.st_mode) or status_is_reparse(status):
-            raise SessionLayoutError(
-                "live_start_state_ancestor_invalid"
-            )
+    _physical_identity_mapping(path)
 
 
 def _validate_existing_creation_authority_roots_no_ads(

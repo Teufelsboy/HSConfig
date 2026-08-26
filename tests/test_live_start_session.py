@@ -317,6 +317,74 @@ def _lease(session_root: Path):
     )
 
 
+def _extended_dos_path_or_skip(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("extended-DOS path aliases are Windows-specific")
+    absolute = Path(path).absolute()
+    if absolute.drive.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + str(absolute)[2:])
+    if len(absolute.drive) != 2 or absolute.drive[1] != ":":
+        pytest.skip("test path is not on a drive-backed Windows volume")
+    return Path("\\\\?\\" + str(absolute))
+
+
+def _noncanonical_windows_root_spellings(path: Path) -> tuple[str, ...]:
+    if os.name != "nt":
+        pytest.skip("raw Windows root spellings are Windows-specific")
+    absolute = Path(path).absolute()
+    text = str(absolute)
+    first_separator = text.find("\\")
+    assert first_separator >= 0
+    return (
+        f"{absolute.parent}\\.\\{absolute.name}",
+        f"{absolute.parent}\\\\{absolute.name}",
+        text[:first_separator] + "/" + text[first_separator + 1 :],
+    )
+
+
+class _SequencedPathLike:
+    def __init__(self, *values: str) -> None:
+        if not values:
+            raise ValueError("sequenced path requires a value")
+        self._values = values
+        self.calls = 0
+
+    def __fspath__(self) -> str:
+        if self.calls >= len(self._values):
+            raise AssertionError("path-like coerced more than expected")
+        value = self._values[self.calls]
+        self.calls += 1
+        return value
+
+
+class _MalformedPathLike:
+    def __fspath__(self) -> int:
+        return 7
+
+
+class _ComparisonLyingString(str):
+    __hash__ = str.__hash__
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        return False
+
+    def __contains__(self, item: object) -> bool:
+        return False
+
+
+class _StringSubclassPathLike:
+    def __init__(self, value: str) -> None:
+        self._value = value
+        self.calls = 0
+
+    def __fspath__(self) -> str:
+        self.calls += 1
+        return _ComparisonLyingString(self._value)
+
+
 def _publish_session_fixture_under_lock(
     *,
     lease: session.LiveStartSessionLease,
@@ -3771,6 +3839,1452 @@ def test_create_requires_canonical_localappdata_roots_and_rejects_overlap_before
             local_app_data_root=tmp_path / "foreign-local",
         ):
             pytest.fail("noncanonical lease unexpectedly opened")
+
+    with session.lease_live_start_session(
+        canonical,
+        local_app_data_root=local_app_data,
+    ) as lease:
+        assert (
+            session.load_live_start_session_under_lock(session_lease=lease)
+            == created
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows namespaces are Windows-specific")
+def test_creation_rejects_windows_root_namespace_aliases_before_observation_or_write(
+    tmp_path: Path,
+) -> None:
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+
+    cases = (
+        "aliased_session_and_local",
+        "aliased_session_only",
+        "aliased_local_only",
+        "aliased_repository",
+        "aliased_runtime",
+        "aliased_output_base",
+        "aliased_output_deck",
+        "aliased_skill",
+    )
+    for ordinal, case in enumerate(cases, start=1):
+        physical_local = (tmp_path / case / "local").absolute()
+        physical_local.mkdir(parents=True)
+        aliased_local = _extended_dos_path_or_skip(physical_local)
+        assert path_identity(aliased_local) == path_identity(physical_local)
+        run_id = f"{ordinal:032x}"
+        normal_session_root = (
+            physical_local / "HSConfig" / "runs" / run_id
+        )
+        aliased_session_root = aliased_local / "HSConfig" / "runs" / run_id
+        arguments: dict[str, object] = {
+            "session_root": normal_session_root,
+            "local_app_data_root": physical_local,
+            "repository_root": tmp_path / case / "repository",
+            "runtime_root": runtime_root,
+            "output_base_root": output_base_root,
+            "output_deck_root": output_deck_root,
+            "installed_skill_root": tmp_path / case / "skill",
+            "deck_name": deck_name,
+            "deck_code_sha256": deck_code_sha256,
+            "frozen_compiler_inputs": frozen,
+            "preview_requested": False,
+        }
+        if case == "aliased_session_and_local":
+            arguments.update(
+                {
+                    "session_root": aliased_session_root,
+                    "local_app_data_root": aliased_local,
+                    "repository_root": physical_local,
+                }
+            )
+        elif case == "aliased_session_only":
+            arguments["session_root"] = aliased_session_root
+        elif case == "aliased_local_only":
+            arguments["local_app_data_root"] = aliased_local
+        elif case == "aliased_repository":
+            arguments["repository_root"] = aliased_local
+        elif case == "aliased_runtime":
+            arguments["runtime_root"] = aliased_local
+        elif case == "aliased_output_base":
+            arguments["output_base_root"] = aliased_local
+        elif case == "aliased_output_deck":
+            arguments["output_deck_root"] = aliased_local
+        else:
+            arguments["installed_skill_root"] = aliased_local
+
+        with (
+            patch.object(
+                session,
+                "_validate_frozen_compiler_inputs",
+                side_effect=AssertionError("frozen inputs observed"),
+            ),
+            patch.object(
+                session,
+                "_paths_overlap",
+                side_effect=AssertionError("physical roots observed"),
+            ),
+        ):
+            with pytest.raises(
+                session.SessionValidationError,
+                match="windows_namespace",
+            ):
+                session.create_live_start_session(**arguments)  # type: ignore[arg-type]
+
+        assert not (physical_local / "HSConfig").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows namespaces are Windows-specific")
+def test_lease_rejects_windows_root_namespace_alias_before_observation(
+    tmp_path: Path,
+) -> None:
+    root, created = _new_session(tmp_path)
+    local_app_data = root.parents[2]
+    aliased_root = _extended_dos_path_or_skip(root)
+    aliased_local = _extended_dos_path_or_skip(local_app_data)
+    assert path_identity(aliased_root) == path_identity(root)
+    assert path_identity(aliased_local) == path_identity(local_app_data)
+
+    for requested_root, requested_local in (
+        (aliased_root, local_app_data),
+        (root, aliased_local),
+        (aliased_root, aliased_local),
+    ):
+        with (
+            patch.object(
+                session,
+                "_validate_existing_plain_ancestor_chain",
+                side_effect=AssertionError("directory observed"),
+            ),
+            patch.object(
+                session,
+                "_physical_identity_mapping",
+                create=True,
+                side_effect=AssertionError("identity ancestry observed"),
+            ),
+            patch.object(
+                session.os.path,
+                "lexists",
+                side_effect=AssertionError("lexists observed"),
+            ),
+            patch.object(
+                session,
+                "path_identity",
+                side_effect=AssertionError("identity observed"),
+            ),
+            patch.object(
+                Path,
+                "lstat",
+                side_effect=AssertionError("lstat observed"),
+            ),
+            patch.object(
+                session,
+                "ExclusiveFileLock",
+                side_effect=AssertionError("lock observed"),
+            ),
+        ):
+            with pytest.raises(
+                session.SessionValidationError,
+                match="windows_namespace",
+            ):
+                with session.lease_live_start_session(
+                    requested_root,
+                    local_app_data_root=requested_local,
+                ):
+                    pytest.fail("unsafe namespace lease unexpectedly opened")
+
+    with _lease(root) as lease:
+        assert (
+            session.load_live_start_session_under_lock(session_lease=lease)
+            == created
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows aliases are Windows-specific")
+def test_live_start_physical_root_overlap_uses_identity_and_missing_suffixes(
+    tmp_path: Path,
+) -> None:
+    physical_parent = (tmp_path / "physical-parent").absolute()
+    physical_child = physical_parent / "existing-child"
+    physical_child.mkdir(parents=True)
+    aliased_parent = _extended_dos_path_or_skip(physical_parent)
+    aliased_child = aliased_parent / "existing-child"
+
+    assert path_identity(aliased_parent) == path_identity(physical_parent)
+    assert path_identity(aliased_child) == path_identity(physical_child)
+    assert session._paths_overlap(
+        aliased_parent / "HSConfig",
+        physical_parent,
+    )
+
+    truth_table = (
+        (physical_parent, aliased_parent, True),
+        (physical_parent, aliased_child, True),
+        (physical_child, aliased_parent, True),
+        (physical_parent / "missing", aliased_parent / "missing", True),
+        (
+            physical_parent / "missing",
+            aliased_parent / "missing" / "prospective-child",
+            True,
+        ),
+        (
+            physical_parent / "MiSsInG",
+            aliased_parent / "missing" / "prospective-child",
+            True,
+        ),
+        (physical_parent / "left", aliased_parent / "right", False),
+    )
+    for left, right, expected in truth_table:
+        assert session._paths_overlap(left, right) is expected
+
+
+def test_live_start_physical_identity_mapping_is_bounded(
+    tmp_path: Path,
+) -> None:
+    existing_base = (tmp_path / "existing-base").absolute()
+    existing_base.mkdir()
+    exact_missing = existing_base.joinpath(*(["m"] * 256))
+    overflow_missing = exact_missing / "m"
+
+    def only_base_exists(path: object) -> bool:
+        return Path(path) == existing_base
+
+    with patch.object(session.os.path, "lexists", side_effect=only_base_exists):
+        identities, remaining = session._physical_identity_mapping(exact_missing)
+        assert identities[0] == path_identity(existing_base)
+        assert remaining == tuple(["m"] * 256)
+        with pytest.raises(
+            session.SessionValidationError,
+            match="missing_bound",
+        ):
+            session._physical_identity_mapping(overflow_missing)
+
+    synthetic_root = Path(tmp_path.anchor)
+    exact_existing = synthetic_root.joinpath(*(["e"] * 255))
+    overflow_existing = exact_existing / "e"
+
+    def synthetic_identity(path: object) -> tuple[int, int, int]:
+        return 1, len(Path(path).parts), 1
+
+    with (
+        patch.object(session.os.path, "lexists", return_value=True),
+        patch.object(session, "require_plain_directory"),
+        patch.object(session, "require_same_identity_resolution"),
+        patch.object(session, "path_identity", side_effect=synthetic_identity),
+    ):
+        identities, remaining = session._physical_identity_mapping(exact_existing)
+        assert len(identities) == 256
+        assert remaining == ()
+        with pytest.raises(
+            session.SessionValidationError,
+            match="ancestor_bound",
+        ):
+            session._physical_identity_mapping(overflow_existing)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows spellings are Windows-specific")
+def test_creation_rejects_noncanonical_raw_root_spellings_before_observation_or_write(
+    tmp_path: Path,
+) -> None:
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    raw_fields = (
+        "session_root",
+        "local_app_data_root",
+        "repository_root",
+        "runtime_root",
+        "output_base_root",
+        "output_deck_root",
+        "installed_skill_root",
+        "environment_local_app_data_root",
+    )
+
+    for field_ordinal, field in enumerate(raw_fields, start=1):
+        for spelling_ordinal in range(3):
+            case_root = (
+                tmp_path / f"create-{field_ordinal}-{spelling_ordinal}"
+            ).absolute()
+            local_app_data = case_root / "local"
+            run_id = f"{field_ordinal * 10 + spelling_ordinal:032x}"
+            session_root = (
+                local_app_data / "HSConfig" / "runs" / run_id
+            )
+            roots: dict[str, object] = {
+                "session_root": session_root,
+                "local_app_data_root": local_app_data,
+                "repository_root": case_root / "repository",
+                "runtime_root": runtime_root,
+                "output_base_root": output_base_root,
+                "output_deck_root": output_deck_root,
+                "installed_skill_root": case_root / "skill",
+            }
+            target_field = (
+                "local_app_data_root"
+                if field == "environment_local_app_data_root"
+                else field
+            )
+            target_path = Path(roots[target_field])
+            raw_spelling = _noncanonical_windows_root_spellings(target_path)[
+                spelling_ordinal
+            ]
+            environment: dict[str, str] = {}
+            if field == "environment_local_app_data_root":
+                roots["local_app_data_root"] = None
+                environment["LOCALAPPDATA"] = raw_spelling
+            else:
+                roots[field] = raw_spelling
+
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch.object(
+                    session,
+                    "_validate_frozen_compiler_inputs",
+                    side_effect=AssertionError("frozen inputs observed"),
+                ),
+                patch.object(
+                    session,
+                    "_paths_overlap",
+                    side_effect=AssertionError("physical roots observed"),
+                ),
+                patch.object(
+                    session,
+                    "_validate_existing_plain_ancestor_chain",
+                    side_effect=AssertionError("directory observed"),
+                ),
+                patch.object(
+                    session.os.path,
+                    "lexists",
+                    side_effect=AssertionError("lexists observed"),
+                ),
+                patch.object(
+                    session,
+                    "path_identity",
+                    side_effect=AssertionError("identity observed"),
+                ),
+                patch.object(
+                    Path,
+                    "lstat",
+                    side_effect=AssertionError("lstat observed"),
+                ),
+                patch.object(
+                    session,
+                    "ExclusiveFileLock",
+                    side_effect=AssertionError("lock observed"),
+                ),
+            ):
+                with pytest.raises(
+                    session.SessionValidationError,
+                    match="not_canonical",
+                ):
+                    session.create_live_start_session(
+                        **roots,  # type: ignore[arg-type]
+                        deck_name=deck_name,
+                        deck_code_sha256=deck_code_sha256,
+                        frozen_compiler_inputs=frozen,
+                        preview_requested=False,
+                    )
+
+            assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows spellings are Windows-specific")
+def test_lease_rejects_noncanonical_raw_root_spellings_before_observation(
+    tmp_path: Path,
+) -> None:
+    root, created = _new_session(tmp_path)
+    local_app_data = root.parents[2]
+    session_bytes = (root / "session.json").read_bytes()
+    lock_path = root.parent.parent / "locks" / f"live-start-{root.name}.lock"
+    lock_identity = path_identity(lock_path)
+    cases: list[tuple[object, object | None, dict[str, str]]] = []
+    for raw_root in _noncanonical_windows_root_spellings(root):
+        cases.append((raw_root, local_app_data, {}))
+    for raw_local in _noncanonical_windows_root_spellings(local_app_data):
+        cases.append((root, raw_local, {}))
+        cases.append((root, None, {"LOCALAPPDATA": raw_local}))
+
+    for requested_root, requested_local, environment in cases:
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch.object(
+                session,
+                "_validate_existing_plain_ancestor_chain",
+                side_effect=AssertionError("directory observed"),
+            ),
+            patch.object(
+                session,
+                "_physical_identity_mapping",
+                side_effect=AssertionError("identity ancestry observed"),
+            ),
+            patch.object(
+                session.os.path,
+                "lexists",
+                side_effect=AssertionError("lexists observed"),
+            ),
+            patch.object(
+                session,
+                "path_identity",
+                side_effect=AssertionError("identity observed"),
+            ),
+            patch.object(
+                Path,
+                "lstat",
+                side_effect=AssertionError("lstat observed"),
+            ),
+            patch.object(
+                session,
+                "ExclusiveFileLock",
+                side_effect=AssertionError("lock observed"),
+            ),
+        ):
+            with pytest.raises(
+                session.SessionValidationError,
+                match="not_canonical",
+            ):
+                with session.lease_live_start_session(
+                    requested_root,  # type: ignore[arg-type]
+                    local_app_data_root=requested_local,  # type: ignore[arg-type]
+                ):
+                    pytest.fail("noncanonical raw lease unexpectedly opened")
+
+        assert (root / "session.json").read_bytes() == session_bytes
+        assert path_identity(lock_path) == lock_identity
+        assert lock_path.read_bytes() == b""
+
+    with _lease(root) as lease:
+        assert (
+            session.load_live_start_session_under_lock(session_lease=lease)
+            == created
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_live_start_raw_root_spelling_gate_preserves_canonical_drive_and_non_ipc_unc(
+    tmp_path: Path,
+) -> None:
+    canonical_drive = (tmp_path / "canonical-drive-root").absolute()
+    assert (
+        session._canonical_absolute_root(canonical_drive, field="control")
+        == canonical_drive
+    )
+    for raw_unc in (
+        r"\\server\ordinary-share\authority",
+        r"\\server\C$\authority",
+        r"\\server\ADMIN$\authority",
+    ):
+        candidate = Path(raw_unc)
+        assert (
+            session._canonical_absolute_root(candidate, field="control")
+            == candidate
+        )
+
+    for raw_unc in (
+        r"\\server\ordinary-share",
+        r"\\server\C$",
+        r"\\server\ADMIN$",
+    ):
+        candidate = Path(raw_unc)
+        assert candidate.drive == raw_unc
+        assert candidate.root == "\\"
+        assert candidate.anchor == raw_unc + "\\"
+        assert str(candidate) == raw_unc + "\\"
+        assert (
+            session._canonical_absolute_root(raw_unc, field="control")
+            == candidate
+        )
+
+    bare_unc = r"\\server\ordinary-share"
+    for raw_unc in (
+        bare_unc + "\\",
+        bare_unc + "\\\\",
+        bare_unc + r"\.",
+        r"\\server\\ordinary-share",
+        r"\\server/ordinary-share",
+        r"//server/ordinary-share",
+    ):
+        with pytest.raises(
+            session.SessionValidationError,
+            match="live_start_control_not_canonical",
+        ):
+            session._canonical_absolute_root(raw_unc, field="control")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_creation_accepts_raw_bare_unc_roots_through_the_lexical_gate_only(
+    tmp_path: Path,
+) -> None:
+    class LexicalGatePassed(RuntimeError):
+        pass
+
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    public_surfaces = (
+        "local_app_data_root",
+        "environment_local_app_data_root",
+        "repository_root",
+        "runtime_root",
+        "output_base_root",
+        "output_deck_root",
+        "installed_skill_root",
+    )
+    bare_unc_roots = (
+        r"\\server\ordinary-share",
+        r"\\server\C$",
+        r"\\server\ADMIN$",
+    )
+
+    for share_ordinal, bare_unc in enumerate(bare_unc_roots, start=1):
+        for surface_ordinal, surface in enumerate(public_surfaces, start=1):
+            case_root = (
+                tmp_path / f"bare-unc-create-{share_ordinal}-{surface_ordinal}"
+            ).absolute()
+            local_app_data = case_root / "local"
+            run_id = f"{share_ordinal * 10 + surface_ordinal:032x}"
+            roots: dict[str, object] = {
+                "session_root": local_app_data / "HSConfig" / "runs" / run_id,
+                "local_app_data_root": local_app_data,
+                "repository_root": case_root / "repository",
+                "runtime_root": runtime_root,
+                "output_base_root": output_base_root,
+                "output_deck_root": output_deck_root,
+                "installed_skill_root": case_root / "skill",
+            }
+            environment: dict[str, str] = {}
+            if surface in {
+                "local_app_data_root",
+                "environment_local_app_data_root",
+            }:
+                roots["session_root"] = (
+                    bare_unc + f"\\HSConfig\\runs\\{run_id}"
+                )
+                if surface == "environment_local_app_data_root":
+                    roots["local_app_data_root"] = None
+                    environment["LOCALAPPDATA"] = bare_unc
+                else:
+                    roots["local_app_data_root"] = bare_unc
+            else:
+                roots[surface] = bare_unc
+
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch.object(
+                    session,
+                    "_validate_frozen_compiler_inputs",
+                    side_effect=LexicalGatePassed("frozen-input boundary"),
+                ),
+                patch.object(
+                    session,
+                    "_validate_existing_plain_ancestor_chain",
+                    side_effect=AssertionError("directory observed"),
+                ),
+                patch.object(
+                    session,
+                    "_paths_overlap",
+                    side_effect=AssertionError("physical roots observed"),
+                ),
+                patch.object(
+                    session,
+                    "_require_or_create_plain_directory",
+                    side_effect=AssertionError("directory write observed"),
+                ),
+                patch.object(
+                    session.os.path,
+                    "lexists",
+                    side_effect=AssertionError("lexists observed"),
+                ),
+                patch.object(
+                    session,
+                    "path_identity",
+                    side_effect=AssertionError("identity observed"),
+                ),
+                patch.object(
+                    Path,
+                    "lstat",
+                    side_effect=AssertionError("lstat observed"),
+                ),
+                patch.object(
+                    session,
+                    "ExclusiveFileLock",
+                    side_effect=AssertionError("lock observed"),
+                ),
+                patch.object(
+                    session,
+                    "secure_create_directory",
+                    side_effect=AssertionError("session write observed"),
+                ),
+            ):
+                with pytest.raises(
+                    LexicalGatePassed,
+                    match="frozen-input boundary",
+                ):
+                    session.create_live_start_session(
+                        **roots,  # type: ignore[arg-type]
+                        deck_name=deck_name,
+                        deck_code_sha256=deck_code_sha256,
+                        frozen_compiler_inputs=frozen,
+                        preview_requested=False,
+                    )
+
+            assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_lease_accepts_raw_bare_unc_local_app_data_through_lexical_gate_only() -> None:
+    class LexicalGatePassed(RuntimeError):
+        pass
+
+    for share_ordinal, bare_unc in enumerate(
+        (
+            r"\\server\ordinary-share",
+            r"\\server\C$",
+            r"\\server\ADMIN$",
+        ),
+        start=1,
+    ):
+        run_id = f"{share_ordinal:032x}"
+        root = bare_unc + f"\\HSConfig\\runs\\{run_id}"
+        for configured, environment in (
+            (bare_unc, {}),
+            (None, {"LOCALAPPDATA": bare_unc}),
+        ):
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch.object(
+                    session,
+                    "_validate_existing_plain_ancestor_chain",
+                    side_effect=LexicalGatePassed("directory boundary"),
+                ),
+                patch.object(
+                    session,
+                    "_physical_identity_mapping",
+                    side_effect=AssertionError("identity ancestry observed"),
+                ),
+                patch.object(
+                    session.os.path,
+                    "lexists",
+                    side_effect=AssertionError("lexists observed"),
+                ),
+                patch.object(
+                    session,
+                    "path_identity",
+                    side_effect=AssertionError("identity observed"),
+                ),
+                patch.object(
+                    Path,
+                    "lstat",
+                    side_effect=AssertionError("lstat observed"),
+                ),
+                patch.object(
+                    session,
+                    "ExclusiveFileLock",
+                    side_effect=AssertionError("lock observed"),
+                ),
+            ):
+                with pytest.raises(
+                    LexicalGatePassed,
+                    match="directory boundary",
+                ):
+                    with session.lease_live_start_session(
+                        root,  # type: ignore[arg-type]
+                        local_app_data_root=configured,  # type: ignore[arg-type]
+                    ):
+                        pytest.fail("bare UNC lease unexpectedly opened")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_live_start_path_typed_bare_unc_share_roots_are_canonical() -> None:
+    for raw_unc in (
+        r"\\server\ordinary-share",
+        r"\\server\C$",
+        r"\\server\ADMIN$",
+    ):
+        candidate = Path(raw_unc)
+        assert os.fspath(candidate) == raw_unc + "\\"
+        assert (
+            session._canonical_absolute_root(candidate, field="control")
+            == candidate
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_creation_accepts_path_typed_bare_unc_roots_through_lexical_gate_only(
+    tmp_path: Path,
+) -> None:
+    class LexicalGatePassed(RuntimeError):
+        pass
+
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    public_surfaces = (
+        "local_app_data_root",
+        "environment_local_app_data_root",
+        "repository_root",
+        "runtime_root",
+        "output_base_root",
+        "output_deck_root",
+        "installed_skill_root",
+    )
+
+    for share_ordinal, raw_unc in enumerate(
+        (
+            r"\\server\ordinary-share",
+            r"\\server\C$",
+            r"\\server\ADMIN$",
+        ),
+        start=1,
+    ):
+        bare_unc = Path(raw_unc)
+        for surface_ordinal, surface in enumerate(public_surfaces, start=1):
+            case_root = (
+                tmp_path / f"path-unc-create-{share_ordinal}-{surface_ordinal}"
+            ).absolute()
+            local_app_data = case_root / "local"
+            run_id = f"{share_ordinal * 10 + surface_ordinal:032x}"
+            roots: dict[str, object] = {
+                "session_root": local_app_data / "HSConfig" / "runs" / run_id,
+                "local_app_data_root": local_app_data,
+                "repository_root": case_root / "repository",
+                "runtime_root": runtime_root,
+                "output_base_root": output_base_root,
+                "output_deck_root": output_deck_root,
+                "installed_skill_root": case_root / "skill",
+            }
+            environment: dict[str, str] = {}
+            if surface in {
+                "local_app_data_root",
+                "environment_local_app_data_root",
+            }:
+                roots["session_root"] = (
+                    bare_unc / "HSConfig" / "runs" / run_id
+                )
+                if surface == "environment_local_app_data_root":
+                    roots["local_app_data_root"] = None
+                    environment["LOCALAPPDATA"] = raw_unc
+                else:
+                    roots["local_app_data_root"] = bare_unc
+            else:
+                roots[surface] = bare_unc
+
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch.object(
+                    session,
+                    "_validate_frozen_compiler_inputs",
+                    side_effect=LexicalGatePassed("frozen-input boundary"),
+                ),
+                patch.object(
+                    session,
+                    "_validate_existing_creation_authority_roots_no_ads",
+                    side_effect=AssertionError("authority roots observed"),
+                ),
+                patch.object(
+                    session,
+                    "_validate_existing_plain_ancestor_chain",
+                    side_effect=AssertionError("directory observed"),
+                ),
+                patch.object(
+                    session.os.path,
+                    "lexists",
+                    side_effect=AssertionError("lexists observed"),
+                ),
+                patch.object(
+                    Path,
+                    "lstat",
+                    side_effect=AssertionError("lstat observed"),
+                ),
+                patch.object(
+                    session,
+                    "path_identity",
+                    side_effect=AssertionError("identity observed"),
+                ),
+                patch.object(
+                    session,
+                    "ExclusiveFileLock",
+                    side_effect=AssertionError("lock observed"),
+                ),
+            ):
+                with pytest.raises(
+                    LexicalGatePassed,
+                    match="frozen-input boundary",
+                ):
+                    session.create_live_start_session(
+                        **roots,  # type: ignore[arg-type]
+                        deck_name=deck_name,
+                        deck_code_sha256=deck_code_sha256,
+                        frozen_compiler_inputs=frozen,
+                        preview_requested=False,
+                    )
+
+            assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
+def test_lease_accepts_path_typed_bare_unc_local_app_data_through_lexical_gate_only() -> None:
+    class LexicalGatePassed(RuntimeError):
+        pass
+
+    for share_ordinal, raw_unc in enumerate(
+        (
+            r"\\server\ordinary-share",
+            r"\\server\C$",
+            r"\\server\ADMIN$",
+        ),
+        start=1,
+    ):
+        bare_unc = Path(raw_unc)
+        run_id = f"{share_ordinal:032x}"
+        root = bare_unc / "HSConfig" / "runs" / run_id
+        for configured, environment in (
+            (bare_unc, {}),
+            (None, {"LOCALAPPDATA": raw_unc}),
+        ):
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch.object(
+                    session,
+                    "_validate_existing_plain_ancestor_chain",
+                    side_effect=LexicalGatePassed("directory boundary"),
+                ),
+                patch.object(
+                    session,
+                    "_physical_identity_mapping",
+                    side_effect=AssertionError("identity ancestry observed"),
+                ),
+                patch.object(
+                    session.os.path,
+                    "lexists",
+                    side_effect=AssertionError("lexists observed"),
+                ),
+                patch.object(
+                    session,
+                    "path_identity",
+                    side_effect=AssertionError("identity observed"),
+                ),
+                patch.object(
+                    Path,
+                    "lstat",
+                    side_effect=AssertionError("lstat observed"),
+                ),
+                patch.object(
+                    session,
+                    "ExclusiveFileLock",
+                    side_effect=AssertionError("lock observed"),
+                ),
+            ):
+                with pytest.raises(
+                    LexicalGatePassed,
+                    match="directory boundary",
+                ):
+                    with session.lease_live_start_session(
+                        root,
+                        local_app_data_root=configured,  # type: ignore[arg-type]
+                    ):
+                        pytest.fail("typed bare UNC lease unexpectedly opened")
+
+
+def test_creation_coerces_each_root_pathlike_once_before_first_write(
+    tmp_path: Path,
+) -> None:
+    class FirstWriteBoundary(RuntimeError):
+        pass
+
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    local_app_data = (tmp_path / "local").absolute()
+    expected_roots = {
+        "session_root": (
+            local_app_data / "HSConfig" / "runs" / ("4" * 32)
+        ),
+        "local_app_data_root": local_app_data,
+        "repository_root": (tmp_path / "repository").absolute(),
+        "runtime_root": runtime_root,
+        "output_base_root": output_base_root,
+        "output_deck_root": output_deck_root,
+        "installed_skill_root": (tmp_path / "skill").absolute(),
+    }
+    requested_roots = {
+        field: _SequencedPathLike(str(path))
+        for field, path in expected_roots.items()
+    }
+    state_root = local_app_data / "HSConfig"
+    observed_forbidden_roots: list[Path] = []
+
+    def accept_only_canonical_frozen_roots(
+        value: FrozenCompilerInputs,
+        **roots: object,
+    ) -> tuple[dict[str, bytes], str]:
+        assert value is frozen
+        for field in (
+            "runtime_root",
+            "output_base_root",
+            "output_deck_root",
+        ):
+            observed = roots[field]
+            assert isinstance(observed, Path)
+            assert observed == expected_roots[field]
+        return {}, "f" * 64
+
+    def route_physical_overlap(left: Path, right: Path) -> bool:
+        assert isinstance(left, Path)
+        assert left == state_root
+        assert isinstance(right, Path)
+        observed_forbidden_roots.append(right)
+        return False
+
+    with (
+        patch.object(
+            session,
+            "_validate_frozen_compiler_inputs",
+            side_effect=accept_only_canonical_frozen_roots,
+        ),
+        patch.object(
+            session,
+            "_validate_existing_creation_authority_roots_no_ads",
+        ),
+        patch.object(session, "_validate_existing_plain_ancestor_chain"),
+        patch.object(
+            session,
+            "_paths_overlap",
+            side_effect=route_physical_overlap,
+        ),
+        patch.object(
+            session,
+            "_require_or_create_plain_directory",
+            side_effect=FirstWriteBoundary("first persistent write"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=AssertionError("identity observed"),
+        ),
+        patch.object(
+            Path,
+            "lstat",
+            side_effect=AssertionError("lstat observed"),
+        ),
+        patch.object(
+            session,
+            "ExclusiveFileLock",
+            side_effect=AssertionError("lock observed"),
+        ),
+    ):
+        with pytest.raises(
+            FirstWriteBoundary,
+            match="first persistent write",
+        ):
+            session.create_live_start_session(
+                **requested_roots,  # type: ignore[arg-type]
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                frozen_compiler_inputs=frozen,
+                preview_requested=False,
+            )
+
+    assert observed_forbidden_roots == [
+        expected_roots[field]
+        for field in (
+            "repository_root",
+            "runtime_root",
+            "output_base_root",
+            "output_deck_root",
+            "installed_skill_root",
+        )
+    ]
+    assert {
+        field: requested.calls
+        for field, requested in requested_roots.items()
+    } == dict.fromkeys(expected_roots, 1)
+    assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.parametrize(
+    "stateful_field",
+    ("runtime_root", "output_base_root", "output_deck_root"),
+)
+def test_creation_never_recoerces_a_root_to_an_unsafe_namespace(
+    tmp_path: Path,
+    stateful_field: str,
+) -> None:
+    class FrozenBindingPassed(RuntimeError):
+        pass
+
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    local_app_data = (tmp_path / stateful_field / "local").absolute()
+    roots: dict[str, object] = {
+        "session_root": (
+            local_app_data / "HSConfig" / "runs" / ("5" * 32)
+        ),
+        "local_app_data_root": local_app_data,
+        "repository_root": (tmp_path / stateful_field / "repository").absolute(),
+        "runtime_root": runtime_root,
+        "output_base_root": output_base_root,
+        "output_deck_root": output_deck_root,
+        "installed_skill_root": (tmp_path / stateful_field / "skill").absolute(),
+    }
+    safe_root = Path(roots[stateful_field])
+    unsafe_root = _extended_dos_path_or_skip(safe_root)
+    requested_root = _SequencedPathLike(
+        str(safe_root),
+        str(unsafe_root),
+    )
+    roots[stateful_field] = requested_root
+    real_path_identity = session.path_identity
+    unsafe_text = str(unsafe_root).casefold()
+
+    def reject_unsafe_identity_observation(path: object):
+        text = os.fsdecode(os.fspath(path))
+        if text.casefold() == unsafe_text:
+            raise AssertionError("unsafe namespace identity observed")
+        return real_path_identity(Path(text))
+
+    with (
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=reject_unsafe_identity_observation,
+        ),
+        patch.object(
+            session,
+            "_validate_existing_creation_authority_roots_no_ads",
+            side_effect=FrozenBindingPassed("frozen binding passed"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+    ):
+        with pytest.raises(
+            FrozenBindingPassed,
+            match="frozen binding passed",
+        ):
+            session.create_live_start_session(
+                **roots,  # type: ignore[arg-type]
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                frozen_compiler_inputs=frozen,
+                preview_requested=False,
+            )
+
+    assert requested_root.calls == 1
+    assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.parametrize(
+    "stateful_field",
+    ("runtime_root", "output_base_root", "output_deck_root"),
+)
+def test_creation_cannot_split_frozen_binding_from_physical_overlap(
+    tmp_path: Path,
+    stateful_field: str,
+) -> None:
+    class WriteBoundaryReached(RuntimeError):
+        pass
+
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    case_root = (tmp_path / stateful_field).absolute()
+    local_app_data = case_root / "local"
+    state_root = local_app_data / "HSConfig"
+    roots: dict[str, object] = {
+        "session_root": state_root / "runs" / ("6" * 32),
+        "local_app_data_root": local_app_data,
+        "repository_root": case_root / "repository",
+        "runtime_root": runtime_root,
+        "output_base_root": output_base_root,
+        "output_deck_root": output_deck_root,
+        "installed_skill_root": case_root / "skill",
+    }
+    safe_root = case_root / f"safe-{stateful_field}"
+    requested_root = _SequencedPathLike(str(safe_root), str(state_root))
+    roots[stateful_field] = requested_root
+
+    def require_overlapping_frozen_binding(
+        value: FrozenCompilerInputs,
+        **observed_roots: object,
+    ) -> tuple[dict[str, bytes], str]:
+        assert value is frozen
+        observed = Path(os.fspath(observed_roots[stateful_field]))
+        if observed != state_root:
+            raise session.SessionValidationError(
+                "live_start_task2_frozen_inputs_invalid"
+            )
+        return {}, "e" * 64
+
+    def deterministic_overlap(left: Path, right: Path) -> bool:
+        return Path(left) == state_root and Path(right) == state_root
+
+    with (
+        patch.object(
+            session,
+            "_validate_frozen_compiler_inputs",
+            side_effect=require_overlapping_frozen_binding,
+        ),
+        patch.object(
+            session,
+            "_validate_existing_creation_authority_roots_no_ads",
+        ),
+        patch.object(session, "_validate_existing_plain_ancestor_chain"),
+        patch.object(
+            session,
+            "_paths_overlap",
+            side_effect=deterministic_overlap,
+        ),
+        patch.object(
+            session,
+            "_require_or_create_plain_directory",
+            side_effect=WriteBoundaryReached("unsafe write boundary"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=AssertionError("identity observed"),
+        ),
+        patch.object(
+            Path,
+            "lstat",
+            side_effect=AssertionError("lstat observed"),
+        ),
+        patch.object(
+            session,
+            "ExclusiveFileLock",
+            side_effect=AssertionError("lock observed"),
+        ),
+    ):
+        with pytest.raises(
+            session.SessionValidationError,
+            match="live_start_task2_frozen_inputs_invalid",
+        ):
+            session.create_live_start_session(
+                **roots,  # type: ignore[arg-type]
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                frozen_compiler_inputs=frozen,
+                preview_requested=False,
+            )
+
+    assert requested_root.calls == 1
+    assert not state_root.exists()
+
+
+@pytest.mark.parametrize(
+    "root_field",
+    (
+        "session_root",
+        "local_app_data_root",
+        "repository_root",
+        "runtime_root",
+        "output_base_root",
+        "output_deck_root",
+        "installed_skill_root",
+    ),
+)
+@pytest.mark.parametrize("invalid_kind", ("bytes", "malformed_pathlike"))
+def test_creation_rejects_non_string_path_protocol_results_before_observation(
+    tmp_path: Path,
+    root_field: str,
+    invalid_kind: str,
+) -> None:
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    case_root = (tmp_path / invalid_kind / root_field).absolute()
+    local_app_data = case_root / "local"
+    roots: dict[str, object] = {
+        "session_root": (
+            local_app_data / "HSConfig" / "runs" / ("7" * 32)
+        ),
+        "local_app_data_root": local_app_data,
+        "repository_root": case_root / "repository",
+        "runtime_root": runtime_root,
+        "output_base_root": output_base_root,
+        "output_deck_root": output_deck_root,
+        "installed_skill_root": case_root / "skill",
+    }
+    target = Path(roots[root_field])
+    roots[root_field] = (
+        os.fsencode(str(target))
+        if invalid_kind == "bytes"
+        else _MalformedPathLike()
+    )
+
+    with (
+        patch.object(
+            session,
+            "_validate_frozen_compiler_inputs",
+            side_effect=AssertionError("frozen inputs observed"),
+        ),
+        patch.object(
+            session,
+            "_validate_existing_creation_authority_roots_no_ads",
+            side_effect=AssertionError("authority roots observed"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=AssertionError("identity observed"),
+        ),
+        patch.object(
+            Path,
+            "lstat",
+            side_effect=AssertionError("lstat observed"),
+        ),
+        patch.object(
+            session,
+            "ExclusiveFileLock",
+            side_effect=AssertionError("lock observed"),
+        ),
+    ):
+        with pytest.raises(
+            session.SessionValidationError,
+            match=f"live_start_{root_field}_not_canonical",
+        ):
+            session.create_live_start_session(
+                **roots,  # type: ignore[arg-type]
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                frozen_compiler_inputs=frozen,
+                preview_requested=False,
+            )
+
+    assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.parametrize(
+    "root_field",
+    (
+        "session_root",
+        "local_app_data_root",
+        "repository_root",
+        "runtime_root",
+        "output_base_root",
+        "output_deck_root",
+        "installed_skill_root",
+    ),
+)
+def test_creation_rejects_str_subclass_path_protocol_results_before_observation(
+    tmp_path: Path,
+    root_field: str,
+) -> None:
+    (
+        frozen,
+        deck_name,
+        deck_code_sha256,
+        runtime_root,
+        output_base_root,
+        output_deck_root,
+    ) = _real_frozen_authority()
+    case_root = (tmp_path / root_field).absolute()
+    local_app_data = case_root / "local"
+    roots: dict[str, object] = {
+        "session_root": (
+            local_app_data / "HSConfig" / "runs" / ("8" * 32)
+        ),
+        "local_app_data_root": local_app_data,
+        "repository_root": case_root / "repository",
+        "runtime_root": runtime_root,
+        "output_base_root": output_base_root,
+        "output_deck_root": output_deck_root,
+        "installed_skill_root": case_root / "skill",
+    }
+    target = Path(roots[root_field])
+    malicious = _StringSubclassPathLike(
+        f"{target.parent}\\\\{target.name}"
+    )
+    roots[root_field] = malicious
+
+    with (
+        patch.object(
+            session,
+            "_validate_frozen_compiler_inputs",
+            side_effect=AssertionError("frozen inputs observed"),
+        ),
+        patch.object(
+            session,
+            "_validate_existing_creation_authority_roots_no_ads",
+            side_effect=AssertionError("authority roots observed"),
+        ),
+        patch.object(
+            session,
+            "_validate_existing_plain_ancestor_chain",
+            side_effect=AssertionError("directory observed"),
+        ),
+        patch.object(
+            session,
+            "_paths_overlap",
+            side_effect=AssertionError("physical roots observed"),
+        ),
+        patch.object(
+            session,
+            "_require_or_create_plain_directory",
+            side_effect=AssertionError("directory write observed"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=AssertionError("identity observed"),
+        ),
+        patch.object(
+            Path,
+            "lstat",
+            side_effect=AssertionError("lstat observed"),
+        ),
+        patch.object(
+            session,
+            "ExclusiveFileLock",
+            side_effect=AssertionError("lock observed"),
+        ),
+    ):
+        with pytest.raises(
+            session.SessionValidationError,
+            match=f"live_start_{root_field}_not_canonical",
+        ):
+            session.create_live_start_session(
+                **roots,  # type: ignore[arg-type]
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                frozen_compiler_inputs=frozen,
+                preview_requested=False,
+            )
+
+    assert malicious.calls == 1
+    assert not (local_app_data / "HSConfig").exists()
+
+
+@pytest.mark.parametrize(
+    "root_field",
+    ("session_root", "local_app_data_root"),
+)
+def test_lease_rejects_str_subclass_path_protocol_results_before_observation(
+    tmp_path: Path,
+    root_field: str,
+) -> None:
+    local_app_data = (tmp_path / root_field / "local").absolute()
+    root = local_app_data / "HSConfig" / "runs" / ("9" * 32)
+    requested: dict[str, object] = {
+        "session_root": root,
+        "local_app_data_root": local_app_data,
+    }
+    target = Path(requested[root_field])
+    malicious = _StringSubclassPathLike(
+        f"{target.parent}\\\\{target.name}"
+    )
+    requested[root_field] = malicious
+
+    with (
+        patch.object(
+            session,
+            "_validate_existing_plain_ancestor_chain",
+            side_effect=AssertionError("directory observed"),
+        ),
+        patch.object(
+            session,
+            "_physical_identity_mapping",
+            side_effect=AssertionError("identity ancestry observed"),
+        ),
+        patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=AssertionError("lexists observed"),
+        ),
+        patch.object(
+            session,
+            "path_identity",
+            side_effect=AssertionError("identity observed"),
+        ),
+        patch.object(
+            Path,
+            "lstat",
+            side_effect=AssertionError("lstat observed"),
+        ),
+        patch.object(
+            session,
+            "ExclusiveFileLock",
+            side_effect=AssertionError("lock observed"),
+        ),
+    ):
+        with pytest.raises(
+            session.SessionValidationError,
+            match=f"live_start_{root_field}_not_canonical",
+        ):
+            with session.lease_live_start_session(
+                requested["session_root"],  # type: ignore[arg-type]
+                local_app_data_root=requested[  # type: ignore[arg-type]
+                    "local_app_data_root"
+                ],
+            ):
+                pytest.fail("str-subclass path lease unexpectedly opened")
+
+    assert malicious.calls == 1
+    assert not (local_app_data / "HSConfig").exists()
 
 
 def test_creation_installs_real_task2_frozen_inputs_before_session_marker(
