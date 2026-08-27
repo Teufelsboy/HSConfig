@@ -15,8 +15,14 @@ from typing import Any
 import unicodedata
 from urllib.parse import urlsplit
 
+from hsconfig import input_snapshot_manifest as _task2_inputs
 from hsconfig.audited_deck_catalog import load_audited_deck_catalog
 from hsconfig.build_input_catalog import load_packaged_audited_build_inputs
+from hsconfig.card_data_intake import build_card_data_context
+from hsconfig.card_metadata import (
+    analysis_cards_from_deck_identity,
+    hydrate_card_metadata,
+)
 from hsconfig.compile_globalvalues import validate_globalvalues_overlay_value
 from hsconfig.condition_format import (
     ALLOWED_ATOM_PATTERNS,
@@ -30,7 +36,10 @@ from hsconfig.globalvalues_decisions import (
     GLOBALVALUES_BASELINE_DECISION_KEYS,
     canonical_globalvalues_baseline_sha256,
 )
-from hsconfig.package_request import PackageResolutionSnapshot
+from hsconfig.input_loading import source_records_from_cards
+from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+from hsconfig.package_request import FrozenJsonDocument, PackageResolutionSnapshot
+from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.source_acquisition_provenance import (
     acquisition_provenance_is_canonical,
 )
@@ -44,6 +53,10 @@ from hsconfig.source_semantic_qualifiers import (
     normalize_semantic_qualifiers,
 )
 from hsconfig.starter_contract import (
+    LEGACY_STARTER_CONTEXT_FIELDS,
+    LEGACY_STARTER_SCHEMA_VERSION,
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_CONTEXT_FIELDS,
     STARTER_SCHEMA_VERSION,
@@ -284,6 +297,68 @@ _CONTEXT_BASELINE_FIELDS = frozenset(
 _CONTEXT_BASELINE_RECEIPT_FIELDS = frozenset(
     {"key_count", "snapshot_date", "snapshot_status", "source"}
 )
+_SINGLE_CANDIDATE_CONTEXT_BASELINE_FIELDS = frozenset(
+    {"content_sha256", "key_count", "values"}
+)
+_SINGLE_CANDIDATE_SOURCE_EVIDENCE_FIELDS = frozenset(
+    {"guide_builder_receipt", "guide_sources_summary"}
+)
+_SINGLE_CANDIDATE_GUIDE_BUILDER_RECEIPT_FIELDS = frozenset(
+    {
+        "claim_count",
+        "deck_code_hash",
+        "deck_name",
+        "schema_version",
+        "source_count",
+        "source_depth_status",
+        "stale_source_count",
+        "static_card_semantics_used",
+    }
+)
+_SINGLE_CANDIDATE_GUIDE_SOURCES_FIELDS = frozenset(
+    {
+        "deck_code_hash",
+        "deck_name",
+        "schema_version",
+        "source_depth_status",
+        "sources",
+        "summary",
+    }
+)
+_SINGLE_CANDIDATE_GUIDE_SOURCES_SUMMARY_FIELDS = frozenset(
+    {
+        "claim_count",
+        "downgraded_source_count",
+        "source_count",
+        "stale_source_count",
+        "static_card_semantics_used",
+        "unsupported_claim_count",
+    }
+)
+_SINGLE_CANDIDATE_RESEARCH_REQUIRED_SUMMARY_FIELDS = (
+    _SINGLE_CANDIDATE_GUIDE_SOURCES_SUMMARY_FIELDS
+    - {"unsupported_claim_count"}
+)
+_SINGLE_CANDIDATE_GUIDE_SOURCE_FIELDS = frozenset(
+    {
+        "archetype",
+        "claims",
+        "deck_name",
+        "retrieved_at",
+        "source_family",
+        "source_id",
+        "source_title",
+        "source_url",
+        "unsupported_claim_count",
+        "warnings",
+    }
+)
+_SINGLE_CANDIDATE_GUIDE_WARNING_REASONS = frozenset(
+    {"deck_name_mismatch", "stale_source"}
+)
+_SINGLE_CANDIDATE_RAW_CLAIM_FIELDS = frozenset(
+    {*_RAW_CLAIM_FIELDS, "selector", "selector_kind"}
+)
 _CONTEXT_SOURCE_EVIDENCE_FIELDS = frozenset({"gaps", "rows"})
 _CONTEXT_SOURCE_GAP_FIELDS = frozenset({"gap_kind", "value"})
 _CONTEXT_SOURCE_ROW_FIELDS = frozenset(
@@ -390,6 +465,517 @@ def build_starter_context(snapshot: PackageResolutionSnapshot) -> StarterContext
     return validate_starter_context_document(document)
 
 
+def build_single_candidate_starter_context(
+    inputs: FrozenCompilerInputs,
+) -> StarterContext:
+    """Project a schema-2 context from one already frozen compiler carrier."""
+
+    frozen = _validated_frozen_compiler_inputs(inputs)
+    deck = _mapping(frozen.deck.to_value(), "single_candidate_deck")
+    cards = _single_candidate_card_rows(frozen, deck=deck)
+    identity = _single_candidate_deck_identity(
+        _mapping(deck.get("deck_identity"), "single_candidate_deck_identity"),
+        cards=cards,
+    )
+    baseline = _mapping(
+        frozen.globalvalues_baseline.to_value(),
+        "single_candidate_globalvalues_baseline",
+    )
+    _validate_globalvalues_baseline(baseline)
+    baseline_sha256 = canonical_globalvalues_baseline_sha256(baseline)
+    source_evidence, existing_claims = _single_candidate_source_projection(
+        frozen,
+        identity=identity,
+        cards=cards,
+    )
+    draft = {
+        "schema_version": SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        "input_snapshot_manifest_sha256": (
+            frozen.manifest.document.content_sha256
+        ),
+        "deck_identity": identity,
+        "cards": cards,
+        "deck_shape": _deck_shape(cards),
+        "supported_runtime_contract": _runtime_contract(),
+        "globalvalues_baseline": {
+            "content_sha256": baseline_sha256,
+            "key_count": len(baseline),
+            "values": dict(baseline),
+        },
+        "source_evidence": source_evidence,
+        "existing_claims": existing_claims,
+        "known_safety_boundaries": _known_safety_boundaries(cards),
+    }
+    document = seal_starter_document(
+        draft,
+        expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    _enforce_starter_context_max_bytes(document.canonical_json)
+    return validate_starter_context_document(document)
+
+
+def _validated_frozen_compiler_inputs(
+    inputs: FrozenCompilerInputs,
+) -> FrozenCompilerInputs:
+    try:
+        if type(inputs) is not FrozenCompilerInputs:
+            raise TypeError("frozen compiler carrier required")
+        cached_manifest = inputs.manifest
+        manifest_document = cached_manifest.document
+        if type(manifest_document) is not StarterDocument:
+            raise TypeError("starter manifest document required")
+        validated_manifest = (
+            _task2_inputs.validate_input_snapshot_manifest_document(
+                manifest_document.document
+            )
+        )
+        if validated_manifest != cached_manifest:
+            raise ValueError("cached manifest drift")
+
+        documents: dict[str, FrozenJsonDocument] = {}
+        for name in (
+            "deck",
+            "full_cards",
+            "collectible_cards",
+            "source_acquisition",
+            "source_documents",
+            "globalvalues_baseline",
+        ):
+            cached_document = getattr(inputs, name)
+            if type(cached_document) is not FrozenJsonDocument:
+                raise TypeError("frozen blob document required")
+            document = FrozenJsonDocument(bytes(cached_document.canonical_json))
+            if document != cached_document:
+                raise ValueError("cached blob drift")
+            documents[name] = document
+        result = FrozenCompilerInputs(
+            manifest=validated_manifest,
+            deck=documents["deck"],
+            full_cards=documents["full_cards"],
+            collectible_cards=documents["collectible_cards"],
+            source_acquisition=documents["source_acquisition"],
+            source_documents=documents["source_documents"],
+            globalvalues_baseline=documents["globalvalues_baseline"],
+        )
+        _task2_inputs._require_manifest_blob_match(result)
+        _task2_inputs._validate_loaded_compiler_binding(result)
+        return result
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise ValueError("starter_context_inputs_invalid") from None
+
+
+def _single_candidate_card_rows(
+    inputs: FrozenCompilerInputs,
+    *,
+    deck: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    deck_identity = _mapping(
+        deck.get("deck_identity"),
+        "single_candidate_deck_identity",
+    )
+    cards_payload = _mapping(
+        deck.get("cards_payload"),
+        "single_candidate_cards_payload",
+    )
+    payload_cards = [
+        _mapping(row, "single_candidate_cards_payload_row")
+        for row in _sequence(
+            cards_payload.get("cards"),
+            "single_candidate_cards_payload_cards",
+        )
+    ]
+    full_cards = [
+        _mapping(row, "single_candidate_full_card")
+        for row in _sequence(
+            inputs.full_cards.to_value(),
+            "single_candidate_full_cards",
+        )
+    ]
+    collectible_cards = [
+        _mapping(row, "single_candidate_collectible_card")
+        for row in _sequence(
+            inputs.collectible_cards.to_value(),
+            "single_candidate_collectible_cards",
+        )
+    ]
+    analysis_cards = analysis_cards_from_deck_identity(deck_identity)
+    card_data = build_card_data_context(
+        deck_cards=payload_cards,
+        collectible_cards=collectible_cards,
+        full_cards=full_cards,
+    )
+    source_records = {
+        **source_records_from_cards(payload_cards),
+        **card_data["deck_source_records"],
+        **card_data["companion_source_records"],
+    }
+    source_records = {
+        **source_records_from_cards(analysis_cards),
+        **source_records,
+    }
+    metadata = hydrate_card_metadata(
+        cards=analysis_cards,
+        source_records=source_records,
+    )
+    enriched = enrich_card_metadata(
+        metadata,
+        hearthstonejson_cards=[*collectible_cards, *full_cards],
+    )
+    for card in enriched["cards"]:
+        card["semantic_families"] = sorted(
+            {
+                *[
+                    str(role)
+                    for role in card.get("semantic_families", [])
+                ],
+                *[str(role) for role in card.get("analysis_roles", [])],
+            }
+        )
+    return _card_rows({"card_metadata": enriched})
+
+
+def _single_candidate_deck_identity(
+    deck_identity: Mapping[str, Any],
+    *,
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    deck_name = _nonempty_string(
+        deck_identity.get("deck_name"),
+        "starter_context_deck_name_invalid",
+    )
+    deck_code_sha256 = _raw_sha256(
+        deck_identity.get("deck_code_hash"),
+        "starter_context_deck_code_sha256_invalid",
+        allow_prefix=True,
+    )
+    roster = _identity_roster(deck_identity.get("main_deck"))
+    projected_roster = [
+        (str(card["card_id"]), int(card["count"])) for card in cards
+    ]
+    if sorted(roster) != sorted(projected_roster):
+        raise ValueError("starter_context_deck_roster_mismatch")
+    card_count_total = _positive_int(
+        deck_identity.get("card_count_total"),
+        "starter_context_deck_card_count_mismatch",
+    )
+    if card_count_total != sum(count for _, count in roster):
+        raise ValueError("starter_context_deck_card_count_mismatch")
+    deck_fingerprint = _raw_sha256(
+        deck_identity.get("deck_fingerprint"),
+        "starter_context_deck_fingerprint_invalid",
+    )
+    if deck_fingerprint != stable_deck_fingerprint(roster):
+        raise ValueError("starter_context_deck_fingerprint_mismatch")
+    return {
+        "card_count_total": card_count_total,
+        "deck_code_sha256": deck_code_sha256,
+        "deck_fingerprint": deck_fingerprint,
+        "deck_name": deck_name,
+        "format": _nonempty_string(
+            deck_identity.get("format"),
+            "starter_context_format_invalid",
+        ),
+        "hero_dbf_id": _positive_int(
+            deck_identity.get("hero_dbf_id"),
+            "starter_context_hero_invalid",
+        ),
+        "unique_card_count": len(roster),
+    }
+
+
+def _single_candidate_source_projection(
+    inputs: FrozenCompilerInputs,
+    *,
+    identity: Mapping[str, Any],
+    cards: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    acquisition = _mapping(
+        inputs.source_acquisition.to_value(),
+        "single_candidate_source_acquisition",
+    )
+    if set(acquisition) != {"guide_builder_receipt", "source_evidence_report"}:
+        raise ValueError("starter_context_source_evidence_invalid")
+    receipt = _mapping(
+        acquisition.get("guide_builder_receipt"),
+        "single_candidate_guide_builder_receipt",
+    )
+    if set(receipt) != _SINGLE_CANDIDATE_GUIDE_BUILDER_RECEIPT_FIELDS:
+        raise ValueError("starter_context_source_evidence_invalid")
+
+    source_documents = _mapping(
+        inputs.source_documents.to_value(),
+        "single_candidate_source_documents",
+    )
+    if set(source_documents) != {"guide_sources"}:
+        raise ValueError("starter_context_source_evidence_invalid")
+    guide_sources = _mapping(
+        source_documents.get("guide_sources"),
+        "single_candidate_guide_sources",
+    )
+    if set(guide_sources) != _SINGLE_CANDIDATE_GUIDE_SOURCES_FIELDS:
+        raise ValueError("starter_context_source_evidence_invalid")
+    summary = _mapping(
+        guide_sources.get("summary"),
+        "single_candidate_guide_sources_summary",
+    )
+    if set(summary) not in {
+        _SINGLE_CANDIDATE_GUIDE_SOURCES_SUMMARY_FIELDS,
+        _SINGLE_CANDIDATE_RESEARCH_REQUIRED_SUMMARY_FIELDS,
+    }:
+        raise ValueError("starter_context_source_evidence_invalid")
+
+    sources = [
+        _mapping(row, "single_candidate_guide_source")
+        for row in _sequence(
+            guide_sources.get("sources"),
+            "single_candidate_guide_sources_rows",
+        )
+    ]
+    raw_claims: list[dict[str, Any]] = []
+    source_ids: set[str] = set()
+    unsupported_claim_count = 0
+    stale_source_count = 0
+    downgraded_source_count = 0
+    for source_index, source in enumerate(sources, start=1):
+        if set(source) != _SINGLE_CANDIDATE_GUIDE_SOURCE_FIELDS:
+            raise ValueError("starter_context_source_evidence_invalid")
+        source_id = _context_safe_scalar(
+            source.get("source_id"),
+            kind=_ContextScalarKind.TOKEN,
+            error="starter_context_source_evidence_invalid",
+        )
+        if source_id in source_ids:
+            raise ValueError("starter_context_source_evidence_invalid")
+        source_ids.add(source_id)
+        source_deck_name = _context_safe_scalar(
+            source.get("deck_name"),
+            kind=_ContextScalarKind.PROSE,
+            error="starter_context_source_evidence_invalid",
+        )
+        if source_deck_name != source.get("deck_name"):
+            raise ValueError("starter_context_source_evidence_invalid")
+        source_family = _context_safe_scalar(
+            source.get("source_family"),
+            kind=_ContextScalarKind.TOKEN,
+            error="starter_context_source_evidence_invalid",
+        )
+        source_url = _context_safe_scalar(
+            source.get("source_url"),
+            kind=_ContextScalarKind.PUBLIC_HTTPS,
+            error="starter_context_source_evidence_invalid",
+        )
+        raw_warnings = source.get("warnings")
+        if not isinstance(raw_warnings, list):
+            raise ValueError("starter_context_source_evidence_invalid")
+        warning_reasons: list[str] = []
+        for raw_warning in raw_warnings:
+            warning = _mapping(
+                raw_warning,
+                "single_candidate_guide_source_warning",
+            )
+            if set(warning) != {"reason"}:
+                raise ValueError("starter_context_source_evidence_invalid")
+            warning_reasons.append(
+                _context_safe_scalar(
+                    warning.get("reason"),
+                    kind=_ContextScalarKind.TOKEN,
+                    error="starter_context_source_evidence_invalid",
+                    allowed_values=_SINGLE_CANDIDATE_GUIDE_WARNING_REASONS,
+                )
+            )
+        if (
+            "deck_name_mismatch" in warning_reasons
+        ) != (source_deck_name.lower() != str(identity["deck_name"]).lower()):
+            raise ValueError("starter_context_source_evidence_invalid")
+        stale_source_count += int("stale_source" in warning_reasons)
+        downgraded_source_count += int(bool(warning_reasons))
+        unsupported_claim_count += _nonnegative_int(
+            source.get("unsupported_claim_count"),
+            "starter_context_source_evidence_invalid",
+        )
+        for raw_claim in _sequence(
+            source.get("claims"),
+            "single_candidate_guide_source_claims",
+        ):
+            claim = _mapping(raw_claim, "single_candidate_guide_claim")
+            if not set(claim) <= _SINGLE_CANDIDATE_RAW_CLAIM_FIELDS:
+                raise ValueError("starter_context_claim_schema_invalid")
+            selector_fields = {"selector", "selector_kind"} & set(claim)
+            if selector_fields and (
+                selector_fields != {"selector", "selector_kind"}
+                or claim.get("selector_kind") != "card"
+                or not isinstance(claim.get("selector"), str)
+                or claim.get("cards") != [claim.get("selector")]
+            ):
+                raise ValueError("starter_context_claim_alias_invalid")
+            expected_source_refs = {f"source:{source_index}", source_url}
+            source_refs = claim.get("source_refs")
+            if (
+                claim.get("source_family") != source_family
+                or claim.get("source") != source_family
+                or claim.get("source_url") != source_url
+                or claim.get("url") != source_url
+                or not isinstance(source_refs, list)
+                or len(source_refs) != len(expected_source_refs)
+                or set(source_refs) != expected_source_refs
+            ):
+                raise ValueError("starter_context_claim_source_binding_invalid")
+            raw_claims.append(claim)
+    _validate_single_candidate_source_bindings(
+        receipt=receipt,
+        guide_sources=guide_sources,
+        summary=summary,
+        source_count=len(sources),
+        claim_count=len(raw_claims),
+        unsupported_claim_count=unsupported_claim_count,
+        derived_stale_source_count=stale_source_count,
+        derived_downgraded_source_count=downgraded_source_count,
+        identity=identity,
+    )
+    projected_raw_claims = [
+        {key: claim[key] for key in _RAW_CLAIM_FIELDS if key in claim}
+        for claim in raw_claims
+    ]
+    existing_claims = _existing_claims(
+        {"guide_claim_bundle": {"claims": projected_raw_claims}},
+        identity=identity,
+        cards=cards,
+    )
+    return (
+        {
+            "guide_builder_receipt": dict(receipt),
+            "guide_sources_summary": dict(summary),
+        },
+        existing_claims,
+    )
+
+
+def _validate_single_candidate_source_bindings(
+    *,
+    receipt: Mapping[str, Any],
+    guide_sources: Mapping[str, Any],
+    summary: Mapping[str, Any],
+    source_count: int,
+    claim_count: int,
+    unsupported_claim_count: int,
+    identity: Mapping[str, Any],
+    derived_stale_source_count: int | None = None,
+    derived_downgraded_source_count: int | None = None,
+) -> None:
+    expected_deck_code = identity["deck_code_sha256"]
+    expected_deck_name = identity["deck_name"]
+    if any(
+        mapping.get("deck_code_hash") != expected_deck_code
+        for mapping in (receipt, guide_sources)
+    ) or any(
+        mapping.get("deck_name") != expected_deck_name
+        for mapping in (receipt, guide_sources)
+    ):
+        raise ValueError("starter_context_source_evidence_invalid")
+    if any(
+        type(mapping.get("schema_version")) is not int
+        or mapping["schema_version"] != 1
+        for mapping in (receipt, guide_sources)
+    ):
+        raise ValueError("starter_context_source_evidence_invalid")
+    source_depth = _context_safe_scalar(
+        receipt.get("source_depth_status"),
+        kind=_ContextScalarKind.TOKEN,
+        error="starter_context_source_evidence_invalid",
+    )
+    if guide_sources.get("source_depth_status") != source_depth:
+        raise ValueError("starter_context_source_evidence_invalid")
+    summary_stale_source_count = _nonnegative_int(
+        summary.get("stale_source_count"),
+        "starter_context_source_evidence_invalid",
+    )
+    summary_downgraded_source_count = _nonnegative_int(
+        summary.get("downgraded_source_count"),
+        "starter_context_source_evidence_invalid",
+    )
+    if (
+        summary_stale_source_count > source_count
+        or summary_downgraded_source_count > source_count
+        or summary_stale_source_count > summary_downgraded_source_count
+        or (
+            derived_stale_source_count is not None
+            and derived_stale_source_count != summary_stale_source_count
+        )
+        or (
+            derived_downgraded_source_count is not None
+            and derived_downgraded_source_count
+            != summary_downgraded_source_count
+        )
+    ):
+        raise ValueError("starter_context_source_evidence_invalid")
+    count_bindings = {
+        "claim_count": claim_count,
+        "source_count": source_count,
+        "stale_source_count": summary_stale_source_count,
+    }
+    for field, expected in count_bindings.items():
+        if (
+            type(receipt.get(field)) is not int
+            or receipt[field] != expected
+            or (
+                field in summary
+                and (
+                    type(summary[field]) is not int
+                    or summary[field] != expected
+                )
+            )
+        ):
+            raise ValueError("starter_context_source_evidence_invalid")
+    static_semantics_used = receipt.get("static_card_semantics_used")
+    if (
+        type(static_semantics_used) is not bool
+        or type(summary.get("static_card_semantics_used")) is not bool
+        or summary["static_card_semantics_used"] is not static_semantics_used
+    ):
+        raise ValueError("starter_context_source_evidence_invalid")
+    if "unsupported_claim_count" in summary:
+        summary_unsupported_claim_count = _nonnegative_int(
+            summary["unsupported_claim_count"],
+            "starter_context_source_evidence_invalid",
+        )
+        if summary_unsupported_claim_count != unsupported_claim_count:
+            raise ValueError("starter_context_source_evidence_invalid")
+        if source_count == 0:
+            valid_matrix = (
+                claim_count == 0
+                and unsupported_claim_count == 0
+                and summary_stale_source_count == 0
+                and summary_downgraded_source_count == 0
+                and source_depth == "static_semantics_only"
+                and static_semantics_used is True
+            )
+        elif summary_downgraded_source_count == 0 and claim_count > 0:
+            valid_matrix = (
+                source_depth == "source_backed"
+                and static_semantics_used is False
+            )
+        else:
+            valid_matrix = (
+                source_depth == "needs_more_research"
+                and static_semantics_used is False
+            )
+        if not valid_matrix:
+            raise ValueError("starter_context_source_evidence_invalid")
+    elif not (
+        source_count == 0
+        and claim_count == 0
+        and unsupported_claim_count == 0
+        and source_depth == "needs_more_research"
+        and summary_stale_source_count == 0
+        and summary_downgraded_source_count == 0
+        and static_semantics_used is False
+        and summary.get("source_count") == 0
+        and summary.get("claim_count") == 0
+    ):
+        raise ValueError("starter_context_source_evidence_invalid")
+
+
 def validate_starter_context_document(
     document: StarterDocument,
 ) -> StarterContext:
@@ -407,14 +993,23 @@ def _validated_starter_context_document(
     if not isinstance(document, StarterDocument):
         raise TypeError("starter_context_document_invalid")
     value = document.to_value()
-    if set(value) != STARTER_CONTEXT_FIELDS:
+    schema_version = value.get("schema_version")
+    if type(schema_version) is not int:
+        raise ValueError("starter_context_document_invalid")
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        expected_fields = LEGACY_STARTER_CONTEXT_FIELDS
+    elif schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
+        expected_fields = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+    else:
+        raise ValueError("starter_context_document_invalid")
+    if set(value) != expected_fields:
         raise ValueError("starter_context_document_invalid")
     unsigned = dict(value)
     content_sha256 = unsigned.pop("content_sha256")
     resealed = seal_starter_document(
         unsigned,
-        expected_fields=STARTER_CONTEXT_FIELDS,
-        schema_version=STARTER_SCHEMA_VERSION,
+        expected_fields=expected_fields,
+        schema_version=schema_version,
     )
     if (
         document.content_sha256 != content_sha256
@@ -425,30 +1020,53 @@ def _validated_starter_context_document(
     _enforce_starter_context_max_bytes(document.canonical_json)
 
     cards = _validated_context_cards(value["cards"])
-    identity = _validated_context_identity(value["deck_identity"], cards=cards)
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        identity = _validated_context_identity(value["deck_identity"], cards=cards)
+    else:
+        _context_safe_scalar(
+            value["input_snapshot_manifest_sha256"],
+            kind=_ContextScalarKind.CONTENT_SHA256,
+            error="starter_context_document_invalid",
+        )
+        identity = _validated_single_candidate_context_identity(
+            value["deck_identity"],
+            cards=cards,
+        )
     if _canonical_bytes(value["deck_shape"]) != _canonical_bytes(_deck_shape(cards)):
         raise ValueError("starter_context_document_invalid")
     if _canonical_bytes(value["supported_runtime_contract"]) != _canonical_bytes(
         _runtime_contract()
     ):
         raise ValueError("starter_context_document_invalid")
-    baseline_sha256 = _validated_context_baseline(
-        value["globalvalues_baseline"]
-    )
-    source_rows, source_gaps = _validated_context_source_evidence(
-        value["source_evidence"]
-    )
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        baseline_sha256 = _validated_context_baseline(
+            value["globalvalues_baseline"]
+        )
+    else:
+        baseline_sha256 = _validated_single_candidate_context_baseline(
+            value["globalvalues_baseline"]
+        )
     claims = _validated_context_claims(
         value["existing_claims"],
         identity=identity,
         cards=cards,
     )
-    _validate_context_authority_relationships(
-        source_rows=source_rows,
-        source_gaps=source_gaps,
-        claims=claims,
-        cards=cards,
-    )
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        source_rows, source_gaps = _validated_context_source_evidence(
+            value["source_evidence"]
+        )
+        _validate_context_authority_relationships(
+            source_rows=source_rows,
+            source_gaps=source_gaps,
+            claims=claims,
+            cards=cards,
+        )
+    else:
+        _validated_single_candidate_context_source_evidence(
+            value["source_evidence"],
+            identity=identity,
+            claim_count=len(claims),
+        )
     if _canonical_bytes(value["known_safety_boundaries"]) != _canonical_bytes(
         _known_safety_boundaries(cards)
     ):
@@ -639,6 +1257,32 @@ def _validated_context_identity(
     return projected
 
 
+def _validated_single_candidate_context_identity(
+    value: object,
+    *,
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    identity = _mapping(value, "document_deck_identity")
+    if frozenset(identity) != _CONTEXT_IDENTITY_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    raw_identity = {
+        "card_count_total": identity["card_count_total"],
+        "deck_code_hash": identity["deck_code_sha256"],
+        "deck_fingerprint": identity["deck_fingerprint"],
+        "deck_name": identity["deck_name"],
+        "format": identity["format"],
+        "hero_dbf_id": identity["hero_dbf_id"],
+        "main_deck": [
+            {"card_id": card["card_id"], "count": card["count"]}
+            for card in cards
+        ],
+    }
+    projected = _single_candidate_deck_identity(raw_identity, cards=cards)
+    if _canonical_bytes(identity) != _canonical_bytes(projected):
+        raise ValueError("starter_context_document_invalid")
+    return projected
+
+
 def _validated_context_baseline(value: object) -> str:
     baseline_projection = _mapping(value, "document_globalvalues_baseline")
     if set(baseline_projection) != _CONTEXT_BASELINE_FIELDS:
@@ -677,6 +1321,80 @@ def _validated_context_baseline(value: object) -> str:
     if not valid_receipt:
         raise ValueError("starter_context_document_invalid")
     return digest
+
+
+def _validated_single_candidate_context_baseline(value: object) -> str:
+    baseline_projection = _mapping(value, "document_globalvalues_baseline")
+    if set(baseline_projection) != _SINGLE_CANDIDATE_CONTEXT_BASELINE_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    baseline = _mapping(
+        baseline_projection["values"],
+        "document_globalvalues_values",
+    )
+    _validate_globalvalues_baseline(baseline)
+    digest = canonical_globalvalues_baseline_sha256(baseline)
+    if baseline_projection["content_sha256"] != digest:
+        raise ValueError("starter_context_document_invalid")
+    key_count = _positive_int(
+        baseline_projection["key_count"],
+        "starter_context_document_invalid",
+    )
+    if key_count != 38 or key_count != len(baseline):
+        raise ValueError("starter_context_document_invalid")
+    return digest
+
+
+def _validated_single_candidate_context_source_evidence(
+    value: object,
+    *,
+    identity: Mapping[str, Any],
+    claim_count: int,
+) -> None:
+    evidence = _mapping(value, "document_source_evidence")
+    if set(evidence) != _SINGLE_CANDIDATE_SOURCE_EVIDENCE_FIELDS:
+        raise ValueError("starter_context_document_invalid")
+    receipt = _mapping(
+        evidence["guide_builder_receipt"],
+        "document_guide_builder_receipt",
+    )
+    summary = _mapping(
+        evidence["guide_sources_summary"],
+        "document_guide_sources_summary",
+    )
+    if (
+        set(receipt) != _SINGLE_CANDIDATE_GUIDE_BUILDER_RECEIPT_FIELDS
+        or set(summary)
+        not in {
+            _SINGLE_CANDIDATE_GUIDE_SOURCES_SUMMARY_FIELDS,
+            _SINGLE_CANDIDATE_RESEARCH_REQUIRED_SUMMARY_FIELDS,
+        }
+    ):
+        raise ValueError("starter_context_document_invalid")
+    source_count = _nonnegative_int(
+        receipt.get("source_count"),
+        "starter_context_document_invalid",
+    )
+    _validate_single_candidate_source_bindings(
+        receipt=receipt,
+        guide_sources={
+            "deck_code_hash": receipt.get("deck_code_hash"),
+            "deck_name": receipt.get("deck_name"),
+            "schema_version": receipt.get("schema_version"),
+            "source_depth_status": receipt.get("source_depth_status"),
+        },
+        summary=summary,
+        source_count=source_count,
+        claim_count=claim_count,
+        unsupported_claim_count=(
+            _nonnegative_int(
+                summary["unsupported_claim_count"],
+                "starter_context_document_invalid",
+            )
+            if "unsupported_claim_count" in summary
+            else 0
+        ),
+        identity=identity,
+    )
 
 
 def _validated_context_source_evidence(
@@ -2302,6 +3020,7 @@ def _canonical_bytes(value: object) -> bytes:
 
 __all__ = (
     "StarterContext",
+    "build_single_candidate_starter_context",
     "build_starter_context",
     "validate_starter_context_document",
 )

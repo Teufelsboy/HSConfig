@@ -1,39 +1,106 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, dataclass
+import os
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 import pytest
 
+from hsconfig.input_snapshot_manifest import freeze_compiler_inputs
+from hsconfig.operator_profile import (
+    derive_deck_output_binding,
+    enable_operator_profile,
+)
 from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.starter_candidate import (
     ValidatedStarterCandidate,
     validate_starter_candidate,
 )
-from hsconfig.starter_context import StarterContext, build_starter_context
+from hsconfig.starter_context import (
+    StarterContext,
+    build_single_candidate_starter_context,
+    build_starter_context,
+)
 from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_FIELDS,
     STARTER_CONTEXT_FIELDS,
     STARTER_SCHEMA_VERSION,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
-from tests.helpers.audited_package_request import audited_request
+from tests.helpers.audited_package_request import (
+    audited_request,
+    audited_request_with_frozen_input_projections,
+)
 
 
 PROACTIVE_SUMMARY = (
     "Prioritize early pressure while preserving a bounded refill line."
 )
 ROLE_SUMMARIES = {
+    "lead_strategist": "Choose one coherent, bounded starting configuration.",
     "proactive_tempo": PROACTIVE_SUMMARY,
     "balanced": "Balance early pressure with measured resource use.",
     "resource_oriented": "Preserve resources while keeping a bounded pressure line.",
 }
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class _EqualityForgingStarterContext(StarterContext):
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+
 def build_shadowpriest_context(tmp_path: Path) -> StarterContext:
     return build_starter_context(audited_request(tmp_path, "ShadowPriest").snapshot)
+
+
+@pytest.fixture(scope="module")
+def single_candidate_shadowpriest_context(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> StarterContext:
+    root = tmp_path_factory.mktemp("single-candidate-shadowpriest")
+    request, projections = audited_request_with_frozen_input_projections(
+        root,
+        "ShadowPriest",
+    )
+    preconfig = request.snapshot.general_preconfig.to_value()
+    local_app_data = root / "local-app-data"
+    runtime_root = root / "runtime"
+    output_base_root = root / "outputs"
+    for path in (local_app_data, runtime_root, output_base_root):
+        path.mkdir()
+    with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
+        profile = enable_operator_profile(
+            runtime_root=runtime_root,
+            output_base_root=output_base_root,
+            expected_predecessor_sha256=None,
+        )
+        frozen = freeze_compiler_inputs(
+            snapshot=request.snapshot,
+            deck=projections["deck"],
+            full_cards=projections["full_cards"],
+            collectible_cards=projections["collectible_cards"],
+            source_acquisition=projections["source_acquisition"],
+            source_documents=projections["source_documents"],
+            globalvalues_baseline=projections["globalvalues_baseline"],
+            bound_date="2026-08-25",
+            runtime_grammar_version="visionai-runtime-v1",
+            compiler_contract_id="hsconfig-live-start-v1",
+            operator_profile=profile,
+            deck_output_binding=derive_deck_output_binding(
+                profile,
+                str(preconfig["deck_identity"]["deck_name"]),
+            ),
+        )
+    return build_single_candidate_starter_context(frozen)
 
 
 def candidate_draft(
@@ -44,6 +111,7 @@ def candidate_draft(
     role: str = "proactive_tempo",
     changed_globalvalue_key: str = "FirstTurnValueWeight",
     changed_globalvalue_value: str = "0.75",
+    schema_version: int = STARTER_SCHEMA_VERSION,
 ) -> dict[str, Any]:
     context_value = context.document.to_value()
     globalvalues = deepcopy(context_value["globalvalues_baseline"]["values"])
@@ -88,7 +156,7 @@ def candidate_draft(
             }
         )
     return {
-        "schema_version": STARTER_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "candidate_id": candidate_id,
         "candidate_revision": revision,
         "starter_context_sha256": context.document.content_sha256,
@@ -120,6 +188,7 @@ def sealed_candidate(
     role: str = "proactive_tempo",
     changed_globalvalue_key: str = "FirstTurnValueWeight",
     changed_globalvalue_value: str = "0.75",
+    schema_version: int = STARTER_SCHEMA_VERSION,
     mutate: Callable[[dict[str, Any]], None] | None = None,
 ) -> StarterDocument:
     draft = candidate_draft(
@@ -129,14 +198,189 @@ def sealed_candidate(
         role=role,
         changed_globalvalue_key=changed_globalvalue_key,
         changed_globalvalue_value=changed_globalvalue_value,
+        schema_version=schema_version,
     )
     if mutate is not None:
         mutate(draft)
     return seal_starter_document(
         draft,
-        expected_fields=STARTER_CANDIDATE_FIELDS,
-        schema_version=STARTER_SCHEMA_VERSION,
+        expected_fields=(
+            SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS
+            if schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+            else STARTER_CANDIDATE_FIELDS
+        ),
+        schema_version=schema_version,
     )
+
+
+def sealed_single_candidate(
+    context: StarterContext,
+    *,
+    revision: int = 1,
+    mutate: Callable[[dict[str, Any]], None] | None = None,
+) -> StarterDocument:
+    return sealed_candidate(
+        context,
+        candidate_id="lead",
+        revision=revision,
+        role="lead_strategist",
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        mutate=mutate,
+    )
+
+
+def test_schema_two_lead_candidate_closes_identity_and_all_runtime_surfaces(
+    single_candidate_shadowpriest_context: StarterContext,
+) -> None:
+    # Break caught: accepting a schema-2 draft that is not the one bound lead
+    # authority or dropping one of the already closed runtime surfaces.
+    context = single_candidate_shadowpriest_context
+    document = sealed_single_candidate(context)
+
+    validated = validate_starter_candidate(document, context=context)
+    value = validated.document.to_value()
+
+    assert value["schema_version"] == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+    assert set(value) == SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS
+    assert validated.candidate_id == "lead"
+    assert validated.candidate_revision == 1
+    assert validated.strategy_role == "lead_strategist"
+    assert value["starter_context_sha256"] == context.document.content_sha256
+    assert value["deck_fingerprint"] == context.deck_fingerprint
+    assert len(value["globalvalues"]) == 38
+    assert value["mulligan"]
+    assert value["card_rules"]
+    assert len(value["card_dispositions"]) == len(
+        context.document.to_value()["cards"]
+    )
+    assert validated.runtime_intent_sha256.startswith("sha256:")
+
+
+def test_schema_two_candidate_rejects_equality_forging_context_subclass(
+    single_candidate_shadowpriest_context: StarterContext,
+) -> None:
+    # Break caught: subclass equality can hide forged cache fields from the
+    # fresh schema-2 context comparison.
+    context = single_candidate_shadowpriest_context
+    forged = _EqualityForgingStarterContext(
+        document=context.document,
+        deck_fingerprint="f" * 64,
+        globalvalues_baseline_sha256=context.globalvalues_baseline_sha256,
+    )
+    assert forged == context
+
+    with pytest.raises(
+        TypeError,
+        match="^starter_candidate_context_invalid$",
+    ):
+        validate_starter_candidate(
+            sealed_single_candidate(context),
+            context=forged,
+        )
+
+
+def test_schema_two_candidate_requires_exact_unique_physical_card_coverage(
+    single_candidate_shadowpriest_context: StarterContext,
+) -> None:
+    # Break caught: multiplying disposition rows by physical copy count or
+    # accepting a missing/duplicate unique CardID disposition.
+    context = single_candidate_shadowpriest_context
+    valid = sealed_single_candidate(context)
+
+    assert validate_starter_candidate(valid, context=context).candidate_id == "lead"
+
+    for mutate in (
+        _remove_disposition,
+        _duplicate_disposition,
+        _expand_physical_dispositions,
+    ):
+        document = sealed_single_candidate(context, mutate=mutate)
+        with pytest.raises(
+            ValueError,
+            match="^starter_candidate_card_dispositions_invalid$",
+        ):
+            validate_starter_candidate(document, context=context)
+
+
+def test_schema_two_candidate_rejects_old_roles_ids_and_revision_four(
+    single_candidate_shadowpriest_context: StarterContext,
+    tmp_path: Path,
+) -> None:
+    # Break caught: allowing legacy candidate identity into schema 2, a fourth
+    # repair, or a mixed context/candidate schema pair.
+    context = single_candidate_shadowpriest_context
+    invalid_cases = (
+        sealed_candidate(
+            context,
+            candidate_id="candidate-1",
+            role="lead_strategist",
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        ),
+        sealed_candidate(
+            context,
+            candidate_id="lead",
+            role="balanced",
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        ),
+        sealed_single_candidate(context, revision=4),
+    )
+    expected_errors = (
+        "starter_candidate_id_invalid",
+        "starter_candidate_strategy_role_invalid",
+        "starter_candidate_revision_invalid",
+    )
+    for document, error in zip(invalid_cases, expected_errors, strict=True):
+        with pytest.raises(ValueError, match=f"^{error}$"):
+            validate_starter_candidate(document, context=context)
+
+    legacy_context = build_shadowpriest_context(tmp_path)
+    with pytest.raises(
+        ValueError,
+        match="^starter_candidate_schema_pair_invalid$",
+    ):
+        validate_starter_candidate(
+            sealed_single_candidate(legacy_context),
+            context=legacy_context,
+        )
+    with pytest.raises(
+        ValueError,
+        match="^starter_candidate_schema_pair_invalid$",
+    ):
+        validate_starter_candidate(
+            sealed_candidate(context),
+            context=context,
+        )
+
+
+def test_schema_two_candidate_retains_numeric_and_owner_fail_closed_boundaries(
+    single_candidate_shadowpriest_context: StarterContext,
+) -> None:
+    # Break caught: schema dispatch bypasses the established numeric or linked
+    # runtime-owner validation used by legacy candidates.
+    context = single_candidate_shadowpriest_context
+    cases = (
+        (
+            lambda draft: _set_card_rule(draft, "value", True),
+            "starter_candidate_card_value_invalid",
+        ),
+        (
+            lambda draft: (
+                _set_card_rule(draft, "runtime_card_id", "SW_448"),
+                _set_card_rule(draft, "link_kind", "self"),
+            ),
+            "starter_candidate_runtime_owner_unauthorized",
+        ),
+        (
+            lambda draft: draft["globalvalues"]["GlobalTaunt"]["values"][
+                0
+            ].__setitem__("value", True),
+            "starter_candidate_globalvalue_value_invalid",
+        ),
+    )
+    for mutate, error in cases:
+        document = sealed_single_candidate(context, mutate=mutate)
+        with pytest.raises(ValueError, match=f"^{error}$"):
+            validate_starter_candidate(document, context=context)
 
 
 def forged_candidate_document(

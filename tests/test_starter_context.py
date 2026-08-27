@@ -1,27 +1,53 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
+from hashlib import sha256
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
+from unittest.mock import patch
 
 import pytest
 
+from hsconfig import input_snapshot_manifest
+from hsconfig.guide_source_builder import (
+    build_guide_builder_receipt,
+    research_required_guide_sources,
+)
+from hsconfig.input_snapshot_manifest import (
+    FrozenCompilerInputs,
+    INPUT_SNAPSHOT_FIELDS,
+    INPUT_SNAPSHOT_SCHEMA_VERSION,
+    freeze_compiler_inputs,
+    validate_input_snapshot_manifest_document,
+)
+from hsconfig.operator_profile import (
+    derive_deck_output_binding,
+    enable_operator_profile,
+)
 from hsconfig.package_request import FrozenJsonDocument, PackageResolutionSnapshot
 from hsconfig.starter_context import (
     StarterContext,
     _enforce_starter_context_max_bytes,
+    build_single_candidate_starter_context,
     build_starter_context,
     validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CONTEXT_FIELDS,
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_SCHEMA_VERSION,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
-from tests.helpers.audited_package_request import audited_request
+from tests.helpers.audited_package_request import (
+    audited_request,
+    audited_request_with_frozen_input_projections,
+)
 
 
 SHADOWPRIEST_CARD_COUNTS = {
@@ -42,6 +68,684 @@ SHADOWPRIEST_CARD_COUNTS = {
     "WON_065": 2,
     "YOD_032": 2,
 }
+
+
+@pytest.fixture(scope="module")
+def single_candidate_inputs(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> FrozenCompilerInputs:
+    root = tmp_path_factory.mktemp("single-candidate-context")
+    request, projections = audited_request_with_frozen_input_projections(
+        root,
+        "MechPala",
+    )
+    preconfig = request.snapshot.general_preconfig.to_value()
+    local_app_data = root / "local-app-data"
+    runtime_root = root / "runtime"
+    output_base_root = root / "outputs"
+    for path in (local_app_data, runtime_root, output_base_root):
+        path.mkdir()
+    with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
+        profile = enable_operator_profile(
+            runtime_root=runtime_root,
+            output_base_root=output_base_root,
+            expected_predecessor_sha256=None,
+        )
+        return freeze_compiler_inputs(
+            snapshot=request.snapshot,
+            deck=projections["deck"],
+            full_cards=projections["full_cards"],
+            collectible_cards=projections["collectible_cards"],
+            source_acquisition=projections["source_acquisition"],
+            source_documents=projections["source_documents"],
+            globalvalues_baseline=projections["globalvalues_baseline"],
+            bound_date="2026-08-25",
+            runtime_grammar_version="visionai-runtime-v1",
+            compiler_contract_id="hsconfig-live-start-v1",
+            operator_profile=profile,
+            deck_output_binding=derive_deck_output_binding(
+                profile,
+                str(preconfig["deck_identity"]["deck_name"]),
+            ),
+        )
+
+
+def _replace_frozen_input_blob(
+    inputs: FrozenCompilerInputs,
+    name: str,
+    value: object,
+) -> FrozenCompilerInputs:
+    document = FrozenJsonDocument.from_value(value)
+    manifest_value = inputs.manifest.document.to_value()
+    del manifest_value["content_sha256"]
+    binding = next(
+        row
+        for row in manifest_value["compiler_inputs"]["blobs"]
+        if row["name"] == name
+    )
+    binding.update(
+        {
+            "sha256": "sha256:" + sha256(document.canonical_json).hexdigest(),
+            "size_bytes": len(document.canonical_json),
+            "record_count": input_snapshot_manifest._record_count(name, value),
+        }
+    )
+    sealed_manifest = seal_starter_document(
+        manifest_value,
+        expected_fields=INPUT_SNAPSHOT_FIELDS,
+        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+    )
+    manifest = validate_input_snapshot_manifest_document(
+        sealed_manifest.document
+    )
+    return replace(inputs, manifest=manifest, **{name: document})
+
+
+def _replace_frozen_source_pair(
+    inputs: FrozenCompilerInputs,
+    *,
+    source_acquisition: object,
+    source_documents: object,
+) -> FrozenCompilerInputs:
+    rebound = _replace_frozen_input_blob(
+        inputs,
+        "source_documents",
+        source_documents,
+    )
+    return _replace_frozen_input_blob(
+        rebound,
+        "source_acquisition",
+        source_acquisition,
+    )
+
+
+def _set_stale_without_downgraded_source(value: dict[str, Any]) -> None:
+    evidence = value["source_evidence"]
+    evidence["guide_builder_receipt"]["stale_source_count"] = 1
+    evidence["guide_sources_summary"]["stale_source_count"] = 1
+    evidence["guide_sources_summary"]["downgraded_source_count"] = 0
+
+
+def test_schema_two_context_binds_frozen_snapshot_and_exact_cards(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: a V2 context can omit its sealed input authority or project
+    # a physical-card roster different from the already frozen deck.
+    context = build_single_candidate_starter_context(single_candidate_inputs)
+    value = context.document.to_value()
+    manifest = single_candidate_inputs.manifest.document.to_value()
+    compiler = manifest["compiler_inputs"]
+    frozen_deck = single_candidate_inputs.deck.to_value()["deck_identity"]
+
+    assert value["schema_version"] == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+    assert set(value) == SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+    assert value["input_snapshot_manifest_sha256"] == (
+        single_candidate_inputs.manifest.document.content_sha256
+    )
+    assert value["deck_identity"] == {
+        "card_count_total": frozen_deck["card_count_total"],
+        "deck_code_sha256": frozen_deck["deck_code_hash"],
+        "deck_fingerprint": frozen_deck["deck_fingerprint"],
+        "deck_name": frozen_deck["deck_name"],
+        "format": frozen_deck["format"],
+        "hero_dbf_id": frozen_deck["hero_dbf_id"],
+        "unique_card_count": len(frozen_deck["main_deck"]),
+    }
+    assert {
+        row["card_id"]: row["count"] for row in value["cards"]
+    } == {
+        row["card_id"]: row["count"] for row in frozen_deck["main_deck"]
+    }
+    assert value["globalvalues_baseline"] == {
+        "content_sha256": context.globalvalues_baseline_sha256,
+        "key_count": 38,
+        "values": single_candidate_inputs.globalvalues_baseline.to_value(),
+    }
+    assert set(value["source_evidence"]) == {
+        "guide_builder_receipt",
+        "guide_sources_summary",
+    }
+    assert "receipt" not in value["globalvalues_baseline"]
+    assert "hs_id" not in value["deck_identity"]
+    assert "hdt_deck_id" not in value["deck_identity"]
+    assert compiler["deck_code_sha256"] == (
+        "sha256:" + value["deck_identity"]["deck_code_sha256"]
+    )
+    assert compiler["roster_fingerprint"] == (
+        "sha256:" + value["deck_identity"]["deck_fingerprint"]
+    )
+    assert validate_starter_context_document(context.document) == context
+
+
+def test_schema_two_context_closes_frozen_source_receipts_rows_and_claim_counts(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Breaks caught: copying a partially validated receipt/summary or silently
+    # dropping unknown source-row/raw-claim fields before claim validation.
+    context = build_single_candidate_starter_context(single_candidate_inputs)
+    evidence = context.document.to_value()["source_evidence"]
+    receipt = evidence["guide_builder_receipt"]
+    summary = evidence["guide_sources_summary"]
+    source_documents = single_candidate_inputs.source_documents.to_value()
+    guide_sources = source_documents["guide_sources"]
+    sources = guide_sources["sources"]
+    flattened_claims = [
+        claim for source in sources for claim in source["claims"]
+    ]
+
+    assert set(receipt) == {
+        "claim_count",
+        "deck_code_hash",
+        "deck_name",
+        "schema_version",
+        "source_count",
+        "source_depth_status",
+        "stale_source_count",
+        "static_card_semantics_used",
+    }
+    assert set(summary) == {
+        "claim_count",
+        "downgraded_source_count",
+        "source_count",
+        "stale_source_count",
+        "static_card_semantics_used",
+        "unsupported_claim_count",
+    }
+    assert receipt["source_count"] == summary["source_count"] == len(sources)
+    assert (
+        receipt["claim_count"]
+        == summary["claim_count"]
+        == len(flattened_claims)
+        == len(context.document.to_value()["existing_claims"])
+    )
+    assert receipt["deck_name"] == guide_sources["deck_name"]
+    assert receipt["deck_code_hash"] == guide_sources["deck_code_hash"]
+    assert (
+        receipt["source_depth_status"]
+        == guide_sources["source_depth_status"]
+    )
+
+    mutations: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "invented", "hidden"
+            ),
+        ),
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "schema_version", True
+            ),
+        ),
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "source_count", True
+            ),
+        ),
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "static_card_semantics_used", 1
+            ),
+        ),
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "deck_name", "WrongDeck"
+            ),
+        ),
+        (
+            "source_acquisition",
+            lambda value: value["guide_builder_receipt"].__setitem__(
+                "deck_code_hash", "0" * 64
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0].__setitem__(
+                "invented", "hidden"
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0]["claims"][
+                0
+            ].__setitem__("invented", "hidden"),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0]["claims"][
+                0
+            ].update({"source_family": "metadata", "source": "metadata"}),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0]["claims"][
+                0
+            ].__setitem__(
+                "source_refs",
+                [
+                    "source:999",
+                    value["guide_sources"]["sources"][0]["source_url"],
+                ],
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0]["claims"][
+                0
+            ].__setitem__("source_url", "https://example.invalid/wrong"),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0].__setitem__(
+                "source_family", "metadata"
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"].__setitem__(
+                "schema_version", True
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"].__setitem__(
+                "source_depth_status", "different"
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"].pop(),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0]["claims"].pop(),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["summary"].__setitem__(
+                "source_count", True
+            ),
+        ),
+        (
+            "source_documents",
+            lambda value: value["guide_sources"]["sources"][0].__setitem__(
+                "unsupported_claim_count", True
+            ),
+        ),
+    )
+    for name, mutate in mutations:
+        mutated = getattr(single_candidate_inputs, name).to_value()
+        mutate(mutated)
+        rebound = _replace_frozen_input_blob(single_candidate_inputs, name, mutated)
+        with pytest.raises(ValueError):
+            build_single_candidate_starter_context(rebound)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "stale_exceeds_sources",
+        "downgraded_exceeds_sources",
+        "static_semantics_with_sources",
+        "wrong_clean_source_depth",
+    ),
+)
+def test_schema_two_context_rejects_impossible_guide_source_summary_matrix(
+    single_candidate_inputs: FrozenCompilerInputs,
+    defect: str,
+) -> None:
+    # Break caught: mutually consistent copied receipt/summary values can still
+    # contradict the source rows and the guide_source_builder state matrix.
+    source_acquisition = single_candidate_inputs.source_acquisition.to_value()
+    source_documents = single_candidate_inputs.source_documents.to_value()
+    receipt = source_acquisition["guide_builder_receipt"]
+    guide_sources = source_documents["guide_sources"]
+    summary = guide_sources["summary"]
+    source_count = len(guide_sources["sources"])
+    assert source_count > 0
+    assert summary["claim_count"] > 0
+    assert summary["downgraded_source_count"] == 0
+
+    if defect == "stale_exceeds_sources":
+        receipt["stale_source_count"] = source_count + 1
+        summary["stale_source_count"] = source_count + 1
+    elif defect == "downgraded_exceeds_sources":
+        summary["downgraded_source_count"] = source_count + 1
+    elif defect == "static_semantics_with_sources":
+        receipt["static_card_semantics_used"] = True
+        summary["static_card_semantics_used"] = True
+    elif defect == "wrong_clean_source_depth":
+        receipt["source_depth_status"] = "needs_more_research"
+        guide_sources["source_depth_status"] = "needs_more_research"
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(f"unknown_source_matrix_defect:{defect}")
+
+    rebound = _replace_frozen_source_pair(
+        single_candidate_inputs,
+        source_acquisition=source_acquisition,
+        source_documents=source_documents,
+    )
+    with pytest.raises(ValueError):
+        build_single_candidate_starter_context(rebound)
+
+
+def test_schema_two_context_accepts_warning_derived_guide_source_matrix(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Control: one warning-bearing source derives one stale and one downgraded
+    # source and therefore the needs-more-research depth.
+    source_acquisition = single_candidate_inputs.source_acquisition.to_value()
+    source_documents = single_candidate_inputs.source_documents.to_value()
+    receipt = source_acquisition["guide_builder_receipt"]
+    guide_sources = source_documents["guide_sources"]
+    summary = guide_sources["summary"]
+    guide_sources["sources"][0]["warnings"] = [{"reason": "stale_source"}]
+    receipt["stale_source_count"] = 1
+    summary["stale_source_count"] = 1
+    summary["downgraded_source_count"] = 1
+    receipt["source_depth_status"] = "needs_more_research"
+    guide_sources["source_depth_status"] = "needs_more_research"
+    rebound = _replace_frozen_source_pair(
+        single_candidate_inputs,
+        source_acquisition=source_acquisition,
+        source_documents=source_documents,
+    )
+
+    context = build_single_candidate_starter_context(rebound)
+
+    assert context.document.to_value()["source_evidence"] == {
+        "guide_builder_receipt": receipt,
+        "guide_sources_summary": summary,
+    }
+
+
+def test_schema_two_context_accepts_exact_deck_name_mismatch_warning(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Control: the producer emits this warning when one source document names a
+    # different deck; that downgraded source remains valid frozen evidence.
+    source_acquisition = single_candidate_inputs.source_acquisition.to_value()
+    source_documents = single_candidate_inputs.source_documents.to_value()
+    receipt = source_acquisition["guide_builder_receipt"]
+    guide_sources = source_documents["guide_sources"]
+    summary = guide_sources["summary"]
+    guide_sources["sources"][0]["deck_name"] = "Different Deck"
+    guide_sources["sources"][0]["warnings"] = [
+        {"reason": "deck_name_mismatch"}
+    ]
+    summary["downgraded_source_count"] = 1
+    receipt["source_depth_status"] = "needs_more_research"
+    guide_sources["source_depth_status"] = "needs_more_research"
+    rebound = _replace_frozen_source_pair(
+        single_candidate_inputs,
+        source_acquisition=source_acquisition,
+        source_documents=source_documents,
+    )
+
+    context = build_single_candidate_starter_context(rebound)
+
+    assert context.document.to_value()["source_evidence"] == {
+        "guide_builder_receipt": receipt,
+        "guide_sources_summary": summary,
+    }
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ("mismatch_without_warning", "warning_without_mismatch"),
+)
+def test_schema_two_context_rejects_deck_name_warning_contradictions(
+    single_candidate_inputs: FrozenCompilerInputs,
+    defect: str,
+) -> None:
+    source_acquisition = single_candidate_inputs.source_acquisition.to_value()
+    source_documents = single_candidate_inputs.source_documents.to_value()
+    receipt = source_acquisition["guide_builder_receipt"]
+    guide_sources = source_documents["guide_sources"]
+    summary = guide_sources["summary"]
+    source = guide_sources["sources"][0]
+    if defect == "mismatch_without_warning":
+        source["deck_name"] = "Different Deck"
+    elif defect == "warning_without_mismatch":
+        source["warnings"] = [{"reason": "deck_name_mismatch"}]
+        summary["downgraded_source_count"] = 1
+        receipt["source_depth_status"] = "needs_more_research"
+        guide_sources["source_depth_status"] = "needs_more_research"
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(f"unknown_deck_name_warning_defect:{defect}")
+    rebound = _replace_frozen_source_pair(
+        single_candidate_inputs,
+        source_acquisition=source_acquisition,
+        source_documents=source_documents,
+    )
+
+    with pytest.raises(ValueError):
+        build_single_candidate_starter_context(rebound)
+
+
+def test_schema_two_context_accepts_only_closed_research_required_zero_sources(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: rejecting the legitimate no-source producer merely because
+    # its closed five-field summary does not fabricate unsupported_claim_count.
+    deck_identity = single_candidate_inputs.deck.to_value()["deck_identity"]
+    guide_sources = research_required_guide_sources(
+        str(deck_identity["deck_name"]),
+        deck_identity,
+    )
+    assert "unsupported_claim_count" not in guide_sources["summary"]
+    source_documents = {"guide_sources": guide_sources}
+    source_acquisition = single_candidate_inputs.source_acquisition.to_value()
+    source_acquisition["guide_builder_receipt"] = build_guide_builder_receipt(
+        deck_name=str(deck_identity["deck_name"]),
+        deck_identity=deck_identity,
+        source_documents=[],
+        guide_sources=guide_sources,
+    )
+    rebound = _replace_frozen_input_blob(
+        single_candidate_inputs,
+        "source_documents",
+        source_documents,
+    )
+    rebound = _replace_frozen_input_blob(
+        rebound,
+        "source_acquisition",
+        source_acquisition,
+    )
+
+    context = build_single_candidate_starter_context(rebound)
+    value = context.document.to_value()
+
+    assert value["source_evidence"]["guide_sources_summary"] == (
+        guide_sources["summary"]
+    )
+    assert "unsupported_claim_count" not in (
+        value["source_evidence"]["guide_sources_summary"]
+    )
+    assert value["existing_claims"] == []
+
+    static_sources = deepcopy(source_documents)
+    static_sources["guide_sources"]["source_depth_status"] = (
+        "static_semantics_only"
+    )
+    static_sources["guide_sources"]["summary"].update(
+        {
+            "unsupported_claim_count": 0,
+            "static_card_semantics_used": True,
+        }
+    )
+    static_acquisition = deepcopy(source_acquisition)
+    static_acquisition["guide_builder_receipt"] = build_guide_builder_receipt(
+        deck_name=str(deck_identity["deck_name"]),
+        deck_identity=deck_identity,
+        source_documents=[],
+        guide_sources=static_sources["guide_sources"],
+    )
+    static_rebound = _replace_frozen_source_pair(
+        single_candidate_inputs,
+        source_acquisition=static_acquisition,
+        source_documents=static_sources,
+    )
+    static_context = build_single_candidate_starter_context(static_rebound)
+    assert static_context.document.to_value()["source_evidence"][
+        "guide_sources_summary"
+    ]["unsupported_claim_count"] == 0
+
+    invalid_mutations: tuple[Callable[[dict[str, Any]], None], ...] = (
+        lambda value: value["guide_sources"].__setitem__(
+            "source_depth_status", "source_backed"
+        ),
+        lambda value: value["guide_sources"]["summary"].__setitem__(
+            "source_count", 1
+        ),
+        lambda value: value["guide_sources"]["summary"].__setitem__(
+            "claim_count", 1
+        ),
+        lambda value: value["guide_sources"]["summary"].__setitem__(
+            "stale_source_count", 1
+        ),
+        lambda value: value["guide_sources"]["summary"].__setitem__(
+            "downgraded_source_count", 1
+        ),
+        lambda value: value["guide_sources"]["summary"].__setitem__(
+            "static_card_semantics_used", True
+        ),
+    )
+    for mutate in invalid_mutations:
+        invalid_weak = deepcopy(source_documents)
+        mutate(invalid_weak)
+        invalid_rebound = _replace_frozen_input_blob(
+            rebound,
+            "source_documents",
+            invalid_weak,
+        )
+        with pytest.raises(ValueError):
+            build_single_candidate_starter_context(invalid_rebound)
+
+
+def test_schema_two_context_validator_rejects_inner_source_summary_drift(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: validating only the two outer source-evidence keys while
+    # trusting copied nested counts, types, deck bindings, or claim totals.
+    context = build_single_candidate_starter_context(single_candidate_inputs)
+    mutations: tuple[Callable[[dict[str, Any]], None], ...] = (
+        lambda value: value["source_evidence"]["guide_builder_receipt"].__setitem__(
+            "invented", "hidden"
+        ),
+        lambda value: value["source_evidence"]["guide_builder_receipt"].__setitem__(
+            "schema_version", True
+        ),
+        lambda value: value["source_evidence"]["guide_builder_receipt"].__setitem__(
+            "claim_count", True
+        ),
+        lambda value: value["source_evidence"]["guide_builder_receipt"].__setitem__(
+            "deck_name", "WrongDeck"
+        ),
+        lambda value: value["source_evidence"]["guide_builder_receipt"].__setitem__(
+            "deck_code_hash", "0" * 64
+        ),
+        lambda value: value["source_evidence"]["guide_sources_summary"].__setitem__(
+            "source_count", True
+        ),
+        lambda value: value["source_evidence"]["guide_sources_summary"].__setitem__(
+            "static_card_semantics_used", 1
+        ),
+        lambda value: value["existing_claims"].pop(),
+        _set_stale_without_downgraded_source,
+    )
+    for mutate in mutations:
+        value = context.document.to_value()
+        del value["content_sha256"]
+        mutate(value)
+        document = seal_starter_document(
+            value,
+            expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        )
+        with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+            validate_starter_context_document(document)
+
+
+def test_schema_two_context_never_reobserves_sources_cards_or_baseline(
+    single_candidate_inputs: FrozenCompilerInputs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Break caught: rebuilding V2 through the legacy resolver, a catalog, or an
+    # operator-root rebind instead of consuming the six in-memory blobs.
+    def unexpected_call(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("single_candidate_context_reobserved_input")
+
+    monkeypatch.setattr(
+        "hsconfig.starter_context.build_starter_context",
+        unexpected_call,
+    )
+    monkeypatch.setattr(
+        "hsconfig.starter_context.load_audited_deck_catalog",
+        unexpected_call,
+    )
+    monkeypatch.setattr(
+        "hsconfig.starter_context.load_packaged_audited_build_inputs",
+        unexpected_call,
+    )
+    monkeypatch.setattr(
+        "hsconfig.input_snapshot_manifest._rebind_operator_bindings",
+        unexpected_call,
+    )
+
+    first = build_single_candidate_starter_context(single_candidate_inputs)
+    second = build_single_candidate_starter_context(single_candidate_inputs)
+
+    assert first == second
+    assert first.document.canonical_json == second.document.canonical_json
+
+
+def test_schema_two_context_rejects_unknown_fields_and_snapshot_drift(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: accepting cross-schema context fields or trusting forged
+    # FrozenCompilerInputs caches whose bytes no longer match the manifest.
+    context = build_single_candidate_starter_context(single_candidate_inputs)
+    unknown = context.document.to_value()
+    unknown["invented_authority"] = "hidden"
+    unknown_document = StarterDocument(
+        document=FrozenJsonDocument.from_value(unknown),
+        content_sha256=context.document.content_sha256,
+    )
+    with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+        validate_starter_context_document(unknown_document)
+
+    cross_schema_value = context.document.to_value()
+    del cross_schema_value["content_sha256"]
+    cross_schema_value["schema_version"] = STARTER_SCHEMA_VERSION
+    cross_schema = seal_starter_document(
+        cross_schema_value,
+        expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+        validate_starter_context_document(cross_schema)
+
+    drifted_deck = FrozenJsonDocument.from_value(
+        {
+            **single_candidate_inputs.deck.to_value(),
+            "unbound": True,
+        }
+    )
+    with pytest.raises(ValueError, match="^starter_context_inputs_invalid$"):
+        build_single_candidate_starter_context(
+            replace(single_candidate_inputs, deck=drifted_deck)
+        )
+
+    forged_manifest_cache = replace(single_candidate_inputs.manifest, blobs=())
+    with pytest.raises(ValueError, match="^starter_context_inputs_invalid$"):
+        build_single_candidate_starter_context(
+            replace(single_candidate_inputs, manifest=forged_manifest_cache)
+        )
 
 
 def test_sealed_starter_context_validator_accepts_canonical_shadowpriest(

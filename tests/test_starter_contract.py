@@ -4,18 +4,37 @@ from functools import partial
 import json
 from hashlib import sha256
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any
 
 import pytest
 
 from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.starter_contract import (
+    LEGACY_STARTER_CANDIDATE_FIELDS,
+    LEGACY_STARTER_CONTEXT_FIELDS,
+    LEGACY_STARTER_SCHEMA_VERSION,
+    REVIEW_CONFIDENCE,
+    REVIEW_STATUSES,
+    REVIEW_TARGETS,
+    SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES,
+    SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_FIELDS,
     STARTER_CANDIDATE_MAX_BYTES,
     STARTER_CONTEXT_FIELDS,
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_DECISION_FIELDS,
     STARTER_FILENAMES,
+    STARTER_REVIEW_FIELDS,
+    STARTER_REVIEW_ID_MAX_CHARS,
+    STARTER_REVIEW_MAX_BYTES,
+    STARTER_REVIEW_MAX_REQUESTS,
+    STARTER_REVIEW_REQUEST_CODE_MAX_CHARS,
+    STARTER_REVIEW_REQUEST_MESSAGE_MAX_CHARS,
+    STARTER_REVIEW_SUMMARY_MAX_CHARS,
     STARTER_SCHEMA_VERSION,
     reject_path_like_fields,
     require_nonempty_string,
@@ -102,6 +121,144 @@ def _decision_value() -> dict[str, Any]:
             "confidence": "high",
         },
     }
+
+
+def test_legacy_and_single_candidate_contracts_are_versioned_and_disjoint() -> None:
+    # Break caught: replacing the published V1 authority instead of adding the
+    # independently dispatched V2 context, candidate, and review contracts.
+    assert LEGACY_STARTER_SCHEMA_VERSION == 1
+    assert SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION == 2
+    assert STARTER_SCHEMA_VERSION == LEGACY_STARTER_SCHEMA_VERSION
+    assert STARTER_CONTEXT_FIELDS == LEGACY_STARTER_CONTEXT_FIELDS
+    assert STARTER_CANDIDATE_FIELDS == LEGACY_STARTER_CANDIDATE_FIELDS
+    assert SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS == frozenset(
+        {
+            *LEGACY_STARTER_CONTEXT_FIELDS,
+            "input_snapshot_manifest_sha256",
+        }
+    )
+    assert SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS == (
+        LEGACY_STARTER_CANDIDATE_FIELDS
+    )
+    assert SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES == (
+        "input_snapshot_manifest.json",
+        "starter_context.json",
+        "starter_config_candidate.json",
+        "starter_config_review.json",
+    )
+    assert set(SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES).isdisjoint(
+        {
+            "candidate-1.json",
+            "candidate-2.json",
+            "candidate-3.json",
+            "starter_config_decision.json",
+        }
+    )
+    assert STARTER_REVIEW_FIELDS == frozenset(
+        {
+            "schema_version",
+            "review_id",
+            "review_status",
+            "confidence",
+            "starter_context_sha256",
+            "candidate_id",
+            "candidate_revision",
+            "candidate_sha256",
+            "revision_requests",
+            "review_summary",
+            "content_sha256",
+        }
+    )
+    assert STARTER_REVIEW_MAX_BYTES == 64 * 1024
+    assert STARTER_REVIEW_MAX_REQUESTS == 32
+    assert STARTER_REVIEW_ID_MAX_CHARS == 64
+    assert STARTER_REVIEW_SUMMARY_MAX_CHARS == 2_000
+    assert STARTER_REVIEW_REQUEST_CODE_MAX_CHARS == 64
+    assert STARTER_REVIEW_REQUEST_MESSAGE_MAX_CHARS == 500
+    assert REVIEW_STATUSES == frozenset({"approved", "revision_requested"})
+    assert REVIEW_CONFIDENCE == frozenset({"high", "limited"})
+    assert REVIEW_TARGETS == frozenset(
+        {
+            "whole_candidate",
+            "strategy_summary",
+            "mulligan",
+            "globalvalues",
+            "card_rules",
+            "combo",
+            "card_dispositions",
+            "rule_rationales",
+            "assumptions",
+        }
+    )
+
+
+def test_legacy_context_candidate_and_decision_full_bytes_remain_pinned(
+    tmp_path: Path,
+) -> None:
+    # Break caught: schema-2 additions alter any canonical byte in the already
+    # published schema-1 context, candidate-1, or decision documents.
+    from tests.test_starter_candidate import (
+        build_shadowpriest_context,
+        sealed_candidate,
+    )
+    from tests.test_starter_decision import decision_draft, three_candidates
+
+    context = build_shadowpriest_context(tmp_path)
+    candidate = sealed_candidate(context)
+    decision = seal_starter_document(
+        decision_draft(three_candidates(context), context),
+        expected_fields=STARTER_DECISION_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+
+    assert sha256(context.document.canonical_json).hexdigest() == (
+        "5eeb6e3fb64c88cff1e1bf435e0dd516dadbdfe2464915c6740b9582c47a69da"
+    )
+    assert sha256(candidate.canonical_json).hexdigest() == (
+        "3e60a9d90fe8b0a65ac89886832bf923321c1c5ff8040175a3cc688215ecbe3c"
+    )
+    assert sha256(decision.canonical_json).hexdigest() == (
+        "38a9c0c6a65483863d8d1827c49013c73001dabed651b28084cccf54198ef2cb"
+    )
+
+
+@pytest.mark.parametrize(
+    "modules",
+    (
+        (
+            "hsconfig.starter_document",
+            "hsconfig.input_snapshot_manifest",
+            "hsconfig.starter_context",
+            "hsconfig.starter_candidate",
+            "hsconfig.starter_review",
+        ),
+        (
+            "hsconfig.starter_review",
+            "hsconfig.starter_candidate",
+            "hsconfig.starter_context",
+            "hsconfig.input_snapshot_manifest",
+            "hsconfig.starter_document",
+        ),
+    ),
+    ids=("dependency_order", "reverse_order"),
+)
+def test_starter_schema_modules_import_in_fresh_process_in_both_orders(
+    modules: tuple[str, ...],
+) -> None:
+    # Break caught: a circular import remains hidden by the test runner's warm
+    # module cache and appears only under one real process import order.
+    script = "import importlib\n" + "\n".join(
+        f"importlib.import_module({module!r})" for module in modules
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_seal_starter_document_adds_the_hand_derived_self_digest() -> None:

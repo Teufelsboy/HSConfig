@@ -33,15 +33,21 @@ from hsconfig.runtime_entity_owner import (
     runtime_entity_owner_relation_is_authorized,
 )
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
-from hsconfig.starter_context import StarterContext
+from hsconfig.starter_context import (
+    StarterContext,
+    validate_starter_context_document,
+)
 from hsconfig.starter_contract import (
-    STARTER_CANDIDATE_FIELDS,
+    LEGACY_STARTER_CANDIDATE_FIELDS,
+    LEGACY_STARTER_CONTEXT_FIELDS,
+    LEGACY_STARTER_SCHEMA_VERSION,
+    SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CARD_DISPOSITION_FIELDS,
     STARTER_CARD_RULE_FIELDS,
     STARTER_COMBO_FIELDS,
-    STARTER_CONTEXT_FIELDS,
     STARTER_MULLIGAN_ROW_FIELDS,
-    STARTER_SCHEMA_VERSION,
     STARTER_STRATEGY_SUMMARY_FIELDS,
     StarterStrategyRole,
     reject_path_like_fields,
@@ -93,8 +99,9 @@ def validate_starter_candidate(
     if not isinstance(document, StarterDocument):
         raise TypeError("starter_candidate_document_invalid")
     value = _validated_candidate_document_value(document)
+    schema_version = int(value["schema_version"])
     context_value, physical_cards, linked_entities, baseline = (
-        _validated_context(context)
+        _validated_context(context, candidate_schema_version=schema_version)
     )
     reject_path_like_fields(value, error="starter_candidate_path_forbidden")
 
@@ -102,6 +109,11 @@ def validate_starter_candidate(
         value.get("candidate_id"),
         error="starter_candidate_id_invalid",
     )
+    if (
+        schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        and candidate_id != "lead"
+    ):
+        raise ValueError("starter_candidate_id_invalid")
     candidate_revision = validate_candidate_revision(
         value.get("candidate_revision")
     )
@@ -110,7 +122,10 @@ def validate_starter_candidate(
     if value.get("deck_fingerprint") != context.deck_fingerprint:
         raise ValueError("starter_candidate_deck_fingerprint_mismatch")
 
-    strategy_role = _validate_strategy_summary(value.get("strategy_summary"))
+    strategy_role = _validate_strategy_summary(
+        value.get("strategy_summary"),
+        schema_version=schema_version,
+    )
     mulligan_rows = _validate_mulligan_rows(
         value.get("mulligan"),
         physical_cards=physical_cards,
@@ -195,9 +210,23 @@ def validate_starter_candidate(
 def _validated_candidate_document_value(
     document: StarterDocument,
 ) -> dict[str, Any]:
+    try:
+        value = document.to_value()
+    except (TypeError, ValueError):
+        raise ValueError("starter_candidate_fields_invalid") from None
+    schema_version = value.get("schema_version")
+    if type(schema_version) is not int:
+        raise ValueError("starter_candidate_schema_version_invalid")
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        expected_fields = LEGACY_STARTER_CANDIDATE_FIELDS
+    elif schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
+        expected_fields = SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS
+    else:
+        raise ValueError("starter_candidate_schema_version_invalid")
     return _validated_starter_document_value(
         document,
-        expected_fields=STARTER_CANDIDATE_FIELDS,
+        expected_fields=expected_fields,
+        schema_version=schema_version,
         fields_error="starter_candidate_fields_invalid",
         schema_error="starter_candidate_schema_version_invalid",
         digest_error="starter_candidate_content_sha256_invalid",
@@ -208,6 +237,7 @@ def _validated_starter_document_value(
     document: StarterDocument,
     *,
     expected_fields: frozenset[str],
+    schema_version: int,
     fields_error: str,
     schema_error: str,
     digest_error: str,
@@ -220,7 +250,7 @@ def _validated_starter_document_value(
         raise ValueError(fields_error)
     if (
         type(value.get("schema_version")) is not int
-        or value["schema_version"] != STARTER_SCHEMA_VERSION
+        or value["schema_version"] != schema_version
     ):
         raise ValueError(schema_error)
     content_sha256 = value.get("content_sha256")
@@ -230,7 +260,7 @@ def _validated_starter_document_value(
         sealed = seal_starter_document(
             unsigned,
             expected_fields=expected_fields,
-            schema_version=STARTER_SCHEMA_VERSION,
+            schema_version=schema_version,
         )
     except (TypeError, ValueError):
         raise ValueError(digest_error) from None
@@ -246,19 +276,58 @@ def _validated_starter_document_value(
 
 def _validated_context(
     context: StarterContext,
+    *,
+    candidate_schema_version: int,
 ) -> tuple[
     dict[str, Any],
     dict[str, int],
     dict[str, tuple[tuple[str, str], ...]],
     dict[str, Any],
 ]:
-    if not isinstance(context, StarterContext):
+    if (
+        candidate_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        and type(context) is not StarterContext
+    ) or (
+        candidate_schema_version != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        and not isinstance(context, StarterContext)
+    ):
         raise TypeError("starter_candidate_context_invalid")
-    if not isinstance(context.document, StarterDocument):
+    if (
+        candidate_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        and type(context.document) is not StarterDocument
+    ) or (
+        candidate_schema_version != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        and not isinstance(context.document, StarterDocument)
+    ):
         raise TypeError("starter_candidate_context_invalid")
+    try:
+        context_schema_version = context.document.to_value().get(
+            "schema_version"
+        )
+    except (TypeError, ValueError):
+        raise ValueError("starter_candidate_context_invalid") from None
+    if type(context_schema_version) is not int:
+        raise ValueError("starter_candidate_context_invalid")
+    if context_schema_version != candidate_schema_version:
+        raise ValueError("starter_candidate_schema_pair_invalid")
+    if context_schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        expected_fields = LEGACY_STARTER_CONTEXT_FIELDS
+    elif context_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
+        expected_fields = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+        try:
+            freshly_validated = validate_starter_context_document(
+                context.document
+            )
+        except ValueError:
+            raise ValueError("starter_candidate_context_invalid") from None
+        if freshly_validated != context:
+            raise ValueError("starter_candidate_context_invalid")
+    else:
+        raise ValueError("starter_candidate_context_invalid")
     value = _validated_starter_document_value(
         context.document,
-        expected_fields=STARTER_CONTEXT_FIELDS,
+        expected_fields=expected_fields,
+        schema_version=context_schema_version,
         fields_error="starter_candidate_context_invalid",
         schema_error="starter_candidate_context_invalid",
         digest_error="starter_candidate_context_invalid",
@@ -333,19 +402,30 @@ def _validated_context(
     return value, physical_cards, linked_entities, baseline_copy
 
 
-def _validate_strategy_summary(value: object) -> str:
+def _validate_strategy_summary(
+    value: object,
+    *,
+    schema_version: int,
+) -> str:
     summary = require_closed_object(
         value,
         expected_fields=STARTER_STRATEGY_SUMMARY_FIELDS,
         error="starter_candidate_strategy_summary_invalid",
     )
-    try:
-        role = StarterStrategyRole(summary.get("role"))
-    except (TypeError, ValueError):
-        raise ValueError("starter_candidate_strategy_role_invalid") from None
+    if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
+        try:
+            role = StarterStrategyRole(summary.get("role")).value
+        except (TypeError, ValueError):
+            raise ValueError(
+                "starter_candidate_strategy_role_invalid"
+            ) from None
+    elif summary.get("role") == "lead_strategist":
+        role = "lead_strategist"
+    else:
+        raise ValueError("starter_candidate_strategy_role_invalid")
     if not _nonempty_text(summary.get("summary"), maximum=_MAX_SUMMARY_CHARS):
         raise ValueError("starter_candidate_strategy_summary_invalid")
-    return role.value
+    return role
 
 
 def _validate_mulligan_rows(

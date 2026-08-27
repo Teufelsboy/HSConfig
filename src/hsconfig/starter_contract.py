@@ -7,7 +7,9 @@ from enum import Enum
 from typing import Any
 
 
-STARTER_SCHEMA_VERSION = 1
+LEGACY_STARTER_SCHEMA_VERSION = 1
+SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION = 2
+STARTER_SCHEMA_VERSION = LEGACY_STARTER_SCHEMA_VERSION
 
 STARTER_CONTEXT_FILENAME = "starter_context.json"
 STARTER_CANDIDATE_1_FILENAME = "candidate-1.json"
@@ -26,12 +28,24 @@ STARTER_CANDIDATE_FILENAMES = (
     STARTER_CANDIDATE_2_FILENAME,
     STARTER_CANDIDATE_3_FILENAME,
 )
+SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES = (
+    "input_snapshot_manifest.json",
+    "starter_context.json",
+    "starter_config_candidate.json",
+    "starter_config_review.json",
+)
 
 STARTER_CONTEXT_MAX_BYTES = 512 * 1024
 STARTER_CANDIDATE_MAX_BYTES = 256 * 1024
 STARTER_DECISION_MAX_BYTES = 64 * 1024
+STARTER_REVIEW_MAX_BYTES = 64 * 1024
+STARTER_REVIEW_MAX_REQUESTS = 32
+STARTER_REVIEW_ID_MAX_CHARS = 64
+STARTER_REVIEW_SUMMARY_MAX_CHARS = 2_000
+STARTER_REVIEW_REQUEST_CODE_MAX_CHARS = 64
+STARTER_REVIEW_REQUEST_MESSAGE_MAX_CHARS = 500
 
-STARTER_CONTEXT_FIELDS = frozenset(
+LEGACY_STARTER_CONTEXT_FIELDS = frozenset(
     {
         "schema_version",
         "deck_identity",
@@ -45,7 +59,12 @@ STARTER_CONTEXT_FIELDS = frozenset(
         "content_sha256",
     }
 )
-STARTER_CANDIDATE_FIELDS = frozenset(
+SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS = frozenset(
+    {*LEGACY_STARTER_CONTEXT_FIELDS, "input_snapshot_manifest_sha256"}
+)
+STARTER_CONTEXT_FIELDS = LEGACY_STARTER_CONTEXT_FIELDS
+
+LEGACY_STARTER_CANDIDATE_FIELDS = frozenset(
     {
         "schema_version",
         "candidate_id",
@@ -63,6 +82,10 @@ STARTER_CANDIDATE_FIELDS = frozenset(
         "content_sha256",
     }
 )
+SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS = frozenset(
+    LEGACY_STARTER_CANDIDATE_FIELDS
+)
+STARTER_CANDIDATE_FIELDS = LEGACY_STARTER_CANDIDATE_FIELDS
 STARTER_DECISION_FIELDS = frozenset(
     {
         "schema_version",
@@ -104,6 +127,36 @@ STARTER_REVIEWED_CANDIDATE_FIELDS = frozenset(
 )
 STARTER_CRITIC_IDENTITY_FIELDS = frozenset(
     {"kind", "review_id", "confidence"}
+)
+STARTER_REVIEW_FIELDS = frozenset(
+    {
+        "schema_version",
+        "review_id",
+        "review_status",
+        "confidence",
+        "starter_context_sha256",
+        "candidate_id",
+        "candidate_revision",
+        "candidate_sha256",
+        "revision_requests",
+        "review_summary",
+        "content_sha256",
+    }
+)
+REVIEW_STATUSES = frozenset({"approved", "revision_requested"})
+REVIEW_CONFIDENCE = frozenset({"high", "limited"})
+REVIEW_TARGETS = frozenset(
+    {
+        "whole_candidate",
+        "strategy_summary",
+        "mulligan",
+        "globalvalues",
+        "card_rules",
+        "combo",
+        "card_dispositions",
+        "rule_rationales",
+        "assumptions",
+    }
 )
 
 
@@ -201,6 +254,16 @@ def reject_path_like_fields(value: object, *, error: str) -> None:
 
 
 __all__ = (
+    "LEGACY_STARTER_CANDIDATE_FIELDS",
+    "LEGACY_STARTER_CONTEXT_FIELDS",
+    "LEGACY_STARTER_SCHEMA_VERSION",
+    "REVIEW_CONFIDENCE",
+    "REVIEW_STATUSES",
+    "REVIEW_TARGETS",
+    "SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES",
+    "SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS",
+    "SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS",
+    "SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION",
     "STARTER_CANDIDATE_1_FILENAME",
     "STARTER_CANDIDATE_2_FILENAME",
     "STARTER_CANDIDATE_3_FILENAME",
@@ -220,6 +283,13 @@ __all__ = (
     "STARTER_FILENAMES",
     "STARTER_MULLIGAN_ROW_FIELDS",
     "STARTER_REVIEWED_CANDIDATE_FIELDS",
+    "STARTER_REVIEW_FIELDS",
+    "STARTER_REVIEW_ID_MAX_CHARS",
+    "STARTER_REVIEW_MAX_BYTES",
+    "STARTER_REVIEW_MAX_REQUESTS",
+    "STARTER_REVIEW_REQUEST_CODE_MAX_CHARS",
+    "STARTER_REVIEW_REQUEST_MESSAGE_MAX_CHARS",
+    "STARTER_REVIEW_SUMMARY_MAX_CHARS",
     "STARTER_SCHEMA_VERSION",
     "STARTER_STRATEGY_SUMMARY_FIELDS",
     "StarterCandidateRole",
