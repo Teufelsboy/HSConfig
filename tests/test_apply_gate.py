@@ -40,7 +40,10 @@ from tests.helpers.current_apply_eligible_package import (
 from tests.helpers.current_runtime_surface_ledger_contract import (
     write_current_runtime_surface_ledger,
 )
-from tests.test_package_render_authority import _optimized_model
+from tests.test_package_render_authority import (
+    _optimized_model,
+    _single_candidate_model,
+)
 
 
 SHADOWPRIEST_DECK_CODE = (
@@ -186,6 +189,19 @@ def _write_valid_optimized_package(
     model_root: Path,
 ) -> Path:
     rendered = render_package_authority(_optimized_model(model_root))
+    for artifact in rendered.artifacts.artifacts:
+        target = package / artifact.relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    return package
+
+
+def _write_valid_single_candidate_package(
+    package: Path,
+    *,
+    model_root: Path,
+) -> Path:
+    rendered = render_package_authority(_single_candidate_model(model_root))
     for artifact in rendered.artifacts.artifacts:
         target = package / artifact.relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -475,6 +491,162 @@ def test_apply_gate_allows_valid_llm_optimized_start(tmp_path: Path):
     ]
 
 
+def test_apply_gate_allows_valid_single_candidate_review_package(
+    tmp_path: Path,
+) -> None:
+    package = _write_valid_single_candidate_package(
+        tmp_path / "single",
+        model_root=tmp_path / "model",
+    )
+    summary = read_json(package / "reports" / "operator_summary.json")
+
+    expected_fields = {
+        "optimized_start_authority_schema",
+        "input_snapshot_manifest_sha256",
+        "candidate_sha256",
+        "candidate_revision",
+        "review_sha256",
+        "review_status",
+        "confidence",
+    }
+    assert set(summary["package_derivation"]) == expected_fields
+    assert refresh_package_derivation_authority(package) == summary[
+        "package_derivation"
+    ]
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["policy"] == "ALLOWED_WITH_WARNINGS"
+
+
+def test_apply_gate_rejects_schema_four_summary_or_receipt_tamper(
+    tmp_path: Path,
+) -> None:
+    package = _write_valid_single_candidate_package(
+        tmp_path / "single",
+        model_root=tmp_path / "model",
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    original_summary = read_json(summary_path)
+    tampered_summary = deepcopy(original_summary)
+    tampered_summary["package_derivation"]["candidate_revision"] = 2
+    write_json(summary_path, tampered_summary)
+
+    summary_gate = evaluate_apply_gate(package)
+
+    assert summary_gate["allowed"] is False
+    assert summary_gate["reasons"][0]["reason"] == (
+        "operator_summary_derivation_inconsistent"
+    )
+
+    write_json(summary_path, original_summary)
+    receipt_path = package / DERIVATION_RECEIPT_PATH
+    receipt = read_json(receipt_path)
+    receipt["inputs"][
+        "reports/optimized_start/starter_config_review.json"
+    ] = "sha256:" + ("0" * 64)
+    write_package_derivation_receipt(
+        receipt_path,
+        receipt,
+    )
+
+    receipt_gate = evaluate_apply_gate(package)
+
+    assert receipt_gate["allowed"] is False
+    assert receipt_gate["reasons"][0]["reason"] == (
+        "optimized_start_derivation_invalid"
+    )
+
+
+@pytest.mark.parametrize(
+    "discriminator",
+    [None, False, 0, "unknown_schema"],
+)
+def test_apply_gate_normalizes_invalid_single_candidate_discriminator(
+    tmp_path: Path,
+    discriminator: object,
+) -> None:
+    package = _write_valid_single_candidate_package(
+        tmp_path / str(discriminator),
+        model_root=tmp_path / f"model-{discriminator}",
+    )
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    assert manifest["configuration_mode"] == "LLM_OPTIMIZED_START"
+    manifest["optimized_start_authority_schema"] = discriminator
+    write_json(manifest_path, manifest)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["reason"] == (
+        "optimized_start_derivation_invalid"
+    )
+
+
+def test_apply_gate_preserves_conservative_priority_for_forbidden_discriminator(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest["configuration_mode"] = "CONSERVATIVE"
+    manifest["optimized_start_authority_schema"] = (
+        "single_candidate_review_v1"
+    )
+    write_json(manifest_path, manifest)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["reason"] == "configuration_mode_invalid"
+
+
+def test_apply_gate_rejects_mixed_or_downgraded_single_candidate_authority(
+    tmp_path: Path,
+) -> None:
+    for case in ("mixed", "downgraded"):
+        package = _write_valid_single_candidate_package(
+            tmp_path / case,
+            model_root=tmp_path / f"{case}-model",
+        )
+        if case == "mixed":
+            write_json(
+                package
+                / "reports"
+                / "optimized_start"
+                / "candidate-1.json",
+                {"unexpected": True},
+            )
+        else:
+            manifest_path = package / "reports" / "input_manifest.json"
+            manifest = read_json(manifest_path)
+            manifest.pop("optimized_start_authority_schema")
+            write_json(manifest_path, manifest)
+
+        gate = evaluate_apply_gate(package)
+
+        assert gate["allowed"] is False
+        assert gate["reasons"][0]["reason"] == (
+            "optimized_start_derivation_invalid"
+        )
+
+
 def test_apply_gate_rejects_optimized_summary_digest_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -526,16 +698,6 @@ def test_apply_gate_rejects_optimized_summary_digest_mismatch(
     ):
         refresh_package_derivation_authority(package)
     assert receipt_path.read_bytes() == valid_receipt_bytes
-    refreshed_receipt = build_package_derivation_receipt(package)
-    refreshed_receipt_sha256 = write_package_derivation_receipt(
-        receipt_path,
-        refreshed_receipt,
-    )
-    invalid_summary = deepcopy(original_summary)
-    invalid_summary["package_derivation"]["receipt_sha256"] = (
-        refreshed_receipt_sha256
-    )
-    write_json(summary_path, invalid_summary)
     assert build_package_authority_context(package)[
         "optimized_start_derivation_validity"
     ] is False

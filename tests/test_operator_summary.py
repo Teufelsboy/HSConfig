@@ -772,6 +772,51 @@ def test_operator_summary_reports_llm_optimized_start_without_optimality_claim()
     assert "GAMEPLAY_OPTIMAL" not in json.dumps(summary, sort_keys=True)
 
 
+def test_operator_summary_keeps_limited_review_visible() -> None:
+    derivation = {
+        "optimized_start_authority_schema": "single_candidate_review_v1",
+        "input_snapshot_manifest_sha256": "sha256:" + "1" * 64,
+        "candidate_sha256": "sha256:" + "2" * 64,
+        "candidate_revision": 1,
+        "review_sha256": "sha256:" + "4" * 64,
+        "review_status": "approved",
+        "confidence": "limited",
+    }
+    summary = build_operator_summary(
+        deck_name="LimitedReview",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        package_derivation=derivation,
+        package_authority={
+            "strategy_authority_mode": "llm_optimized_start",
+            "optimized_start_derivation_validity": True,
+            "strict_validation_passed": True,
+            "deck_input_apply_eligible": True,
+            "source_authority_verified": True,
+            "derivation_receipt_verified": True,
+            "receipt_sha256": "sha256:" + "3" * 64,
+            "source_apply_eligible": False,
+            "source_apply_eligibility_reasons": [
+                "diagnostic_source_not_apply_eligible"
+            ],
+            "canonical_receipt_count": 0,
+            "exact_source_closed": False,
+        },
+    )
+
+    assert summary["package_derivation"] == derivation
+    assert len(summary["package_derivation"]) == 7
+    assert summary["package_derivation"]["confidence"] == "limited"
+    assert summary["optimized_start_limitation"] == (
+        "Review confidence is limited."
+    )
+    assert summary["runtime_apply_allowed"] is True
+    assert "low_confidence" not in json.dumps(
+        summary["package_derivation"],
+        sort_keys=True,
+    )
+
+
 def test_operator_summary_names_current_package_apply_authority():
     summary = build_operator_summary(
         deck_name="Current Package",

@@ -21,6 +21,8 @@ from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.package_domain import MulliganPlanModel
 from hsconfig.package_derivation_receipt import (
+    OPTIMIZED_START_LIMITATION,
+    SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS,
     derivation_schema_version_supported,
     package_authority_context_verified,
 )
@@ -585,6 +587,13 @@ def _build_operator_summary_unfrozen(
         summary["deck_input_verification"] = dict(deck_input_verification)
     if package_derivation is not None:
         summary["package_derivation"] = dict(package_derivation)
+        if (
+            strategy_authority_mode == "llm_optimized_start"
+            and package_derivation.get("confidence") == "limited"
+        ):
+            summary["optimized_start_limitation"] = (
+                OPTIMIZED_START_LIMITATION
+            )
     if strategy_authority_mode == "llm_optimized_start":
         summary.update(
             {
@@ -1287,6 +1296,22 @@ def _technical_status(
         # The package builder always supplies a verified derivation contract,
         # and the apply gate rejects summaries that do not carry one.
         return "VALID_PACKAGE"
+    if set(package_derivation) == set(
+        SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS
+    ):
+        receipt_sha256 = str(
+            (package_authority or {}).get("receipt_sha256", "")
+        )
+        derivation_verified = (
+            package_derivation.get("optimized_start_authority_schema")
+            == "single_candidate_review_v1"
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256)
+            is not None
+            and package_authority_context_verified(package_authority)
+        )
+        return (
+            "VALID_PACKAGE" if derivation_verified else "INVALID_PACKAGE"
+        )
     receipt_sha256 = str(package_derivation.get("receipt_sha256", ""))
     derivation_verified = (
         derivation_schema_version_supported(

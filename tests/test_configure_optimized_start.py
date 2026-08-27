@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import date
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +17,7 @@ from hsconfig.configuration_mode import (
     configuration_mode_from_manifest,
 )
 from hsconfig.package_compiler import compile_package
+from hsconfig.io import read_json, write_json
 from hsconfig.package_request import (
     PackageInvocation,
     PackageResolutionSnapshot,
@@ -24,19 +27,27 @@ from hsconfig.package_request import (
 from hsconfig.starter_context import StarterContext, build_starter_context
 from hsconfig.starter_decision import load_validated_starter_selection
 from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_1_FILENAME,
     STARTER_CANDIDATE_FIELDS,
     STARTER_CONTEXT_FIELDS,
     STARTER_DECISION_FIELDS,
     STARTER_SCHEMA_VERSION,
+    STARTER_REVIEW_FIELDS,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
 from hsconfig.package_request import FrozenJsonDocument
-from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
+from hsconfig.visionai_registry import (
+    OPTIMIZED_START_REPORT_PATHS,
+    SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+)
 from tests.helpers.audited_package_request import audited_request
 from tests.test_starter_decision import (
     three_candidates,
     write_selection_bundle,
+)
+from tests.test_optimized_start_authority import (
+    _build_single_candidate_authority,
 )
 
 
@@ -435,6 +446,197 @@ def test_optimized_configure_summary_binds_selected_candidate(
     assert _optimized_start_configure_summary(package)["optimized_start"][
         "status"
     ] == "low_confidence"
+
+
+def test_configure_summary_binds_single_candidate_review_authority(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.configure_workflow import _optimized_start_configure_summary
+
+    fixture = _build_single_candidate_authority(tmp_path / "fixture")
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {
+            "configuration_mode": "LLM_OPTIMIZED_START",
+            "optimized_start_authority_schema": (
+                "single_candidate_review_v1"
+            ),
+        },
+    )
+    for relative_path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS:
+        target = package / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(
+            (fixture.report_root / target.name).read_bytes()
+        )
+
+    summary = _optimized_start_configure_summary(package)
+
+    assert summary["optimized_start"] == {
+        "optimized_start_authority_schema": "single_candidate_review_v1",
+        "input_snapshot_manifest_sha256": (
+            fixture.frozen.manifest.document.content_sha256
+        ),
+        "candidate_sha256": fixture.candidate.document.content_sha256,
+        "candidate_revision": fixture.candidate.candidate_revision,
+        "review_sha256": fixture.review.content_sha256,
+        "review_status": "approved",
+        "confidence": "high",
+    }
+    assert "optimized_start_limitation" not in summary
+
+
+def test_configure_summary_keeps_limited_review_visible_outside_authority(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.configure_workflow import _optimized_start_configure_summary
+
+    fixture = _build_single_candidate_authority(tmp_path / "fixture")
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {
+            "configuration_mode": "LLM_OPTIMIZED_START",
+            "optimized_start_authority_schema": (
+                "single_candidate_review_v1"
+            ),
+        },
+    )
+    for relative_path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS:
+        target = package / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(
+            (fixture.report_root / target.name).read_bytes()
+        )
+    review_path = (
+        package
+        / "reports"
+        / "optimized_start"
+        / "starter_config_review.json"
+    )
+    review = read_json(review_path)
+    review.pop("content_sha256")
+    review["confidence"] = "limited"
+    limited_review = seal_starter_document(
+        review,
+        expected_fields=STARTER_REVIEW_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    review_path.write_bytes(limited_review.canonical_json)
+
+    summary = _optimized_start_configure_summary(package)
+
+    assert len(summary["optimized_start"]) == 7
+    assert summary["optimized_start"]["confidence"] == "limited"
+    assert summary["optimized_start_limitation"] == (
+        "Review confidence is limited."
+    )
+
+
+def test_legacy_configure_summary_remains_byte_compatible(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.configure_workflow import _optimized_start_configure_summary
+
+    conservative = audited_request(tmp_path / "request", "ShadowPriest")
+    context = build_starter_context(conservative.snapshot)
+    decision_path = write_selection_bundle(
+        tmp_path / "selection",
+        context,
+        three_candidates(context),
+    )
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"configuration_mode": "LLM_OPTIMIZED_START"},
+    )
+    for filename in (
+        "starter_context.json",
+        "candidate-1.json",
+        "candidate-2.json",
+        "candidate-3.json",
+        "starter_config_decision.json",
+    ):
+        target = package / "reports" / "optimized_start" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((decision_path.parent / filename).read_bytes())
+
+    summary = _optimized_start_configure_summary(package)
+    canonical = json.dumps(
+        summary,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+    assert hashlib.sha256(canonical).hexdigest() == (
+        "13d929311be92314329863bdeb71800977e4a50a1badfd2d9571cf8315b73e71"
+    )
+
+
+def test_legacy_configure_summary_rejects_swapped_candidate_paths(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.configure_workflow import _optimized_start_configure_summary
+
+    conservative = audited_request(tmp_path / "request", "ShadowPriest")
+    context = build_starter_context(conservative.snapshot)
+    decision_path = write_selection_bundle(
+        tmp_path / "selection",
+        context,
+        three_candidates(context),
+    )
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"configuration_mode": "LLM_OPTIMIZED_START"},
+    )
+    for filename in (
+        "starter_context.json",
+        "candidate-1.json",
+        "candidate-2.json",
+        "candidate-3.json",
+        "starter_config_decision.json",
+    ):
+        target = package / "reports" / "optimized_start" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((decision_path.parent / filename).read_bytes())
+    first = package / "reports" / "optimized_start" / "candidate-1.json"
+    second = package / "reports" / "optimized_start" / "candidate-2.json"
+    first_bytes = first.read_bytes()
+    second_bytes = second.read_bytes()
+    first.write_bytes(second_bytes)
+    second.write_bytes(first_bytes)
+
+    with pytest.raises(
+        ValueError,
+        match="^optimized_start_summary_invalid$",
+    ):
+        _optimized_start_configure_summary(package)
+
+
+def test_configure_summary_rejects_conservative_authority_discriminator(
+    tmp_path: Path,
+) -> None:
+    from hsconfig.configure_workflow import _optimized_start_configure_summary
+
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {
+            "configuration_mode": "CONSERVATIVE",
+            "optimized_start_authority_schema": (
+                "single_candidate_review_v1"
+            ),
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^optimized_start_summary_invalid$",
+    ):
+        _optimized_start_configure_summary(package)
 
 
 @pytest.mark.parametrize(

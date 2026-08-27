@@ -7,6 +7,7 @@ from typing import Any
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
     configuration_mode_from_manifest,
+    optimized_start_authority_schema_from_manifest,
 )
 from hsconfig.apply_decision import (
     ApplyDecision,
@@ -21,6 +22,8 @@ from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     DERIVATION_RECEIPT_SCHEMA_VERSION,
     OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
+    SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS,
+    SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION,
     deck_input_apply_eligibility_reasons,
     derivation_schema_version_supported,
     optimized_start_derivation_digests,
@@ -125,9 +128,8 @@ def recompute_apply_decision(
             enforce_summary_core_fields=enforce_summary_core_fields,
         )
     try:
-        configuration_mode = configuration_mode_from_manifest(
-            read_json(package / "reports" / "input_manifest.json")
-        )
+        manifest = read_json(package / "reports" / "input_manifest.json")
+        configuration_mode = configuration_mode_from_manifest(manifest)
     except (OSError, TypeError, ValueError):
         facts = _single_blocked_fact(
             "strict_package_validation",
@@ -135,6 +137,32 @@ def recompute_apply_decision(
                 "reason": "configuration_mode_invalid",
                 "code": "configuration_mode_invalid",
             },
+        )
+        return _finalize_recomputed_decision(
+            summary,
+            facts,
+            enforce_summary_core_fields=enforce_summary_core_fields,
+        )
+    try:
+        optimized_start_authority_schema = (
+            optimized_start_authority_schema_from_manifest(manifest)
+        )
+    except (TypeError, ValueError):
+        reason = (
+            _optimized_derivation_reason()
+            if configuration_mode == LLM_OPTIMIZED_START
+            else {
+                "reason": "configuration_mode_invalid",
+                "code": "configuration_mode_invalid",
+            }
+        )
+        facts = _single_blocked_fact(
+            (
+                "derivation_receipt_validity"
+                if configuration_mode == LLM_OPTIMIZED_START
+                else "strict_package_validation"
+            ),
+            reason,
         )
         return _finalize_recomputed_decision(
             summary,
@@ -151,7 +179,10 @@ def recompute_apply_decision(
         *_actual_optional_surface_reasons(package),
         *_actual_runtime_json_reasons(package),
     ]
-    strict_reasons = _strict_package_validation_reasons(package)
+    strict_reasons = _strict_package_validation_reasons(
+        package,
+        configuration_mode=configuration_mode,
+    )
     deck_input_reasons = _deck_input_verification_reasons(package, summary)
     source_receipt_reasons = source_authority_reasons(package)
     source_acquisition_reasons = source_apply_eligibility_reasons(package)
@@ -159,6 +190,9 @@ def recompute_apply_decision(
         package,
         summary,
         strategy_authority_mode=strategy_authority_mode,
+        optimized_start_authority_schema=(
+            optimized_start_authority_schema
+        ),
     )
     package_summary_reasons = [
         *_actual_files_missing_from_summary_reasons(package, summary),
@@ -287,7 +321,11 @@ def _deck_input_not_verified_reason(detail: str) -> dict[str, str]:
     }
 
 
-def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
+def _strict_package_validation_reasons(
+    package: Path,
+    *,
+    configuration_mode: str | None = None,
+) -> list[dict[str, Any]]:
     try:
         report = validate_complete_package(package)
     except (OSError, TypeError, ValueError) as error:
@@ -302,6 +340,17 @@ def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
         return []
     errors = report.get("errors")
     normalized_errors = errors if isinstance(errors, list) else []
+    if (
+        configuration_mode == LLM_OPTIMIZED_START
+        and any(
+            code in normalized_errors
+            for code in (
+                "optimized_start_reports_incomplete",
+                "optimized_start_authority_invalid",
+            )
+        )
+    ):
+        return [_optimized_derivation_reason()]
     linked_owner_code = next(
         (
             code
@@ -337,18 +386,31 @@ def _package_derivation_reasons(
     summary: dict[str, Any],
     *,
     strategy_authority_mode: str = "source_contract",
+    optimized_start_authority_schema: str | None = None,
 ) -> list[dict[str, str]]:
     receipt_path = package / DERIVATION_RECEIPT_PATH
     summary_derivation = summary.get("package_derivation")
+    single_candidate_review = (
+        strategy_authority_mode == "llm_optimized_start"
+        and optimized_start_authority_schema
+        == "single_candidate_review_v1"
+    )
     if not receipt_path.is_file():
-        return [
+        return (
+            [_optimized_derivation_reason()]
+            if single_candidate_review
+            else [
             {
                 "reason": "package_derivation_receipt_missing",
                 "code": "package_derivation_receipt_missing",
                 "detail": "Package derivation receipt is missing.",
             }
-        ]
-    if not isinstance(summary_derivation, dict):
+            ]
+        )
+    if not single_candidate_review and not isinstance(
+        summary_derivation,
+        dict,
+    ):
         return [
             {
                 "reason": "operator_summary_derivation_inconsistent",
@@ -359,6 +421,8 @@ def _package_derivation_reasons(
     try:
         receipt = read_json(receipt_path)
     except ValueError:
+        if single_candidate_review:
+            return [_optimized_derivation_reason()]
         return [
             {
                 "reason": "package_derivation_receipt_digest_mismatch",
@@ -367,6 +431,8 @@ def _package_derivation_reasons(
             }
         ]
     if not isinstance(receipt, dict):
+        if single_candidate_review:
+            return [_optimized_derivation_reason()]
         return [
             {
                 "reason": "package_derivation_receipt_digest_mismatch",
@@ -375,6 +441,8 @@ def _package_derivation_reasons(
             }
         ]
     if not derivation_schema_version_supported(receipt.get("schema_version")):
+        if single_candidate_review:
+            return [_optimized_derivation_reason()]
         return [
             {
                 "reason": "package_derivation_receipt_schema_unsupported",
@@ -382,11 +450,25 @@ def _package_derivation_reasons(
                 "detail": "Package derivation receipt schema version is not supported.",
             }
         ]
-    expected_schema_version = (
-        OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
-        if strategy_authority_mode == "llm_optimized_start"
-        else DERIVATION_RECEIPT_SCHEMA_VERSION
-    )
+    if strategy_authority_mode == "llm_optimized_start":
+        if optimized_start_authority_schema is None:
+            try:
+                manifest = read_json(
+                    package / "reports" / "input_manifest.json"
+                )
+                optimized_start_authority_schema = (
+                    optimized_start_authority_schema_from_manifest(manifest)
+                )
+            except (OSError, TypeError, ValueError):
+                return [_optimized_derivation_reason()]
+        expected_schema_version = (
+            SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+            if optimized_start_authority_schema
+            == "single_candidate_review_v1"
+            else OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+        )
+    else:
+        expected_schema_version = DERIVATION_RECEIPT_SCHEMA_VERSION
     if receipt.get("schema_version") != expected_schema_version:
         return [
             _optimized_derivation_reason()
@@ -397,6 +479,33 @@ def _package_derivation_reasons(
                 "detail": "Package derivation receipt schema version is not supported.",
             }
         ]
+    if single_candidate_review:
+        verified, _verification_reasons = (
+            verify_package_derivation_receipt(package, receipt)
+        )
+        if not verified:
+            return [_optimized_derivation_reason()]
+        try:
+            expected_summary_derivation = (
+                optimized_start_derivation_digests(package)
+            )
+        except (OSError, TypeError, ValueError):
+            return [_optimized_derivation_reason()]
+        if tuple(expected_summary_derivation) != (
+            SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS
+        ):
+            return [_optimized_derivation_reason()]
+        if summary_derivation != expected_summary_derivation:
+            return [
+                {
+                    "reason": "operator_summary_derivation_inconsistent",
+                    "code": "operator_summary_derivation_inconsistent",
+                    "detail": (
+                        "Operator summary derivation metadata is inconsistent."
+                    ),
+                }
+            ]
+        return []
     if (
         not derivation_schema_version_supported(
             summary_derivation.get("schema_version")

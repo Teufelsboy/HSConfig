@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from hashlib import sha256
 import json
 from types import MappingProxyType
 from typing import Any
@@ -106,7 +107,9 @@ from hsconfig.source_to_runtime_explainability import (
 )
 from hsconfig.starter_compiler import (
     OptimizedStartLowering,
+    SingleCandidateStartLowering,
     lower_optimized_start,
+    lower_single_candidate_start,
 )
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.models import InputManifest
@@ -180,6 +183,9 @@ _COMPILER_PROJECTION_PATHS = frozenset(
         "reports/optimized_start/candidate-2.json",
         "reports/optimized_start/candidate-3.json",
         "reports/optimized_start/starter_config_decision.json",
+        "reports/optimized_start/input_snapshot_manifest.json",
+        "reports/optimized_start/starter_config_candidate.json",
+        "reports/optimized_start/starter_config_review.json",
     }
 )
 PRE_AUTHORITY_OWNER_BY_PATH = MappingProxyType({
@@ -210,6 +216,9 @@ _OPTIONAL_JSON_PROJECTION_PATHS = frozenset(
         "reports/optimized_start/candidate-2.json",
         "reports/optimized_start/candidate-3.json",
         "reports/optimized_start/starter_config_decision.json",
+        "reports/optimized_start/input_snapshot_manifest.json",
+        "reports/optimized_start/starter_config_candidate.json",
+        "reports/optimized_start/starter_config_review.json",
     }
 )
 _ALLOWED_JSON_PROJECTION_PATHS = frozenset(
@@ -280,7 +289,9 @@ class PackageDecisionSnapshot(_ImmutableAuthorityNode):
     combo_plan: ComboPlanModel
     decision_projections: tuple[NamedJsonProjection, ...]
     compiler_state: FrozenJsonDocument
-    optimized_start_lowering: OptimizedStartLowering | None = None
+    optimized_start_lowering: (
+        OptimizedStartLowering | SingleCandidateStartLowering | None
+    ) = None
 
     def __post_init__(self) -> None:
         if not all(
@@ -305,7 +316,7 @@ class PackageDecisionSnapshot(_ImmutableAuthorityNode):
             raise TypeError("package_decision_state_invalid")
         if self.optimized_start_lowering is not None and not isinstance(
             self.optimized_start_lowering,
-            OptimizedStartLowering,
+            (OptimizedStartLowering, SingleCandidateStartLowering),
         ):
             raise TypeError("package_decision_optimized_lowering_invalid")
 
@@ -317,9 +328,14 @@ def compile_package_decisions(
 
     if not isinstance(request, ResolvedPackageRequest):
         raise TypeError("resolved_package_request_required")
-    if request.starter_selection is None:
+    schema = request.optimized_start_authority_schema
+    if schema is None:
         return _compile_conservative_package_decisions(request)
-    return _compile_optimized_package_decisions(request)
+    if schema == "legacy_five_doc":
+        return _compile_legacy_optimized_package_decisions(request)
+    if schema == "single_candidate_review_v1":
+        return _compile_single_candidate_review_package_decisions(request)
+    raise ValueError("optimized_start_authority_schema_invalid")
 
 
 def _compile_conservative_package_decisions(
@@ -630,7 +646,7 @@ def _compile_conservative_package_decisions(
     )
 
 
-def _compile_optimized_package_decisions(
+def _compile_legacy_optimized_package_decisions(
     request: ResolvedPackageRequest,
 ) -> PackageDecisionSnapshot:
     """Replace conservative runtime decisions with one selected candidate."""
@@ -685,6 +701,45 @@ def _compile_optimized_package_decisions(
             sorted(projections, key=lambda row: row.relative_path)
         ),
         compiler_state=FrozenJsonDocument.from_value(state),
+        optimized_start_lowering=lowered,
+    )
+
+
+def _compile_single_candidate_review_package_decisions(
+    request: ResolvedPackageRequest,
+) -> PackageDecisionSnapshot:
+    """Compile one reviewed candidate without conservative reconstruction."""
+
+    approval = request.starter_approval
+    if approval is None:
+        raise ValueError("starter_approval_required")
+    lowered = lower_single_candidate_start(
+        request=request,
+        approval=approval,
+    )
+    state = lowered.compiler_state.to_value()
+    projections = (
+        *_c3_projections(state),
+        *(
+            NamedJsonProjection(
+                path,
+                ProjectionOwner.PACKAGE_COMPILER,
+                document.document,
+            )
+            for path, document in lowered.optimized_projections
+        ),
+    )
+    deck_identity = state["deck_identity"]
+    return PackageDecisionSnapshot(
+        deck_name=str(deck_identity["deck_name"]),
+        deck_slug=slugify_deck_name(str(deck_identity["deck_name"])),
+        deck_fingerprint=str(deck_identity["deck_fingerprint"]),
+        mulligan_plan=lowered.mulligan_plan,
+        combo_plan=lowered.combo_plan,
+        decision_projections=tuple(
+            sorted(projections, key=lambda row: row.relative_path)
+        ),
+        compiler_state=lowered.compiler_state,
         optimized_start_lowering=lowered,
     )
 
@@ -1003,13 +1058,19 @@ class CompiledPackage(_ImmutableAuthorityNode):
         expected_runtime_files = {
             "GlobalValues.json",
             "Mulligan.json",
-            *(f"{row['card_id']}.json" for row in identity_cards),
             *(
                 path
                 for row in self.disposition_ledger.cards
                 for path in row.runtime_paths
             ),
         }
+        if not isinstance(
+            self.decision_snapshot.optimized_start_lowering,
+            SingleCandidateStartLowering,
+        ):
+            expected_runtime_files.update(
+                f"{row['card_id']}.json" for row in identity_cards
+            )
         if self.combo_plan.decisions:
             expected_runtime_files.add("Combo.json")
         if set(runtime_files) != expected_runtime_files:
@@ -1161,8 +1222,16 @@ def compile_package(
         "card_behavior_plan": card_plan,
     }
     state["gameplan_contract"] = gameplan
-    policy = policy_profile_from_mapping(state["policy_profile"])
-    policy_mapping = state["policy_profile"]
+    single_candidate_lowering = isinstance(
+        optimized_lowering,
+        SingleCandidateStartLowering,
+    )
+    if single_candidate_lowering:
+        policy = None
+        policy_mapping = None
+    else:
+        policy = policy_profile_from_mapping(state["policy_profile"])
+        policy_mapping = state["policy_profile"]
     source_audit = build_source_contract_audit(
         deck_name=decisions.deck_name,
         deck_identity=state["deck_identity"],
@@ -1178,7 +1247,7 @@ def compile_package(
         plan_input_diagnostics=state["plan_input_diagnostics"],
         policy_profile=policy_mapping,
         expected_policy_profile=policy,
-        include_evidence_authority=True,
+        include_evidence_authority=not single_candidate_lowering,
     )
     disposition, dual_closure, verified_emissions = (
         _build_package_disposition_ledger(
@@ -1232,14 +1301,19 @@ def compile_package(
         if isinstance(row, dict)
         and isinstance(row.get("evidence_authority"), dict)
     }
-    acquisition_closure = _acquisition_closure(
-        request.acquisition_closure_input.to_value()
-    )
-    acquisition_report = build_source_acquisition_closure_report(
-        deck_fingerprint=decisions.deck_fingerprint,
-        acquisition_closure=acquisition_closure,
-        expected_policy_profile=policy,
-    )
+    if single_candidate_lowering:
+        acquisition_report = _single_candidate_acquisition_report(
+            decisions.deck_fingerprint
+        )
+    else:
+        acquisition_closure = _acquisition_closure(
+            request.acquisition_closure_input.to_value()
+        )
+        acquisition_report = build_source_acquisition_closure_report(
+            deck_fingerprint=decisions.deck_fingerprint,
+            acquisition_closure=acquisition_closure,
+            expected_policy_profile=policy,
+        )
     layered = build_layered_evidence_contract_report(
         disposition_ledger=disposition,
         classified_authorities=classified,
@@ -1327,6 +1401,12 @@ def compile_package(
     )
     if request.invocation.configuration_mode == "LLM_OPTIMIZED_START":
         manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
+    if request.optimized_start_authority_schema == (
+        "single_candidate_review_v1"
+    ):
+        manifest["optimized_start_authority_schema"] = (
+            "single_candidate_review_v1"
+        )
     json_projections = _all_json_projections(
         state=state,
         manifest=manifest,
@@ -1431,6 +1511,48 @@ def _acquisition_closure(value: dict[str, Any]) -> AcquisitionClosure:
         status=value["status"],
         content_sha256=value["content_sha256"],
     )
+
+
+def _single_candidate_acquisition_report(
+    deck_fingerprint: str,
+) -> dict[str, Any]:
+    """Emit a non-authorizing diagnostic when no policy bytes were frozen."""
+
+    closure = {
+        "deck_fingerprint": deck_fingerprint,
+        "attempt_id": "",
+        "attempted_at": "",
+        "attempted_urls": [],
+        "successful_evidence_ids": [],
+        "failed_attempts": [],
+        "negative_search_documented": False,
+        "checked_dossier": False,
+        "policy_id": None,
+        "status": "open",
+        "content_sha256": "sha256:" + ("0" * 64),
+    }
+    report = {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "operator_gate_impact": "diagnostic_only",
+        "apply_blocking": False,
+        "normal_apply_authority": "reports/operator_summary.json",
+        "deck_fingerprint": deck_fingerprint,
+        "source_acquisition_complete": False,
+        "policy_provenance": {
+            "status": "not_frozen",
+            "runtime_authorized": False,
+        },
+        "acquisition_closure": closure,
+    }
+    canonical = json.dumps(
+        report,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    report["content_sha256"] = f"sha256:{sha256(canonical).hexdigest()}"
+    return report
 
 
 def _runtime_surfaces(

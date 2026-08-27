@@ -11,6 +11,7 @@ from typing import Any, Callable
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
     configuration_mode_from_manifest,
+    optimized_start_authority_schema_from_manifest,
 )
 from hsconfig.apply_decision import (
     apply_decision_payload,
@@ -59,6 +60,7 @@ from hsconfig.configure_source_closure_receipt import (
 )
 from hsconfig.package_builder import prepare_package_payload
 from hsconfig.package_assembler import PackageModel
+from hsconfig.package_derivation_receipt import OPTIMIZED_START_LIMITATION
 from hsconfig.io import read_json, write_json
 from hsconfig.internal_source_authority import (
     reject_caller_supplied_source_authority,
@@ -73,6 +75,10 @@ from hsconfig.package_io import (
     snapshot_bounded_filesystem_package,
 )
 from hsconfig.package_render_authority import render_package_authority
+from hsconfig.optimized_start_authority import (
+    ValidatedSingleStarterApproval,
+    load_optimized_start_authority,
+)
 from hsconfig.source_closure_intake import (
     build_source_closure_intake_receipt,
     summarize_source_closure_intake,
@@ -96,6 +102,9 @@ from hsconfig.starter_decision import (
 )
 from hsconfig.starter_context import validate_starter_context_document
 from hsconfig.starter_document import load_starter_document
+from hsconfig.validate_package import (
+    validate_legacy_starter_candidate_path_mapping,
+)
 
 
 ApplyPayload = Callable[[argparse.Namespace], tuple[dict[str, Any], int]]
@@ -1131,12 +1140,50 @@ def _optimized_start_configure_summary(
 ) -> dict[str, Any]:
     reports = Path(package_dir) / "reports"
     manifest = read_json(reports / "input_manifest.json")
-    if configuration_mode_from_manifest(manifest) != LLM_OPTIMIZED_START:
+    try:
+        configuration_mode = configuration_mode_from_manifest(manifest)
+        optimized_start_authority_schema_from_manifest(manifest)
+    except (TypeError, ValueError):
+        raise ValueError("optimized_start_summary_invalid") from None
+    if configuration_mode != LLM_OPTIMIZED_START:
         return {}
     optimized = reports / "optimized_start"
     try:
-        selection = _load_validated_optimized_start_selection(optimized)
-        return _optimized_start_selection_summary(selection)
+        authority = load_optimized_start_authority(
+            report_root=optimized,
+            manifest=manifest,
+        )
+        if isinstance(authority, ValidatedSingleStarterApproval):
+            summary = {
+                "optimized_start": {
+                    "optimized_start_authority_schema": (
+                        "single_candidate_review_v1"
+                    ),
+                    "input_snapshot_manifest_sha256": (
+                        authority.snapshot.document.content_sha256
+                    ),
+                    "candidate_sha256": (
+                        authority.candidate.document.content_sha256
+                    ),
+                    "candidate_revision": (
+                        authority.candidate.candidate_revision
+                    ),
+                    "review_sha256": authority.review.document.content_sha256,
+                    "review_status": authority.review.review_status,
+                    "confidence": authority.review.confidence,
+                }
+            }
+            if authority.review.confidence == "limited":
+                summary["optimized_start_limitation"] = (
+                    OPTIMIZED_START_LIMITATION
+                )
+            return summary
+        if isinstance(authority, ValidatedStarterSelection):
+            validate_legacy_starter_candidate_path_mapping(
+                authority.candidates
+            )
+            return _optimized_start_selection_summary(authority)
+        raise ValueError("optimized_start_authority_invalid")
     except (KeyError, OSError, TypeError, ValueError):
         raise ValueError("optimized_start_summary_invalid") from None
 

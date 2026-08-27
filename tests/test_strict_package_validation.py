@@ -20,18 +20,45 @@ from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import read_json, write_json
 from hsconfig.package_assembler import assemble_package
 from hsconfig.package_compiler import compile_package
-from hsconfig.package_render_authority import ArtifactSet, AuthorityArtifact
+from hsconfig.package_render_authority import (
+    ArtifactSet,
+    AuthorityArtifact,
+    _core_runtime_files,
+    _pre_authority_files,
+)
 from hsconfig.run_manifest import (
     build_tree_manifest_from_artifacts,
     write_tree_manifest,
 )
 from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
+from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_view
 from hsconfig.strict_package_validation import (
     validate_complete_configure_run_from_view,
     validate_complete_package,
+    validate_complete_package_from_view,
 )
 from tests.helpers.audited_package_request import audited_request
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
+from tests.test_package_render_authority import _single_candidate_model
+
+
+def _single_candidate_pre_validation_files(
+    tmp_path: Path,
+) -> dict[str, bytes]:
+    model = _single_candidate_model(tmp_path)
+    files = {
+        **_core_runtime_files(model),
+        **_pre_authority_files(model),
+    }
+    artifacts = ArtifactSet.from_files(files)
+    ledger = rederive_runtime_surface_ledger_from_view(artifacts)
+    files["reports/runtime_surface_ledger.json"] = json.dumps(
+        ledger,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8") + b"\n"
+    return files
 
 
 @pytest.mark.parametrize(
@@ -1556,8 +1583,16 @@ def test_optimized_reports_are_all_or_none_and_conservative_mode_rejects_strays(
     manifest = read_json(manifest_path)
     manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
     write_json(manifest_path, manifest)
+    from tests.starter_fixtures import build_shadowpriest_starter_fixture
+
+    fixture = build_shadowpriest_starter_fixture(
+        tmp_path / "legacy-authority"
+    )
+    source_root = fixture.decision_path.parent
     for path in optimized_paths:
-        write_json(optimized / path, {"frozen": path})
+        target = optimized / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source_root / target.name).read_bytes())
     complete_path_report = validate_complete_package(optimized)
     complete_view_report = validate_complete_package_from_view(
         DirectoryPackageView(optimized)
@@ -1573,3 +1608,59 @@ def test_optimized_reports_are_all_or_none_and_conservative_mode_rejects_strays(
     assert complete_path_report == complete_view_report
     assert strict_validation_passed(incomplete_report) is False
     assert "optimized_start_reports_incomplete" in incomplete_report["errors"]
+
+
+def test_strict_validation_accepts_exact_single_candidate_report_set(
+    tmp_path: Path,
+) -> None:
+    files = _single_candidate_pre_validation_files(tmp_path / "inputs")
+    package = tmp_path / "package"
+    for relative_path, content in files.items():
+        target = package / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+    path_report = validate_complete_package(package)
+    view_report = validate_complete_package_from_view(
+        ArtifactSet.from_files(files)
+    )
+
+    assert path_report == view_report
+    assert path_report["status"] == "passed"
+    assert path_report["errors"] == []
+
+
+def test_strict_validation_rejects_mixed_downgraded_and_extra_authority(
+    tmp_path: Path,
+) -> None:
+    base = _single_candidate_pre_validation_files(tmp_path)
+    manifest_path = "reports/input_manifest.json"
+
+    mixed = dict(base)
+    mixed["reports/optimized_start/candidate-1.json"] = b"{}"
+    downgraded = dict(base)
+    downgraded_manifest = json.loads(downgraded[manifest_path])
+    downgraded_manifest.pop("optimized_start_authority_schema")
+    downgraded[manifest_path] = json.dumps(
+        downgraded_manifest,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    extra = dict(base)
+    extra["reports/optimized_start/unexpected.json"] = b"{}"
+    tampered = dict(base)
+    review_path = "reports/optimized_start/starter_config_review.json"
+    tampered[review_path] = tampered[review_path][:-1] + b" "
+
+    for files in (mixed, downgraded, extra):
+        report = validate_complete_package_from_view(
+            ArtifactSet.from_files(files)
+        )
+        assert report["status"] == "failed"
+        assert "optimized_start_reports_incomplete" in report["errors"]
+    tampered_report = validate_complete_package_from_view(
+        ArtifactSet.from_files(tampered)
+    )
+    assert tampered_report["status"] == "failed"
+    assert "optimized_start_authority_invalid" in tampered_report["errors"]

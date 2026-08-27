@@ -6,14 +6,38 @@ from typing import Any, Callable
 
 import hsconfig.starter_compiler as starter_compiler
 from hsconfig.globalvalues_decisions import GLOBALVALUES_BASELINE_DECISION_KEYS
+from hsconfig.guide_source_builder import (
+    build_guide_builder_receipt,
+    research_required_guide_sources,
+)
 from hsconfig.package_compiler import compile_package, compile_package_decisions
 from hsconfig.package_domain import GlobalValueDecisionKind
 from hsconfig.package_request import ResolvedPackageRequest
-from hsconfig.starter_context import build_starter_context
+from hsconfig.optimized_start_authority import (
+    ValidatedSingleStarterApproval,
+    load_optimized_start_authority,
+)
+from hsconfig.starter_candidate import validate_starter_candidate
+from hsconfig.starter_context import (
+    build_single_candidate_starter_context,
+    build_starter_context,
+)
+from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    STARTER_REVIEW_FIELDS,
+)
 from hsconfig.starter_decision import load_validated_starter_selection
+from hsconfig.starter_document import seal_starter_document
+from hsconfig.starter_review import validate_starter_review
+from hsconfig.visionai_registry import SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
 from tests.helpers.audited_package_request import audited_request
-from tests.test_starter_candidate import sealed_candidate
+from tests.test_optimized_start_authority import (
+    SINGLE_CANDIDATE_MANIFEST,
+    _build_single_candidate_authority,
+)
+from tests.test_starter_candidate import sealed_candidate, sealed_single_candidate
 from tests.test_starter_decision import three_candidates, write_selection_bundle
+from tests.test_starter_context import _replace_frozen_source_pair
 
 
 OPTIMIZED_REPORT_PATHS = (
@@ -61,6 +85,106 @@ def _optimized_request(
         acquisition_closure_input=base.acquisition_closure_input,
         mulligan_gap_input=base.mulligan_gap_input,
         starter_selection=selection,
+    )
+
+
+def _single_candidate_request(tmp_path: Path) -> ResolvedPackageRequest:
+    fixture = _build_single_candidate_authority(tmp_path)
+    approval = load_optimized_start_authority(
+        report_root=fixture.report_root,
+        manifest=SINGLE_CANDIDATE_MANIFEST,
+    )
+    assert isinstance(approval, ValidatedSingleStarterApproval)
+    return ResolvedPackageRequest.from_values(
+        snapshot=fixture.request.snapshot,
+        invocation=replace(
+            fixture.request.invocation,
+            configuration_mode="LLM_OPTIMIZED_START",
+        ),
+        plan_overrides=fixture.request.plan_overrides.to_value(),
+        acquisition_closure_input=(
+            fixture.request.acquisition_closure_input.to_value()
+        ),
+        mulligan_gap_input=fixture.request.mulligan_gap_input.to_value(),
+        frozen_compiler_inputs=fixture.frozen,
+        starter_approval=approval,
+    )
+
+
+def _static_only_single_candidate_request(
+    tmp_path: Path,
+) -> ResolvedPackageRequest:
+    fixture = _build_single_candidate_authority(tmp_path)
+    deck_identity = fixture.frozen.deck.to_value()["deck_identity"]
+    guide_sources = research_required_guide_sources(
+        str(deck_identity["deck_name"]),
+        deck_identity,
+    )
+    guide_sources["source_depth_status"] = "static_semantics_only"
+    guide_sources["summary"].update(
+        {
+            "unsupported_claim_count": 0,
+            "static_card_semantics_used": True,
+        }
+    )
+    source_documents = {"guide_sources": guide_sources}
+    source_acquisition = fixture.frozen.source_acquisition.to_value()
+    source_acquisition["guide_builder_receipt"] = build_guide_builder_receipt(
+        deck_name=str(deck_identity["deck_name"]),
+        deck_identity=deck_identity,
+        source_documents=[],
+        guide_sources=guide_sources,
+    )
+    frozen = _replace_frozen_source_pair(
+        fixture.frozen,
+        source_acquisition=source_acquisition,
+        source_documents=source_documents,
+    )
+    context = build_single_candidate_starter_context(frozen)
+    candidate = validate_starter_candidate(
+        sealed_single_candidate(context),
+        context=context,
+    )
+    review_document = seal_starter_document(
+        {
+            "schema_version": SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            "review_id": "review-1",
+            "review_status": "approved",
+            "confidence": "high",
+            "starter_context_sha256": context.document.content_sha256,
+            "candidate_id": candidate.candidate_id,
+            "candidate_revision": candidate.candidate_revision,
+            "candidate_sha256": candidate.document.content_sha256,
+            "revision_requests": [],
+            "review_summary": "The lead candidate is coherent and bounded.",
+        },
+        expected_fields=STARTER_REVIEW_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    review = validate_starter_review(
+        review_document,
+        context=context,
+        candidate=candidate,
+    )
+    approval = ValidatedSingleStarterApproval(
+        snapshot=frozen.manifest,
+        context=context,
+        candidate=candidate,
+        review=review,
+    )
+    return ResolvedPackageRequest.from_values(
+        snapshot=fixture.request.snapshot,
+        invocation=replace(
+            fixture.request.invocation,
+            configuration_mode="LLM_OPTIMIZED_START",
+        ),
+        plan_overrides=fixture.request.plan_overrides.to_value(),
+        acquisition_closure_input=(
+            fixture.request.acquisition_closure_input.to_value()
+        ),
+        mulligan_gap_input=fixture.request.mulligan_gap_input.to_value(),
+        frozen_compiler_inputs=frozen,
+        starter_approval=approval,
     )
 
 
@@ -160,6 +284,230 @@ def test_lower_optimized_start_builds_one_neutral_frozen_authority(
         path: document.canonical_json
         for path, document in lowered.optimized_projections
     } == expected
+
+
+def test_single_candidate_compile_emits_exact_four_authority_reports(
+    tmp_path: Path,
+) -> None:
+    request = _single_candidate_request(tmp_path)
+
+    decisions = compile_package_decisions(request)
+    lowering = decisions.optimized_start_lowering
+
+    assert lowering is not None
+    assert tuple(
+        path for path, _document in lowering.optimized_projections
+    ) == SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    assert {
+        row.relative_path
+        for row in decisions.decision_projections
+        if row.relative_path.startswith("reports/optimized_start/")
+    } == set(SINGLE_CANDIDATE_REVIEW_REPORT_PATHS)
+
+
+def test_single_candidate_authority_accounts_for_every_physical_card(
+    tmp_path: Path,
+) -> None:
+    request = _single_candidate_request(tmp_path)
+    approval = request.starter_approval
+    assert approval is not None
+
+    compiled = compile_package(request)
+    context_cards = approval.context.document.to_value()["cards"]
+    candidate = approval.candidate.document.to_value()
+    expected_physical = {row["card_id"] for row in context_cards}
+
+    disposition_physical = {
+        row.composite_card_key.rsplit(":", 1)[-1]
+        for row in compiled.disposition_ledger.cards
+    }
+    assert disposition_physical == expected_physical
+    assert len(compiled.disposition_ledger.cards) == len(expected_physical)
+
+    configured_runtime_owners = {
+        row["runtime_card_id"] for row in candidate["card_rules"]
+    }
+    runtime_card_files = {
+        row.file_name.removesuffix(".json")
+        for row in compiled.runtime_surfaces
+        if row.family == "CardID"
+    }
+    assert runtime_card_files == configured_runtime_owners
+    assert {
+        row["card_id"]
+        for row in candidate["card_dispositions"]
+        if row["disposition"] == "deliberately_unconfigured"
+    }.isdisjoint(runtime_card_files)
+
+
+def test_single_candidate_preserves_frozen_source_diagnostics_without_authority(
+    tmp_path: Path,
+) -> None:
+    request = _single_candidate_request(tmp_path)
+    approval = request.starter_approval
+    assert approval is not None
+
+    decisions = compile_package_decisions(request)
+    lowering = decisions.optimized_start_lowering
+    assert lowering is not None
+    state = decisions.compiler_state.to_value()
+    context = approval.context.document.to_value()
+    claims = context["existing_claims"]
+    summary = context["source_evidence"]["guide_sources_summary"]
+    claim_ids = {row["claim_id"] for row in claims}
+    expected_claim_ids_by_card = {
+        card_id: [
+            row["claim_id"]
+            for row in claims
+            if card_id in row.get("cards", [])
+        ]
+        for card_id in state["guide_claim_bundle"]["coverage"]["cards"]
+    }
+
+    guide = state["guide_claim_bundle"]
+    assert guide["claims"] == claims
+    assert guide["authority"] == "diagnostic_only"
+    assert guide["runtime_authorized"] is False
+    assert guide["claim_count"] == summary["claim_count"] == len(claims)
+    assert guide["source_count"] == summary["source_count"]
+    assert guide["guide_sources_summary"] == summary
+    assert {
+        card_id: row["source_claim_ids"]
+        for card_id, row in guide["coverage"]["cards"].items()
+    } == expected_claim_ids_by_card
+    assert guide["coverage"]["summary"]["guide_backed"] == len(
+        {
+            card_id
+            for card_id, source_claim_ids in expected_claim_ids_by_card.items()
+            if source_claim_ids
+        }
+    )
+    research_claims = state["research_bundle"]["claims"]
+    assert {row["claim_id"] for row in research_claims} == claim_ids
+    assert all(
+        all(
+            projected[key] == value
+            for key, value in original.items()
+        )
+        for original in claims
+        for projected in research_claims
+        if projected["claim_id"] == original["claim_id"]
+    )
+    assert state["research_bundle"]["archetype_research"][
+        "source_claim_count"
+    ] == len(claims)
+    gameplan_claims = state["gameplan_contract"]["source_claims"]
+    assert {row["claim_id"] for row in gameplan_claims} == claim_ids
+    assert all(
+        all(
+            projected[key] == value
+            for key, value in original.items()
+        )
+        for original in claims
+        for projected in gameplan_claims
+        if projected["claim_id"] == original["claim_id"]
+    )
+    assert state["candidate_archetypes"]["candidates"][0][
+        "source_count"
+    ] == summary["source_count"]
+
+    candidate_runtime_rows = [
+        *lowering.mulligan_plan.to_report()["rules"],
+        *lowering.combo_plan.to_report()["combos"],
+        *lowering.card_behavior_plan.to_value()["rows"],
+    ]
+    assert all(row.get("source_claim_ids", []) == [] for row in candidate_runtime_rows)
+    assert claim_ids.isdisjoint(
+        row.get("claim_id") for row in candidate_runtime_rows
+    )
+
+
+def test_single_candidate_static_only_coverage_matches_frozen_card_semantics(
+    tmp_path: Path,
+) -> None:
+    # Break caught: schema-2 static-only Context coverage contradicts the
+    # Research projection even though both derive from the same frozen cards.
+    request = _static_only_single_candidate_request(tmp_path)
+
+    decisions = compile_package_decisions(request)
+    state = decisions.compiler_state.to_value()
+    guide = state["guide_claim_bundle"]
+    research = state["research_bundle"]
+    static_cards = {
+        card_id
+        for card_id, row in guide["coverage"]["cards"].items()
+        if row["coverage_status"] == "static_semantics_backfilled"
+    }
+
+    assert guide["guide_sources_summary"] == {
+        "claim_count": 0,
+        "downgraded_source_count": 0,
+        "source_count": 0,
+        "stale_source_count": 0,
+        "static_card_semantics_used": True,
+        "unsupported_claim_count": 0,
+    }
+    assert guide["claims"] == []
+    assert guide["claim_count"] == guide["source_count"] == 0
+    assert guide["runtime_authorized"] is False
+    assert static_cards == {"SW_448"}
+    assert guide["coverage"]["summary"] == {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 1,
+        "uncovered_low_confidence": 15,
+    }
+    assert research["coverage_summary"][
+        "source_backed_static_semantics_card_count"
+    ] == len(static_cards)
+    assert all(
+        row["source_claim_ids"] == []
+        for row in guide["coverage"]["cards"].values()
+    )
+    assert all(
+        row["authority"] == "candidate_rule"
+        and row["source_claim_ids"] == []
+        for row in state["gameplan_contract"]["cards"].values()
+    )
+
+
+def test_single_candidate_gameplan_cards_are_exact_cardid_runtime_owners(
+    tmp_path: Path,
+) -> None:
+    request = _single_candidate_request(tmp_path)
+    approval = request.starter_approval
+    assert approval is not None
+    candidate = approval.candidate.document.to_value()
+
+    compiled = compile_package(request)
+    gameplan_cards = compiled.decision_snapshot.compiler_state.to_value()[
+        "gameplan_contract"
+    ]["cards"]
+    expected_by_owner = {
+        row["runtime_card_id"]: {
+            "source_card_id": row["source_card_id"],
+            "link_kind": row["link_kind"],
+        }
+        for row in candidate["card_rules"]
+    }
+    emitted_cardid_owners = {
+        row.file_name.removesuffix(".json")
+        for row in compiled.runtime_surfaces
+        if row.family == "CardID"
+    }
+
+    assert set(gameplan_cards) == set(expected_by_owner) == emitted_cardid_owners
+    assert {
+        runtime_card_id: {
+            "source_card_id": row["source_card_id"],
+            "link_kind": row["link_kind"],
+        }
+        for runtime_card_id, row in gameplan_cards.items()
+    } == expected_by_owner
+    assert {
+        row["card_id"]
+        for row in candidate["card_dispositions"]
+        if row["disposition"] == "deliberately_unconfigured"
+    }.isdisjoint(gameplan_cards)
 
 
 def test_compile_package_uses_selected_candidate_for_every_runtime_authority(

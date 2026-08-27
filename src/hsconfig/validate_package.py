@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -23,6 +24,10 @@ from hsconfig.globalvalues_decisions import (
     project_optimized_globalvalues_profile,
 )
 from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.starter_contract import (
+    STARTER_CANDIDATE_FILENAMES,
+    StarterStrategyRole,
+)
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
     COMBO_RUNTIME_FILE,
@@ -32,6 +37,7 @@ from hsconfig.visionai_registry import (
     PRESUME_RUNTIME_FILE,
     REQUIRED_RUNTIME_SURFACES,
     SERIALIZED_SPECIAL_RUNTIME_SURFACES,
+    optimized_start_report_paths_for_manifest,
     expected_game_card_id,
     runtime_row_keys,
     supported_surface,
@@ -40,6 +46,58 @@ from hsconfig.visionai_registry import (
 
 CARD_ID_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+[A-Za-z0-9]*$")
 NUMERIC_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$")
+
+
+def validate_legacy_starter_candidate_path_mapping(
+    candidates: Sequence[Any],
+) -> None:
+    """Require each sealed Legacy candidate identity at its fixed filename."""
+
+    expected_identities = (
+        ("candidate-1", StarterStrategyRole.PROACTIVE_TEMPO.value),
+        ("candidate-2", StarterStrategyRole.BALANCED.value),
+        ("candidate-3", StarterStrategyRole.RESOURCE_ORIENTED.value),
+    )
+    if len(candidates) != len(STARTER_CANDIDATE_FILENAMES):
+        raise ValueError("starter_candidate_fixed_path_mapping_invalid")
+    for candidate, _filename, (candidate_id, strategy_role) in zip(
+        candidates,
+        STARTER_CANDIDATE_FILENAMES,
+        expected_identities,
+        strict=True,
+    ):
+        if (
+            getattr(candidate, "candidate_id", None) != candidate_id
+            or getattr(candidate, "strategy_role", None) != strategy_role
+        ):
+            raise ValueError("starter_candidate_fixed_path_mapping_invalid")
+
+
+def optimized_start_authority_report_set_errors(
+    *,
+    file_names: tuple[str, ...],
+    manifest: Mapping[str, Any],
+) -> list[str]:
+    """Resolve the exact optimized report set only from the manifest."""
+
+    try:
+        expected = optimized_start_report_paths_for_manifest(manifest)
+    except (TypeError, ValueError):
+        return ["optimized_start_authority_invalid"]
+    actual = tuple(
+        path
+        for path in file_names
+        if path.startswith("reports/optimized_start/")
+    )
+    if not expected:
+        return (
+            ["optimized_start_reports_forbidden_in_conservative_mode"]
+            if actual
+            else []
+        )
+    if len(actual) != len(expected) or set(actual) != set(expected):
+        return ["optimized_start_reports_incomplete"]
+    return []
 
 
 def validate_card_runtime_payload(
@@ -95,6 +153,59 @@ def validate_config_package(
             "errors": ["configuration_mode_invalid"],
             "checked_files": checked_files,
         }
+
+    manifest_path = root / "reports" / "input_manifest.json"
+    if require_complete_package and manifest_path.is_file():
+        try:
+            manifest = json.loads(
+                manifest_path.read_bytes().decode("utf-8"),
+                parse_constant=_reject_nonstandard_json_constant,
+            )
+            if not isinstance(manifest, Mapping):
+                raise ValueError("configuration_mode_invalid")
+            manifest_mode = configuration_mode_from_manifest(manifest)
+        except (OSError, TypeError, ValueError, UnicodeError):
+            errors.append("configuration_mode_invalid")
+        else:
+            if manifest_mode != configuration_mode:
+                errors.append("configuration_mode_invalid")
+            else:
+                file_names = tuple(
+                    path.relative_to(root).as_posix()
+                    for path in root.rglob("*")
+                    if path.is_file()
+                )
+                authority_errors = optimized_start_authority_report_set_errors(
+                    file_names=file_names,
+                    manifest=manifest,
+                )
+                errors.extend(authority_errors)
+                if (
+                    not authority_errors
+                    and configuration_mode == LLM_OPTIMIZED_START
+                ):
+                    try:
+                        from hsconfig.optimized_start_authority import (
+                            load_optimized_start_authority,
+                        )
+
+                        authority = load_optimized_start_authority(
+                            report_root=(
+                                root / "reports" / "optimized_start"
+                            ),
+                            manifest=manifest,
+                        )
+                        candidates = getattr(
+                            authority,
+                            "candidates",
+                            None,
+                        )
+                        if candidates is not None:
+                            validate_legacy_starter_candidate_path_mapping(
+                                candidates
+                            )
+                    except (KeyError, OSError, TypeError, ValueError):
+                        errors.append("optimized_start_authority_invalid")
 
     custom_config = root / "CustomConfig"
     if not custom_config.exists():

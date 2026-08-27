@@ -1,4 +1,5 @@
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.visionai_registry import SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
 
 
 def test_pre_run_reports_are_diagnostic_and_operator_summary_is_the_only_gate():
@@ -234,3 +235,27 @@ def test_optimized_report_ownership_is_mode_bound():
         for row in manifest["files"]
         if row["classification"] == "gate"
     ] == ["reports/operator_summary.json"]
+
+
+def test_single_candidate_report_ownership_is_mode_and_schema_bound():
+    manifest = build_output_ownership_manifest(
+        [
+            "reports/operator_summary.json",
+            *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+        ]
+    )
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    assert set(by_file) == {
+        "reports/operator_summary.json",
+        *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+    }
+    for path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS:
+        assert by_file[path]["classification"] == "diagnostic"
+        assert by_file[path]["authority"] == "diagnostic_optimized_start"
+        assert by_file[path]["configuration_modes"] == [
+            "LLM_OPTIMIZED_START"
+        ]
+        assert by_file[path]["diagnostic_only"] is True
+        assert by_file[path]["can_block_apply"] is False
+    assert manifest["summary"]["unclassified_file_count"] == 0

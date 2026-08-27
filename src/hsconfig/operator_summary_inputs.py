@@ -11,10 +11,13 @@ from typing import Any, Literal
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
     configuration_mode_from_manifest,
+    optimized_start_authority_schema_from_manifest,
 )
 from hsconfig.package_domain import canonical_relative_path
 from hsconfig.package_derivation_receipt import (
     OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
+    SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS,
+    SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION,
     canonical_source_receipt_reasons,
     derivation_schema_version_supported,
     optimized_start_derivation_digests_from_view,
@@ -387,19 +390,31 @@ def _authority_from_raw_inputs(
             if isinstance(package_derivation, Mapping)
             else {}
         )
-        receipt_sha256 = str(derivation.get("receipt_sha256", ""))
-        technical_valid = (
-            strict_report_valid
-            and derivation_schema_version_supported(
-                derivation.get("schema_version")
+        if set(derivation) == set(
+            SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS
+        ):
+            receipt_sha256 = str(authority.get("receipt_sha256", ""))
+            technical_valid = (
+                strict_report_valid
+                and derivation.get("optimized_start_authority_schema")
+                == "single_candidate_review_v1"
+                and _sha256_value_valid(receipt_sha256)
+                and package_authority_context_verified(authority)
             )
-            and derivation.get("receipt_path")
-            == "package_derivation_receipt.json"
-            and derivation.get("verified") is True
-            and _sha256_value_valid(receipt_sha256)
-            and package_authority_context_verified(authority)
-            and authority.get("receipt_sha256") == receipt_sha256
-        )
+        else:
+            receipt_sha256 = str(derivation.get("receipt_sha256", ""))
+            technical_valid = (
+                strict_report_valid
+                and derivation_schema_version_supported(
+                    derivation.get("schema_version")
+                )
+                and derivation.get("receipt_path")
+                == "package_derivation_receipt.json"
+                and derivation.get("verified") is True
+                and _sha256_value_valid(receipt_sha256)
+                and package_authority_context_verified(authority)
+                and authority.get("receipt_sha256") == receipt_sha256
+            )
     strict_valid = (
         authority.get("strict_validation_passed") is True
         if has_package_context
@@ -697,6 +712,9 @@ def _replay_package_authority(
         if configuration_mode == LLM_OPTIMIZED_START
         else "source_contract"
     )
+    optimized_start_authority_schema = (
+        optimized_start_authority_schema_from_manifest(manifest)
+    )
     receipt_present = "package_derivation_receipt.json" in documents
     receipt = documents.get("package_derivation_receipt.json")
     if not isinstance(receipt, Mapping):
@@ -764,16 +782,27 @@ def _replay_package_authority(
         isinstance(verification, Mapping)
         and verification.get("runtime_apply_eligible") is True
     )
-    package_derivation = {
-        "schema_version": receipt.get("schema_version"),
-        "receipt_path": "package_derivation_receipt.json",
-        "receipt_sha256": receipt_sha256,
-        "verified": receipt_verified,
-    }
-    if strategy_authority_mode == "llm_optimized_start":
-        package_derivation.update(
-            optimized_start_derivation_digests_from_view(package)
+    if optimized_start_authority_schema == "single_candidate_review_v1":
+        package_derivation = optimized_start_derivation_digests_from_view(
+            package
         )
+        if tuple(package_derivation) != (
+            SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS
+        ):
+            raise ValueError(
+                "single_candidate_review_projection_fields_invalid"
+            )
+    else:
+        package_derivation = {
+            "schema_version": receipt.get("schema_version"),
+            "receipt_path": "package_derivation_receipt.json",
+            "receipt_sha256": receipt_sha256,
+            "verified": receipt_verified,
+        }
+        if strategy_authority_mode == "llm_optimized_start":
+            package_derivation.update(
+                optimized_start_derivation_digests_from_view(package)
+            )
     package_authority = {
         "strict_validation_passed": strict_valid,
         "deck_input_apply_eligible": deck_valid,
@@ -794,7 +823,12 @@ def _replay_package_authority(
             strategy_authority_mode == "llm_optimized_start"
             and receipt_verified
             and receipt.get("schema_version")
-            == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+            == (
+                SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+                if optimized_start_authority_schema
+                == "single_candidate_review_v1"
+                else OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+            )
         ),
         "receipt_sha256": receipt_sha256,
     }

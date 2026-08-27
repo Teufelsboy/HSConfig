@@ -21,7 +21,10 @@ from hsconfig.package_render_authority import (
 )
 from hsconfig.starter_context import build_starter_context
 from hsconfig.starter_decision import load_validated_starter_selection
-from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
+from hsconfig.visionai_registry import (
+    OPTIMIZED_START_REPORT_PATHS,
+    SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+)
 from hsconfig.strict_package_validation import (
     validate_complete_package,
     validate_complete_package_from_view,
@@ -36,6 +39,7 @@ from tests.test_starter_decision import (
     three_candidates,
     write_selection_bundle,
 )
+from tests.test_starter_compiler import _single_candidate_request
 
 
 FIXTURE_PATH = Path("tests/fixtures/package-byte-contract-v1.json")
@@ -90,6 +94,53 @@ def _optimized_model(tmp_path: Path):
         starter_selection=selection,
     )
     return assemble_package(compile_package(optimized))
+
+
+def _single_candidate_model(tmp_path: Path):
+    return assemble_package(
+        compile_package(_single_candidate_request(tmp_path))
+    )
+
+
+def test_single_candidate_compile_is_byte_deterministic_across_temp_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _single_candidate_request(tmp_path / "request")
+    roots = (tmp_path / "first-root", tmp_path / "second-root")
+    rendered: list[dict[str, bytes]] = []
+    for root in roots:
+        root.mkdir()
+        monkeypatch.chdir(root)
+        rendered.append(
+            _pre_authority_files(
+                assemble_package(compile_package(request))
+            )
+        )
+
+    assert rendered[0] == rendered[1]
+
+
+def test_single_candidate_authority_bytes_are_not_pretty_rendered_again(
+    tmp_path: Path,
+) -> None:
+    model = _single_candidate_model(tmp_path)
+    files = _pre_authority_files(model)
+    projections = {
+        row.relative_path: row.document.canonical_json
+        for row in model.compiled.json_projections
+        if row.relative_path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    }
+
+    assert tuple(
+        path
+        for path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+        if path in files
+    ) == SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    assert {
+        path: files[path] for path in SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    } == projections
+    assert all(not files[path].endswith(b"\n") for path in projections)
 
 
 def _metadata(artifacts: ArtifactSet) -> list[dict[str, object]]:

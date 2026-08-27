@@ -6,6 +6,10 @@ from pathlib import Path
 import pytest
 
 from hsconfig.io import write_json
+from hsconfig.package_render_authority import (
+    _core_runtime_files,
+    _pre_authority_files,
+)
 from hsconfig.starter_context import build_starter_context
 from hsconfig.starter_decision import load_validated_starter_selection
 from hsconfig.validate_package import (
@@ -17,6 +21,10 @@ from tests.helpers.audited_package_request import audited_request
 from tests.test_starter_decision import (
     three_candidates,
     write_selection_bundle,
+)
+from tests.test_package_render_authority import (
+    _optimized_model,
+    _single_candidate_model,
 )
 
 
@@ -768,3 +776,46 @@ def test_validate_package_rejects_non_json_surface_with_underscore(tmp_path: Pat
 
     assert report["status"] == "failed"
     assert any("unsupported VisionAI surface" in error for error in report["errors"])
+
+
+def test_public_validate_dispatches_new_and_legacy_optimized_authority(
+    tmp_path: Path,
+) -> None:
+    packages: list[Path] = []
+    for name, model in (
+        ("legacy", _optimized_model(tmp_path / "legacy-inputs")),
+        ("single", _single_candidate_model(tmp_path / "single-inputs")),
+    ):
+        package = tmp_path / name
+        files = {
+            **_core_runtime_files(model),
+            **_pre_authority_files(model),
+        }
+        for relative_path, content in files.items():
+            target = package / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        packages.append(package)
+
+    for package in packages:
+        report = validate_config_package(
+            package,
+            configuration_mode="LLM_OPTIMIZED_START",
+            require_complete_package=True,
+        )
+        assert report["status"] == "passed"
+
+    review = (
+        packages[1]
+        / "reports"
+        / "optimized_start"
+        / "starter_config_review.json"
+    )
+    review.write_bytes(review.read_bytes()[:-1] + b" ")
+    invalid = validate_config_package(
+        packages[1],
+        configuration_mode="LLM_OPTIMIZED_START",
+        require_complete_package=True,
+    )
+    assert invalid["status"] == "failed"
+    assert "optimized_start_authority_invalid" in invalid["errors"]

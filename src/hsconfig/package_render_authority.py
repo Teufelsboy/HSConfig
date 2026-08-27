@@ -40,7 +40,7 @@ from hsconfig.strict_package_validation import (
     validate_complete_package_from_view,
 )
 from hsconfig.strong_promotion_report import build_strong_promotion_report
-from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
+from hsconfig.visionai_registry import ALL_OPTIMIZED_START_REPORT_PATHS
 
 
 class RenderFaultPoint(StrEnum):
@@ -278,6 +278,15 @@ def render_package_authority(
 
     validation = validate_complete_package_from_view(artifacts)
     if not strict_validation_passed(validation):
+        errors = validation.get("errors", [])
+        if isinstance(errors, list) and any(
+            error in {
+                "optimized_start_authority_invalid",
+                "optimized_start_reports_incomplete",
+            }
+            for error in errors
+        ):
+            raise ValueError("optimized_start_derivation_invalid")
         raise ValueError("rendered_package_strict_validation_failed")
     artifacts = artifacts.with_file(
         "reports/validation_report.json",
@@ -409,7 +418,7 @@ def _pre_authority_files(model: PackageModel) -> Mapping[str, bytes]:
     files = {
         projection.relative_path: (
             projection.document.canonical_json
-            if projection.relative_path in OPTIMIZED_START_REPORT_PATHS
+            if projection.relative_path in ALL_OPTIMIZED_START_REPORT_PATHS
             else _json_bytes(projection.document.to_value())
         )
         for projection in model.compiled.json_projections

@@ -23,12 +23,14 @@ from hsconfig.operator_summary_inputs import (
     load_operator_summary_inputs,
 )
 from hsconfig.package_model import DirectoryPackageView
+from hsconfig.package_render_authority import render_package_authority
 from tests.helpers import fixture_prepare as fixture_prepare_helper
 from tests.helpers.fixture_prepare import (
     fixture_path_for,
     load_archetype_matrix,
     prepare_fixture_deck,
 )
+from tests.test_package_render_authority import _single_candidate_model
 
 
 _SHADOWPRIEST_BASE_OID_SHA256 = (
@@ -57,6 +59,42 @@ def _canonical_sha256(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def test_replay_projects_exact_single_candidate_derivation(
+    tmp_path: Path,
+) -> None:
+    rendered = render_package_authority(
+        _single_candidate_model(tmp_path)
+    )
+    inputs = load_operator_summary_inputs(rendered.artifacts)
+    derivation = inputs.authority.package_derivation
+    assert derivation is not None
+
+    assert set(derivation) == {
+        "optimized_start_authority_schema",
+        "input_snapshot_manifest_sha256",
+        "candidate_sha256",
+        "candidate_revision",
+        "review_sha256",
+        "review_status",
+        "confidence",
+    }
+    assert {
+        "schema_version",
+        "receipt_path",
+        "receipt_sha256",
+        "verified",
+    }.isdisjoint(derivation)
+    assert derivation["review_status"] == "approved"
+    assert derivation["confidence"] == "high"
+    assert inputs.authority.optimized_start_derivation_validity is True
+    summary = rendered.artifacts.read_json(
+        "reports/operator_summary.json"
+    )
+    assert summary["package_derivation"] == dict(derivation)
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert "optimized_start_limitation" not in summary
 
 
 @pytest.mark.parametrize("first_module", _OPERATOR_MODULES)

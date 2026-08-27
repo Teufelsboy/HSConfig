@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+import hsconfig.package_compiler as package_compiler
 from hsconfig.package_compiler import (
     CompiledPackage,
     CompiledRuntimeSurface,
@@ -27,9 +28,12 @@ from hsconfig.package_domain import (
     FrozenDefinitionList,
     FrozenDefinitionMapping,
 )
-from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.package_request import (
+    FrozenJsonDocument,
+    GeneralPreconfigSnapshot,
     PackageResolutionSnapshot,
+)
+from hsconfig.package_request import (
     ResolvedPackageRequest,
 )
 from tests.helpers.audited_package_request import audited_request
@@ -44,6 +48,7 @@ from tests.test_starter_decision import (
     three_candidates,
     write_selection_bundle,
 )
+from tests.test_starter_compiler import _single_candidate_request
 
 
 def _named_documents_sha256(rows: tuple[Any, ...]) -> str:
@@ -82,6 +87,68 @@ def _optimized_request(tmp_path: Path) -> ResolvedPackageRequest:
         ),
         starter_selection=selection,
     )
+
+
+def test_single_candidate_compiler_never_calls_conservative_compiler(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conservative = audited_request(tmp_path / "conservative", "ShadowPriest")
+    single = _single_candidate_request(tmp_path / "single")
+    sealed_dispatch = package_compiler.compile_package.__globals__[
+        "compile_package_decisions"
+    ]
+
+    def forbidden(_request: ResolvedPackageRequest) -> None:
+        raise AssertionError("conservative_compiler_reached")
+
+    monkeypatch.setitem(
+        sealed_dispatch.__globals__,
+        "_compile_conservative_package_decisions",
+        forbidden,
+    )
+    with pytest.raises(
+        AssertionError,
+        match="^conservative_compiler_reached$",
+    ):
+        sealed_dispatch(conservative)
+
+    compiled = package_compiler.compile_package(single)
+
+    assert compiled.decision_snapshot.optimized_start_lowering is not None
+
+
+def test_single_candidate_compile_uses_only_frozen_blob_and_starter_bytes(
+    tmp_path: Path,
+) -> None:
+    request = _single_candidate_request(tmp_path / "single")
+    expected = compile_package(request)
+    current_preconfig = request.snapshot.general_preconfig.to_value()
+    poisoned_preconfig = {
+        **current_preconfig,
+        "cards_payload": {"post_request_catalog": "forbidden"},
+        "guide_claim_bundle": {"post_request_source": "forbidden"},
+        "source_claims": [{"post_request_clock": "forbidden"}],
+    }
+    poisoned_snapshot = PackageResolutionSnapshot(
+        general_preconfig=GeneralPreconfigSnapshot.from_value(
+            poisoned_preconfig
+        ),
+        strict_build_context=request.snapshot.strict_build_context,
+    )
+    poisoned_request = ResolvedPackageRequest.from_values(
+        snapshot=poisoned_snapshot,
+        invocation=request.invocation,
+        plan_overrides=request.plan_overrides.to_value(),
+        acquisition_closure_input=(
+            request.acquisition_closure_input.to_value()
+        ),
+        mulligan_gap_input=request.mulligan_gap_input.to_value(),
+        frozen_compiler_inputs=request.frozen_compiler_inputs,
+        starter_approval=request.starter_approval,
+    )
+
+    assert compile_package(poisoned_request) == expected
 
 
 def test_optimized_pre_run_closure_uses_rebound_runtime_authority(
@@ -600,7 +667,7 @@ def test_pre_authority_owner_mapping_is_exact_and_rejects_swaps() -> None:
     assert counts == {
         ProjectionOwner.RESOLUTION: 15,
         ProjectionOwner.RESEARCH: 9,
-        ProjectionOwner.PACKAGE_COMPILER: 28,
+        ProjectionOwner.PACKAGE_COMPILER: 31,
     }
     with pytest.raises(ValueError, match="projection_owner_mismatch"):
         NamedJsonProjection(

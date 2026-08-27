@@ -8,6 +8,7 @@ from typing import Any
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
     configuration_mode_from_manifest,
+    optimized_start_authority_schema_from_manifest,
 )
 from hsconfig.io import decode_json_bytes
 from hsconfig.package_io import (
@@ -18,8 +19,31 @@ from hsconfig.package_io import (
 from hsconfig.package_model import DirectoryPackageView, PackageView
 from hsconfig.pre_run_metrics import (
     PRE_RUN_REPORT_PATHS,
+    _load_verified_emission_input,
+    _metric_ratio_from_document,
+    _report_content_sha256,
+    _validate_deck_identity,
+    _verified_emission_expectations_for_mode,
+    _verified_emission_from_package_view,
+    eligible_emission_recall,
+    emission_precision,
+    load_disposition_ledger_report,
+    load_globalvalues_decision_ledger_report,
+    source_acquisition_input_binding,
     validate_pre_run_package_reports,
 )
+from hsconfig.input_snapshot_manifest import (
+    INPUT_SNAPSHOT_FIELDS,
+    INPUT_SNAPSHOT_MAX_BYTES,
+    INPUT_SNAPSHOT_SCHEMA_VERSION,
+    validate_input_snapshot_manifest_document,
+)
+from hsconfig.optimized_start_authority import (
+    ValidatedOptimizedStartAuthority,
+    ValidatedSingleStarterApproval,
+    load_optimized_start_authority,
+)
+from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.runtime_entity_owner import (
     AUTHORIZED_HERO_POWER_OWNER,
     LINKED_RUNTIME_ENTITY_RELATION_INVALID,
@@ -31,14 +55,41 @@ from hsconfig.runtime_surface_ledger import (
     rederive_runtime_surface_ledger_from_view,
 )
 from hsconfig.strict_run_validation import verify_configure_run_package
+from hsconfig.starter_candidate import validate_starter_candidate
+from hsconfig.starter_context import validate_starter_context_document
+from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    STARTER_CANDIDATE_FILENAMES,
+    STARTER_CANDIDATE_FIELDS,
+    STARTER_CANDIDATE_MAX_BYTES,
+    STARTER_CONTEXT_FIELDS,
+    STARTER_CONTEXT_FILENAME,
+    STARTER_CONTEXT_MAX_BYTES,
+    STARTER_DECISION_FIELDS,
+    STARTER_DECISION_FILENAME,
+    STARTER_DECISION_MAX_BYTES,
+    STARTER_REVIEW_FIELDS,
+    STARTER_REVIEW_MAX_BYTES,
+    STARTER_SCHEMA_VERSION,
+)
+from hsconfig.starter_decision import (
+    ValidatedStarterSelection,
+    _validate_candidate_set,
+    _validate_decision,
+)
+from hsconfig.starter_document import StarterDocument, seal_starter_document
+from hsconfig.starter_review import validate_starter_review
 from hsconfig.validate_package import (
     _reject_nonstandard_json_constant,
     _validate_blocks,
     _validate_top_level,
+    optimized_start_authority_report_set_errors,
+    validate_legacy_starter_candidate_path_mapping,
     validate_config_package,
 )
 from hsconfig.visionai_registry import (
-    OPTIMIZED_START_REPORT_PATHS,
     REQUIRED_RUNTIME_SURFACES,
     supported_surface,
 )
@@ -50,8 +101,6 @@ LINKED_RUNTIME_OWNER_EVIDENCE_MISSING = (
 LINKED_RUNTIME_OWNER_EVIDENCE_INVALID = (
     "linked_runtime_owner_evidence_invalid"
 )
-
-
 def strict_validation_passed(report: dict[str, Any]) -> bool:
     return report.get("status") == "passed" and not report.get("errors")
 
@@ -130,6 +179,12 @@ def validate_complete_package(
     optimized_start_report_errors = _validate_optimized_start_reports(
         package_path
     )
+    report_errors = report.get("errors", [])
+    optimized_start_report_errors = [
+        error
+        for error in optimized_start_report_errors
+        if error not in report_errors
+    ]
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
         globalvalues_contract_errors.append(
@@ -245,16 +300,25 @@ def _validate_optimized_start_reports(package: Path) -> list[str]:
         configuration_mode = configuration_mode_from_manifest(manifest)
     except (OSError, TypeError, ValueError):
         return ["configuration_mode_invalid"]
-    optimized_root = package / "reports" / "optimized_start"
-    actual = {
-        path.relative_to(package).as_posix()
-        for path in optimized_root.rglob("*")
-        if path.is_file()
-    } if optimized_root.is_dir() else set()
-    return _optimized_start_report_set_errors(
-        configuration_mode=configuration_mode,
-        actual=actual,
+    view = DirectoryPackageView(package)
+    errors = optimized_start_authority_report_set_errors(
+        file_names=view.file_names(),
+        manifest=manifest,
     )
+    if errors or configuration_mode != LLM_OPTIMIZED_START:
+        return errors
+    try:
+        authority = load_optimized_start_authority(
+            report_root=package / "reports" / "optimized_start",
+            manifest=manifest,
+        )
+        if isinstance(authority, ValidatedStarterSelection):
+            validate_legacy_starter_candidate_path_mapping(
+                authority.candidates
+            )
+    except (KeyError, OSError, TypeError, ValueError):
+        return ["optimized_start_authority_invalid"]
+    return []
 
 
 def _validate_optimized_start_reports_view(
@@ -267,32 +331,195 @@ def _validate_optimized_start_reports_view(
         configuration_mode = configuration_mode_from_manifest(manifest)
     except (OSError, TypeError, ValueError):
         return ["configuration_mode_invalid"]
-    actual = {
-        path
-        for path in package.file_names()
-        if path.startswith("reports/optimized_start/")
-    }
-    return _optimized_start_report_set_errors(
-        configuration_mode=configuration_mode,
-        actual=actual,
+    errors = optimized_start_authority_report_set_errors(
+        file_names=package.file_names(),
+        manifest=manifest,
+    )
+    if errors or configuration_mode != LLM_OPTIMIZED_START:
+        return errors
+    try:
+        validated_optimized_start_authority_from_view(
+            package,
+            manifest=manifest,
+        )
+    except (KeyError, OSError, TypeError, ValueError):
+        return ["optimized_start_authority_invalid"]
+    return []
+
+
+def validated_optimized_start_authority_from_view(
+    package: PackageView,
+    *,
+    manifest: Mapping[str, Any],
+) -> ValidatedOptimizedStartAuthority:
+    """Validate one exact optimized authority from an immutable package view."""
+
+    errors = optimized_start_authority_report_set_errors(
+        file_names=package.file_names(),
+        manifest=manifest,
+    )
+    if errors:
+        raise ValueError(errors[0])
+    schema = optimized_start_authority_schema_from_manifest(manifest)
+    if schema == "legacy_five_doc":
+        return _legacy_optimized_start_authority_from_view(package)
+    if schema == "single_candidate_review_v1":
+        return _single_candidate_review_authority_from_view(package)
+    raise ValueError("optimized_start_authority_not_enabled")
+
+
+def _legacy_optimized_start_authority_from_view(
+    package: PackageView,
+) -> ValidatedStarterSelection:
+    root = "reports/optimized_start"
+    context = validate_starter_context_document(
+        _starter_document_from_view(
+            package,
+            f"{root}/{STARTER_CONTEXT_FILENAME}",
+            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+            expected_fields=STARTER_CONTEXT_FIELDS,
+            schema_version=STARTER_SCHEMA_VERSION,
+        )
+    )
+    candidates = tuple(
+        validate_starter_candidate(
+            _starter_document_from_view(
+                package,
+                f"{root}/{filename}",
+                maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+                expected_fields=STARTER_CANDIDATE_FIELDS,
+                schema_version=STARTER_SCHEMA_VERSION,
+            ),
+            context=context,
+        )
+        for filename in STARTER_CANDIDATE_FILENAMES
+    )
+    _validate_candidate_set(candidates)
+    validate_legacy_starter_candidate_path_mapping(candidates)
+    decision = _starter_document_from_view(
+        package,
+        f"{root}/{STARTER_DECISION_FILENAME}",
+        maximum_bytes=STARTER_DECISION_MAX_BYTES,
+        expected_fields=STARTER_DECISION_FIELDS,
+        schema_version=STARTER_SCHEMA_VERSION,
+    )
+    selected_id = _validate_decision(
+        decision,
+        current_context=context,
+        candidates=candidates,
+    )
+    selected = next(
+        candidate
+        for candidate in candidates
+        if candidate.candidate_id == selected_id
+    )
+    return ValidatedStarterSelection(
+        context=context,
+        candidates=candidates,
+        decision=decision,
+        selected=selected,
     )
 
 
-def _optimized_start_report_set_errors(
-    *,
-    configuration_mode: str,
-    actual: set[str],
-) -> list[str]:
-    expected = set(OPTIMIZED_START_REPORT_PATHS)
-    if configuration_mode != LLM_OPTIMIZED_START:
-        return (
-            ["optimized_start_reports_forbidden_in_conservative_mode"]
-            if actual
-            else []
+def _single_candidate_review_authority_from_view(
+    package: PackageView,
+) -> ValidatedSingleStarterApproval:
+    root = "reports/optimized_start"
+    snapshot_document = _starter_document_from_view(
+        package,
+        f"{root}/input_snapshot_manifest.json",
+        maximum_bytes=INPUT_SNAPSHOT_MAX_BYTES,
+        expected_fields=INPUT_SNAPSHOT_FIELDS,
+        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+    )
+    snapshot = validate_input_snapshot_manifest_document(
+        snapshot_document.document
+    )
+    context = validate_starter_context_document(
+        _starter_document_from_view(
+            package,
+            f"{root}/{STARTER_CONTEXT_FILENAME}",
+            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+            expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
         )
-    if actual != expected:
-        return ["optimized_start_reports_incomplete"]
-    return []
+    )
+    candidate = validate_starter_candidate(
+        _starter_document_from_view(
+            package,
+            f"{root}/starter_config_candidate.json",
+            maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+            expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        ),
+        context=context,
+    )
+    review = validate_starter_review(
+        _starter_document_from_view(
+            package,
+            f"{root}/starter_config_review.json",
+            maximum_bytes=STARTER_REVIEW_MAX_BYTES,
+            expected_fields=STARTER_REVIEW_FIELDS,
+            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        ),
+        context=context,
+        candidate=candidate,
+    )
+    if not (
+        context.document.to_value()["input_snapshot_manifest_sha256"]
+        == snapshot.document.content_sha256
+        and candidate.candidate_id == "lead"
+        and review.candidate_id == candidate.candidate_id
+        and review.candidate_revision == candidate.candidate_revision
+        and review.candidate_sha256 == candidate.document.content_sha256
+        and review.review_status == "approved"
+        and review.revision_requests == ()
+        and review.confidence in {"high", "limited"}
+    ):
+        raise ValueError("single_starter_approval_invalid")
+    return ValidatedSingleStarterApproval(
+        snapshot=snapshot,
+        context=context,
+        candidate=candidate,
+        review=review,
+    )
+
+
+def _starter_document_from_view(
+    package: PackageView,
+    relative_path: str,
+    *,
+    maximum_bytes: int,
+    expected_fields: frozenset[str],
+    schema_version: int,
+) -> StarterDocument:
+    raw_value = package.read_bytes(relative_path)
+    if not isinstance(raw_value, (bytes, bytearray, memoryview)):
+        raise TypeError("starter_document_bytes_invalid")
+    raw = memoryview(raw_value).tobytes()
+    if len(raw) > maximum_bytes:
+        raise ValueError("starter_document_too_large")
+    if raw.startswith(b"\xef\xbb\xbf") or b"\x00" in raw or b"\r" in raw:
+        raise ValueError("starter_document_source_bytes_invalid")
+    frozen = FrozenJsonDocument.from_json_bytes(raw)
+    if frozen.canonical_json != raw:
+        raise ValueError("starter_document_not_canonical")
+    value = frozen.to_value()
+    if not isinstance(value, dict) or set(value) != expected_fields:
+        raise ValueError("starter_document_fields_invalid")
+    unsigned = dict(value)
+    content_sha256 = unsigned.pop("content_sha256")
+    sealed = seal_starter_document(
+        unsigned,
+        expected_fields=expected_fields,
+        schema_version=schema_version,
+    )
+    if (
+        sealed.canonical_json != raw
+        or sealed.content_sha256 != content_sha256
+    ):
+        raise ValueError("starter_document_content_sha256_invalid")
+    return sealed
 
 
 def _validate_config_package_view(
@@ -432,7 +659,15 @@ def _validate_pre_run_contract_reports(
             "pre_run_current_reports_missing"
         ]
     try:
-        validate_pre_run_package_reports(view)
+        manifest = view.read_json("reports/input_manifest.json")
+        if (
+            isinstance(manifest, Mapping)
+            and optimized_start_authority_schema_from_manifest(manifest)
+            == "single_candidate_review_v1"
+        ):
+            _validate_single_candidate_pre_run_reports(view)
+        else:
+            validate_pre_run_package_reports(view)
     except (OSError, TypeError, ValueError) as error:
         return [f"pre_run_contract_validation_failed:{error}"]
     return []
@@ -461,10 +696,213 @@ def _validate_pre_run_contract_reports_view(
             "pre_run_current_reports_missing"
         ]
     try:
-        validate_pre_run_package_reports(package)
+        manifest = package.read_json("reports/input_manifest.json")
+        if (
+            isinstance(manifest, Mapping)
+            and optimized_start_authority_schema_from_manifest(manifest)
+            == "single_candidate_review_v1"
+        ):
+            _validate_single_candidate_pre_run_reports(package)
+        else:
+            validate_pre_run_package_reports(package)
     except (OSError, TypeError, ValueError) as error:
         return [f"pre_run_contract_validation_failed:{error}"]
     return []
+
+
+def _validate_single_candidate_pre_run_reports(
+    package: PackageView,
+) -> None:
+    """Validate V2 diagnostics without granting unfrozen policy authority."""
+
+    try:
+        validate_pre_run_package_reports(package)
+    except ValueError as error:
+        if str(error) != "source_acquisition_policy_binding_mismatch":
+            raise
+    else:
+        raise ValueError("source_acquisition_policy_binding_unexpected")
+
+    documents = {
+        path: package.read_json(path) for path in PRE_RUN_REPORT_PATHS
+    }
+    deck_identity = package.read_json("reports/deck_identity.json")
+    input_manifest = package.read_json("reports/input_manifest.json")
+    source_contract_audit = (
+        package.read_json("reports/source_contract_audit.json")
+        if package.exists("reports/source_contract_audit.json")
+        else None
+    )
+    if (
+        not isinstance(deck_identity, Mapping)
+        or not isinstance(input_manifest, Mapping)
+        or any(
+            not isinstance(document, Mapping)
+            for document in documents.values()
+        )
+        or (
+            source_contract_audit is not None
+            and not isinstance(source_contract_audit, Mapping)
+        )
+    ):
+        raise ValueError("pre_run_report_malformed")
+    disposition = load_disposition_ledger_report(
+        documents["reports/disposition_ledger.json"]
+    )
+    globalvalues = load_globalvalues_decision_ledger_report(
+        documents["reports/globalvalues_decision_ledger.json"]
+    )
+    fingerprint = disposition.deck_fingerprint
+    if globalvalues.deck_fingerprint != fingerprint:
+        raise ValueError("pre_run_report_cross_deck")
+    acquisition = documents["reports/source_acquisition_closure.json"]
+    _validate_not_frozen_acquisition_diagnostic(
+        acquisition,
+        deck_fingerprint=fingerprint,
+    )
+    if input_manifest.get(
+        "source_acquisition_input_binding"
+    ) != source_acquisition_input_binding(acquisition):
+        raise ValueError("source_acquisition_upstream_manifest_mismatch")
+
+    pre_run = documents["reports/pre_run_closure.json"]
+    if pre_run.get("content_sha256") != _report_content_sha256(pre_run):
+        raise ValueError("pre_run_closure_hash_stale")
+    if (
+        pre_run.get("deck_fingerprint") != fingerprint
+        or deck_identity.get("deck_fingerprint") != fingerprint
+    ):
+        raise ValueError("pre_run_report_cross_deck")
+    _validate_deck_identity(deck_identity, fingerprint=fingerprint)
+    expected_hashes = {
+        "layered_evidence_contract": documents[
+            "reports/layered_evidence_contract.json"
+        ]["content_sha256"],
+        "source_acquisition_closure": acquisition["content_sha256"],
+        "disposition_ledger": disposition.content_sha256,
+        "globalvalues_decision_ledger": globalvalues.content_sha256,
+    }
+    if pre_run.get("report_hashes") != expected_hashes:
+        raise ValueError("pre_run_closure_report_hash_mismatch")
+    expected_counts = {
+        "card_disposition_count": len(disposition.cards),
+        "final_card_disposition_count": len(disposition.cards),
+        "claim_count": len(disposition.claims),
+        "final_claim_disposition_count": len(disposition.claims),
+        "globalvalues_decision_count": len(globalvalues.decisions),
+        "final_globalvalues_decision_count": len(globalvalues.decisions),
+    }
+    if pre_run.get("counts") != expected_counts:
+        raise ValueError("pre_run_closure_totals_mismatch")
+
+    verified = _load_verified_emission_input(
+        pre_run.get("verified_emission")
+    )
+    if verified.deck_fingerprint != fingerprint:
+        raise ValueError("verified_emission_cross_deck")
+    expected_semantics = _verified_emission_expectations_for_mode(
+        configuration_mode=LLM_OPTIMIZED_START,
+        disposition_ledger=disposition,
+        source_contract_audit=source_contract_audit,
+    )
+    if verified.expectations != expected_semantics:
+        raise ValueError("verified_emission_semantic_projection_mismatch")
+    if package.exists("reports/runtime_surface_ledger.json"):
+        rederived_verified = _verified_emission_from_package_view(
+            package=package,
+            disposition_ledger=disposition,
+            source_contract_audit=source_contract_audit,
+            configuration_mode=LLM_OPTIMIZED_START,
+        )
+        if verified != rederived_verified:
+            raise ValueError("verified_emission_package_view_mismatch")
+    elif verified.physical_rows:
+        raise ValueError("verified_emission_package_view_mismatch")
+    precision = emission_precision(verified)
+    recall = eligible_emission_recall(verified)
+    if pre_run.get("emission_precision") != precision.to_document():
+        raise ValueError("pre_run_emission_precision_mismatch")
+    if pre_run.get("eligible_emission_recall") != recall.to_document():
+        raise ValueError("pre_run_emission_recall_mismatch")
+    layered = _metric_ratio_from_document(
+        pre_run.get("layered_pre_run_source_coverage")
+    )
+    report_layered = _metric_ratio_from_document(
+        documents["reports/layered_evidence_contract.json"].get(
+            "layered_coverage"
+        )
+    )
+    if layered != report_layered:
+        raise ValueError("pre_run_layered_coverage_mismatch")
+    if pre_run.get("pre_run_contract_status") != "incomplete":
+        raise ValueError("pre_run_closure_status_mismatch")
+    strategy = pre_run.get("strategy_authority_status")
+    if strategy not in {"partial", "strong"}:
+        raise ValueError("pre_run_strategy_authority_status_invalid")
+    exact = documents["reports/layered_evidence_contract.json"].get(
+        "exact_guide_authority"
+    ) is True
+    if pre_run.get("exact_guide_authority") is not exact:
+        raise ValueError("pre_run_exact_guide_authority_mismatch")
+    for field, expected in (
+        ("hsconfig_scope", "PRE_RUN_CONTRACT"),
+        ("gameplay_strategy_owner", "hearthranger_bot"),
+        ("gameplay_quality", "OUT_OF_SCOPE_ASSUMED_EXTERNAL"),
+        ("bot_gameplay_assumption", "trusted_external"),
+    ):
+        if pre_run.get(field) != expected:
+            raise ValueError(f"pre_run_closure_{field}_invalid")
+
+
+def _validate_not_frozen_acquisition_diagnostic(
+    document: Mapping[str, Any],
+    *,
+    deck_fingerprint: str,
+) -> None:
+    expected_fields = {
+        "schema_version",
+        "authority",
+        "operator_gate_impact",
+        "apply_blocking",
+        "normal_apply_authority",
+        "deck_fingerprint",
+        "source_acquisition_complete",
+        "policy_provenance",
+        "acquisition_closure",
+        "content_sha256",
+    }
+    if (
+        set(document) != expected_fields
+        or document.get("content_sha256")
+        != _report_content_sha256(document)
+        or document.get("schema_version") != 1
+        or document.get("authority") != "diagnostic_only"
+        or document.get("operator_gate_impact") != "diagnostic_only"
+        or document.get("apply_blocking") is not False
+        or document.get("normal_apply_authority")
+        != "reports/operator_summary.json"
+        or document.get("deck_fingerprint") != deck_fingerprint
+        or document.get("source_acquisition_complete") is not False
+        or document.get("policy_provenance")
+        != {"runtime_authorized": False, "status": "not_frozen"}
+    ):
+        raise ValueError("source_acquisition_not_frozen_invalid")
+    closure = document.get("acquisition_closure")
+    expected_closure = {
+        "deck_fingerprint": deck_fingerprint,
+        "attempt_id": "",
+        "attempted_at": "",
+        "attempted_urls": [],
+        "successful_evidence_ids": [],
+        "failed_attempts": [],
+        "negative_search_documented": False,
+        "checked_dossier": False,
+        "policy_id": None,
+        "status": "open",
+        "content_sha256": "sha256:" + ("0" * 64),
+    }
+    if closure != expected_closure:
+        raise ValueError("source_acquisition_not_frozen_invalid")
 
 
 def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:

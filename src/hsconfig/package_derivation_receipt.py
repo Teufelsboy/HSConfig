@@ -9,10 +9,15 @@ from typing import Any
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
     configuration_mode_from_manifest,
+    optimized_start_authority_schema_from_manifest,
 )
 from hsconfig.io import decode_json_bytes, read_json
+from hsconfig.optimized_start_authority import (
+    ValidatedOptimizedStartAuthority,
+    ValidatedSingleStarterApproval,
+    load_optimized_start_authority,
+)
 from hsconfig.package_model import PackageView
-from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
@@ -23,62 +28,33 @@ from hsconfig.source_document_model import (
 from hsconfig.strict_package_validation import (
     linked_runtime_owner_projection,
     strict_validation_passed,
+    validated_optimized_start_authority_from_view,
     validate_complete_package,
 )
-from hsconfig.starter_candidate import (
-    ValidatedStarterCandidate,
-    validate_starter_candidate,
+from hsconfig.starter_candidate import ValidatedStarterCandidate
+from hsconfig.starter_decision import ValidatedStarterSelection
+from hsconfig.starter_document import StarterDocument
+from hsconfig.validate_package import (
+    optimized_start_authority_report_set_errors,
+    validate_legacy_starter_candidate_path_mapping,
 )
-from hsconfig.starter_context import validate_starter_context_document
-from hsconfig.starter_contract import (
-    STARTER_CANDIDATE_1_FILENAME,
-    STARTER_CANDIDATE_2_FILENAME,
-    STARTER_CANDIDATE_3_FILENAME,
-    STARTER_CANDIDATE_FIELDS,
-    STARTER_CANDIDATE_MAX_BYTES,
-    STARTER_CONTEXT_FIELDS,
-    STARTER_CONTEXT_FILENAME,
-    STARTER_CONTEXT_MAX_BYTES,
-    STARTER_DECISION_FIELDS,
-    STARTER_DECISION_FILENAME,
-    STARTER_DECISION_MAX_BYTES,
-    STARTER_SCHEMA_VERSION,
-    StarterStrategyRole,
-)
-from hsconfig.starter_decision import (
-    _validate_candidate_set,
-    _validate_decision,
-    load_validated_starter_selection,
-)
-from hsconfig.starter_document import (
-    StarterDocument,
-    load_starter_document,
-    seal_starter_document,
-)
-from hsconfig.visionai_registry import OPTIMIZED_START_REPORT_PATHS
+from hsconfig.visionai_registry import optimized_start_report_paths_for_manifest
 
 
 DERIVATION_RECEIPT_SCHEMA_VERSION = 2
 OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION = 3
+SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION = 4
 DERIVATION_RECEIPT_PATH = "package_derivation_receipt.json"
-
-_FIXED_CANDIDATE_PATH_BINDINGS = (
-    (
-        STARTER_CANDIDATE_1_FILENAME,
-        "candidate-1",
-        StarterStrategyRole.PROACTIVE_TEMPO.value,
-    ),
-    (
-        STARTER_CANDIDATE_2_FILENAME,
-        "candidate-2",
-        StarterStrategyRole.BALANCED.value,
-    ),
-    (
-        STARTER_CANDIDATE_3_FILENAME,
-        "candidate-3",
-        StarterStrategyRole.RESOURCE_ORIENTED.value,
-    ),
+SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS = (
+    "optimized_start_authority_schema",
+    "input_snapshot_manifest_sha256",
+    "candidate_sha256",
+    "candidate_revision",
+    "review_sha256",
+    "review_status",
+    "confidence",
 )
+OPTIMIZED_START_LIMITATION = "Review confidence is limited."
 
 _AUTHORITATIVE_JSON_PATHS = (
     "reports/input_manifest.json",
@@ -126,19 +102,26 @@ def derivation_schema_version_supported(value: Any) -> bool:
     return type(value) is int and value in {
         DERIVATION_RECEIPT_SCHEMA_VERSION,
         OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION,
+        SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION,
     }
 
 
 def _receipt_schema_for(package: PackageView) -> int:
     manifest = package.read_json("reports/input_manifest.json")
-    if configuration_mode_from_manifest(manifest) == LLM_OPTIMIZED_START:
+    schema = optimized_start_authority_schema_from_manifest(manifest)
+    if schema == "single_candidate_review_v1":
+        return SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+    if schema == "legacy_five_doc":
         return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
     return DERIVATION_RECEIPT_SCHEMA_VERSION
 
 
 def _receipt_schema_for_path(package: Path) -> int:
     manifest = read_json(package / "reports" / "input_manifest.json")
-    if configuration_mode_from_manifest(manifest) == LLM_OPTIMIZED_START:
+    schema = optimized_start_authority_schema_from_manifest(manifest)
+    if schema == "single_candidate_review_v1":
+        return SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+    if schema == "legacy_five_doc":
         return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
     return DERIVATION_RECEIPT_SCHEMA_VERSION
 
@@ -258,11 +241,40 @@ def refresh_package_derivation_authority(
     package_root: str | Path,
 ) -> dict[str, Any]:
     package = Path(package_root)
-    receipt = build_package_derivation_receipt(package)
+    try:
+        receipt = build_package_derivation_receipt(package)
+    except (OSError, TypeError, ValueError) as error:
+        try:
+            manifest = read_json(
+                package / "reports" / "input_manifest.json"
+            )
+            optimized = (
+                configuration_mode_from_manifest(manifest)
+                == LLM_OPTIMIZED_START
+            )
+        except (OSError, TypeError, ValueError):
+            optimized = False
+        if optimized or str(error).startswith("optimized_start_"):
+            raise ValueError("optimized_start_derivation_invalid") from error
+        raise
     verified, reasons = verify_package_derivation_receipt(package, receipt)
     optimized_digests: dict[str, str] = {}
     if receipt["schema_version"] == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION:
-        optimized_digests = optimized_start_derivation_digests(package)
+        optimized_digests = legacy_optimized_start_derivation_digests(package)
+    elif receipt["schema_version"] == (
+        SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+    ):
+        optimized_digests = single_candidate_review_derivation(package)
+    if receipt["schema_version"] == (
+        SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
+    ):
+        if reasons:
+            raise ValueError("optimized_start_derivation_invalid")
+        write_package_derivation_receipt(
+            package / DERIVATION_RECEIPT_PATH,
+            receipt,
+        )
+        return optimized_digests
     digest = write_package_derivation_receipt(
         package / DERIVATION_RECEIPT_PATH,
         receipt,
@@ -279,25 +291,23 @@ def refresh_package_derivation_authority(
     return authority
 
 
-def optimized_start_derivation_digests(
+def legacy_optimized_start_derivation_digests(
     package_root: str | Path,
 ) -> dict[str, str]:
     """Validate the fixed starter reports and expose their self digests."""
 
-    optimized = Path(package_root) / "reports" / "optimized_start"
+    package = Path(package_root)
     try:
-        context_document = load_starter_document(
-            optimized / STARTER_CONTEXT_FILENAME,
-            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
-            expected_fields=STARTER_CONTEXT_FIELDS,
-            schema_version=STARTER_SCHEMA_VERSION,
+        manifest = read_json(package / "reports" / "input_manifest.json")
+        selection = load_optimized_start_authority(
+            report_root=package / "reports" / "optimized_start",
+            manifest=manifest,
         )
-        context = validate_starter_context_document(context_document)
-        selection = load_validated_starter_selection(
-            optimized / STARTER_DECISION_FILENAME,
-            current_context=context,
+        if not isinstance(selection, ValidatedStarterSelection):
+            raise ValueError("legacy_optimized_start_authority_invalid")
+        validate_legacy_starter_candidate_path_mapping(
+            selection.candidates
         )
-        _validate_fixed_candidate_path_bindings(selection.candidates)
         return _selected_decision_digests(
             decision=selection.decision,
             selected=selection.selected,
@@ -306,58 +316,147 @@ def optimized_start_derivation_digests(
         raise ValueError("optimized_start_derivation_invalid") from error
 
 
-def optimized_start_derivation_digests_from_view(
+def legacy_optimized_start_derivation_digests_from_view(
     package: PackageView,
 ) -> dict[str, str]:
     """Derive selected-candidate and critic digests from one fixed bundle."""
 
-    optimized_root = "reports/optimized_start"
     try:
-        context_document = _validated_starter_document_from_view(
+        manifest = package.read_json("reports/input_manifest.json")
+        selection = validated_optimized_start_authority_from_view(
             package,
-            f"{optimized_root}/{STARTER_CONTEXT_FILENAME}",
-            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
-            expected_fields=STARTER_CONTEXT_FIELDS,
+            manifest=manifest,
         )
-        context = validate_starter_context_document(context_document)
-        candidates = tuple(
-            validate_starter_candidate(
-                _validated_starter_document_from_view(
-                    package,
-                    f"{optimized_root}/{filename}",
-                    maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
-                    expected_fields=STARTER_CANDIDATE_FIELDS,
-                ),
-                context=context,
-            )
-            for filename, _candidate_id, _strategy_role in (
-                _FIXED_CANDIDATE_PATH_BINDINGS
-            )
-        )
-        _validate_candidate_set(candidates)
-        _validate_fixed_candidate_path_bindings(candidates)
-        decision = _validated_starter_document_from_view(
-            package,
-            f"{optimized_root}/{STARTER_DECISION_FILENAME}",
-            maximum_bytes=STARTER_DECISION_MAX_BYTES,
-            expected_fields=STARTER_DECISION_FIELDS,
-        )
-        selected_id = _validate_decision(
-            decision,
-            current_context=context,
-            candidates=candidates,
-        )
-        selected = next(
-            candidate
-            for candidate in candidates
-            if candidate.candidate_id == selected_id
+        if not isinstance(selection, ValidatedStarterSelection):
+            raise ValueError("legacy_optimized_start_authority_invalid")
+        validate_legacy_starter_candidate_path_mapping(
+            selection.candidates
         )
         return _selected_decision_digests(
-            decision=decision,
-            selected=selected,
+            decision=selection.decision,
+            selected=selection.selected,
         )
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError("optimized_start_derivation_invalid") from error
+
+
+def single_candidate_review_derivation(
+    package_root: str | Path,
+) -> dict[str, Any]:
+    """Validate and project the seven schema-4 review bindings."""
+
+    package = Path(package_root)
+    try:
+        manifest = read_json(package / "reports" / "input_manifest.json")
+        authority = load_optimized_start_authority(
+            report_root=package / "reports" / "optimized_start",
+            manifest=manifest,
+        )
+        if not isinstance(authority, ValidatedSingleStarterApproval):
+            raise ValueError("single_candidate_review_authority_invalid")
+        return _single_candidate_review_projection(authority)
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+
+
+def single_candidate_review_derivation_from_view(
+    package: PackageView,
+) -> dict[str, Any]:
+    """Validate and project schema-4 review bindings from one package view."""
+
+    try:
+        manifest = package.read_json("reports/input_manifest.json")
+        authority = validated_optimized_start_authority_from_view(
+            package,
+            manifest=manifest,
+        )
+        if not isinstance(authority, ValidatedSingleStarterApproval):
+            raise ValueError("single_candidate_review_authority_invalid")
+        return _single_candidate_review_projection(authority)
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+
+
+def optimized_start_derivation_digests(
+    package_root: str | Path,
+) -> dict[str, Any]:
+    """Dispatch optimized derivation only from the package manifest."""
+
+    package = Path(package_root)
+    try:
+        manifest = read_json(package / "reports" / "input_manifest.json")
+        schema = optimized_start_authority_schema_from_manifest(manifest)
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+    if schema == "legacy_five_doc":
+        return legacy_optimized_start_derivation_digests(package)
+    if schema == "single_candidate_review_v1":
+        return single_candidate_review_derivation(package)
+    raise ValueError("optimized_start_derivation_invalid")
+
+
+def optimized_start_derivation_digests_from_view(
+    package: PackageView,
+) -> dict[str, Any]:
+    """Dispatch view derivation only from the package manifest."""
+
+    try:
+        manifest = package.read_json("reports/input_manifest.json")
+        schema = optimized_start_authority_schema_from_manifest(manifest)
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("optimized_start_derivation_invalid") from error
+    if schema == "legacy_five_doc":
+        return legacy_optimized_start_derivation_digests_from_view(package)
+    if schema == "single_candidate_review_v1":
+        return single_candidate_review_derivation_from_view(package)
+    raise ValueError("optimized_start_derivation_invalid")
+
+
+def _single_candidate_review_projection(
+    authority: ValidatedSingleStarterApproval,
+) -> dict[str, Any]:
+    projection = {
+        "optimized_start_authority_schema": "single_candidate_review_v1",
+        "input_snapshot_manifest_sha256": (
+            authority.snapshot.document.content_sha256
+        ),
+        "candidate_sha256": authority.candidate.document.content_sha256,
+        "candidate_revision": authority.candidate.candidate_revision,
+        "review_sha256": authority.review.document.content_sha256,
+        "review_status": authority.review.review_status,
+        "confidence": authority.review.confidence,
+    }
+    if tuple(projection) != SINGLE_CANDIDATE_REVIEW_DERIVATION_FIELDS:
+        raise AssertionError("single_candidate_review_projection_fields_invalid")
+    return projection
+
+
+def _optimized_authority_document_bytes(
+    authority: ValidatedOptimizedStartAuthority,
+    *,
+    paths: tuple[str, ...],
+) -> dict[str, bytes]:
+    if isinstance(authority, ValidatedStarterSelection):
+        documents = (
+            authority.context.document,
+            *(candidate.document for candidate in authority.candidates),
+            authority.decision,
+        )
+    elif isinstance(authority, ValidatedSingleStarterApproval):
+        documents = (
+            authority.snapshot.document,
+            authority.context.document,
+            authority.candidate.document,
+            authority.review.document,
+        )
+    else:
+        raise TypeError("optimized_start_authority_invalid")
+    if len(paths) != len(documents):
+        raise ValueError("optimized_start_authority_report_set_invalid")
+    return {
+        path: document.canonical_json
+        for path, document in zip(paths, documents, strict=True)
+    }
 
 
 def _selected_decision_digests(
@@ -378,59 +477,6 @@ def _selected_decision_digests(
         "selected_candidate_sha256": selected.document.content_sha256,
         "decision_sha256": decision.content_sha256,
     }
-
-
-def _validate_fixed_candidate_path_bindings(
-    candidates: tuple[ValidatedStarterCandidate, ...],
-) -> None:
-    if len(candidates) != len(_FIXED_CANDIDATE_PATH_BINDINGS):
-        raise ValueError("starter_candidate_fixed_path_mapping_invalid")
-    for candidate, (_filename, candidate_id, strategy_role) in zip(
-        candidates,
-        _FIXED_CANDIDATE_PATH_BINDINGS,
-        strict=True,
-    ):
-        if (
-            candidate.candidate_id != candidate_id
-            or candidate.strategy_role != strategy_role
-        ):
-            raise ValueError("starter_candidate_fixed_path_mapping_invalid")
-
-
-def _validated_starter_document_from_view(
-    package: PackageView,
-    relative_path: str,
-    *,
-    maximum_bytes: int,
-    expected_fields: frozenset[str],
-) -> StarterDocument:
-    raw_value = package.read_bytes(relative_path)
-    if not isinstance(raw_value, (bytes, bytearray, memoryview)):
-        raise TypeError("starter_document_bytes_invalid")
-    raw = memoryview(raw_value).tobytes()
-    if len(raw) > maximum_bytes:
-        raise ValueError("starter_document_too_large")
-    if raw.startswith(b"\xef\xbb\xbf") or b"\x00" in raw or b"\r" in raw:
-        raise ValueError("starter_document_source_bytes_invalid")
-    frozen = FrozenJsonDocument.from_json_bytes(raw)
-    if frozen.canonical_json != raw:
-        raise ValueError("starter_document_not_canonical")
-    value = frozen.to_value()
-    if not isinstance(value, dict) or set(value) != expected_fields:
-        raise ValueError("starter_document_fields_invalid")
-    unsigned = dict(value)
-    content_sha256 = unsigned.pop("content_sha256")
-    sealed = seal_starter_document(
-        unsigned,
-        expected_fields=expected_fields,
-        schema_version=STARTER_SCHEMA_VERSION,
-    )
-    if (
-        sealed.canonical_json != raw
-        or sealed.content_sha256 != content_sha256
-    ):
-        raise ValueError("starter_document_content_sha256_invalid")
-    return sealed
 
 
 def deck_input_apply_eligibility_reasons(
@@ -797,7 +843,7 @@ def build_package_authority_context(
             and receipt_verified
             and isinstance(receipt, Mapping)
             and receipt.get("schema_version")
-            == OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
+            == _receipt_schema_for_path(package)
             and optimized_reports_valid
         ),
         "receipt_sha256": receipt_sha256,
@@ -836,16 +882,38 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     configuration_manifest = read_json(
         package_root / "reports" / "input_manifest.json"
     )
-    configuration_mode = configuration_mode_from_manifest(
+    report_set_errors = optimized_start_authority_report_set_errors(
+        file_names=tuple(
+            sorted(
+                path.relative_to(package_root).as_posix()
+                for path in package_root.rglob("*")
+                if path.is_file()
+            )
+        ),
+        manifest=configuration_manifest,
+    )
+    if report_set_errors:
+        raise ValueError(report_set_errors[0])
+    optimized_paths = optimized_start_report_paths_for_manifest(
         configuration_manifest
     )
+    optimized_bytes: dict[str, bytes] = {}
+    if optimized_paths:
+        authority = load_optimized_start_authority(
+            report_root=package_root / "reports" / "optimized_start",
+            manifest=configuration_manifest,
+        )
+        if isinstance(authority, ValidatedStarterSelection):
+            validate_legacy_starter_candidate_path_mapping(
+                authority.candidates
+            )
+        optimized_bytes = _optimized_authority_document_bytes(
+            authority,
+            paths=optimized_paths,
+        )
     authoritative_paths = (
         *_AUTHORITATIVE_JSON_PATHS,
-        *(
-            OPTIMIZED_START_REPORT_PATHS
-            if configuration_mode == LLM_OPTIMIZED_START
-            else ()
-        ),
+        *optimized_paths,
     )
     for relative_path in authoritative_paths:
         path = package_root / Path(relative_path)
@@ -854,6 +922,12 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
             and not path.is_file()
         ):
             inputs[relative_path] = _canonical_json_sha256([])
+            continue
+        if relative_path in optimized_paths:
+            inputs[relative_path] = (
+                "sha256:"
+                + hashlib.sha256(optimized_bytes[relative_path]).hexdigest()
+            )
             continue
         payload = read_json(path)
         if not isinstance(payload, Mapping):
@@ -907,16 +981,35 @@ def _authoritative_input_digests_from_view(
 ) -> dict[str, str]:
     inputs: dict[str, str] = {}
     manifest: Mapping[str, Any] | None = None
-    configuration_mode = configuration_mode_from_manifest(
-        package.read_json("reports/input_manifest.json")
+    configuration_manifest = package.read_json(
+        "reports/input_manifest.json"
     )
+    report_set_errors = optimized_start_authority_report_set_errors(
+        file_names=package.file_names(),
+        manifest=configuration_manifest,
+    )
+    if report_set_errors:
+        raise ValueError(report_set_errors[0])
+    optimized_paths = optimized_start_report_paths_for_manifest(
+        configuration_manifest
+    )
+    optimized_bytes: dict[str, bytes] = {}
+    if optimized_paths:
+        authority = validated_optimized_start_authority_from_view(
+            package,
+            manifest=configuration_manifest,
+        )
+        if isinstance(authority, ValidatedStarterSelection):
+            validate_legacy_starter_candidate_path_mapping(
+                authority.candidates
+            )
+        optimized_bytes = _optimized_authority_document_bytes(
+            authority,
+            paths=optimized_paths,
+        )
     authoritative_paths = (
         *_AUTHORITATIVE_JSON_PATHS,
-        *(
-            OPTIMIZED_START_REPORT_PATHS
-            if configuration_mode == LLM_OPTIMIZED_START
-            else ()
-        ),
+        *optimized_paths,
     )
     for relative_path in authoritative_paths:
         if (
@@ -924,6 +1017,12 @@ def _authoritative_input_digests_from_view(
             and not package.exists(relative_path)
         ):
             inputs[relative_path] = _canonical_json_sha256([])
+            continue
+        if relative_path in optimized_paths:
+            inputs[relative_path] = (
+                "sha256:"
+                + hashlib.sha256(optimized_bytes[relative_path]).hexdigest()
+            )
             continue
         payload = _read_view_json(package, relative_path)
         if not isinstance(payload, Mapping):

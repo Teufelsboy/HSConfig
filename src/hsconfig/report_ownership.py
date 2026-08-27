@@ -3,8 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.visionai_registry import (
-    OPTIMIZED_START_REPORT_PATHS,
+    LEGACY_OPTIMIZED_START_REPORT_PATHS,
+    SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
     report_spec,
+)
+
+
+_ORDERED_OPTIMIZED_START_REPORT_PATHS = tuple(
+    dict.fromkeys(
+        (
+            *LEGACY_OPTIMIZED_START_REPORT_PATHS,
+            *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+        )
+    )
 )
 
 
@@ -196,7 +207,7 @@ def build_report_ownership(
                     "does not replace operator_summary.json"
                 ),
             )
-            for path in OPTIMIZED_START_REPORT_PATHS
+            for path in _ORDERED_OPTIMIZED_START_REPORT_PATHS
         )
     return rows
 
