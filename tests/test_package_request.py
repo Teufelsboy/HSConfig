@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import FrozenInstanceError, fields, replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -23,9 +23,91 @@ from hsconfig.package_request import (
     ResolvedPackageRequest,
 )
 from hsconfig.globalvalues_baseline import FALLBACK_GLOBALVALUES_BASELINE
+from hsconfig.optimized_start_authority import (
+    ValidatedSingleStarterApproval,
+    load_optimized_start_authority,
+)
+from hsconfig.starter_candidate import validate_starter_candidate
+from hsconfig.starter_review import validate_starter_review
+from tests.starter_fixtures import build_shadowpriest_starter_fixture
+from tests.test_optimized_start_authority import (
+    SINGLE_CANDIDATE_MANIFEST,
+    _build_single_candidate_authority,
+)
 
 RESOURCE_ROOT = Path("src/hsconfig/resources")
 SYNTHETIC_RUNTIME_ROOT = "C:" + "/runtime"
+
+
+class _MutableViewFrozenJsonDocument(FrozenJsonDocument):
+    replacement: object | None = None
+
+    def to_value(self) -> object:
+        if type(self).replacement is not None:
+            return type(self).replacement
+        return super().to_value()
+
+
+class _EqualityLyingDigest(str):
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+    __hash__ = str.__hash__
+
+
+def _approval_with_mutable_review_document(
+    approval: ValidatedSingleStarterApproval,
+) -> ValidatedSingleStarterApproval:
+    mutable_document = _MutableViewFrozenJsonDocument(
+        approval.review.document.document.canonical_json
+    )
+    return replace(
+        approval,
+        review=replace(
+            approval.review,
+            document=replace(
+                approval.review.document,
+                document=mutable_document,
+            ),
+        ),
+    )
+
+
+def _approvals_with_lying_digest(
+    approval: ValidatedSingleStarterApproval,
+) -> tuple[ValidatedSingleStarterApproval, ...]:
+    lying_digest = _EqualityLyingDigest("sha256:" + "f" * 64)
+    candidate = validate_starter_candidate(
+        replace(
+            approval.candidate.document,
+            content_sha256=lying_digest,
+        ),
+        context=approval.context,
+    )
+    candidate_review = validate_starter_review(
+        approval.review.document,
+        context=approval.context,
+        candidate=candidate,
+    )
+    review = validate_starter_review(
+        replace(
+            approval.review.document,
+            content_sha256=lying_digest,
+        ),
+        context=approval.context,
+        candidate=approval.candidate,
+    )
+    return (
+        replace(
+            approval,
+            candidate=candidate,
+            review=candidate_review,
+        ),
+        replace(approval, review=review),
+    )
 
 
 def test_package_invocation_is_slotted_frozen_and_excludes_transport_fields() -> None:
@@ -581,6 +663,260 @@ def test_frozen_json_rejects_nonfinite_numbers(payload: bytes) -> None:
         FrozenJsonDocument.from_json_bytes(payload)
     with pytest.raises(ValueError, match="frozen_json_non_finite_number"):
         FrozenJsonDocument(payload)
+
+
+def _request_with_authority(
+    base: ResolvedPackageRequest,
+    *,
+    configuration_mode: str,
+    frozen_compiler_inputs: object = None,
+    starter_selection: object = None,
+    starter_approval: object = None,
+) -> ResolvedPackageRequest:
+    return ResolvedPackageRequest.from_values(
+        snapshot=base.snapshot,
+        invocation=replace(
+            base.invocation,
+            configuration_mode=configuration_mode,
+        ),
+        plan_overrides=base.plan_overrides.to_value(),
+        acquisition_closure_input=base.acquisition_closure_input.to_value(),
+        mulligan_gap_input=base.mulligan_gap_input.to_value(),
+        frozen_compiler_inputs=frozen_compiler_inputs,  # type: ignore[arg-type]
+        starter_selection=starter_selection,  # type: ignore[arg-type]
+        starter_approval=starter_approval,  # type: ignore[arg-type]
+    )
+
+
+def test_new_optimized_request_requires_frozen_single_candidate_approval(
+    tmp_path: Path,
+) -> None:
+    fixture = _build_single_candidate_authority(tmp_path / "single")
+    other_fixture = _build_single_candidate_authority(tmp_path / "other")
+    approval = load_optimized_start_authority(
+        report_root=fixture.report_root,
+        manifest=SINGLE_CANDIDATE_MANIFEST,
+    )
+    assert isinstance(approval, ValidatedSingleStarterApproval)
+
+    request = _request_with_authority(
+        fixture.request,
+        configuration_mode="LLM_OPTIMIZED_START",
+        frozen_compiler_inputs=fixture.frozen,
+        starter_approval=approval,
+    )
+
+    assert request.starter_selection is None
+    assert request.starter_approval == approval
+    assert request.frozen_compiler_inputs == fixture.frozen
+    assert (
+        request.optimized_start_authority_schema
+        == "single_candidate_review_v1"
+    )
+
+    forged_approvals = (
+        replace(
+            approval,
+            snapshot=replace(
+                approval.snapshot,
+                compiler_inputs=FrozenJsonDocument.from_value(
+                    {"forged": True}
+                ),
+            ),
+        ),
+        replace(
+            approval,
+            context=replace(
+                approval.context,
+                deck_fingerprint="f" * 64,
+            ),
+        ),
+        replace(
+            approval,
+            candidate=replace(
+                approval.candidate,
+                runtime_intent_sha256="sha256:" + "f" * 64,
+            ),
+        ),
+        replace(
+            approval,
+            review=replace(
+                approval.review,
+                review_summary="Forged review cache.",
+            ),
+        ),
+        _approval_with_mutable_review_document(approval),
+        *_approvals_with_lying_digest(approval),
+    )
+    for forged_approval in forged_approvals:
+        with pytest.raises(ValueError):
+            _request_with_authority(
+                fixture.request,
+                configuration_mode="LLM_OPTIMIZED_START",
+                frozen_compiler_inputs=fixture.frozen,
+                starter_approval=forged_approval,
+            )
+
+    with pytest.raises(ValueError):
+        _request_with_authority(
+            fixture.request,
+            configuration_mode="LLM_OPTIMIZED_START",
+            frozen_compiler_inputs=other_fixture.frozen,
+            starter_approval=approval,
+        )
+
+    with pytest.raises(ValueError):
+        _request_with_authority(
+            fixture.request,
+            configuration_mode="LLM_OPTIMIZED_START",
+            starter_approval=approval,
+        )
+    with pytest.raises(ValueError):
+        _request_with_authority(
+            fixture.request,
+            configuration_mode="LLM_OPTIMIZED_START",
+            frozen_compiler_inputs=fixture.frozen,
+        )
+
+
+def test_new_optimized_request_rejects_mutable_review_document_subclass(
+    tmp_path: Path,
+) -> None:
+    fixture = _build_single_candidate_authority(tmp_path / "single")
+    approval = load_optimized_start_authority(
+        report_root=fixture.report_root,
+        manifest=SINGLE_CANDIDATE_MANIFEST,
+    )
+    assert isinstance(approval, ValidatedSingleStarterApproval)
+    forged_approval = _approval_with_mutable_review_document(approval)
+
+    try:
+        request = _request_with_authority(
+            fixture.request,
+            configuration_mode="LLM_OPTIMIZED_START",
+            frozen_compiler_inputs=fixture.frozen,
+            starter_approval=forged_approval,
+        )
+    except ValueError:
+        return
+    original = approval.review.document.to_value()
+    _MutableViewFrozenJsonDocument.replacement = {
+        **original,
+        "review_status": "revision_requested",
+    }
+    try:
+        assert request.starter_approval is not None
+        assert request.starter_approval.review.document.to_value() != original
+    finally:
+        _MutableViewFrozenJsonDocument.replacement = None
+    pytest.fail("mutable review document subclass was accepted")
+
+
+def test_new_optimized_request_rejects_lying_candidate_or_review_digest_subclass(
+    tmp_path: Path,
+) -> None:
+    fixture = _build_single_candidate_authority(tmp_path / "single")
+    approval = load_optimized_start_authority(
+        report_root=fixture.report_root,
+        manifest=SINGLE_CANDIDATE_MANIFEST,
+    )
+    assert isinstance(approval, ValidatedSingleStarterApproval)
+    for forged_approval in _approvals_with_lying_digest(approval):
+        with pytest.raises(ValueError):
+            _request_with_authority(
+                fixture.request,
+                configuration_mode="LLM_OPTIMIZED_START",
+                frozen_compiler_inputs=fixture.frozen,
+                starter_approval=forged_approval,
+            )
+
+
+def test_conservative_and_legacy_requests_keep_existing_constructor_contract(
+    tmp_path: Path,
+) -> None:
+    single = _build_single_candidate_authority(tmp_path / "single")
+    base = single.request
+    conservative_positional = ResolvedPackageRequest(
+        base.snapshot,
+        base.invocation,
+        base.plan_overrides,
+        base.acquisition_closure_input,
+        base.mulligan_gap_input,
+        base.frozen_compiler_inputs,
+        base.starter_selection,
+    )
+    conservative_with_frozen = _request_with_authority(
+        base,
+        configuration_mode="CONSERVATIVE",
+        frozen_compiler_inputs=single.frozen,
+    )
+    legacy_fixture = build_shadowpriest_starter_fixture(
+        tmp_path / "legacy"
+    )
+    legacy = _request_with_authority(
+        legacy_fixture.request,
+        configuration_mode="LLM_OPTIMIZED_START",
+        starter_selection=legacy_fixture.selection,
+    )
+
+    assert tuple(field.name for field in fields(ResolvedPackageRequest)) == (
+        "snapshot",
+        "invocation",
+        "plan_overrides",
+        "acquisition_closure_input",
+        "mulligan_gap_input",
+        "frozen_compiler_inputs",
+        "starter_selection",
+        "starter_approval",
+    )
+    assert conservative_positional.optimized_start_authority_schema is None
+    assert conservative_with_frozen.optimized_start_authority_schema is None
+    assert legacy.starter_selection == legacy_fixture.selection
+    assert legacy.starter_approval is None
+    assert legacy.frozen_compiler_inputs is None
+    assert legacy.optimized_start_authority_schema == "legacy_five_doc"
+
+
+def test_optimized_request_rejects_mixed_authority_objects(
+    tmp_path: Path,
+) -> None:
+    single = _build_single_candidate_authority(tmp_path / "single")
+    approval = load_optimized_start_authority(
+        report_root=single.report_root,
+        manifest=SINGLE_CANDIDATE_MANIFEST,
+    )
+    legacy_fixture = build_shadowpriest_starter_fixture(
+        tmp_path / "legacy"
+    )
+
+    invalid_rows = (
+        {
+            "base": single.request,
+            "configuration_mode": "LLM_OPTIMIZED_START",
+            "frozen_compiler_inputs": single.frozen,
+            "starter_selection": legacy_fixture.selection,
+            "starter_approval": approval,
+        },
+        {
+            "base": single.request,
+            "configuration_mode": "LLM_OPTIMIZED_START",
+        },
+        {
+            "base": legacy_fixture.request,
+            "configuration_mode": "LLM_OPTIMIZED_START",
+            "frozen_compiler_inputs": single.frozen,
+            "starter_selection": legacy_fixture.selection,
+        },
+        {
+            "base": single.request,
+            "configuration_mode": "CONSERVATIVE",
+            "frozen_compiler_inputs": single.frozen,
+            "starter_approval": approval,
+        },
+    )
+    for values in invalid_rows:
+        with pytest.raises(ValueError):
+            _request_with_authority(**values)  # type: ignore[arg-type]
 
 
 def _general_preconfig(

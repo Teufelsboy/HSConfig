@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
+from decimal import Decimal
 from datetime import date, datetime
 from enum import Enum
 from hashlib import sha256
@@ -27,7 +28,11 @@ from hsconfig.pre_run_metrics import build_source_acquisition_closure_report
 from hsconfig.preconfig_context import build_preconfig_context
 
 if TYPE_CHECKING:
+    from hsconfig.configuration_mode import OptimizedStartAuthoritySchema
     from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+    from hsconfig.optimized_start_authority import (
+        ValidatedSingleStarterApproval,
+    )
     from hsconfig.starter_decision import ValidatedStarterSelection
 
 
@@ -574,6 +579,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
     mulligan_gap_input: MulliganGapInput
     frozen_compiler_inputs: FrozenCompilerInputs | None = None
     starter_selection: ValidatedStarterSelection | None = None
+    starter_approval: ValidatedSingleStarterApproval | None = None
 
     def __post_init__(self) -> None:
         expected_types = (
@@ -622,9 +628,30 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         if self.invocation.configuration_mode == "CONSERVATIVE":
             if self.starter_selection is not None:
                 raise ValueError("starter_selection_forbidden")
+            if self.starter_approval is not None:
+                raise ValueError("starter_approval_forbidden")
             return
         if self.invocation.configuration_mode != "LLM_OPTIMIZED_START":
             raise ValueError("configuration_mode_invalid")
+
+        selection = self.starter_selection
+        approval = self.starter_approval
+        if selection is not None and approval is not None:
+            raise ValueError("optimized_start_authority_mixed")
+        if approval is not None:
+            if selection is not None:
+                raise ValueError("optimized_start_authority_mixed")
+            _validate_single_candidate_request_authority(
+                approval=approval,
+                frozen_compiler_inputs=self.frozen_compiler_inputs,
+            )
+            return
+        if selection is None:
+            if self.frozen_compiler_inputs is not None:
+                raise ValueError("starter_approval_required")
+            raise ValueError("starter_selection_required")
+        if self.frozen_compiler_inputs is not None:
+            raise ValueError("starter_selection_frozen_inputs_forbidden")
 
         from hsconfig.starter_candidate import validate_starter_candidate
         from hsconfig.starter_context import StarterContext, build_starter_context
@@ -642,7 +669,6 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
             seal_starter_document,
         )
 
-        selection = self.starter_selection
         if not isinstance(selection, ValidatedStarterSelection):
             raise ValueError("starter_selection_required")
         current_context = build_starter_context(self.snapshot)
@@ -714,6 +740,7 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         mulligan_gap_input: Any,
         frozen_compiler_inputs: FrozenCompilerInputs | None = None,
         starter_selection: ValidatedStarterSelection | None = None,
+        starter_approval: ValidatedSingleStarterApproval | None = None,
     ) -> ResolvedPackageRequest:
         return cls(
             snapshot=snapshot,
@@ -727,7 +754,18 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
             ),
             frozen_compiler_inputs=frozen_compiler_inputs,
             starter_selection=starter_selection,
+            starter_approval=starter_approval,
         )
+
+    @property
+    def optimized_start_authority_schema(
+        self,
+    ) -> OptimizedStartAuthoritySchema | None:
+        if self.starter_selection is not None:
+            return "legacy_five_doc"
+        if self.starter_approval is not None:
+            return "single_candidate_review_v1"
+        return None
 
     @property
     def resolution_snapshot(self) -> PackageResolutionSnapshot:
@@ -740,6 +778,185 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
     @property
     def mulligan_source_gaps(self) -> MulliganGapInput:
         return self.mulligan_gap_input
+
+
+def _durable_authority_values_match(left: object, right: object) -> bool:
+    if type(left) is not type(right):
+        return False
+    if left is None or isinstance(
+        left,
+        (bool, bytes, date, datetime, Decimal, Enum, float, int, PurePath, str),
+    ):
+        return left == right
+    if isinstance(left, tuple):
+        return len(left) == len(right) and all(
+            _durable_authority_values_match(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if is_dataclass(left) and not isinstance(left, type):
+        return all(
+            _durable_authority_values_match(
+                getattr(left, field.name),
+                getattr(right, field.name),
+            )
+            for field in fields(left)
+        )
+    if isinstance(left, Mapping):
+        if set(left) != set(right):
+            return False
+        return all(
+            _durable_authority_values_match(left[key], right[key])
+            for key in left
+        )
+    if isinstance(left, frozenset):
+        return left == right
+    return False
+
+
+def _validate_single_candidate_request_authority(
+    *,
+    approval: object,
+    frozen_compiler_inputs: object,
+) -> None:
+    from hsconfig.input_snapshot_manifest import (
+        FrozenCompilerInputs,
+        ValidatedInputSnapshotManifest,
+        validate_input_snapshot_manifest_document,
+    )
+    from hsconfig.optimized_start_authority import (
+        ValidatedSingleStarterApproval,
+    )
+    from hsconfig.starter_candidate import (
+        ValidatedStarterCandidate,
+        validate_starter_candidate,
+    )
+    from hsconfig.starter_context import (
+        StarterContext,
+        build_single_candidate_starter_context,
+        validate_starter_context_document,
+    )
+    from hsconfig.starter_document import StarterDocument
+    from hsconfig.starter_review import (
+        ValidatedStarterReview,
+        validate_starter_review,
+    )
+
+    if frozen_compiler_inputs is None:
+        raise ValueError("starter_approval_frozen_inputs_required")
+    if type(frozen_compiler_inputs) is not FrozenCompilerInputs:
+        raise ValueError("starter_approval_frozen_inputs_invalid")
+    if type(approval) is not ValidatedSingleStarterApproval:
+        raise ValueError("starter_approval_invalid")
+
+    frozen = frozen_compiler_inputs
+    try:
+        if (
+            type(frozen.manifest) is not ValidatedInputSnapshotManifest
+            or type(frozen.manifest.document) is not StarterDocument
+            or type(frozen.manifest.document.document)
+            is not FrozenJsonDocument
+        ):
+            raise TypeError("frozen manifest type invalid")
+        for field_name in (
+            "deck",
+            "full_cards",
+            "collectible_cards",
+            "source_acquisition",
+            "source_documents",
+            "globalvalues_baseline",
+        ):
+            if type(getattr(frozen, field_name)) is not FrozenJsonDocument:
+                raise TypeError("frozen input document type invalid")
+        if (
+            type(approval.snapshot) is not ValidatedInputSnapshotManifest
+            or type(approval.snapshot.document) is not StarterDocument
+            or type(approval.snapshot.document.document)
+            is not FrozenJsonDocument
+            or type(approval.context) is not StarterContext
+            or type(approval.context.document) is not StarterDocument
+            or type(approval.context.document.document)
+            is not FrozenJsonDocument
+            or type(approval.context.document.content_sha256) is not str
+            or type(approval.candidate) is not ValidatedStarterCandidate
+            or type(approval.candidate.document) is not StarterDocument
+            or type(approval.candidate.document.document)
+            is not FrozenJsonDocument
+            or type(approval.candidate.document.content_sha256) is not str
+            or type(approval.review) is not ValidatedStarterReview
+            or type(approval.review.document) is not StarterDocument
+            or type(approval.review.document.document)
+            is not FrozenJsonDocument
+            or type(approval.review.document.content_sha256) is not str
+        ):
+            raise TypeError("starter approval type invalid")
+
+        frozen_snapshot = validate_input_snapshot_manifest_document(
+            frozen.manifest.document.document
+        )
+        approval_snapshot = validate_input_snapshot_manifest_document(
+            approval.snapshot.document.document
+        )
+        if not _durable_authority_values_match(
+            frozen_snapshot,
+            frozen.manifest,
+        ) or not _durable_authority_values_match(
+            approval_snapshot,
+            approval.snapshot,
+        ):
+            raise ValueError("snapshot cache drift")
+        if not _durable_authority_values_match(
+            frozen_snapshot,
+            approval_snapshot,
+        ):
+            raise ValueError("snapshot authority mismatch")
+
+        rebuilt_context = build_single_candidate_starter_context(frozen)
+        approval_context = validate_starter_context_document(
+            approval.context.document
+        )
+        if not _durable_authority_values_match(
+            approval_context,
+            approval.context,
+        ) or not _durable_authority_values_match(
+            rebuilt_context,
+            approval_context,
+        ):
+            raise ValueError("context authority mismatch")
+
+        candidate = validate_starter_candidate(
+            approval.candidate.document,
+            context=rebuilt_context,
+        )
+        if not _durable_authority_values_match(
+            candidate,
+            approval.candidate,
+        ):
+            raise ValueError("candidate cache drift")
+
+        review = validate_starter_review(
+            approval.review.document,
+            context=rebuilt_context,
+            candidate=candidate,
+        )
+        if not _durable_authority_values_match(review, approval.review):
+            raise ValueError("review cache drift")
+        if (
+            review.review_status != "approved"
+            or review.revision_requests != ()
+            or review.confidence not in {"high", "limited"}
+        ):
+            raise ValueError("review is not durable approval")
+
+        rebuilt = ValidatedSingleStarterApproval(
+            snapshot=frozen_snapshot,
+            context=rebuilt_context,
+            candidate=candidate,
+            review=review,
+        )
+        if not _durable_authority_values_match(rebuilt, approval):
+            raise ValueError("approval cache drift")
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError("starter_approval_invalid") from error
 
 
 def resolve_package_request(

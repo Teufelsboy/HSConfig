@@ -7,6 +7,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
 
+from hsconfig.configuration_mode import (
+    optimized_start_authority_schema_from_manifest,
+)
 from hsconfig.globalvalues_baseline import _FALLBACK_GLOBALVALUES_BASELINE
 from hsconfig.package_domain import deep_freeze_definition
 
@@ -60,12 +63,33 @@ class ReportSpec:
 
 
 NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
-OPTIMIZED_START_REPORT_PATHS = (
+LEGACY_OPTIMIZED_START_REPORT_PATHS = (
     "reports/optimized_start/starter_context.json",
     "reports/optimized_start/candidate-1.json",
     "reports/optimized_start/candidate-2.json",
     "reports/optimized_start/candidate-3.json",
     "reports/optimized_start/starter_config_decision.json",
+)
+OPTIMIZED_START_REPORT_PATHS = LEGACY_OPTIMIZED_START_REPORT_PATHS
+SINGLE_CANDIDATE_REVIEW_REPORT_PATHS = (
+    "reports/optimized_start/input_snapshot_manifest.json",
+    "reports/optimized_start/starter_context.json",
+    "reports/optimized_start/starter_config_candidate.json",
+    "reports/optimized_start/starter_config_review.json",
+)
+ALL_OPTIMIZED_START_REPORT_PATHS = frozenset(
+    (
+        *LEGACY_OPTIMIZED_START_REPORT_PATHS,
+        *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+    )
+)
+_ORDERED_OPTIMIZED_START_REPORT_PATHS = tuple(
+    dict.fromkeys(
+        (
+            *LEGACY_OPTIMIZED_START_REPORT_PATHS,
+            *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+        )
+    )
 )
 CARDID_SURFACE_FAMILY = "CARDID.json"
 CARDID_SURFACE_DISPLAY_NAME = "per-card <CARDID>.json"
@@ -487,7 +511,7 @@ _OWNED_REPORT_SPECS = (
     ),
     *(
         (path, False, False, "diagnostic_optimized_start")
-        for path in OPTIMIZED_START_REPORT_PATHS
+        for path in _ORDERED_OPTIMIZED_START_REPORT_PATHS
     ),
 )
 
@@ -596,6 +620,19 @@ def report_spec(relative_path: str | Path) -> ReportSpec:
     if normalized.startswith("./"):
         normalized = normalized[2:]
     return REPORT_REGISTRY[normalized]
+
+
+def optimized_start_report_paths_for_manifest(
+    manifest: Mapping[str, Any],
+) -> tuple[str, ...]:
+    schema = optimized_start_authority_schema_from_manifest(manifest)
+    if schema is None:
+        return ()
+    if schema == "legacy_five_doc":
+        return LEGACY_OPTIMIZED_START_REPORT_PATHS
+    if schema == "single_candidate_review_v1":
+        return SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    raise ValueError("optimized_start_authority_schema_invalid")
 
 
 PUBLIC_DOC_CONFIRMED_CARD_BEHAVIOR_BLOCKS = frozenset(

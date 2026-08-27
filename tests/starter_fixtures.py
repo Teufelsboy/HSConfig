@@ -82,7 +82,8 @@ class ShadowPriestStarterFixture:
 def build_shadowpriest_starter_fixture(
     root: Path,
 ) -> ShadowPriestStarterFixture:
-    request = audited_request(root / "audited", SHADOWPRIEST_DECK_NAME)
+    audited_root = root.parent / f"{root.name}-audited"
+    request = audited_request(audited_root, SHADOWPRIEST_DECK_NAME)
     context = build_starter_context(request.snapshot)
     candidates = tuple(
         _candidate_document(
