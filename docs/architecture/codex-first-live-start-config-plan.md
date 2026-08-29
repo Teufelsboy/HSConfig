@@ -44,6 +44,16 @@ No valid `install_apply_invocation` cursor predates Task 9, so a cursor missing
 this required field is invalid; no recapture, guessed size, or legacy upgrade is
 permitted.
 
+**Focused Task 9 route-fence clarification:** `CANDIDATE_PLANNED` binds only
+the deterministic candidate path, exact candidate-parent identity, absent
+candidate predecessor, package digest, and exact planned v1 `PREPARED`
+path/size/digest. Every `candidate_tree_*` field remains null. Only the later
+`bind_candidate_fence` receipt/CAS that advances to `CANDIDATE_BOUND`, while the
+package lease remains active and before any candidate-tree entry is written,
+derives and binds the canonical candidate-tree manifest digest, entry count,
+zero cursor, and exact first-next-entry fields. The schema-2 retention record
+does not duplicate that manifest authority.
+
 ## Global Constraints
 
 - Work directly on the sole local `main`; do not create a branch, worktree,
@@ -7735,9 +7745,14 @@ The `ACTIVE` create and every later schema-2 replace use separate materialize
 and identity-preserving commit receipts. A new target progresses through the
 closed candidate phases and its owning attempt journal is also its durable
 owner. Before its v1 create or candidate `mkdir`, the cursor stages and commits
-`ACTIVE -> CANDIDATE_PLANNED` with the exact candidate parent/path, package-tree
-manifest, and planned v1 bytes. Create and reread only that v1 file through the
-generic staged journal rows, then create at most one plain empty
+`ACTIVE -> CANDIDATE_PLANNED` with the exact candidate parent/path, absent
+candidate predecessor, package digest, and planned v1 bytes; every
+`candidate_tree_*` field remains null. The focused
+`test_initial_active_and_route_fence_commits_are_distinct_staged_rows` covers
+only this New-Target prefix through the committed `CANDIDATE_PLANNED` fence,
+with v1 and candidate still absent; the separately named Prior-Owner tests own
+the `ACTIVE -> PRIOR_OWNER_PLANNED` route. Create and reread only that v1 file
+through the generic staged journal rows, then create at most one plain empty
 candidate. `bind_created_candidate` is the sole create-or-confirm row: its
 persisted predecessor still says candidate absent, while its callback may either
 create the one plain empty child or confirm the exact plain-empty postcondition
@@ -7747,8 +7762,10 @@ surface before returning the candidate identity. A crash after `mkdir` but
 before the candidate-identity receipt CAS may bind that new identity only
 through the same row; it never writes or rebinds v1. After that receipt CAS a
 separate `bind_candidate_fence` action CASes `CANDIDATE_PLANNED ->
-CANDIDATE_BOUND`. Only the bounded reread of `CANDIDATE_BOUND` may begin copy or
-staging. The candidate manifest is consumed one entry per
+CANDIDATE_BOUND`; that CAS derives and binds the canonical manifest digest,
+entry count, zero cursor, and first-next-entry fields under the still-active
+package lease before any tree entry is materialized. Only the bounded reread of
+`CANDIDATE_BOUND` may begin copy or staging. The candidate manifest is consumed one entry per
 `materialize_candidate_tree_entry` receipt/CAS. A file action may confirm an
 action-before-CAS leaf only as exact safe manifest content under the held pair;
 its identity is not retained as durable authority and a safe same-byte occupant
