@@ -195,6 +195,42 @@ def test_output_operation_admission_fixed_path_schema_and_observation_are_closed
             observe_output_operation_admission_under_lease(lease)
 
 
+def test_admission_ads_is_rejected_before_authority_bytes_are_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_app_data, _runtime_root, output_base_root, profile = _enabled_layout(
+        tmp_path,
+        monkeypatch,
+    )
+    _document, raw = _admission_document(
+        local_app_data=local_app_data,
+        output_base_root=output_base_root,
+        profile=profile,
+    )
+    path = output_operation_admission_path()
+    path.write_bytes(raw)
+    stream_path = _create_ntfs_stream_or_skip(path)
+    before = (path_identity(path), path.read_bytes(), stream_path.read_bytes())
+    read_calls: list[Path] = []
+    real_read = admission.read_file_no_follow
+
+    def observed_read(candidate: Path, **kwargs: object) -> bytes:
+        read_calls.append(Path(candidate))
+        return real_read(candidate, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(admission, "read_file_no_follow", observed_read)
+    with lease_output_operation_admission() as lease:
+        with pytest.raises(
+            ValueError,
+            match="^filesystem_alternate_data_stream_forbidden$",
+        ):
+            observe_output_operation_admission_under_lease(lease)
+
+    assert read_calls == []
+    assert (path_identity(path), path.read_bytes(), stream_path.read_bytes()) == before
+
+
 def test_output_operation_admission_observation_is_read_only_and_never_bootstraps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -623,3 +659,107 @@ def test_output_operation_admission_rejects_ntfs_alternate_data_streams(
                 observe_output_operation_admission_under_lease(lease)
     finally:
         stream_path.unlink(missing_ok=True)
+
+
+def test_output_operation_admission_is_fixed_absent_cas_and_profile_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import Event
+
+    from hsconfig.operator_profile import lease_operator_profile, load_operator_profile
+    from tests.test_configure_prepublication_apply import (
+        _drive_pipeline,
+        _physical_tree,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    profile = load_operator_profile()
+    contender_started = Event()
+    contender_acquired = Event()
+    contender: Thread | None = None
+    observations: list[str] = []
+
+    def compete_for_profile() -> None:
+        contender_started.set()
+        with lease_operator_profile(expected_profile=profile):
+            contender_acquired.set()
+
+    def observe(event: str, _payload: object | None = None) -> None:
+        nonlocal contender
+        if event == "output_operation_admission_prepared_cas":
+            persisted = json.loads(
+                (prepared.session_root / "session.json").read_bytes()
+            )
+            assert persisted["pending_transition"]["operation"] == (
+                "install_output_operation_admission"
+            )
+            assert not output_operation_admission_path().exists()
+            contender = Thread(target=compete_for_profile)
+            contender.start()
+            assert contender_started.wait(5)
+            assert not contender_acquired.wait(0.1)
+            observations.append("prepared-before-final")
+        elif event == "output_operation_admission_bound_cas":
+            assert output_operation_admission_path().is_file()
+            observations.append("bound-after-final")
+
+    monkeypatch.setattr(
+        __import__("hsconfig.live_start_controller", fromlist=["*"]),
+        "_emit_pipeline_event",
+        observe,
+    )
+    before_runtime = _physical_tree(prepared.runtime_root)
+    completed = _drive_pipeline(prepared)
+    assert observations == ["prepared-before-final", "bound-after-final"]
+    binding = completed.output_operation_admission_binding
+    raw = output_operation_admission_path().read_bytes()
+    document = json.loads(raw)
+    assert set(document) == OUTPUT_OPERATION_ADMISSION_FIELDS
+    assert document["operator_profile_sha256"] == profile.content_sha256
+    assert binding["admission_identity"] == path_identity(
+        output_operation_admission_path()
+    )
+    assert binding["admission_sha256"] == "sha256:" + sha256(raw).hexdigest()
+    assert _physical_tree(prepared.runtime_root) == before_runtime
+    assert contender is not None
+    contender.join(5)
+    assert contender_acquired.is_set()
+
+
+def test_unbound_staging_and_direct_final_are_delete_only_or_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_configure_prepublication_apply import (
+        _drive_pipeline,
+        _interrupt_pipeline,
+        _prepare_pipeline,
+    )
+
+    unbound = _prepare_pipeline(tmp_path / "unbound", monkeypatch)
+    interrupted = _interrupt_pipeline(
+        unbound,
+        "AFTER_OUTPUT_OPERATION_ADMISSION_STAGING_FLUSH_BEFORE_STAGING_BOUND_CAS",
+    )
+    pending = interrupted.pending_transition
+    final = Path(pending["external_file_action"]["final_path"])
+    staging = Path(pending["external_file_action"]["staging_path"])
+    assert staging.is_file()
+    assert not final.exists()
+    completed = _drive_pipeline(unbound, expected=interrupted)
+    assert completed.output_operation_admission_binding["state"] == "ACTIVE"
+    assert final.is_file()
+    assert not staging.exists()
+
+    direct = _prepare_pipeline(tmp_path / "direct-final", monkeypatch)
+    interrupted = _interrupt_pipeline(
+        direct,
+        "AFTER_OUTPUT_OPERATION_ADMISSION_PREPARED",
+    )
+    final = Path(interrupted.pending_transition["external_file_action"]["final_path"])
+    final.write_bytes(b"foreign-direct-final")
+    with pytest.raises(ValueError, match="final|tamper|admission"):
+        _drive_pipeline(direct, expected=interrupted)
+    assert final.read_bytes() == b"foreign-direct-final"

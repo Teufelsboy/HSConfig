@@ -36,6 +36,9 @@ from hsconfig.atomic_io import (
 )
 from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
 from hsconfig.output_operation_admission import (
+    OUTPUT_OPERATION_ADMISSION_NAME,
+    OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME,
+    OUTPUT_OPERATION_ADMISSION_STAGING_NAME,
     _require_windows_safe_absolute_path,
 )
 from hsconfig.package_io import (
@@ -421,7 +424,6 @@ _PHASE_FINAL_PENDING_OPERATIONS = MappingProxyType(
         "review_revision": "review_revision",
         "package_validated": "install_package_validation",
         "prepublication_passed": "install_prepublication_validation",
-        "publication_committed": "cleanup_prepublication",
         "apply_started": "install_apply_invocation",
     }
 )
@@ -473,6 +475,19 @@ _INTERNAL_EVENT_FIELD_ALLOWLIST = MappingProxyType(
                 "apply_invocation_sha256",
                 "runtime_admission_binding",
             }
+        ),
+        "package_validated": frozenset(
+            {
+                "artifact_bindings",
+                "pending_transition",
+                "prepublication_work_binding",
+            }
+        ),
+        "prepublication_passed": frozenset(
+            {"artifact_bindings", "pending_transition"}
+        ),
+        "publication_committed": frozenset(
+            {"publication_binding"}
         ),
         "bind_terminal": frozenset({"terminal_status"}),
         "replacement_draft": frozenset(
@@ -1591,6 +1606,19 @@ def _validate_update_authority(
     if (
         isinstance(predecessor_pending, Mapping)
         and predecessor_pending.get("operation") == "cleanup_prepublication"
+        and successor_pending_value is None
+        and (
+            predecessor_pending.get("stage") != "CLEANUP_DELETING"
+            or predecessor_pending.get("cleanup_cursor")
+            != predecessor_pending.get("cleanup_entry_count")
+        )
+    ):
+        raise SessionCapabilityError(
+            "live_start_prepublication_cleanup_incomplete"
+        )
+    if (
+        isinstance(predecessor_pending, Mapping)
+        and predecessor_pending.get("operation") == "cleanup_prepublication"
         and isinstance(successor_pending_value, Mapping)
         and successor_pending_value.get("operation")
         == "cleanup_prepublication"
@@ -1598,6 +1626,18 @@ def _validate_update_authority(
         _validate_prepublication_cleanup_pending_successor(
             predecessor=predecessor_pending,
             successor=successor_pending_value,
+        )
+    if (
+        isinstance(predecessor_pending, Mapping)
+        and predecessor_pending.get("operation")
+        == "materialize_prepublication_work"
+    ):
+        _validate_prepublication_materialization_successor(
+            predecessor=predecessor_pending,
+            successor=successor_pending_value,
+            successor_work_binding=changes.get(
+                "prepublication_work_binding"
+            ),
         )
     for field_name, successor in changes.items():
         predecessor = getattr(session, field_name)
@@ -1617,6 +1657,82 @@ def _validate_update_authority(
     ):
         raise SessionValidationError(
             "live_start_pending_initial_stage_invalid"
+        )
+
+
+def _validate_prepublication_materialization_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Any,
+    successor_work_binding: Any,
+) -> None:
+    current = validate_embedded_document(
+        "pending_transition",
+        predecessor,
+    )
+    current_stage = current.get("stage")
+    if successor is None:
+        actions = current.get("actions")
+        normalized_work_binding = _normalize_json(successor_work_binding)
+        if isinstance(normalized_work_binding, dict):
+            _validate_prepublication_work_binding(normalized_work_binding)
+        if (
+            current_stage != "PRIMARY_APPLIED"
+            or not isinstance(actions, tuple)
+            or current.get("next_action_index") != len(actions)
+            or not isinstance(normalized_work_binding, dict)
+            or set(normalized_work_binding)
+            != _PREPUBLICATION_WORK_BINDING_FIELDS
+            or normalized_work_binding.get("work_parent_path")
+            != current.get("work_parent_path")
+            or tuple(normalized_work_binding.get("work_parent_identity", ()))
+            != tuple(current.get("work_parent_identity", ()))
+            or normalized_work_binding.get("work_root")
+            != current.get("work_root")
+            or tuple(normalized_work_binding.get("work_root_identity", ()))
+            != tuple(current.get("work_root_identity", ()))
+        ):
+            raise SessionCapabilityError(
+                "live_start_prepublication_materialization_completion_invalid"
+            )
+        return
+    if not isinstance(successor, Mapping):
+        raise SessionCapabilityError(
+            "live_start_prepublication_materialization_successor_invalid"
+        )
+    next_value = validate_embedded_document(
+        "pending_transition",
+        successor,
+    )
+    mutable = {"stage", "work_root_identity", "next_action_index", "content_sha256"}
+    for field_name in _PENDING_TRANSITION_FIELDS - mutable:
+        if current.get(field_name) != next_value.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_prepublication_materialization_successor_changed"
+            )
+    if successor_work_binding is not None:
+        raise SessionCapabilityError(
+            "live_start_prepublication_materialization_successor_invalid"
+        )
+    if current_stage == "PREPARED":
+        valid = (
+            next_value.get("stage") == "PRIMARY_APPLIED"
+            and current.get("work_root_identity") is None
+            and next_value.get("work_root_identity") is not None
+            and current.get("next_action_index") == 0
+            and next_value.get("next_action_index") == 0
+        )
+    else:
+        valid = (
+            current_stage == next_value.get("stage") == "PRIMARY_APPLIED"
+            and current.get("work_root_identity")
+            == next_value.get("work_root_identity")
+            and next_value.get("next_action_index")
+            == current.get("next_action_index") + 1
+        )
+    if not valid:
+        raise SessionCapabilityError(
+            "live_start_prepublication_materialization_successor_invalid"
         )
 
 
@@ -2192,7 +2308,8 @@ _PENDING_TRANSITION_FIELDS = frozenset(
     successor_artifact_bindings actions next_action_index external_file_action
     rendered_model_sha256 work_parent_path work_parent_identity work_root
     work_root_identity work_tree_sha256 cleanup_manifest_sha256
-    cleanup_entry_count cleanup_inventory_path cleanup_inventory_identity
+    cleanup_entry_count receipt_parent_path receipt_parent_identity
+    cleanup_inventory_path cleanup_inventory_identity
     cleanup_inventory_size cleanup_inventory_sha256 quarantine_path
     cleanup_parent_identity quarantine_identity cleanup_cursor apply_attempt_id
     apply_invocation_sha256 runtime_admission_document_size
@@ -2309,6 +2426,9 @@ _PUBLICATION_BINDING_FIELDS = frozenset(
 _PREPUBLICATION_WORK_BINDING_FIELDS = frozenset(
     """work_parent_path work_parent_identity work_root work_root_identity
     work_tree_sha256 cleanup_manifest_sha256 cleanup_entry_count""".split()
+)
+_PREPUBLICATION_MATERIALIZATION_ACTION_FIELDS = frozenset(
+    {"relative_path", "size", "sha256"}
 )
 _RUNTIME_LAYOUT_FIELDS = frozenset(
     """schema_version binding_kind run_id apply_attempt_id runtime_root
@@ -2925,22 +3045,27 @@ def _validate_top_level_phase_field_matrix(
                     "live_start_prepublication_cleanup_work_binding_invalid"
                 )
 
-    if phase_index < package_index and prepublication is not None:
+    if (
+        phase_index < package_index
+        and phase is not LiveStartPhase.REVIEW_APPROVED
+        and prepublication is not None
+    ):
         raise SessionValidationError(
             "live_start_prepublication_work_phase_invalid"
         )
-    if phase in {
-        LiveStartPhase.PACKAGE_VALIDATED,
-        LiveStartPhase.PREPUBLICATION_CHECK_PASSED,
-    } and prepublication is None:
+    if phase_index >= package_index and prepublication is None:
         raise SessionValidationError(
             "live_start_prepublication_work_binding_missing"
         )
-    if phase_index >= publication_index and prepublication is not None:
+    if (
+        phase is LiveStartPhase.REVIEW_APPROVED
+        and prepublication is not None
+        and pending is not None
+        and pending.get("operation") != "install_package_validation"
+    ):
         raise SessionValidationError(
             "live_start_prepublication_work_phase_invalid"
         )
-
     if phase_index < prepublication_index and any(
         item is not None for item in (operation_binding, child_binding)
     ):
@@ -3439,10 +3564,24 @@ def _validate_external_file_action(value: Mapping[str, Any]) -> None:
     final_path = Path(value["final_path"])
     staging_path = Path(value["staging_path"])
     inner_path = Path(value["inner_temp_path"])
+    standard_staging_paths = (
+        staging_path == final_path.with_name(f"{final_path.name}.staged")
+        and inner_path
+        == staging_path.with_name(
+            f".{staging_path.name}.live-start-atomic.tmp"
+        )
+    )
+    fixed_output_operation_paths = (
+        final_path.name == OUTPUT_OPERATION_ADMISSION_NAME
+        and staging_path
+        == final_path.with_name(OUTPUT_OPERATION_ADMISSION_STAGING_NAME)
+        and inner_path
+        == final_path.with_name(
+            OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME
+        )
+    )
     if (
-        staging_path != final_path.with_name(f"{final_path.name}.staged")
-        or inner_path
-        != staging_path.with_name(f".{staging_path.name}.live-start-atomic.tmp")
+        not (standard_staging_paths or fixed_output_operation_paths)
         or len({final_path, staging_path, inner_path}) != 3
     ):
         raise SessionValidationError("live_start_external_file_action_paths_invalid")
@@ -3597,6 +3736,40 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
             stage=stage,
             external=external,
         )
+    if operation == "materialize_prepublication_work":
+        _validate_prepublication_materialization_pending_matrix(
+            value=value,
+            stage=stage,
+            external=external,
+        )
+    elif value.get("rendered_model_sha256") is not None:
+        raise SessionValidationError(
+            "live_start_prepublication_materialization_authority_forbidden"
+        )
+    receipt_parent_fields = (
+        value.get("receipt_parent_path"),
+        value.get("receipt_parent_identity"),
+    )
+    if operation in {
+        "install_package_validation",
+        "install_prepublication_validation",
+    }:
+        receipt_parent = _require_absolute_path(
+            receipt_parent_fields[0],
+            "receipt_parent_path",
+        )
+        _require_identity(
+            receipt_parent_fields[1],
+            "receipt_parent_identity",
+        )
+        if receipt_parent.name != "receipts":
+            raise SessionValidationError(
+                "live_start_receipt_parent_path_invalid"
+            )
+    elif any(item is not None for item in receipt_parent_fields):
+        raise SessionValidationError(
+            "live_start_receipt_parent_authority_forbidden"
+        )
     cleanup_authority_fields = (
         "cleanup_inventory_path",
         "cleanup_inventory_identity",
@@ -3616,6 +3789,93 @@ def _validate_pending_transition(value: Mapping[str, Any]) -> None:
     elif any(value.get(field_name) is not None for field_name in cleanup_authority_fields):
         raise SessionValidationError(
             "live_start_pending_cleanup_authority_forbidden"
+        )
+
+
+def _validate_prepublication_materialization_pending_matrix(
+    *,
+    value: Mapping[str, Any],
+    stage: Any,
+    external: Any,
+) -> None:
+    actions = value.get("actions")
+    if (
+        stage not in {"PREPARED", "PRIMARY_APPLIED"}
+        or external is not None
+        or not isinstance(actions, list)
+        or not actions
+    ):
+        raise SessionValidationError(
+            "live_start_prepublication_materialization_matrix_invalid"
+        )
+    expected_paths: list[str] = []
+    for action in actions:
+        if (
+            not isinstance(action, dict)
+            or set(action)
+            != _PREPUBLICATION_MATERIALIZATION_ACTION_FIELDS
+        ):
+            raise SessionValidationError(
+                "live_start_prepublication_materialization_action_invalid"
+            )
+        expected_paths.append(
+            _require_safe_relative_path(
+                action.get("relative_path"),
+                "prepublication_materialization_relative_path",
+            )
+        )
+        _bounded_integer(
+            action.get("size"),
+            0,
+            64 * 1024 * 1024,
+            "prepublication_materialization_size",
+        )
+        _require_sha256(
+            action.get("sha256"),
+            "prepublication_materialization_sha256",
+        )
+    if expected_paths != sorted(expected_paths) or len(set(expected_paths)) != len(
+        expected_paths
+    ):
+        raise SessionValidationError(
+            "live_start_prepublication_materialization_actions_invalid"
+        )
+    _require_sha256(
+        value.get("rendered_model_sha256"),
+        "rendered_model_sha256",
+    )
+    work_parent = _require_absolute_path(
+        value.get("work_parent_path"),
+        "work_parent_path",
+    )
+    work_root = _require_absolute_path(value.get("work_root"), "work_root")
+    _require_identity(value.get("work_parent_identity"), "work_parent_identity")
+    if work_root.parent != work_parent:
+        raise SessionValidationError(
+            "live_start_prepublication_materialization_path_invalid"
+        )
+    cursor = value.get("next_action_index")
+    if stage == "PREPARED":
+        if cursor != 0 or value.get("work_root_identity") is not None:
+            raise SessionValidationError(
+                "live_start_prepublication_materialization_cursor_invalid"
+            )
+    else:
+        _require_identity(value.get("work_root_identity"), "work_root_identity")
+        if type(cursor) is not int or cursor < 0 or cursor > len(actions):
+            raise SessionValidationError(
+                "live_start_prepublication_materialization_cursor_invalid"
+            )
+    if any(
+        value.get(field_name) is not None
+        for field_name in (
+            "work_tree_sha256",
+            "cleanup_manifest_sha256",
+            "cleanup_entry_count",
+        )
+    ):
+        raise SessionValidationError(
+            "live_start_prepublication_materialization_result_invalid"
         )
 
 
@@ -7845,7 +8105,22 @@ def _validate_completed_phase_receipts(
             ),
             maximum_size=256 * 1024,
         )
-        receipt = _decode_json_document(raw)
+        if kind == "package_validation" and not raw.endswith(b"\n"):
+            try:
+                from hsconfig.package_request import FrozenJsonDocument
+
+                receipt_value = FrozenJsonDocument.from_json_bytes(
+                    raw
+                ).to_value()
+            except (TypeError, UnicodeError, ValueError) as error:
+                raise SessionValidationError(
+                    "live_start_json_not_canonical"
+                ) from error
+            if not isinstance(receipt_value, dict):
+                raise SessionValidationError("live_start_json_not_object")
+            receipt = receipt_value
+        else:
+            receipt = _decode_json_document(raw)
         receipt = validate_validation_receipt(
             receipt_kind=kind,  # type: ignore[arg-type]
             value=receipt,
@@ -8025,10 +8300,18 @@ def _allowed_logical_run_files(
 ) -> set[str]:
     allowed = {"session.json", *session.artifact_bindings.keys()}
     pending = session.pending_transition
-    if isinstance(pending, Mapping) and pending.get("stage") in {
-        "PRIMARY_APPLIED",
-        "CLEANUP_DELETING",
-    }:
+    receipt_write_pending = (
+        isinstance(pending, Mapping)
+        and pending.get("operation")
+        in {
+            "install_package_validation",
+            "install_prepublication_validation",
+        }
+    )
+    if isinstance(pending, Mapping) and (
+        pending.get("stage") in {"PRIMARY_APPLIED", "CLEANUP_DELETING"}
+        or receipt_write_pending
+    ):
         successor_bindings = pending.get("successor_artifact_bindings")
         if isinstance(successor_bindings, Mapping):
             allowed.update(successor_bindings.keys())
@@ -12567,15 +12850,29 @@ def _validate_output_child_binding_from_pending(
     expected = {
         "run_id": predecessor.run_id,
         "output_base_path": pending.get("output_base_path"),
-        "output_base_identity": pending.get("output_base_identity"),
+        "output_base_identity": _require_identity(
+            pending.get("output_base_identity"),
+            "output_base_identity",
+        ),
         "output_child_path": pending.get("output_child_path"),
         "predecessor_state": pending.get("output_child_predecessor_state"),
-        "predecessor_output_child_identity": pending.get(
-            "output_child_predecessor_identity"
+        "predecessor_output_child_identity": (
+            None
+            if pending.get("output_child_predecessor_identity") is None
+            else _require_identity(
+                pending.get("output_child_predecessor_identity"),
+                "output_child_predecessor_identity",
+            )
         ),
         "claim_path": pending.get("output_claim_path"),
-        "claim_parent_identity": pending.get("output_claim_parent_identity"),
-        "claim_identity": pending.get("output_claim_identity"),
+        "claim_parent_identity": _require_identity(
+            pending.get("output_claim_parent_identity"),
+            "output_claim_parent_identity",
+        ),
+        "claim_identity": _require_identity(
+            pending.get("output_claim_identity"),
+            "output_claim_identity",
+        ),
         "claim_sha256": pending.get("output_claim_sha256"),
         "claim_state": "ACTIVE",
     }

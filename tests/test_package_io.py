@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 from pathlib import Path
 import stat
+import sys
+from types import SimpleNamespace
+from hashlib import sha256
 
 import pytest
 
@@ -15,6 +19,35 @@ def _one_file_tree(tmp_path: Path) -> Path:
     root.mkdir()
     (root / "payload.json").write_text('{"ok":true}', encoding="utf-8")
     return root
+
+
+def _complete_physical_tree(
+    root: Path,
+) -> dict[str, tuple[str, tuple[int, int, int], bytes | None]]:
+    if not root.exists():
+        return {}
+    result = {".": ("directory", package_io.path_identity(root), None)}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_dir():
+            result[relative] = (
+                "directory",
+                package_io.path_identity(path),
+                None,
+            )
+        elif path.is_file():
+            result[relative] = (
+                "file",
+                package_io.path_identity(path),
+                path.read_bytes(),
+            )
+        else:
+            result[relative] = (
+                "unsafe",
+                package_io.path_identity(path),
+                None,
+            )
+    return result
 
 
 def _windows_drive_root_or_skip(tmp_path: Path) -> Path:
@@ -755,3 +788,578 @@ def test_hardlinked_files_are_rejected_as_ambiguous_package_members(
         package_io.plain_file_status(payload)
     with pytest.raises(ValueError, match="filesystem_tree_entry_invalid"):
         package_io.snapshot_bounded_filesystem_package(root)
+
+
+def test_child_directory_guard_opens_relative_to_held_parent(
+    tmp_path: Path,
+) -> None:
+    parent_path = tmp_path / "parent"
+    child_path = parent_path / "child"
+    parent_path.mkdir()
+    child_path.mkdir()
+
+    with package_io.hold_plain_directory(parent_path) as parent:
+        with parent.hold_child_directory("child") as child:
+            descriptor = child.open_file("probe.bin", create=True, write=True)
+            try:
+                os.write(descriptor, b"bound")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            child.validate()
+            assert child.path == child_path
+            assert (child_path / "probe.bin").read_bytes() == b"bound"
+
+
+def test_child_directory_guard_fails_closed_after_visible_parent_swap(
+    tmp_path: Path,
+) -> None:
+    parent_path = tmp_path / "parent"
+    moved_path = tmp_path / "moved"
+    parent_path.mkdir()
+    (parent_path / "child").mkdir()
+    with package_io.hold_plain_directory(parent_path) as parent:
+        with parent.hold_child_directory("child") as child:
+            try:
+                parent_path.rename(moved_path)
+            except PermissionError:
+                pytest.skip("platform prevents a visible rename of the held directory")
+            parent_path.mkdir()
+            (parent_path / "child").mkdir()
+            moved_before = _complete_physical_tree(moved_path)
+            visible_before = _complete_physical_tree(parent_path)
+
+            with pytest.raises(ValueError, match="identity|guard|inactive"):
+                descriptor = child.open_file(
+                    "must-not-exist.bin",
+                    create=True,
+                    write=True,
+                )
+                os.close(descriptor)
+
+            assert _complete_physical_tree(moved_path) == moved_before
+            assert _complete_physical_tree(parent_path) == visible_before
+
+
+def test_cleanup_parent_bootstrap_is_atomic_idempotent_and_identity_bound(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "HSConfig"
+    state_root.mkdir()
+    with package_io.hold_plain_directory(state_root) as state:
+        first = package_io.bootstrap_plain_child_directory_under_guard(
+            parent_guard=state,
+            child_name="cleanup",
+        )
+        second = package_io.bootstrap_plain_child_directory_under_guard(
+            parent_guard=state,
+            child_name="cleanup",
+        )
+        assert first == second == package_io.path_identity(state_root / "cleanup")
+
+
+def test_secure_unlink_verified_dispatches_all_authority_to_posix_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "bound.bin"
+    expected_identity = (11, 12, 0o100600)
+    expected_parent_identity = (21, 22, 0o40700)
+    expected_size = 37
+    expected_sha256 = "a" * 64
+    delegated: list[
+        tuple[Path, package_io.PathIdentity, package_io.PathIdentity, int, str]
+    ] = []
+
+    def fake_posix_verified_unlink(
+        delegated_path: Path,
+        *,
+        expected_identity: package_io.PathIdentity,
+        expected_parent_identity: package_io.PathIdentity,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> None:
+        delegated.append(
+            (
+                delegated_path,
+                expected_identity,
+                expected_parent_identity,
+                expected_size,
+                expected_sha256,
+            )
+        )
+
+    error: BaseException | None = None
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(
+            package_io,
+            "_secure_unlink_verified_posix",
+            fake_posix_verified_unlink,
+            raising=False,
+        )
+        platform_patch.setattr(package_io.os, "name", "posix")
+        try:
+            package_io.secure_unlink_verified(
+                path,
+                expected_identity=expected_identity,
+                expected_parent_identity=expected_parent_identity,
+                expected_size=expected_size,
+                expected_sha256=expected_sha256,
+            )
+        except BaseException as caught:
+            error = caught
+    if error is not None:
+        raise error
+
+    assert delegated == [
+        (
+            path,
+            expected_identity,
+            expected_parent_identity,
+            expected_size,
+            expected_sha256,
+        )
+    ]
+
+
+def test_secure_rmdir_verified_dispatches_all_authority_to_posix_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "bound-directory"
+    expected_identity = (31, 32, 0o40700)
+    expected_parent_identity = (41, 42, 0o40700)
+    delegated: list[
+        tuple[Path, package_io.PathIdentity, package_io.PathIdentity]
+    ] = []
+
+    def fake_posix_verified_rmdir(
+        delegated_path: Path,
+        *,
+        expected_identity: package_io.PathIdentity,
+        expected_parent_identity: package_io.PathIdentity,
+    ) -> None:
+        delegated.append(
+            (
+                delegated_path,
+                expected_identity,
+                expected_parent_identity,
+            )
+        )
+
+    error: BaseException | None = None
+    with monkeypatch.context() as platform_patch:
+        platform_patch.setattr(
+            package_io,
+            "_secure_rmdir_verified_posix",
+            fake_posix_verified_rmdir,
+            raising=False,
+        )
+        platform_patch.setattr(package_io.os, "name", "posix")
+        try:
+            package_io.secure_rmdir_verified(
+                path,
+                expected_identity=expected_identity,
+                expected_parent_identity=expected_parent_identity,
+            )
+        except BaseException as caught:
+            error = caught
+    if error is not None:
+        raise error
+
+    assert delegated == [
+        (path, expected_identity, expected_parent_identity)
+    ]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows verified rmdir semantics")
+def test_secure_rmdir_verified_deletes_exact_windows_directory(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound-directory"
+    path.mkdir()
+    expected_parent_identity = package_io.path_identity(parent)
+
+    package_io.secure_rmdir_verified(
+        path,
+        expected_identity=package_io.path_identity(path),
+        expected_parent_identity=expected_parent_identity,
+    )
+
+    assert not package_io.path_lexists(path)
+    assert package_io.path_identity(parent) == expected_parent_identity
+
+
+@pytest.mark.parametrize("operation", ("unlink", "rmdir"))
+def test_posix_advisory_unlock_error_after_successful_delete_is_best_effort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    calls: list[int] = []
+    lock_ex = 1
+    lock_nb = 2
+    lock_un = 4
+
+    def fake_flock(_descriptor: int, mode: int) -> None:
+        calls.append(mode)
+        if mode == lock_un:
+            raise OSError(errno.EIO, "advisory unlock failed after commit")
+
+    fake_fcntl = SimpleNamespace(
+        LOCK_EX=lock_ex,
+        LOCK_NB=lock_nb,
+        LOCK_UN=lock_un,
+        flock=fake_flock,
+    )
+    monkeypatch.setitem(sys.modules, "fcntl", fake_fcntl)
+    target = tmp_path / "committed-target"
+    if operation == "unlink":
+        target.write_bytes(b"committed-file")
+    else:
+        target.mkdir()
+
+    with package_io._hold_posix_advisory_exclusive_lock(73):
+        if operation == "unlink":
+            target.unlink()
+        else:
+            target.rmdir()
+
+    assert not package_io.path_lexists(target)
+    assert calls == [lock_ex | lock_nb, lock_un]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified unlink semantics")
+def test_posix_verified_unlink_exact_file_is_descriptor_relative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound.bin"
+    payload = b"exact verified payload"
+    path.write_bytes(payload)
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+    observed: list[tuple[str, package_io.PathIdentity]] = []
+    real_unlink = os.unlink
+
+    def observe_unlink(
+        name: str,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        assert dir_fd is not None
+        observed.append(
+            (
+                name,
+                package_io.path_identity_from_status(os.fstat(dir_fd)),
+            )
+        )
+        real_unlink(name, dir_fd=dir_fd)
+
+    monkeypatch.setattr(package_io.os, "unlink", observe_unlink)
+
+    package_io.secure_unlink_verified(
+        path,
+        expected_identity=expected_identity,
+        expected_parent_identity=expected_parent_identity,
+        expected_size=len(payload),
+        expected_sha256=sha256(payload).hexdigest(),
+    )
+
+    assert observed == [(path.name, expected_parent_identity)]
+    assert not path.exists()
+    assert package_io.path_identity(parent) == expected_parent_identity
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified unlink semantics")
+@pytest.mark.parametrize(
+    "mutated_raw",
+    (b"dxact verified payload", b"different-size"),
+    ids=("same-size-content", "changed-size"),
+)
+def test_posix_verified_unlink_preserves_same_identity_content_or_size_change(
+    tmp_path: Path,
+    mutated_raw: bytes,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound.bin"
+    original_raw = b"exact verified payload"
+    path.write_bytes(original_raw)
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+
+    with path.open("r+b") as stream:
+        assert stream.write(mutated_raw) == len(mutated_raw)
+        stream.truncate()
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert package_io.path_identity(path) == expected_identity
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_verified_unlink_content_changed$",
+    ):
+        package_io.secure_unlink_verified(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+            expected_size=len(original_raw),
+            expected_sha256=sha256(original_raw).hexdigest(),
+        )
+
+    assert package_io.path_identity(path) == expected_identity
+    assert path.read_bytes() == mutated_raw
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified unlink semantics")
+def test_posix_verified_unlink_preserves_mutation_after_digest_before_delete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound.bin"
+    original_raw = b"exact verified payload"
+    mutated_raw = bytes((original_raw[0] ^ 1,)) + original_raw[1:]
+    path.write_bytes(original_raw)
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+    real_descriptor_sha256 = package_io._posix_descriptor_sha256
+    mutated = False
+
+    def mutate_after_digest(
+        descriptor: int,
+        *,
+        expected_size: int,
+    ) -> str:
+        nonlocal mutated
+        digest = real_descriptor_sha256(
+            descriptor,
+            expected_size=expected_size,
+        )
+        if not mutated:
+            with path.open("r+b") as stream:
+                assert stream.write(mutated_raw) == len(mutated_raw)
+                stream.truncate()
+                stream.flush()
+                os.fsync(stream.fileno())
+            assert package_io.path_identity(path) == expected_identity
+            mutated = True
+        return digest
+
+    monkeypatch.setattr(
+        package_io,
+        "_posix_descriptor_sha256",
+        mutate_after_digest,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_verified_unlink_content_changed$",
+    ):
+        package_io.secure_unlink_verified(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+            expected_size=len(original_raw),
+            expected_sha256=sha256(original_raw).hexdigest(),
+        )
+
+    assert mutated
+    assert package_io.path_identity(path) == expected_identity
+    assert path.read_bytes() == mutated_raw
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified unlink semantics")
+@pytest.mark.parametrize("entry_kind", ("hardlink", "symlink"))
+def test_posix_verified_unlink_rejects_hardlink_or_symlink_without_following(
+    tmp_path: Path,
+    entry_kind: str,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound.bin"
+    payload = b"must be preserved"
+    companion = parent / "companion.bin"
+    if entry_kind == "hardlink":
+        path.write_bytes(payload)
+        expected_identity = package_io.path_identity(path)
+        expected_size = len(payload)
+        expected_sha256 = sha256(payload).hexdigest()
+        os.link(path, companion)
+        assert path.stat().st_nlink == companion.stat().st_nlink == 2
+    else:
+        companion.write_bytes(payload)
+        path.symlink_to(companion.name)
+        expected_identity = package_io.path_identity(path)
+        expected_size = path.lstat().st_size
+        expected_sha256 = "0" * 64
+        assert path.is_symlink()
+    expected_parent_identity = package_io.path_identity(parent)
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_verified_unlink_content_changed$",
+    ):
+        package_io.secure_unlink_verified(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+        )
+
+    assert package_io.path_identity(path) == expected_identity
+    if entry_kind == "hardlink":
+        assert path.read_bytes() == companion.read_bytes() == payload
+        assert path.stat().st_nlink == companion.stat().st_nlink == 2
+    else:
+        assert path.is_symlink()
+        assert companion.read_bytes() == payload
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified rmdir semantics")
+def test_posix_verified_rmdir_exact_empty_directory_is_descriptor_relative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound-directory"
+    path.mkdir()
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+    observed: list[tuple[str, package_io.PathIdentity]] = []
+    real_rmdir = os.rmdir
+
+    def observe_rmdir(
+        name: str,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        assert dir_fd is not None
+        observed.append(
+            (
+                name,
+                package_io.path_identity_from_status(os.fstat(dir_fd)),
+            )
+        )
+        real_rmdir(name, dir_fd=dir_fd)
+
+    monkeypatch.setattr(package_io.os, "rmdir", observe_rmdir)
+
+    package_io.secure_rmdir_verified(
+        path,
+        expected_identity=expected_identity,
+        expected_parent_identity=expected_parent_identity,
+    )
+
+    assert observed == [(path.name, expected_parent_identity)]
+    assert not path.exists()
+    assert package_io.path_identity(parent) == expected_parent_identity
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified rmdir semantics")
+@pytest.mark.parametrize("mutation", ("nonempty", "substituted"))
+def test_posix_verified_rmdir_preserves_nonempty_or_substituted_directory(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound-directory"
+    path.mkdir()
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+    retired = parent / "retired-directory"
+    if mutation == "nonempty":
+        foreign = path / "foreign.bin"
+        foreign.write_bytes(b"foreign-directory-content")
+    else:
+        path.rename(retired)
+        path.mkdir()
+        foreign = path / "foreign.bin"
+        foreign.write_bytes(b"foreign-substitute")
+        assert package_io.path_identity(retired) == expected_identity
+        assert package_io.path_identity(path) != expected_identity
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_verified_rmdir_content_changed$",
+    ):
+        package_io.secure_rmdir_verified(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+        )
+
+    assert foreign.is_file()
+    if mutation == "nonempty":
+        assert package_io.path_identity(path) == expected_identity
+        assert foreign.read_bytes() == b"foreign-directory-content"
+    else:
+        assert package_io.path_identity(retired) == expected_identity
+        assert package_io.path_identity(path) != expected_identity
+        assert foreign.read_bytes() == b"foreign-substitute"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX verified rmdir semantics")
+def test_posix_verified_rmdir_preserves_transient_entry_metadata_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    path = parent / "bound-directory"
+    path.mkdir()
+    expected_identity = package_io.path_identity(path)
+    expected_parent_identity = package_io.path_identity(parent)
+    opened = path.stat()
+    real_listdir = os.listdir
+    mutated = False
+
+    def mutate_after_first_empty_observation(
+        descriptor: int,
+    ) -> list[str]:
+        nonlocal mutated
+        entries = real_listdir(descriptor)
+        if not mutated:
+            assert entries == []
+            transient = path / "transient.bin"
+            transient.write_bytes(b"transient")
+            transient.unlink()
+            os.utime(
+                path,
+                ns=(opened.st_atime_ns, opened.st_mtime_ns + 1_000_000_000),
+                follow_symlinks=False,
+            )
+            assert package_io.path_identity(path) == expected_identity
+            assert real_listdir(descriptor) == []
+            mutated = True
+        return entries
+
+    monkeypatch.setattr(
+        package_io.os,
+        "listdir",
+        mutate_after_first_empty_observation,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_verified_rmdir_content_changed$",
+    ):
+        package_io.secure_rmdir_verified(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+        )
+
+    assert mutated
+    assert package_io.path_identity(path) == expected_identity
+    assert path.is_dir()
+    assert real_listdir(path) == []

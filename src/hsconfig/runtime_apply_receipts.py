@@ -79,13 +79,16 @@ def build_fake_apply_receipt(
     runtime_root: str | Path,
     config_dir: str,
     apply_gate: dict[str, Any],
+    created_at_utc: str | None = None,
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
     return {
         "schema_version": 1,
         "status": "fake_apply_ready",
-        "created_at_utc": _utc_now(),
+        "created_at_utc": (
+            _utc_now() if created_at_utc is None else created_at_utc
+        ),
         "runtime_write_performed": False,
         "package_root": str(package),
         "runtime_root": str(runtime),
@@ -111,6 +114,8 @@ def verify_fake_apply_receipt(
         raise ValueError("fake apply receipt is not ready")
     if receipt.get("runtime_write_performed") is not False:
         raise ValueError("fake apply receipt must not record a runtime write")
+    if receipt.get("diagnostic_only") is True:
+        raise ValueError("diagnostic-only receipt cannot authorize real apply")
     if str(package) != str(Path(str(receipt.get("package_root", "")))):
         raise ValueError("fake apply receipt package path does not match package")
     if str(runtime) != str(Path(str(receipt.get("runtime_root", "")))):

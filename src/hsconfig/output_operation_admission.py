@@ -291,17 +291,17 @@ def observe_output_operation_admission_under_lease(
     if not path_lexists(admission_path):
         return None
     status = plain_file_status(admission_path)
-    raw = read_file_no_follow(
-        admission_path,
-        expected_status=status,
-        maximum_size=OUTPUT_OPERATION_ADMISSION_MAX_BYTES,
-    )
     require_no_alternate_data_streams(
         admission_path,
         expected_identity=path_identity_from_status(status),
         expected_parent_identity=lease.state_root_identity,
         directory=False,
-        expected_size=len(raw),
+        expected_size=status.st_size,
+    )
+    raw = read_file_no_follow(
+        admission_path,
+        expected_status=status,
+        maximum_size=OUTPUT_OPERATION_ADMISSION_MAX_BYTES,
     )
     document = _load_canonical_document(raw)
     evidence = _parse_admission_document(
@@ -354,6 +354,132 @@ def require_output_operation_allows_runtime_mutation(
 ) -> None:
     if observe_output_operation_admission_under_lease(lease) is not None:
         raise ValueError("output_operation_admission_blocks_runtime_mutation")
+
+
+def build_output_operation_admission_bytes(
+    *,
+    run_id: str,
+    session_root: Path,
+    session_root_identity: PathIdentity,
+    expected_session_sha256: str,
+    operator_profile: Any,
+    operator_profile_path: Path,
+    operator_profile_parent_identity: PathIdentity,
+    operator_profile_identity: PathIdentity,
+    state_root_identity: PathIdentity,
+    output_base_root: Path,
+    output_base_root_identity: PathIdentity,
+    output_child_path: Path,
+    output_child_predecessor_state: Literal["absent", "existing"],
+    output_child_predecessor_identity: PathIdentity | None,
+    output_bootstrap_lock_path: Path,
+    output_bootstrap_lock_identity: PathIdentity,
+    output_claim_path: Path,
+) -> bytes:
+    """Build the exact immutable fixed admission authority bytes."""
+
+    from hsconfig.operator_profile import OperatorProfile
+
+    if not isinstance(operator_profile, OperatorProfile):
+        raise TypeError("output_operation_admission_profile_invalid")
+    _require_text_pattern(run_id, _RUN_ID, "run_id")
+    _require_digest(expected_session_sha256, "expected_session_sha256")
+    if output_child_predecessor_state == "absent":
+        if output_child_predecessor_identity is not None:
+            raise ValueError("output_operation_admission_predecessor_invalid")
+    elif output_child_predecessor_state == "existing":
+        if output_child_predecessor_identity is None:
+            raise ValueError("output_operation_admission_predecessor_invalid")
+    else:
+        raise ValueError("output_operation_admission_predecessor_invalid")
+    canonical_paths = {
+        "session_root": Path(session_root).resolve(strict=True),
+        "operator_profile_path": Path(operator_profile_path).resolve(strict=True),
+        "output_base_root": Path(output_base_root).resolve(strict=True),
+        "output_child_path": Path(output_child_path).absolute(),
+        "output_bootstrap_lock_path": Path(output_bootstrap_lock_path).resolve(
+            strict=True
+        ),
+        "output_claim_path": Path(output_claim_path).absolute(),
+    }
+    if canonical_paths["output_child_path"].parent != canonical_paths[
+        "output_base_root"
+    ]:
+        raise ValueError("output_operation_admission_output_child_invalid")
+    if canonical_paths["output_claim_path"].parent != canonical_paths[
+        "output_base_root"
+    ]:
+        raise ValueError("output_operation_admission_output_claim_invalid")
+    unsigned: dict[str, Any] = {
+        "schema_version": OUTPUT_OPERATION_ADMISSION_SCHEMA_VERSION,
+        "record_kind": OUTPUT_OPERATION_ADMISSION_KIND,
+        "state": "ACTIVE",
+        "run_id": run_id,
+        **{name: str(path) for name, path in canonical_paths.items()},
+        "session_root_identity": list(session_root_identity),
+        "expected_session_sha256": expected_session_sha256,
+        "operator_profile_parent_identity": list(
+            operator_profile_parent_identity
+        ),
+        "operator_profile_identity": list(operator_profile_identity),
+        "operator_profile_sha256": operator_profile.content_sha256,
+        "state_root_identity": list(state_root_identity),
+        "output_base_root_identity": list(output_base_root_identity),
+        "output_child_predecessor_state": output_child_predecessor_state,
+        "output_child_predecessor_identity": (
+            None
+            if output_child_predecessor_identity is None
+            else list(output_child_predecessor_identity)
+        ),
+        "output_bootstrap_lock_identity": list(
+            output_bootstrap_lock_identity
+        ),
+    }
+    raw_unsigned = _canonical_json(unsigned)
+    document = {
+        **unsigned,
+        "content_sha256": "sha256:" + sha256(raw_unsigned).hexdigest(),
+    }
+    raw = _canonical_json(document)
+    if set(document) != OUTPUT_OPERATION_ADMISSION_FIELDS or len(raw) > (
+        OUTPUT_OPERATION_ADMISSION_MAX_BYTES
+    ):
+        raise ValueError("output_operation_admission_document_invalid")
+    return raw
+
+
+def classify_output_operation_admission_physical_state(
+    *,
+    persisted_stage: str,
+    final_present: bool,
+    staging_present: bool,
+    reserved_temp_present: bool,
+    staging_is_bound: bool,
+) -> Literal[
+    "materialize_staging",
+    "retire_unbound_staging",
+    "commit_bound_staging",
+    "confirm_active",
+]:
+    """Classify only the closed fixed-record resume rows."""
+
+    if persisted_stage == "PREPARED":
+        if final_present:
+            raise ValueError("output_operation_admission_direct_final_tamper")
+        if staging_is_bound:
+            raise ValueError("output_operation_admission_staging_binding_invalid")
+        if staging_present or reserved_temp_present:
+            return "retire_unbound_staging"
+        return "materialize_staging"
+    if persisted_stage == "STAGING_BOUND":
+        if reserved_temp_present or not staging_is_bound:
+            raise ValueError("output_operation_admission_staging_tamper")
+        if not final_present and not staging_present:
+            raise ValueError("output_operation_admission_bound_object_missing")
+        if final_present and not staging_present:
+            return "confirm_active"
+        return "commit_bound_staging"
+    raise ValueError("output_operation_admission_stage_invalid")
 
 
 def _require_active_lease(lease: OutputOperationAdmissionLease) -> None:
@@ -746,6 +872,8 @@ __all__ = (
     "OutputOperationAdmissionEvidence",
     "OutputOperationAdmissionLease",
     "OutputOperationAdmissionLockToken",
+    "build_output_operation_admission_bytes",
+    "classify_output_operation_admission_physical_state",
     "lease_output_operation_admission",
     "observe_output_operation_admission_under_lease",
     "output_operation_admission_path",

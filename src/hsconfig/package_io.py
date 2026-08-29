@@ -19,6 +19,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock, get_ident
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Literal
 
@@ -43,6 +44,30 @@ SiblingNoReplaceFaultPoint = Literal[
 ]
 SiblingNoReplaceFaultHook = Callable[[SiblingNoReplaceFaultPoint], None]
 _QUARANTINED_WINDOWS_HANDLES: list[_WindowsNativeHandleLease] = []
+_DIRECTORY_GUARD_AUTHORITY = object()
+_ACTIVE_DIRECTORY_GUARDS: dict[
+    int,
+    tuple[object, "PlainDirectoryMutationGuard", int],
+] = {}
+_ACTIVE_DIRECTORY_GUARDS_LOCK = Lock()
+_POSIX_VERIFIED_UNLINK_CAPABLE = (
+    hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+    and hasattr(os, "O_NONBLOCK")
+    and {os.open, os.stat, os.unlink}.issubset(
+        getattr(os, "supports_dir_fd", ())
+    )
+    and os.stat in getattr(os, "supports_follow_symlinks", ())
+)
+_POSIX_VERIFIED_RMDIR_CAPABLE = (
+    hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+    and {os.open, os.stat, os.rmdir}.issubset(
+        getattr(os, "supports_dir_fd", ())
+    )
+    and os.stat in getattr(os, "supports_follow_symlinks", ())
+    and os.listdir in getattr(os, "supports_fd", ())
+)
 
 
 def no_sibling_no_replace_fault(
@@ -92,14 +117,33 @@ class FilesystemPathGuard:
                 raise ValueError("filesystem_path_identity_changed")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class PlainDirectoryMutationGuard:
     path: Path
     descriptor: int
     identity: PathIdentity
     lease_rows: tuple[tuple[Path, int, PathIdentity], ...]
+    _token: object
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        descriptor: int,
+        identity: PathIdentity,
+        lease_rows: tuple[tuple[Path, int, PathIdentity], ...],
+        authority: object | None = None,
+    ) -> None:
+        if authority is not _DIRECTORY_GUARD_AUTHORITY:
+            raise TypeError("filesystem_directory_guard_not_constructible")
+        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "descriptor", descriptor)
+        object.__setattr__(self, "identity", identity)
+        object.__setattr__(self, "lease_rows", lease_rows)
+        object.__setattr__(self, "_token", object())
 
     def validate(self) -> None:
+        _require_active_directory_guard(self)
         for path, descriptor, identity in self.lease_rows:
             if (
                 path_identity(path) != identity
@@ -107,6 +151,62 @@ class PlainDirectoryMutationGuard:
                 != identity
             ):
                 raise ValueError("filesystem_path_identity_changed")
+
+    @contextmanager
+    def hold_child_directory(
+        self,
+        name: str,
+        *,
+        expected_identity: PathIdentity | None = None,
+    ) -> Iterator[PlainDirectoryMutationGuard]:
+        """Hold one plain direct child relative to this active guard."""
+
+        _require_child_name(name)
+        self.validate()
+        if os.name == "nt":
+            descriptor = _open_plain_directory_descriptor(self.path / name)
+            status = os.fstat(descriptor)
+            visible = (self.path / name).lstat()
+        else:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            flags |= getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(name, flags, dir_fd=self.descriptor)
+            status = os.fstat(descriptor)
+            visible = os.stat(
+                name,
+                dir_fd=self.descriptor,
+                follow_symlinks=False,
+            )
+        try:
+            identity = path_identity_from_status(status)
+            if (
+                not stat.S_ISDIR(status.st_mode)
+                or status_is_reparse(status)
+                or status_is_reparse(visible)
+                or path_identity_from_status(visible) != identity
+                or (
+                    expected_identity is not None
+                    and identity != expected_identity
+                )
+            ):
+                raise ValueError("filesystem_directory_identity_changed")
+            child = PlainDirectoryMutationGuard(
+                path=self.path / name,
+                descriptor=descriptor,
+                identity=identity,
+                lease_rows=(*self.lease_rows, (self.path / name, descriptor, identity)),
+                authority=_DIRECTORY_GUARD_AUTHORITY,
+            )
+            _register_directory_guard(child)
+            try:
+                child.validate()
+                yield child
+                child.validate()
+            finally:
+                _deregister_directory_guard(child)
+        finally:
+            os.close(descriptor)
 
     def open_file(
         self,
@@ -248,13 +348,83 @@ def hold_plain_directory(
             descriptor=lease_rows[-1][1],
             identity=identity,
             lease_rows=tuple(lease_rows),
+            authority=_DIRECTORY_GUARD_AUTHORITY,
         )
-        guard.validate()
-        yield guard
-        guard.validate()
+        _register_directory_guard(guard)
+        try:
+            guard.validate()
+            yield guard
+            guard.validate()
+        finally:
+            _deregister_directory_guard(guard)
     finally:
         for _path, descriptor, _identity in reversed(lease_rows):
             os.close(descriptor)
+
+
+def _register_directory_guard(guard: PlainDirectoryMutationGuard) -> None:
+    with _ACTIVE_DIRECTORY_GUARDS_LOCK:
+        _ACTIVE_DIRECTORY_GUARDS[id(guard._token)] = (
+            guard._token,
+            guard,
+            get_ident(),
+        )
+
+
+def _deregister_directory_guard(guard: PlainDirectoryMutationGuard) -> None:
+    with _ACTIVE_DIRECTORY_GUARDS_LOCK:
+        active = _ACTIVE_DIRECTORY_GUARDS.get(id(guard._token))
+        if active is not None and active[0] is guard._token and active[1] is guard:
+            _ACTIVE_DIRECTORY_GUARDS.pop(id(guard._token), None)
+
+
+def _require_active_directory_guard(
+    guard: PlainDirectoryMutationGuard,
+) -> None:
+    if not isinstance(guard, PlainDirectoryMutationGuard):
+        raise ValueError("filesystem_directory_guard_invalid")
+    with _ACTIVE_DIRECTORY_GUARDS_LOCK:
+        active = _ACTIVE_DIRECTORY_GUARDS.get(id(guard._token))
+    if (
+        active is None
+        or active[0] is not guard._token
+        or active[1] is not guard
+        or active[2] != get_ident()
+    ):
+        raise ValueError("filesystem_directory_guard_inactive")
+
+
+def bootstrap_plain_child_directory_under_guard(
+    *,
+    parent_guard: PlainDirectoryMutationGuard,
+    child_name: str,
+) -> PathIdentity:
+    """Create once or bind an existing canonical plain direct child."""
+
+    _require_child_name(child_name)
+    parent_guard.validate()
+    try:
+        status = parent_guard.child_status(child_name)
+    except FileNotFoundError:
+        try:
+            identity = parent_guard.create_directory(child_name)
+        except FileExistsError:
+            status = parent_guard.child_status(child_name)
+        else:
+            parent_guard.validate()
+            return identity
+    if (
+        not stat.S_ISDIR(status.st_mode)
+        or status_is_reparse(status)
+    ):
+        raise ValueError("filesystem_directory_invalid")
+    identity = path_identity_from_status(status)
+    require_same_identity_resolution(
+        parent_guard.path / child_name,
+        expected_status=status,
+    )
+    parent_guard.validate()
+    return identity
 
 
 def secure_create_directory(
@@ -296,6 +466,7 @@ def secure_replace(
     expected_source_identity: PathIdentity | None = None,
     expected_source_parent_identity: PathIdentity | None = None,
     expected_target_parent_identity: PathIdentity | None = None,
+    expected_target_identity: PathIdentity | None = None,
     expected_target_absent: bool = False,
 ) -> None:
     source_path = Path(source)
@@ -325,6 +496,7 @@ def secure_replace(
                 expected_source_identity=path_identity_from_status(
                     source_status
                 ),
+                expected_target_identity=expected_target_identity,
                 source_directory=stat.S_ISDIR(source_status.st_mode),
                 replace_if_exists=not expected_target_absent,
             )
@@ -355,6 +527,7 @@ def secure_replace(
                 expected_source_identity=path_identity_from_status(
                     source_status
                 ),
+                expected_target_identity=expected_target_identity,
                 source_directory=stat.S_ISDIR(source_status.st_mode),
                 replace_if_exists=not expected_target_absent,
             )
@@ -634,10 +807,12 @@ def secure_unlink_verified(
     ):
         raise ValueError("filesystem_verified_unlink_contract_invalid")
     if os.name != "nt":
-        raise OSError(
-            errno.ENOTSUP,
-            "filesystem_verified_unlink_unsupported",
-            str(path),
+        return _secure_unlink_verified_posix(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
         )
     child = Path(path)
     with hold_plain_directory(
@@ -730,10 +905,10 @@ def secure_rmdir_verified(
     expected_parent_identity: PathIdentity,
 ) -> None:
     if os.name != "nt":
-        raise OSError(
-            errno.ENOTSUP,
-            "filesystem_verified_rmdir_unsupported",
-            str(path),
+        return _secure_rmdir_verified_posix(
+            path,
+            expected_identity=expected_identity,
+            expected_parent_identity=expected_parent_identity,
         )
     child = Path(path)
     with hold_plain_directory(
@@ -783,6 +958,317 @@ def secure_rmdir_verified(
         parent.validate()
 
 
+@contextmanager
+def _hold_posix_advisory_exclusive_lock(
+    descriptor: int,
+) -> Iterator[None]:
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    flock = getattr(fcntl, "flock", None)
+    if flock is None:
+        yield
+        return
+    try:
+        flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        unsupported = {
+            errno.EISDIR,
+            errno.EINVAL,
+            errno.ENOSYS,
+            errno.ENOTSUP,
+            getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
+        }
+        if error.errno not in unsupported:
+            raise
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+
+
+def _require_posix_verified_mutation_capabilities(
+    *,
+    path: Path,
+    directory: bool,
+) -> None:
+    supported = (
+        _POSIX_VERIFIED_RMDIR_CAPABLE
+        if directory
+        else _POSIX_VERIFIED_UNLINK_CAPABLE
+    )
+    if supported:
+        return
+    reason = (
+        "filesystem_verified_rmdir_unsupported"
+        if directory
+        else "filesystem_verified_unlink_unsupported"
+    )
+    raise OSError(errno.ENOTSUP, reason, str(path))
+
+
+def _posix_descriptor_sha256(
+    descriptor: int,
+    *,
+    expected_size: int,
+) -> str:
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    digest = hashlib.sha256()
+    remaining = expected_size
+    while remaining:
+        chunk = os.read(descriptor, min(1024 * 1024, remaining))
+        if not chunk:
+            raise ValueError("filesystem_verified_unlink_content_changed")
+        digest.update(chunk)
+        remaining -= len(chunk)
+    if os.read(descriptor, 1):
+        raise ValueError("filesystem_verified_unlink_content_changed")
+    return digest.hexdigest()
+
+
+def _require_posix_verified_file_state(
+    status: os.stat_result,
+    *,
+    expected_identity: PathIdentity,
+    expected_size: int,
+) -> None:
+    if (
+        path_identity_from_status(status) != expected_identity
+        or not stat.S_ISREG(status.st_mode)
+        or status_is_reparse(status)
+        or status.st_nlink != 1
+        or status.st_size != expected_size
+    ):
+        raise ValueError("filesystem_verified_unlink_content_changed")
+
+
+def _secure_unlink_verified_posix(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    expected_size: int,
+    expected_sha256: str,
+) -> None:
+    child = Path(path)
+    _require_posix_verified_mutation_capabilities(
+        path=child,
+        directory=False,
+    )
+    descriptor = -1
+    try:
+        with hold_plain_directory(
+            child.parent,
+            expected_identity=expected_parent_identity,
+        ) as parent:
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            flags |= os.O_NOFOLLOW | os.O_NONBLOCK
+            descriptor = os.open(
+                child.name,
+                flags,
+                dir_fd=parent.descriptor,
+            )
+            os.set_inheritable(descriptor, False)
+            with _hold_posix_advisory_exclusive_lock(descriptor):
+                opened = os.fstat(descriptor)
+                visible = parent.child_status(child.name)
+                _require_posix_verified_file_state(
+                    opened,
+                    expected_identity=expected_identity,
+                    expected_size=expected_size,
+                )
+                _require_posix_verified_file_state(
+                    visible,
+                    expected_identity=expected_identity,
+                    expected_size=expected_size,
+                )
+                opened_state = _file_state(opened, platform_name="posix")
+                if (
+                    opened_state
+                    != _file_state(visible, platform_name="posix")
+                    or _posix_descriptor_sha256(
+                        descriptor,
+                        expected_size=expected_size,
+                    )
+                    != expected_sha256
+                ):
+                    raise ValueError(
+                        "filesystem_verified_unlink_content_changed"
+                    )
+                before_delete = os.fstat(descriptor)
+                visible_before_delete = parent.child_status(child.name)
+                _require_posix_verified_file_state(
+                    before_delete,
+                    expected_identity=expected_identity,
+                    expected_size=expected_size,
+                )
+                _require_posix_verified_file_state(
+                    visible_before_delete,
+                    expected_identity=expected_identity,
+                    expected_size=expected_size,
+                )
+                if (
+                    opened_state
+                    != _file_state(before_delete, platform_name="posix")
+                    or opened_state
+                    != _file_state(
+                        visible_before_delete,
+                        platform_name="posix",
+                    )
+                ):
+                    raise ValueError(
+                        "filesystem_verified_unlink_content_changed"
+                    )
+                parent.validate()
+                os.unlink(child.name, dir_fd=parent.descriptor)
+                after_delete = os.fstat(descriptor)
+                if (
+                    path_identity_from_status(after_delete) != expected_identity
+                    or not stat.S_ISREG(after_delete.st_mode)
+                    or status_is_reparse(after_delete)
+                    or after_delete.st_size != expected_size
+                ):
+                    raise ValueError(
+                        "filesystem_verified_unlink_content_changed"
+                    )
+                try:
+                    parent.child_status(child.name)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ValueError(
+                        "filesystem_verified_unlink_content_changed"
+                    )
+                parent.validate()
+    except (OSError, ValueError) as error:
+        if (
+            isinstance(error, ValueError)
+            and error.args == ("filesystem_verified_unlink_content_changed",)
+        ):
+            raise
+        raise ValueError("filesystem_verified_unlink_content_changed") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _require_posix_verified_directory_state(
+    status: os.stat_result,
+    *,
+    expected_identity: PathIdentity,
+) -> None:
+    if (
+        path_identity_from_status(status) != expected_identity
+        or not stat.S_ISDIR(status.st_mode)
+        or status_is_reparse(status)
+    ):
+        raise ValueError("filesystem_verified_rmdir_content_changed")
+
+
+def _secure_rmdir_verified_posix(
+    path: Path,
+    *,
+    expected_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+) -> None:
+    child = Path(path)
+    _require_posix_verified_mutation_capabilities(
+        path=child,
+        directory=True,
+    )
+    descriptor = -1
+    try:
+        with hold_plain_directory(
+            child.parent,
+            expected_identity=expected_parent_identity,
+        ) as parent:
+            flags = os.O_RDONLY | os.O_DIRECTORY
+            flags |= getattr(os, "O_CLOEXEC", 0)
+            flags |= os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+            descriptor = os.open(
+                child.name,
+                flags,
+                dir_fd=parent.descriptor,
+            )
+            os.set_inheritable(descriptor, False)
+            with _hold_posix_advisory_exclusive_lock(descriptor):
+                opened = os.fstat(descriptor)
+                visible = parent.child_status(child.name)
+                _require_posix_verified_directory_state(
+                    opened,
+                    expected_identity=expected_identity,
+                )
+                _require_posix_verified_directory_state(
+                    visible,
+                    expected_identity=expected_identity,
+                )
+                opened_state = _file_state(opened, platform_name="posix")
+                if (
+                    opened_state
+                    != _file_state(visible, platform_name="posix")
+                    or os.listdir(descriptor)
+                ):
+                    raise ValueError(
+                        "filesystem_verified_rmdir_content_changed"
+                    )
+                before_delete = os.fstat(descriptor)
+                visible_before_delete = parent.child_status(child.name)
+                _require_posix_verified_directory_state(
+                    before_delete,
+                    expected_identity=expected_identity,
+                )
+                _require_posix_verified_directory_state(
+                    visible_before_delete,
+                    expected_identity=expected_identity,
+                )
+                if (
+                    opened_state
+                    != _file_state(before_delete, platform_name="posix")
+                    or opened_state
+                    != _file_state(
+                        visible_before_delete,
+                        platform_name="posix",
+                    )
+                    or os.listdir(descriptor)
+                ):
+                    raise ValueError(
+                        "filesystem_verified_rmdir_content_changed"
+                    )
+                parent.validate()
+                os.rmdir(child.name, dir_fd=parent.descriptor)
+                after_delete = os.fstat(descriptor)
+                _require_posix_verified_directory_state(
+                    after_delete,
+                    expected_identity=expected_identity,
+                )
+                try:
+                    parent.child_status(child.name)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ValueError(
+                        "filesystem_verified_rmdir_content_changed"
+                    )
+                parent.validate()
+    except (OSError, ValueError) as error:
+        if (
+            isinstance(error, ValueError)
+            and error.args == ("filesystem_verified_rmdir_content_changed",)
+        ):
+            raise
+        raise ValueError("filesystem_verified_rmdir_content_changed") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def require_no_alternate_data_streams(
     path: Path,
     *,
@@ -814,6 +1300,7 @@ def require_no_alternate_data_streams(
             directory=directory,
             content_read=False,
             deny_write_share=True,
+            delete_access=False,
         ) as lease:
             streams = _windows_native_handle_streams(lease.value)
             expected = () if directory else (("::$DATA", expected_size),)
@@ -955,6 +1442,7 @@ def _replace_guarded(
     target_name: str,
     *,
     expected_source_identity: PathIdentity,
+    expected_target_identity: PathIdentity | None = None,
     source_directory: bool,
     replace_if_exists: bool,
 ) -> None:
@@ -962,6 +1450,14 @@ def _replace_guarded(
     _require_child_name(target_name)
     source_parent.validate()
     target_parent.validate()
+    if expected_target_identity is not None:
+        target_status = target_parent.child_status(target_name)
+        if (
+            status_is_reparse(target_status)
+            or path_identity_from_status(target_status)
+            != expected_target_identity
+        ):
+            raise ValueError("filesystem_path_identity_changed")
     if os.name == "nt":
         _replace_windows_owned_child(
             source_parent,
@@ -1097,6 +1593,7 @@ def _hold_windows_owned_child_handle(
     directory: bool,
     content_read: bool = False,
     deny_write_share: bool = False,
+    delete_access: bool = True,
 ) -> Iterator[_WindowsNativeHandleLease]:
     import ctypes
     import msvcrt
@@ -1156,7 +1653,9 @@ def _hold_windows_owned_child_handle(
     )
     open_file.restype = ctypes.c_long
     try:
-        desired_access = 0x00010000 | 0x00000080 | 0x00100000
+        desired_access = 0x00000080 | 0x00100000
+        if delete_access:
+            desired_access |= 0x00010000
         if content_read:
             desired_access |= 0x00000001
         share_mode = 0x00000001

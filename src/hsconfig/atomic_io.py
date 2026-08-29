@@ -192,7 +192,7 @@ def atomic_commit_bound_staging_no_replace(
             expected_parent_identity=expected_parent_identity,
             fault_hook=adapt_fault,
         )
-    except (ValueError, FileExistsError, FileNotFoundError) as error:
+    except (OSError, ValueError, FileExistsError, FileNotFoundError) as error:
         raise AtomicWriteConflictError("bound no-replace commit conflict") from error
     identity, size, digest = _require_exact_bound_file(
         target,
@@ -207,6 +207,134 @@ def atomic_commit_bound_staging_no_replace(
         raise AtomicWriteConflictError("bound staging was not retired")
     fault_hook(NO_REPLACE_COMMIT_FAULT_POINT)
     return PublishedNoReplaceBytes(target, identity, size, digest)
+
+
+def atomic_commit_bound_staging_replace(
+    *,
+    path: Path,
+    staging_path: Path,
+    expected_predecessor_identity: PathIdentity,
+    expected_staging_identity: PathIdentity,
+    expected_size: int,
+    expected_sha256: str,
+    expected_parent_identity: PathIdentity,
+    fault_hook: FaultHook = no_fault,
+) -> PublishedNoReplaceBytes:
+    """Replace one exact predecessor with one already-bound staging file."""
+
+    target = Path(path)
+    staging = Path(staging_path)
+    if target.parent != staging.parent or target == staging:
+        raise ValueError("atomic_bound_replace_paths_invalid")
+    if type(expected_size) is not int or expected_size < 0:
+        raise ValueError("atomic_bound_replace_size_invalid")
+    _require_prefixed_sha256(expected_sha256)
+    if path_identity(target.parent) != expected_parent_identity:
+        raise AtomicWriteConflictError("bound replace parent changed")
+    try:
+        if path_identity(target) != expected_predecessor_identity:
+            raise AtomicWriteConflictError(
+                "bound replace predecessor changed"
+            )
+        _require_exact_bound_file(
+            staging,
+            expected_identity=expected_staging_identity,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+            expected_parent_identity=expected_parent_identity,
+            allowed_links=frozenset({1}),
+            maximum_size=max(expected_size, 1),
+        )
+        secure_replace(
+            staging,
+            target,
+            expected_source_identity=expected_staging_identity,
+            expected_source_parent_identity=expected_parent_identity,
+            expected_target_parent_identity=expected_parent_identity,
+            expected_target_identity=expected_predecessor_identity,
+            expected_target_absent=False,
+        )
+    except (AtomicWriteConflictError, FileNotFoundError, ValueError) as error:
+        # A hard exit after replacement resumes from exact final-only state.
+        try:
+            _require_exact_bound_file(
+                target,
+                expected_identity=expected_staging_identity,
+                expected_size=expected_size,
+                expected_sha256=expected_sha256,
+                expected_parent_identity=expected_parent_identity,
+                allowed_links=frozenset({1}),
+                maximum_size=max(expected_size, 1),
+            )
+        except (
+            AtomicWriteConflictError,
+            FileNotFoundError,
+            ValueError,
+        ) as final_error:
+            raise AtomicWriteConflictError(
+                "bound replace commit conflict"
+            ) from final_error
+        if os.path.lexists(staging):
+            raise AtomicWriteConflictError(
+                "bound replace staging was not retired"
+            ) from error
+    identity, size, digest = _require_exact_bound_file(
+        target,
+        expected_identity=expected_staging_identity,
+        expected_size=expected_size,
+        expected_sha256=expected_sha256,
+        expected_parent_identity=expected_parent_identity,
+        allowed_links=frozenset({1}),
+        maximum_size=max(expected_size, 1),
+    )
+    _flush_parent_directory(target.parent)
+    fault_hook(NO_REPLACE_COMMIT_FAULT_POINT)
+    return PublishedNoReplaceBytes(target, identity, size, digest)
+
+
+def atomic_publish_bytes_no_replace(
+    *,
+    path: Path,
+    staging_path: Path,
+    payload: bytes,
+    expected_parent_identity: PathIdentity,
+    maximum_size: int,
+    fault_hook: FaultHook = no_fault,
+) -> PublishedNoReplaceBytes:
+    """Legacy composition of staged materialization and no-replace commit."""
+
+    staging = Path(staging_path)
+    materialized = atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=staging.with_name(
+            f".{staging.name}.live-start-atomic.tmp"
+        ),
+        payload=payload,
+        expected_parent_identity=expected_parent_identity,
+        maximum_size=maximum_size,
+        fault_hook=fault_hook,
+    )
+    try:
+        return atomic_commit_bound_staging_no_replace(
+            path=path,
+            staging_path=staging,
+            expected_staging_identity=materialized.identity,
+            expected_size=materialized.size,
+            expected_sha256=materialized.sha256,
+            expected_parent_identity=expected_parent_identity,
+            fault_hook=fault_hook,
+        )
+    except AtomicWriteConflictError:
+        try:
+            secure_unlink(
+                staging,
+                expected_identity=materialized.identity,
+                expected_parent_identity=expected_parent_identity,
+                missing_ok=True,
+            )
+        except (FileNotFoundError, ValueError):
+            pass
+        raise
 
 
 def atomic_write_reserved_bytes(
@@ -294,6 +422,7 @@ def atomic_write_reserved_bytes(
             expected_source_identity=temp_identity,
             expected_source_parent_identity=expected_parent_identity,
             expected_target_parent_identity=expected_parent_identity,
+            expected_target_identity=expected_predecessor_identity,
             expected_target_absent=expected_predecessor_identity is None,
         )
     except (ValueError, FileExistsError, FileNotFoundError) as error:

@@ -7,7 +7,14 @@ from typing import Any, Iterator
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.current_output import PackageInputLease, lease_package_input
-from hsconfig.output_publisher import PublishedOutput
+from hsconfig.output_operation_admission import (
+    lease_output_operation_admission,
+    require_output_operation_allows_runtime_mutation,
+)
+from hsconfig.output_publisher import (
+    PublishedOutput,
+    _bootstrap_neutral_output_locks,
+)
 from hsconfig.runtime_apply_receipts import (
     build_fake_apply_receipt,
     verify_fake_apply_receipt,
@@ -71,42 +78,49 @@ def apply_package(
 ) -> dict[str, Any]:
     del replace, write_history
     runtime = Path(runtime_root)
-    with _lease_real_apply_input(Path(package_root)) as lease:
-        package = lease.package_root
-        _validate_runtime_apply_package(package)
-        resolved_gate = _resolve_allowed_apply_gate(
-            package=package,
-            apply_gate=apply_gate,
-            allow_source_informed=allow_source_informed,
+    _bootstrap_neutral_output_locks()
+    with ExitStack() as mutation_stack:
+        operation_lease = mutation_stack.enter_context(
+            lease_output_operation_admission()
         )
-        logical_config_dir = _logical_config_dir(package, config_dir)
-        receipt = fake_receipt
-        if receipt is None:
-            receipt = build_fake_apply_receipt(
+        require_output_operation_allows_runtime_mutation(
+            lease=operation_lease
+        )
+        with _lease_real_apply_input(Path(package_root)) as lease:
+            package = lease.package_root
+            _validate_runtime_apply_package(package)
+            resolved_gate = _resolve_allowed_apply_gate(
+                package=package,
+                apply_gate=apply_gate,
+                allow_source_informed=allow_source_informed,
+            )
+            logical_config_dir = _logical_config_dir(package, config_dir)
+            receipt = fake_receipt
+            if receipt is None:
+                receipt = build_fake_apply_receipt(
+                    package_root=package,
+                    runtime_root=runtime,
+                    config_dir=logical_config_dir,
+                    apply_gate=resolved_gate,
+                )
+            verify_fake_apply_receipt(
                 package_root=package,
                 runtime_root=runtime,
                 config_dir=logical_config_dir,
-                apply_gate=resolved_gate,
+                receipt=receipt,
             )
-        verify_fake_apply_receipt(
-            package_root=package,
-            runtime_root=runtime,
-            config_dir=logical_config_dir,
-            receipt=receipt,
-        )
-        if lease.publication is None:
-            raise TypeError("published_output_required")
-        published = _published_output(lease)
-        runtime.mkdir(parents=True, exist_ok=True)
-        plan = plan_runtime_install(
-            published_output=published,
-            runtime_root=runtime,
-        )
-        if plan.logical_config_dir != logical_config_dir:
-            raise ValueError("config_dir_mismatch")
-
-    result = install_runtime_package(plan)
-    return _apply_result(plan, result, resolved_gate)
+            if lease.publication is None:
+                raise TypeError("published_output_required")
+            published = _published_output(lease)
+            runtime.mkdir(parents=True, exist_ok=True)
+            plan = plan_runtime_install(
+                published_output=published,
+                runtime_root=runtime,
+            )
+            if plan.logical_config_dir != logical_config_dir:
+                raise ValueError("config_dir_mismatch")
+        result = install_runtime_package(plan)
+        return _apply_result(plan, result, resolved_gate)
 
 
 @contextmanager

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 from collections.abc import Callable
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -32,6 +34,59 @@ FAULT_STAGES = (
     "after_parent_flush",
 )
 PRE_REPLACE_STAGES = frozenset(FAULT_STAGES[:4])
+
+
+def _no_replace_process_contender(
+    root_text: str,
+    index: int,
+    ready: Any,
+    start: Any,
+    outcomes: Any,
+) -> None:
+    root = Path(root_text)
+    payload = f"candidate-{index}".encode()
+    staging = root / f"winner-{index}.staged"
+    inner = root / f".winner-{index}.staged.live-start-atomic.tmp"
+    materialized = atomic_io.atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=inner,
+        payload=payload,
+        expected_parent_identity=path_identity(root),
+        maximum_size=1024,
+    )
+    ready.put(
+        (
+            index,
+            materialized.identity,
+            materialized.size,
+            materialized.sha256,
+        )
+    )
+    if not start.wait(10):
+        outcomes.put(("error", payload, "start-timeout"))
+        return
+    try:
+        published = atomic_io.atomic_commit_bound_staging_no_replace(
+            path=root / "winner.bin",
+            staging_path=staging,
+            expected_staging_identity=materialized.identity,
+            expected_size=materialized.size,
+            expected_sha256=materialized.sha256,
+            expected_parent_identity=path_identity(root),
+        )
+    except atomic_io.AtomicWriteConflictError:
+        if staging.exists():
+            atomic_io.secure_unlink(
+                staging,
+                expected_identity=materialized.identity,
+                expected_parent_identity=path_identity(root),
+            )
+        outcomes.put(("lost", payload, materialized.identity))
+    except BaseException as error:  # pragma: no cover - surfaced in parent
+        outcomes.put(("error", payload, repr(error)))
+        raise
+    else:
+        outcomes.put(("won", payload, published.identity))
 
 
 def test_atomic_write_optional_expected_parent_identity_rejects_substitution(
@@ -125,6 +180,61 @@ def test_atomic_bound_no_replace_commit_rejects_parent_or_staging_substitution(
             expected_sha256="sha256:" + __import__("hashlib").sha256(b"sealed").hexdigest(),
             expected_parent_identity=path_identity(parent),
         )
+
+
+def test_bound_replace_rejects_predecessor_swap_at_commit_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "current.json"
+    staging = tmp_path / "current.json.staged"
+    predecessor = b'{"revision":"old"}\n'
+    successor = b'{"revision":"new"}\n'
+    target.write_bytes(predecessor)
+    staging.write_bytes(successor)
+    predecessor_identity = path_identity(target)
+    staging_identity = path_identity(staging)
+    parent_identity = path_identity(tmp_path)
+    real_secure_replace = atomic_io.secure_replace
+    swapped_identity: tuple[int, int, int] | None = None
+
+    def swap_predecessor_then_replace(
+        source: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        nonlocal swapped_identity
+        destination.unlink()
+        destination.write_bytes(predecessor)
+        swapped_identity = path_identity(destination)
+        real_secure_replace(source, destination, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_replace",
+        swap_predecessor_then_replace,
+    )
+
+    with pytest.raises(
+        AtomicWriteConflictError,
+        match="bound replace commit conflict",
+    ):
+        atomic_io.atomic_commit_bound_staging_replace(
+            path=target,
+            staging_path=staging,
+            expected_predecessor_identity=predecessor_identity,
+            expected_staging_identity=staging_identity,
+            expected_size=len(successor),
+            expected_sha256="sha256:" + sha256(successor).hexdigest(),
+            expected_parent_identity=parent_identity,
+        )
+
+    assert swapped_identity is not None
+    assert swapped_identity != predecessor_identity
+    assert path_identity(target) == swapped_identity
+    assert target.read_bytes() == predecessor
+    assert path_identity(staging) == staging_identity
+    assert staging.read_bytes() == successor
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX two-link state")
@@ -254,6 +364,111 @@ def test_reserved_atomic_before_replace_rejects_target_substitution(
 
     assert target.read_bytes() == b"foreign successor"
     assert path_identity(target) != predecessor_identity
+
+
+def test_reserved_atomic_commit_boundary_rejects_same_bytes_predecessor_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "session.json"
+    temp = tmp_path / ".session.json.live-start-atomic.tmp"
+    displaced = tmp_path / "session.json.displaced"
+    predecessor = b"expected predecessor"
+    successor = b"intended successor"
+    target.write_bytes(predecessor)
+    predecessor_identity = path_identity(target)
+    parent_identity = path_identity(tmp_path)
+    real_secure_replace = atomic_io.secure_replace
+    observed: dict[str, object] = {}
+
+    def replace_predecessor_at_delegation(
+        source: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        observed["temp_identity"] = path_identity(source)
+        observed["temp_bytes"] = source.read_bytes()
+        destination.replace(displaced)
+        destination.write_bytes(predecessor)
+        observed["foreign_identity"] = path_identity(destination)
+        real_secure_replace(source, destination, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_replace",
+        replace_predecessor_at_delegation,
+    )
+
+    with pytest.raises(
+        AtomicWriteConflictError,
+        match="reserved atomic CAS conflict",
+    ):
+        atomic_io.atomic_write_reserved_bytes(
+            path=target,
+            payload=successor,
+            expected_parent_identity=parent_identity,
+            expected_predecessor_identity=predecessor_identity,
+            expected_predecessor_sha256=(
+                "sha256:" + sha256(predecessor).hexdigest()
+            ),
+            maximum_size=1024,
+        )
+
+    assert observed["foreign_identity"] != predecessor_identity
+    assert path_identity(target) == observed["foreign_identity"]
+    assert target.read_bytes() == predecessor
+    assert path_identity(temp) == observed["temp_identity"]
+    assert temp.read_bytes() == observed["temp_bytes"] == successor
+
+
+def test_reserved_atomic_commit_boundary_rejects_predecessor_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "session.json"
+    temp = tmp_path / ".session.json.live-start-atomic.tmp"
+    predecessor = b"expected predecessor"
+    successor = b"intended successor"
+    target.write_bytes(predecessor)
+    predecessor_identity = path_identity(target)
+    parent_identity = path_identity(tmp_path)
+    real_secure_replace = atomic_io.secure_replace
+    observed: dict[str, object] = {}
+
+    def remove_predecessor_at_delegation(
+        source: Path,
+        destination: Path,
+        **kwargs: object,
+    ) -> None:
+        observed["temp_identity"] = path_identity(source)
+        observed["temp_bytes"] = source.read_bytes()
+        destination.unlink()
+        real_secure_replace(source, destination, **kwargs)
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_replace",
+        remove_predecessor_at_delegation,
+    )
+
+    with pytest.raises(
+        AtomicWriteConflictError,
+        match="reserved atomic CAS conflict",
+    ):
+        atomic_io.atomic_write_reserved_bytes(
+            path=target,
+            payload=successor,
+            expected_parent_identity=parent_identity,
+            expected_predecessor_identity=predecessor_identity,
+            expected_predecessor_sha256=(
+                "sha256:" + sha256(predecessor).hexdigest()
+            ),
+            maximum_size=1024,
+        )
+
+    assert not os.path.lexists(target)
+    assert path_identity(temp) == observed["temp_identity"]
+    assert temp.read_bytes() == observed["temp_bytes"] == successor
 
 
 class InjectedFault(RuntimeError):
@@ -1458,3 +1673,128 @@ def test_release_lock_cleanup_failure_adds_note(
     atomic_io._release_lock_without_masking(object(), primary)  # type: ignore[arg-type]
 
     assert "acquisition cleanup release failed" in primary.__notes__[0]
+
+
+def test_atomic_publish_no_replace_default_hook_and_named_stage_are_compatible(
+    tmp_path: Path,
+) -> None:
+    parent_identity = path_identity(tmp_path)
+    target = tmp_path / "authority.json"
+    staging = tmp_path / "authority.json.staged"
+    published = atomic_io.atomic_publish_bytes_no_replace(
+        path=target,
+        staging_path=staging,
+        payload=b'{"authority":true}',
+        expected_parent_identity=parent_identity,
+        maximum_size=1024,
+    )
+    assert published.path == target
+    assert target.read_bytes() == b'{"authority":true}'
+    assert not staging.exists()
+    assert not staging.with_name(
+        ".authority.json.staged.live-start-atomic.tmp"
+    ).exists()
+
+    observed: list[str] = []
+    named_target = tmp_path / "named-authority.json"
+    named_staging = tmp_path / "named-authority.json.staged"
+    named = atomic_io.atomic_publish_bytes_no_replace(
+        path=named_target,
+        staging_path=named_staging,
+        payload=b'{"authority":"named"}',
+        expected_parent_identity=parent_identity,
+        maximum_size=1024,
+        fault_hook=observed.append,
+    )
+    expected_stages = [STAGING_MATERIALIZE_FAULT_POINT]
+    if os.name != "nt":
+        expected_stages.append(NO_REPLACE_POSIX_LINK_FAULT_POINT)
+    expected_stages.append(NO_REPLACE_COMMIT_FAULT_POINT)
+    assert observed == expected_stages
+    assert named.identity == path_identity(named_target)
+    assert named_target.read_bytes() == b'{"authority":"named"}'
+    assert not named_staging.exists()
+    assert not named_staging.with_name(
+        ".named-authority.json.staged.live-start-atomic.tmp"
+    ).exists()
+
+
+def test_atomic_publish_no_replace_never_overwrites_two_process_winner(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "winner.bin"
+    context = multiprocessing.get_context("spawn")
+    ready = context.Queue()
+    start = context.Event()
+    outcomes_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_no_replace_process_contender,
+            args=(str(tmp_path), index, ready, start, outcomes_queue),
+        )
+        for index in range(2)
+    ]
+    for process in processes:
+        process.start()
+    materialized = [ready.get(timeout=15), ready.get(timeout=15)]
+    assert {row[0] for row in materialized} == {0, 1}
+    assert not target.exists()
+    for index, identity, size, digest in materialized:
+        staging = tmp_path / f"winner-{index}.staged"
+        inner = tmp_path / f".winner-{index}.staged.live-start-atomic.tmp"
+        payload = f"candidate-{index}".encode()
+        assert path_identity(staging) == tuple(identity)
+        assert staging.read_bytes() == payload
+        assert size == len(payload)
+        assert digest == "sha256:" + sha256(payload).hexdigest()
+        assert not inner.exists()
+    start.set()
+    outcomes = [outcomes_queue.get(timeout=15) for _ in range(2)]
+    for process in processes:
+        process.join(15)
+        assert process.exitcode == 0
+
+    assert sorted(kind for kind, _payload, _identity in outcomes) == ["lost", "won"]
+    winner_payload, winner_identity = next(
+        (payload, identity)
+        for kind, payload, identity in outcomes
+        if kind == "won"
+    )
+    assert target.read_bytes() == winner_payload
+    assert path_identity(target) == tuple(winner_identity)
+    assert not list(tmp_path.glob("*.staged"))
+    assert not list(tmp_path.glob(".*.live-start-atomic.tmp"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link convergence")
+def test_bound_no_replace_posix_two_link_intermediate_converges_by_identity(
+    tmp_path: Path,
+) -> None:
+    payload = b"bound-two-link"
+    staging = tmp_path / "authority.staged"
+    target = tmp_path / "authority.json"
+    parent_identity = path_identity(tmp_path)
+    materialized = atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=staging.with_name(
+            ".authority.staged.live-start-atomic.tmp"
+        ),
+        payload=payload,
+        expected_parent_identity=parent_identity,
+        maximum_size=1024,
+    )
+    os.link(staging, target)
+    assert path_identity(staging) == path_identity(target) == materialized.identity
+    assert staging.stat().st_nlink == target.stat().st_nlink == 2
+    published = atomic_commit_bound_staging_no_replace(
+        path=target,
+        staging_path=staging,
+        expected_staging_identity=materialized.identity,
+        expected_size=materialized.size,
+        expected_sha256=materialized.sha256,
+        expected_parent_identity=parent_identity,
+    )
+    assert published.identity == materialized.identity == path_identity(target)
+    assert target.stat().st_nlink == 1
+    assert target.read_bytes() == payload
+    assert not staging.exists()

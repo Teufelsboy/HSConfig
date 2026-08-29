@@ -2894,6 +2894,19 @@ def _publication_binding_fixture(base: Path) -> dict[str, object]:
     }
 
 
+def _prepublication_work_binding_fixture(base: Path) -> dict[str, object]:
+    work_parent = (base / "work").absolute()
+    return {
+        "work_parent_path": str(work_parent),
+        "work_parent_identity": [21, 22, 0o040755],
+        "work_root": str(work_parent / ("live-start-" + "a" * 32)),
+        "work_root_identity": [23, 24, 0o040755],
+        "work_tree_sha256": "sha256:" + "1" * 64,
+        "cleanup_manifest_sha256": "sha256:" + "2" * 64,
+        "cleanup_entry_count": 1,
+    }
+
+
 def _runtime_admission_binding_fixture(base: Path) -> dict[str, object]:
     publication = _publication_binding_fixture(base)
     return {
@@ -3156,6 +3169,9 @@ def test_public_updater_rejects_apply_recovery_and_terminal_authority_bypasses(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(tmp_path / "terminal")
+            ),
         }
     )
     with _lease(preview_root) as lease:
@@ -3205,6 +3221,9 @@ def test_public_updater_rejects_apply_committed_and_runtime_matched_events(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(tmp_path)
+            ),
             "apply_invocation_sha256": "sha256:" + "9" * 64,
             "runtime_admission_binding": admission,
             "runtime_layout_bootstrap": _complete_runtime_layout_fixture(
@@ -3265,6 +3284,9 @@ def test_outer_phase_matrix_rejects_early_missing_and_cross_run_authority(
         {
             "phase": "APPLY_STARTED",
             "publication_binding": _publication_binding_fixture(tmp_path),
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(tmp_path)
+            ),
             "apply_invocation_sha256": "sha256:" + "9" * 64,
             "runtime_admission_binding": (
                 _runtime_admission_binding_fixture(tmp_path)
@@ -3295,6 +3317,40 @@ def test_outer_phase_matrix_rejects_early_missing_and_cross_run_authority(
         session._seal_session_value(
             cross_run,
             session_identity=frozen.session_identity,
+        )
+
+
+@pytest.mark.parametrize(
+    "cursor_kind",
+    ("publication_committed", "apply_started"),
+)
+def test_downstream_phase_matrix_requires_prepublication_work_binding(
+    tmp_path: Path,
+    cursor_kind: str,
+) -> None:
+    created = (
+        _publication_claim_cursor(tmp_path)
+        if cursor_kind == "publication_committed"
+        else _apply_started_cursor_without_recovery(tmp_path)
+    )
+    cursor = created[1]
+    assert isinstance(cursor, session.LiveStartSession)
+    assert cursor.phase in {
+        session.LiveStartPhase.PUBLICATION_COMMITTED,
+        session.LiveStartPhase.APPLY_STARTED,
+    }
+    assert cursor.prepublication_work_binding is not None
+    missing = cursor.to_value()
+    missing.pop("content_sha256")
+    missing["prepublication_work_binding"] = None
+
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_prepublication_work_binding_missing$",
+    ):
+        session._seal_session_value(
+            missing,
+            session_identity=cursor.session_identity,
         )
 
 
@@ -3399,6 +3455,9 @@ def test_specialized_apply_phase_edges_reject_foreign_or_skipped_successor(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(tmp_path)
+            ),
             "apply_invocation_sha256": invocation_sha256,
             "runtime_admission_binding": admission,
             "runtime_layout_bootstrap": layout,
@@ -6429,7 +6488,7 @@ def test_review_revision_pending_rejects_every_inherited_operation_field(
             for field_name, field_value in pending.items()
             if field_value is not None
         } == _REVIEW_REVISION_PENDING_ALLOWED_FIELDS
-        assert len(_REVIEW_REVISION_INHERITED_PENDING_FIELDS) == 59
+        assert len(_REVIEW_REVISION_INHERITED_PENDING_FIELDS) == 61
 
         for inherited_field in _REVIEW_REVISION_INHERITED_PENDING_FIELDS:
             mixed = deepcopy(pending)
@@ -11662,6 +11721,9 @@ def _publication_claim_cursor(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(base)
+            ),
         }
     )
     with _lease(root) as lease:
@@ -11866,6 +11928,9 @@ def _receipt_committed_apply_cursor(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(base)
+            ),
             "runtime_admission_binding": admission,
             "runtime_layout_bootstrap": layout,
         }
@@ -15565,6 +15630,9 @@ def _apply_recovery_cursor_for_action(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(base)
+            ),
             "apply_invocation_sha256": invocation_sha256,
             "runtime_admission_binding": admission,
             "runtime_layout_bootstrap": layout,
@@ -15620,6 +15688,9 @@ def _apply_started_cursor_without_recovery(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(base)
+            ),
             "apply_invocation_sha256": invocation_sha256,
             "runtime_admission_binding": admission,
             "runtime_layout_bootstrap": layout,
@@ -18121,6 +18192,9 @@ def _runtime_layout_pending_cursor(
             "output_operation_admission_binding": operation,
             "output_child_binding": child,
             "publication_binding": publication,
+            "prepublication_work_binding": (
+                _prepublication_work_binding_fixture(base)
+            ),
             "runtime_admission_binding": admission,
         }
     )
@@ -23283,6 +23357,37 @@ def test_cleanup_pending_transition_binds_external_identity_inventory_states(
         tmp_path / "behavior",
         case="cleanup_pending_transition_binds_external_identity_inventory_states",
     )
+
+
+def test_partial_cleanup_pending_transition_cannot_be_cleared_by_internal_cas(
+    tmp_path: Path,
+) -> None:
+    state = _prepare_prepublication_cleanup_cursor(tmp_path / "partial-cleanup")
+
+    with _lease(state.root) as lease:
+        prepared = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert prepared.pending_transition is not None
+        assert prepared.pending_transition["stage"] == "PREPARED"
+        assert prepared.pending_transition["cleanup_cursor"] == 0
+        assert prepared.pending_transition["cleanup_entry_count"] > 0
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="live_start_prepublication_cleanup_incomplete",
+        ):
+            session._transition_receipt_authorized_under_lock(
+                session_lease=lease,
+                expected_session=prepared,
+                event="same_phase_cas",
+                changes={"pending_transition": None},
+            )
+
+        unchanged = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert unchanged.canonical_json == prepared.canonical_json
 
 
 def test_output_child_binding_and_claim_state_matrix_is_closed(

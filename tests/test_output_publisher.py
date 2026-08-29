@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import copy
 import errno
 import json
 import multiprocessing
 import os
+import pickle
+import stat
 import tempfile
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +25,7 @@ from hsconfig.configure_run_model import (
 from hsconfig.output_publisher import publish_configure_run, reconcile_output
 from hsconfig.package_assembler import assemble_package
 from hsconfig.package_compiler import compile_package
+from hsconfig.package_io import path_identity
 from tests.helpers.audited_package_request import audited_request
 
 
@@ -1003,6 +1008,7 @@ def test_secure_replace_does_not_reauthorize_source_swapped_before_guarded_open(
         target_name: str,
         *,
         expected_source_identity: package_io.PathIdentity,
+        expected_target_identity: package_io.PathIdentity | None,
         source_directory: bool,
         replace_if_exists: bool,
     ) -> None:
@@ -1016,6 +1022,7 @@ def test_secure_replace_does_not_reauthorize_source_swapped_before_guarded_open(
             target_parent,
             target_name,
             expected_source_identity=expected_source_identity,
+            expected_target_identity=expected_target_identity,
             source_directory=source_directory,
             replace_if_exists=replace_if_exists,
         )
@@ -2549,13 +2556,21 @@ def test_publish_detects_internal_contract_failures_and_reuses_digest_target(
     )
     publication_rows: list[object] = []
     monkeypatch.setattr(output_publisher, "capture_plain_ancestor_guard", lambda _path: _NoopGuard())
-    monkeypatch.setattr(output_publisher, "_ensure_layout", lambda _root: None)
+    monkeypatch.setattr(
+        output_publisher,
+        "_ensure_layout",
+        lambda _root, *, output_guard=None: None,
+    )
     monkeypatch.setattr(output_publisher, "_capture_layout_guards", lambda _root: ())
     monkeypatch.setattr(output_publisher, "_validate_layout_guards", lambda _guards: None)
     monkeypatch.setattr(output_publisher, "ExclusiveFileLock", _NoopLock)
     monkeypatch.setattr(output_publisher, "_reconcile_locked", lambda _root: None)
     monkeypatch.setattr(output_publisher, "_snapshot_pointer", lambda _root: object())
-    monkeypatch.setattr(output_publisher, "_new_transaction", lambda *_args: transaction)
+    monkeypatch.setattr(
+        output_publisher,
+        "_new_transaction",
+        lambda *_args, **_kwargs: transaction,
+    )
     monkeypatch.setattr(output_publisher, "_write_transaction", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(output_publisher, "secure_create_directory", lambda *_args, **_kwargs: identity)
 
@@ -2612,7 +2627,11 @@ def test_publish_detects_internal_contract_failures_and_reuses_digest_target(
         publication_rows.append(publication)
         return publication, object()
 
-    monkeypatch.setattr(output_publisher, "resolve_current_publication_unlocked", resolve)
+    monkeypatch.setattr(
+        output_publisher,
+        "_resolve_current_publication_without_ads",
+        resolve,
+    )
     monkeypatch.setattr(output_publisher, "_cleanup_after_commit", lambda *_args, **_kwargs: None)
     expected_errors = {
         "staging_identity": "staging_identity_mismatch",
@@ -2623,9 +2642,12 @@ def test_publish_detects_internal_contract_failures_and_reuses_digest_target(
     }
     if mode in expected_errors:
         with pytest.raises(ValueError, match=expected_errors[mode]):
-            publish_configure_run(rendered, root)
+            output_publisher._publish_configure_run_unwrapped(rendered, root)
     else:
-        result = publish_configure_run(rendered, root)
+        result = output_publisher._publish_configure_run_unwrapped(
+            rendered,
+            root,
+        )
         assert result.reused_existing_revision is True
 
 
@@ -2668,7 +2690,11 @@ def test_reconcile_rejects_incomplete_owned_staging_cleanup(
         content_root_sha256=owner.content_root_sha256,
     )
     monkeypatch.setattr(output_publisher, "path_lexists", lambda _path: True)
-    monkeypatch.setattr(output_publisher, "resolve_current_publication_unlocked", lambda _root: (publication, object()))
+    monkeypatch.setattr(
+        output_publisher,
+        "_resolve_current_publication_without_ads",
+        lambda _root: (publication, object()),
+    )
     monkeypatch.setattr(output_publisher, "_recover_owned_atomic_temps", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(output_publisher, "_load_valid_transactions", lambda _root: [(Path("journal"), owner)])
     monkeypatch.setattr(output_publisher, "_validate_publisher_residue", lambda *_args, **_kwargs: None)
@@ -2814,7 +2840,7 @@ def test_write_rendered_run_detects_identity_and_write_failures(
             root_calls += 1
             if mode == "root_before" and root_calls == 2:
                 return (result[0], result[1] + 1, result[2])
-            if mode == "final_root" and root_calls == 4:
+            if mode == "final_root" and root_calls == 5:
                 return (result[0], result[1] + 1, result[2])
         if mode == "path_changed" and path == target:
             return (result[0], result[1] + 1, result[2])
@@ -2864,7 +2890,7 @@ def test_write_rendered_run_rejects_changed_nested_directory(
         if path == nested:
             nested_calls += 1
             if (mode == "created" and nested_calls == 1) or (
-                mode == "owned" and nested_calls >= 3
+                mode == "owned" and nested_calls >= 4
             ):
                 return (result[0], result[1] + 1, result[2])
         return result
@@ -3453,3 +3479,2829 @@ def test_canonical_temp_successor_rejects_additional_final_journal(
 
     with pytest.raises(ValueError, match="publisher_transaction_temp_conflict"):
         reconcile_output(output_root)
+
+
+# Task 8: capability-bound publisher and neutral output fencing.
+
+
+def _tree_snapshot(
+    root: Path,
+) -> dict[str, tuple[str, tuple[int, int, int], bytes | None]]:
+    if not root.exists():
+        return {}
+    snapshot: dict[
+        str,
+        tuple[str, tuple[int, int, int], bytes | None],
+    ] = {".": ("directory", path_identity(root), None)}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_dir():
+            snapshot[relative] = ("directory", path_identity(path), None)
+        elif path.is_file():
+            snapshot[relative] = (
+                "file",
+                path_identity(path),
+                path.read_bytes(),
+            )
+        else:
+            snapshot[relative] = ("unsafe", path_identity(path), None)
+    return snapshot
+
+
+def _swap_visible_output_root_worker(
+    output_root_text: str,
+    moved_root_text: str,
+    ready: object,
+    start: object,
+    result: object,
+) -> None:
+    output_root = Path(output_root_text)
+    moved_root = Path(moved_root_text)
+    ready.put("ready")
+    if not start.wait(10):
+        result.put(("error", "start-timeout"))
+        return
+    try:
+        output_root.rename(moved_root)
+        output_root.mkdir()
+    except PermissionError as error:
+        result.put(("permission-denied", repr(error)))
+    except BaseException as error:  # pragma: no cover - surfaced in parent
+        result.put(("error", repr(error)))
+        raise
+    else:
+        result.put(("swapped", ""))
+
+
+def _output_child_bootstrap_route_worker(
+    route_kind: str,
+    payload_pickle_path: str,
+    session_root_text: str | None,
+    local_app_data_text: str,
+    output_root_text: str,
+    status_queue: object,
+) -> None:
+    import hsconfig.output_publisher as worker_publisher
+
+    os.environ["LOCALAPPDATA"] = local_app_data_text
+    real_lease = worker_publisher.lease_output_child_bootstrap
+
+    @contextmanager
+    def observed_lease(*, output_root: Path):
+        status_queue.put(("attempted", "", ""))  # type: ignore[attr-defined]
+        with real_lease(output_root=output_root) as lease:
+            yield lease
+
+    worker_publisher.lease_output_child_bootstrap = observed_lease
+    try:
+        payload = pickle.loads(Path(payload_pickle_path).read_bytes())
+        if route_kind == "live-preview":
+            if session_root_text is None:
+                raise AssertionError("live preview session root missing")
+            from hsconfig.operator_profile import load_operator_profile
+            from tests.test_configure_prepublication_apply import (
+                _controller,
+                _drive_pipeline,
+            )
+
+            controller = _controller()
+            if hasattr(controller, "lease_output_child_bootstrap"):
+                controller.lease_output_child_bootstrap = observed_lease
+            profile = load_operator_profile()
+            _drive_pipeline(
+                SimpleNamespace(
+                    run_model=controller.build_frozen_live_configure_run(
+                        request=payload
+                    ),
+                    session_root=Path(session_root_text),
+                    local_app_data=Path(local_app_data_text),
+                    runtime_root=profile.runtime_root,
+                )
+            )
+        elif route_kind == "legacy":
+            source_root_text, revision = payload
+            worker_publisher.publish_configure_run(
+                build_rendered_run(
+                    Path(str(source_root_text)),
+                    int(revision),
+                ),
+                Path(output_root_text),
+            )
+        else:
+            raise AssertionError(f"unknown publisher route: {route_kind}")
+    except BaseException as error:
+        status_queue.put(  # type: ignore[attr-defined]
+            ("error", type(error).__name__, str(error))
+        )
+    else:
+        status_queue.put(("published", "", ""))  # type: ignore[attr-defined]
+
+
+def _task8_output_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered: RenderedConfigureRun,
+):
+    from contextlib import ExitStack
+
+    from hsconfig.output_operation_admission import (
+        lease_output_operation_admission,
+    )
+    from hsconfig.package_io import hold_plain_directory
+
+    local = tmp_path / "local-app-data"
+    local.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    output_root = tmp_path / "outputs" / rendered.model.deck_name
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    output_root.mkdir(exist_ok=True)
+    output_publisher._bootstrap_neutral_output_locks(output_root=output_root)
+    stack = ExitStack()
+    operation = stack.enter_context(lease_output_operation_admission())
+    bootstrap = stack.enter_context(
+        output_publisher.lease_output_child_bootstrap(output_root=output_root)
+    )
+    guard = stack.enter_context(hold_plain_directory(output_root))
+    authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+        operation_lease=operation,
+        bootstrap_lease=bootstrap,
+        output_guard=guard,
+        operation_admission=None,
+        session_lease=None,
+        expected_session=None,
+        profile_lease=None,
+    )
+    return stack, output_root, operation, bootstrap, guard, authorization
+
+
+@contextmanager
+def _task8_live_output_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    include_output_capabilities: bool = True,
+    existing_legacy_current: bool = False,
+):
+    from contextlib import ExitStack
+
+    from hsconfig import live_start_session
+    from hsconfig.operator_profile import lease_operator_profile, load_operator_profile
+    from hsconfig.output_operation_admission import (
+        lease_output_operation_admission,
+        observe_output_operation_admission_under_lease,
+    )
+    from hsconfig.package_io import hold_plain_directory
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(
+        tmp_path,
+        monkeypatch,
+        existing_child_precondition=existing_legacy_current,
+    )
+    if existing_legacy_current:
+        publish_configure_run(
+            render_configure_run_model(prepared.run_model),
+            prepared.output_child_root,
+        )
+    interrupted = _interrupt_pipeline(prepared, "AFTER_OUTPUT_CHILD_BOUND")
+    with ExitStack() as stack:
+        session_lease = stack.enter_context(
+            live_start_session.lease_live_start_session(
+                prepared.session_root,
+                local_app_data_root=prepared.local_app_data,
+            )
+        )
+        current = live_start_session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        assert current.content_sha256 == interrupted.content_sha256
+        profile = load_operator_profile()
+        profile_lease = stack.enter_context(
+            lease_operator_profile(expected_profile=profile)
+        )
+        operation_lease = stack.enter_context(
+            lease_output_operation_admission()
+        )
+        bootstrap_lease = None
+        guard = None
+        if include_output_capabilities:
+            bootstrap_lease = stack.enter_context(
+                output_publisher.lease_output_child_bootstrap(
+                    output_root=prepared.output_child_root
+                )
+            )
+            guard = stack.enter_context(
+                hold_plain_directory(prepared.output_child_root)
+            )
+        operation_admission = observe_output_operation_admission_under_lease(
+            operation_lease
+        )
+        assert operation_admission is not None
+        yield SimpleNamespace(
+            prepared=prepared,
+            rendered=render_configure_run_model(prepared.run_model),
+            session_lease=session_lease,
+            current=current,
+            profile_lease=profile_lease,
+            operation_lease=operation_lease,
+            bootstrap_lease=bootstrap_lease,
+            guard=guard,
+            operation_admission=operation_admission,
+        )
+
+
+def _leave_live_pointer_staging_bound(
+    live: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, output_publisher._Transaction]:
+    class PointerStagingBoundCrash(BaseException):
+        pass
+
+    real_write_transaction = output_publisher._write_transaction
+    interrupted = False
+
+    def crash_after_bound_receipt(
+        path: Path,
+        transaction: output_publisher._Transaction,
+        **kwargs: object,
+    ) -> None:
+        nonlocal interrupted
+        real_write_transaction(path, transaction, **kwargs)  # type: ignore[arg-type]
+        if not interrupted and transaction.phase == "pointer_staging_bound":
+            interrupted = True
+            raise PointerStagingBoundCrash
+
+    authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+        operation_lease=live.operation_lease,
+        bootstrap_lease=live.bootstrap_lease,
+        output_guard=live.guard,
+        operation_admission=live.operation_admission,
+        session_lease=live.session_lease,
+        expected_session=live.current,
+        profile_lease=live.profile_lease,
+    )
+    with monkeypatch.context() as crash_patch:
+        crash_patch.setattr(
+            output_publisher,
+            "_write_transaction",
+            crash_after_bound_receipt,
+        )
+        with pytest.raises(PointerStagingBoundCrash):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("pointer_staging_bound_crash_not_reached")
+    assert interrupted
+    transactions = live.prepared.output_child_root / ".publisher" / "transactions"
+    journals = [
+        (path, output_publisher._parse_transaction(path.read_bytes()))
+        for path in transactions.glob("[0-9a-f]*.json")
+    ]
+    bound = [
+        (path, transaction)
+        for path, transaction in journals
+        if transaction.phase == "pointer_staging_bound"
+        and transaction.live_start_commit_receipt is not None
+    ]
+    assert len(bound) == 1
+    journal_path, transaction = bound[0]
+    receipt = transaction.live_start_commit_receipt
+    assert receipt is not None
+    staging = transactions / f".{transaction.transaction_id}.current.tmp"
+    assert path_identity(staging) == receipt.pointer_staging_identity
+    return journal_path, transaction
+
+
+def test_live_start_pointer_staging_bound_resumes_exact_identity_without_generic_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        _journal_path, interrupted = _leave_live_pointer_staging_bound(
+            live,
+            monkeypatch,
+        )
+        receipt = interrupted.live_start_commit_receipt
+        assert receipt is not None
+        staging = (
+            live.prepared.output_child_root
+            / ".publisher"
+            / "transactions"
+            / f".{interrupted.transaction_id}.current.tmp"
+        )
+        staging_identity = path_identity(staging)
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        with output_publisher.publish_configure_run_under_guard(
+            live.rendered,
+            output_guard=live.guard,
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            publication_authorization=authorization,
+        ) as published:
+            assert path_identity(
+                published.output_root / "current.json"
+            ) == staging_identity
+        assert not staging.exists()
+
+
+def test_live_start_pointer_staging_replacement_is_rejected_before_temp_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        _journal_path, interrupted = _leave_live_pointer_staging_bound(
+            live,
+            monkeypatch,
+        )
+        transactions = (
+            live.prepared.output_child_root / ".publisher" / "transactions"
+        )
+        staging = transactions / f".{interrupted.transaction_id}.current.tmp"
+        original_raw = staging.read_bytes()
+        original_identity = path_identity(staging)
+        staging.unlink()
+        staging.write_bytes(original_raw)
+        replacement_identity = path_identity(staging)
+        assert replacement_identity != original_identity
+        before = _tree_snapshot(live.prepared.output_child_root)
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="^live_start_publication_current_identity_changed$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("tampered pointer staging was published")
+
+        assert _tree_snapshot(live.prepared.output_child_root) == before
+
+
+def test_live_start_active_journal_replacement_is_rejected_before_resume_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        journal_path, _interrupted = _leave_live_pointer_staging_bound(
+            live,
+            monkeypatch,
+        )
+        raw = journal_path.read_bytes()
+        original_identity = path_identity(journal_path)
+        journal_path.unlink()
+        journal_path.write_bytes(raw)
+        replacement_identity = path_identity(journal_path)
+        assert replacement_identity != original_identity
+        before = _tree_snapshot(live.prepared.output_child_root)
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="^publisher_transaction_identity_changed$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("replaced active journal was resumed")
+
+        assert _tree_snapshot(live.prepared.output_child_root) == before
+
+
+def _leave_legacy_finalized_owner_v2_upgrade_temp(
+    live: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, Path]:
+    class JournalUpgradeCrash(BaseException):
+        pass
+
+    legacy = output_publisher._load_valid_transactions(
+        live.prepared.output_child_root
+    )
+    assert len(legacy) == 1
+    assert legacy[0][1].schema_version == 1
+    assert legacy[0][1].phase == "finalized"
+
+    real_write_transaction = output_publisher._write_transaction
+
+    def crash_v2_upgrade_write(
+        path: Path,
+        transaction: output_publisher._Transaction,
+        **kwargs: object,
+    ) -> output_publisher._Transaction:
+        receipt = transaction.live_start_commit_receipt
+        if (
+            transaction.schema_version == 2
+            and transaction.phase == "finalized"
+            and receipt is not None
+            and receipt.disposition == "reused_existing"
+        ):
+
+            def crash_after_v2_temp_flush(stage: str) -> None:
+                if stage == "after_journal_temp_write":
+                    raise JournalUpgradeCrash
+
+            kwargs["fault_hook"] = crash_after_v2_temp_flush
+        return real_write_transaction(  # type: ignore[arg-type]
+            path,
+            transaction,
+            **kwargs,
+        )
+
+    authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+        operation_lease=live.operation_lease,
+        bootstrap_lease=live.bootstrap_lease,
+        output_guard=live.guard,
+        operation_admission=live.operation_admission,
+        session_lease=live.session_lease,
+        expected_session=live.current,
+        profile_lease=live.profile_lease,
+    )
+    with monkeypatch.context() as crash_patch:
+        crash_patch.setattr(
+            output_publisher,
+            "_write_transaction",
+            crash_v2_upgrade_write,
+        )
+        with pytest.raises(JournalUpgradeCrash):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("journal upgrade crash was not reached")
+
+    transactions = (
+        live.prepared.output_child_root / ".publisher" / "transactions"
+    )
+    final_paths = list(transactions.glob("[0-9a-f]*.json"))
+    temp_paths = list(transactions.glob(".*.journal.tmp"))
+    assert len(final_paths) == 1
+    assert len(temp_paths) == 1
+    return transactions, final_paths[0], temp_paths[0]
+
+
+def test_legacy_finalized_owner_v2_upgrade_temp_converges_after_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(
+        tmp_path,
+        monkeypatch,
+        existing_legacy_current=True,
+    ) as live:
+        transactions, _final_path, _temp_path = (
+            _leave_legacy_finalized_owner_v2_upgrade_temp(
+                live,
+                monkeypatch,
+            )
+        )
+        second_authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        with output_publisher.publish_configure_run_under_guard(
+            live.rendered,
+            output_guard=live.guard,
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            publication_authorization=second_authorization,
+        ) as published:
+            assert published.reused_existing_revision is True
+
+        recovered = output_publisher._load_valid_transactions(
+            live.prepared.output_child_root
+        )
+        assert len(recovered) == 1
+        assert recovered[0][1].schema_version == 2
+        assert recovered[0][1].phase == "finalized"
+        receipt = recovered[0][1].live_start_commit_receipt
+        assert receipt is not None
+        assert receipt.disposition == "reused_existing"
+        assert not list(transactions.glob(".*.journal.tmp"))
+
+
+def test_public_reconcile_rejects_active_live_pointer_receipt_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        _leave_live_pointer_staging_bound(live, monkeypatch)
+        output_root = live.prepared.output_child_root
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="^publisher_live_start_authority_active$",
+    ):
+        reconcile_output(output_root)
+    assert (
+        _tree_snapshot(output_tree_root),
+        path_identity(admission_path),
+        admission_path.read_bytes(),
+    ) == before
+
+
+def test_public_reconcile_rejects_finalized_owner_while_live_claim_is_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        with output_publisher.publish_configure_run_under_guard(
+            live.rendered,
+            output_guard=live.guard,
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            publication_authorization=authorization,
+        ):
+            pass
+
+        journals = output_publisher._load_valid_transactions(
+            live.prepared.output_child_root
+        )
+        assert len(journals) == 1
+        journal_path, transaction = journals[0]
+        assert transaction.phase == "pointer_committed"
+        assert transaction.live_start_commit_receipt is not None
+        output_publisher._cleanup_after_commit(
+            live.prepared.output_child_root,
+            transaction,
+            journal_path,
+            fault_hook=output_publisher.no_fault,
+        )
+        finalized = output_publisher._load_valid_transactions(
+            live.prepared.output_child_root
+        )
+        assert len(finalized) == 1
+        assert finalized[0][1].phase == "finalized"
+        assert finalized[0][1].live_start_commit_receipt is not None
+        assert output_publisher.output_child_claim_path(
+            live.prepared.output_child_root
+        ).exists()
+        output_root = live.prepared.output_child_root
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="^publisher_live_start_authority_active$",
+    ):
+        reconcile_output(output_root)
+
+    assert (
+        _tree_snapshot(output_tree_root),
+        path_identity(admission_path),
+        admission_path.read_bytes(),
+    ) == before
+
+
+def test_publisher_uses_held_child_capability_on_windows_and_posix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    stack, output_root, operation, bootstrap, guard, authorization = (
+        _task8_output_context(tmp_path, monkeypatch, rendered_runs[0])
+    )
+    with stack:
+        with output_publisher.publish_configure_run_under_guard(
+            rendered_runs[0],
+            output_guard=guard,
+            operation_lease=operation,
+            bootstrap_lease=bootstrap,
+            publication_authorization=authorization,
+        ) as published:
+            assert published.output_root == output_root
+            assert (output_root / "current.json").exists()
+            guard.validate()
+
+
+def test_publish_under_guard_rejects_closed_or_forged_guard_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.package_io import hold_plain_directory
+    from tests.test_configure_prepublication_apply import _physical_tree
+
+    for dimension in ("forged", "closed"):
+        with _task8_live_output_context(
+            tmp_path / dimension,
+            monkeypatch,
+        ) as live:
+            if dimension == "forged":
+                authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+                    operation_lease=live.operation_lease,
+                    bootstrap_lease=live.bootstrap_lease,
+                    output_guard=live.guard,
+                    operation_admission=live.operation_admission,
+                    session_lease=live.session_lease,
+                    expected_session=live.current,
+                    profile_lease=live.profile_lease,
+                )
+                selected_guard = object()
+                expected_error = "^output_publication_guard_invalid$"
+            else:
+                guard_manager = hold_plain_directory(
+                    live.prepared.output_child_root
+                )
+                selected_guard = guard_manager.__enter__()
+                authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+                    operation_lease=live.operation_lease,
+                    bootstrap_lease=live.bootstrap_lease,
+                    output_guard=selected_guard,
+                    operation_admission=live.operation_admission,
+                    session_lease=live.session_lease,
+                    expected_session=live.current,
+                    profile_lease=live.profile_lease,
+                )
+                guard_manager.__exit__(None, None, None)
+                expected_error = "^output_publication_guard_inactive$"
+            before = _physical_tree(live.prepared.output_base_root)
+            with pytest.raises(ValueError, match=expected_error):
+                with output_publisher.publish_configure_run_under_guard(
+                    live.rendered,
+                    output_guard=selected_guard,
+                    operation_lease=live.operation_lease,
+                    bootstrap_lease=live.bootstrap_lease,
+                    publication_authorization=authorization,
+                ):
+                    pass
+            assert _physical_tree(live.prepared.output_base_root) == before
+
+
+def test_publish_under_guard_requires_active_bootstrap_lease_and_publication_authorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.package_io import hold_plain_directory
+    from tests.test_configure_prepublication_apply import _physical_tree
+
+    with _task8_live_output_context(
+        tmp_path / "expired-bootstrap",
+        monkeypatch,
+        include_output_capabilities=False,
+    ) as live:
+        bootstrap_manager = output_publisher.lease_output_child_bootstrap(
+            output_root=live.prepared.output_child_root
+        )
+        expired_bootstrap = bootstrap_manager.__enter__()
+        bootstrap_manager.__exit__(None, None, None)
+        with hold_plain_directory(
+            live.prepared.output_child_root
+        ) as active_guard:
+            before = _physical_tree(live.prepared.output_base_root)
+            with pytest.raises(
+                ValueError,
+                match="^output_publication_bootstrap_lease_inactive$",
+            ):
+                output_publisher.authorize_output_publication_under_bootstrap_lease(
+                    operation_lease=live.operation_lease,
+                    bootstrap_lease=expired_bootstrap,
+                    output_guard=active_guard,
+                    operation_admission=live.operation_admission,
+                    session_lease=live.session_lease,
+                    expected_session=live.current,
+                    profile_lease=live.profile_lease,
+                )
+            assert _physical_tree(live.prepared.output_base_root) == before
+
+    with _task8_live_output_context(
+        tmp_path / "expired-authorization",
+        monkeypatch,
+        include_output_capabilities=False,
+    ) as live:
+        with output_publisher.lease_output_child_bootstrap(
+            output_root=live.prepared.output_child_root
+        ) as first_bootstrap:
+            with hold_plain_directory(
+                live.prepared.output_child_root
+            ) as first_guard:
+                expired_authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+                    operation_lease=live.operation_lease,
+                    bootstrap_lease=first_bootstrap,
+                    output_guard=first_guard,
+                    operation_admission=live.operation_admission,
+                    session_lease=live.session_lease,
+                    expected_session=live.current,
+                    profile_lease=live.profile_lease,
+                )
+        with output_publisher.lease_output_child_bootstrap(
+            output_root=live.prepared.output_child_root
+        ) as active_bootstrap:
+            with hold_plain_directory(
+                live.prepared.output_child_root
+            ) as active_guard:
+                before = _physical_tree(live.prepared.output_base_root)
+                with pytest.raises(
+                    ValueError,
+                    match="^output_publication_authorization_expired$",
+                ):
+                    with output_publisher.publish_configure_run_under_guard(
+                        live.rendered,
+                        output_guard=active_guard,
+                        operation_lease=live.operation_lease,
+                        bootstrap_lease=active_bootstrap,
+                        publication_authorization=expired_authorization,
+                    ):
+                        pass
+                assert _physical_tree(live.prepared.output_base_root) == before
+
+    with _task8_live_output_context(
+        tmp_path / "reused-authorization",
+        monkeypatch,
+    ) as live:
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        with output_publisher.publish_configure_run_under_guard(
+            live.rendered,
+            output_guard=live.guard,
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            publication_authorization=authorization,
+        ):
+            pass
+        before_reuse = _physical_tree(live.prepared.output_base_root)
+        with pytest.raises(
+            ValueError,
+            match="^output_publication_authorization_reused$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                pass
+        assert _physical_tree(live.prepared.output_base_root) == before_reuse
+
+
+def test_output_publication_authorization_copy_shares_single_use_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from tests.test_configure_prepublication_apply import _physical_tree
+
+    stack, output_root, operation, bootstrap, guard, authorization = (
+        _task8_output_context(tmp_path, monkeypatch, rendered_runs[0])
+    )
+    cloned = copy.copy(authorization)
+    with stack:
+        with output_publisher.publish_configure_run_under_guard(
+            rendered_runs[0],
+            output_guard=guard,
+            operation_lease=operation,
+            bootstrap_lease=bootstrap,
+            publication_authorization=authorization,
+        ):
+            pass
+        before = _physical_tree(output_root)
+
+        with pytest.raises(
+            ValueError,
+            match="^output_publication_authorization_reused$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                rendered_runs[0],
+                output_guard=guard,
+                operation_lease=operation,
+                bootstrap_lease=bootstrap,
+                publication_authorization=cloned,
+            ):
+                pass
+
+        assert _physical_tree(output_root) == before
+
+
+def test_output_publication_authorization_rejects_wrong_kind_cursor_profile_or_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from contextlib import ExitStack
+
+    from hsconfig.operator_profile import (
+        enable_operator_profile,
+        lease_operator_profile,
+        load_operator_profile,
+    )
+    from tests.test_configure_prepublication_apply import _physical_tree
+
+    for dimension in ("kind", "cursor", "profile", "claim"):
+        with _task8_live_output_context(
+            tmp_path / dimension,
+            monkeypatch,
+        ) as live:
+            kwargs = {
+                "operation_lease": live.operation_lease,
+                "bootstrap_lease": live.bootstrap_lease,
+                "output_guard": live.guard,
+                "operation_admission": live.operation_admission,
+                "session_lease": live.session_lease,
+                "expected_session": live.current,
+                "profile_lease": live.profile_lease,
+            }
+            before = _physical_tree(live.prepared.output_base_root)
+            if dimension == "kind":
+                wrong_kind_authorization = (
+                    output_publisher.authorize_output_publication_under_bootstrap_lease(
+                        **kwargs
+                    )
+                )
+                wrong_kind_authorization.kind = "ORDINARY_CLAIM_ABSENT"
+                with pytest.raises(
+                    ValueError,
+                    match="^output_publication_authorization_kind_invalid$",
+                ):
+                    with output_publisher.publish_configure_run_under_guard(
+                        live.rendered,
+                        output_guard=live.guard,
+                        operation_lease=live.operation_lease,
+                        bootstrap_lease=live.bootstrap_lease,
+                        publication_authorization=wrong_kind_authorization,
+                    ):
+                        pass
+            elif dimension == "cursor":
+                kwargs["expected_session"] = live.prepared.approved
+                with pytest.raises(
+                    ValueError,
+                    match="^output_publication_session_cursor_stale$",
+                ):
+                    output_publisher.authorize_output_publication_under_bootstrap_lease(
+                        **kwargs
+                    )
+            elif dimension == "profile":
+                primary_local = live.prepared.local_app_data
+                foreign_local = tmp_path / dimension / "foreign-local-app-data"
+                foreign_runtime = tmp_path / dimension / "foreign-runtime"
+                foreign_outputs = tmp_path / dimension / "foreign-outputs"
+                foreign_local.mkdir()
+                foreign_runtime.mkdir()
+                foreign_outputs.mkdir()
+                monkeypatch.setenv("LOCALAPPDATA", str(foreign_local))
+                foreign_profile = enable_operator_profile(
+                    runtime_root=foreign_runtime,
+                    output_base_root=foreign_outputs,
+                    expected_predecessor_sha256=None,
+                )
+                assert load_operator_profile() == foreign_profile
+                with ExitStack() as foreign_stack:
+                    foreign_lease = foreign_stack.enter_context(
+                        lease_operator_profile(
+                            expected_profile=foreign_profile
+                        )
+                    )
+                    monkeypatch.setenv("LOCALAPPDATA", str(primary_local))
+                    kwargs["profile_lease"] = foreign_lease
+                    with pytest.raises(
+                        ValueError,
+                        match="^output_publication_profile_binding_changed$",
+                    ):
+                        output_publisher.authorize_output_publication_under_bootstrap_lease(
+                            **kwargs
+                        )
+            else:
+                authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+                    **kwargs
+                )
+                claim = output_publisher.output_child_claim_path(
+                    live.prepared.output_child_root
+                )
+                raw = claim.read_bytes()
+                claim_identity = path_identity(claim)
+                claim.unlink()
+                claim.write_bytes(raw)
+                assert path_identity(claim) != claim_identity
+                before = _physical_tree(live.prepared.output_base_root)
+                with pytest.raises(
+                    ValueError,
+                    match="^output_publication_claim_identity_changed$",
+                ):
+                    with output_publisher.publish_configure_run_under_guard(
+                        live.rendered,
+                        output_guard=live.guard,
+                        operation_lease=live.operation_lease,
+                        bootstrap_lease=live.bootstrap_lease,
+                        publication_authorization=authorization,
+                    ):
+                        pass
+            assert _physical_tree(live.prepared.output_base_root) == before
+
+
+def test_output_publication_authorization_requires_active_owning_session_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from contextlib import ExitStack
+
+    from hsconfig import live_start_session
+    from hsconfig.operator_profile import lease_operator_profile, load_operator_profile
+    from hsconfig.output_operation_admission import (
+        lease_output_operation_admission,
+        observe_output_operation_admission_under_lease,
+    )
+    from hsconfig.package_io import hold_plain_directory
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _physical_tree,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    _interrupt_pipeline(prepared, "AFTER_OUTPUT_CHILD_BOUND")
+    with live_start_session.lease_live_start_session(
+        prepared.session_root,
+        local_app_data_root=prepared.local_app_data,
+    ) as session_lease:
+        current = live_start_session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        stale_session_lease = session_lease
+    with ExitStack() as stack:
+        profile = load_operator_profile()
+        profile_lease = stack.enter_context(
+            lease_operator_profile(expected_profile=profile)
+        )
+        operation = stack.enter_context(lease_output_operation_admission())
+        bootstrap = stack.enter_context(
+            output_publisher.lease_output_child_bootstrap(
+                output_root=prepared.output_child_root
+            )
+        )
+        guard = stack.enter_context(hold_plain_directory(prepared.output_child_root))
+        evidence = observe_output_operation_admission_under_lease(operation)
+        assert evidence is not None
+        before = _physical_tree(prepared.output_base_root)
+        with pytest.raises(
+            ValueError,
+            match="^output_publication_session_lease_inactive$",
+        ):
+            output_publisher.authorize_output_publication_under_bootstrap_lease(
+                operation_lease=operation,
+                bootstrap_lease=bootstrap,
+                output_guard=guard,
+                operation_admission=evidence,
+                session_lease=stale_session_lease,
+                expected_session=current,
+                profile_lease=profile_lease,
+            )
+        assert _physical_tree(prepared.output_base_root) == before
+
+
+def test_output_publication_authorization_rejects_stale_cross_thread_or_expired_session_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from queue import Queue
+    from threading import Thread
+
+    from hsconfig import live_start_session
+    from hsconfig.operator_profile import lease_operator_profile, load_operator_profile
+    from hsconfig.output_operation_admission import (
+        lease_output_operation_admission,
+        observe_output_operation_admission_under_lease,
+    )
+    from hsconfig.package_io import hold_plain_directory
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _physical_tree,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    interrupted = _interrupt_pipeline(prepared, "AFTER_OUTPUT_CHILD_BOUND")
+    errors: Queue[BaseException] = Queue()
+    acquired = Queue()
+
+    with live_start_session.lease_live_start_session(
+        prepared.session_root,
+        local_app_data_root=prepared.local_app_data,
+    ) as owning_session_lease:
+        current = live_start_session.load_live_start_session_under_lock(
+            session_lease=owning_session_lease
+        )
+        assert current.content_sha256 == interrupted.content_sha256
+
+        def cross_thread() -> None:
+            try:
+                profile = load_operator_profile()
+                with lease_operator_profile(
+                    expected_profile=profile
+                ) as profile_lease:
+                    with lease_output_operation_admission() as operation_lease:
+                        with output_publisher.lease_output_child_bootstrap(
+                            output_root=prepared.output_child_root
+                        ) as bootstrap_lease:
+                            with hold_plain_directory(
+                                prepared.output_child_root
+                            ) as guard:
+                                evidence = observe_output_operation_admission_under_lease(
+                                    operation_lease
+                                )
+                                assert evidence is not None
+                                acquired.put("all-non-session-capabilities-active")
+                                output_publisher.authorize_output_publication_under_bootstrap_lease(
+                                    operation_lease=operation_lease,
+                                    bootstrap_lease=bootstrap_lease,
+                                    output_guard=guard,
+                                    operation_admission=evidence,
+                                    session_lease=owning_session_lease,
+                                    expected_session=current,
+                                    profile_lease=profile_lease,
+                                )
+            except BaseException as error:
+                errors.put(error)
+
+        before = _physical_tree(prepared.output_base_root)
+        thread = Thread(target=cross_thread)
+        thread.start()
+        thread.join(5)
+        assert not thread.is_alive()
+        assert acquired.get_nowait() == "all-non-session-capabilities-active"
+        error = errors.get_nowait()
+        assert type(error) is ValueError
+        assert str(error) == "output_publication_session_lease_cross_thread"
+        assert _physical_tree(prepared.output_base_root) == before
+
+
+def test_publish_under_guard_swap_at_first_mutation_never_touches_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    stack, output_root, operation, bootstrap, guard, authorization = (
+        _task8_output_context(tmp_path, monkeypatch, rendered_runs[0])
+    )
+    held_tree = output_root.with_name("held-tree-after-swap")
+    context = multiprocessing.get_context("spawn")
+    ready = context.Queue()
+    start = context.Event()
+    result = context.Queue()
+    contender = context.Process(
+        target=_swap_visible_output_root_worker,
+        args=(str(output_root), str(held_tree), ready, start, result),
+    )
+    contender.start()
+    assert ready.get(timeout=15) == "ready"
+    swapped_snapshots: dict[str, object] = {}
+
+    def swap_after_initial_validation(stage: str) -> None:
+        if stage != "after_lock":
+            return
+        assert swapped_snapshots == {}
+        start.set()
+        disposition, detail = result.get(timeout=15)
+        if disposition == "permission-denied":
+            pytest.skip(f"platform prevents held-root replacement: {detail}")
+        assert (disposition, detail) == ("swapped", "")
+        swapped_snapshots.update(
+            held_identity=path_identity(held_tree),
+            visible_identity=path_identity(output_root),
+            held_tree=_tree_snapshot(held_tree),
+            visible_tree=_tree_snapshot(output_root),
+        )
+
+    try:
+        with stack:
+            with pytest.raises(ValueError, match="identity|guard"):
+                with output_publisher.publish_configure_run_under_guard(
+                    rendered_runs[0],
+                    output_guard=guard,
+                    operation_lease=operation,
+                    bootstrap_lease=bootstrap,
+                    publication_authorization=authorization,
+                    fault_hook=swap_after_initial_validation,
+                ):
+                    pass
+    finally:
+        start.set()
+        contender.join(15)
+    assert contender.exitcode == 0
+    assert swapped_snapshots
+    assert path_identity(held_tree) == swapped_snapshots["held_identity"]
+    assert path_identity(output_root) == swapped_snapshots["visible_identity"]
+    assert _tree_snapshot(held_tree) == swapped_snapshots["held_tree"]
+    assert _tree_snapshot(output_root) == swapped_snapshots["visible_tree"]
+
+
+def test_guarded_publish_binds_first_layout_step_to_held_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    stack, output_root, operation, bootstrap, guard, authorization = (
+        _task8_output_context(tmp_path, monkeypatch, rendered_runs[0])
+    )
+    replacement_root = output_root.with_name("replacement-root-before-layout")
+    replacement_root.mkdir()
+    real_ensure_layout = output_publisher._ensure_layout
+    replacement_before = _tree_snapshot(replacement_root)
+
+    def swap_before_first_layout_step(
+        _root: Path,
+        **kwargs: object,
+    ) -> None:
+        real_ensure_layout(  # type: ignore[arg-type]
+            replacement_root,
+            **kwargs,
+        )
+        raise ValueError("filesystem_path_identity_changed")
+
+    monkeypatch.setattr(
+        output_publisher,
+        "_ensure_layout",
+        swap_before_first_layout_step,
+    )
+    with stack:
+        with pytest.raises(ValueError, match="identity|guard"):
+            with output_publisher.publish_configure_run_under_guard(
+                rendered_runs[0],
+                output_guard=guard,
+                operation_lease=operation,
+                bootstrap_lease=bootstrap,
+                publication_authorization=authorization,
+            ):
+                pass
+
+    assert _tree_snapshot(replacement_root) == replacement_before
+
+
+def test_guarded_reconcile_binds_first_layout_observation_and_lock_to_held_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.package_io import hold_plain_directory
+
+    local = tmp_path / "local-app-data"
+    local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    publish_configure_run(rendered_runs[0], output_root)
+    replacement_root = output_root.with_name("replacement-root-before-reconcile")
+    (replacement_root / "revisions").mkdir(parents=True)
+    (replacement_root / ".publisher" / "transactions").mkdir(parents=True)
+    (replacement_root / ".publish.lock").write_bytes(b"")
+    real_validate_layout = output_publisher._validate_existing_layout
+    real_lock = output_publisher.ExclusiveFileLock
+    replacement_before = _tree_snapshot(replacement_root)
+    entered_locks: list[Path] = []
+
+    def swap_before_first_layout_observation(
+        _root: Path,
+        **kwargs: object,
+    ) -> None:
+        real_validate_layout(  # type: ignore[arg-type]
+            replacement_root,
+            **kwargs,
+        )
+
+    class ObservedExclusiveFileLock:
+        def __init__(self, path: Path, **kwargs: object) -> None:
+            self.path = replacement_root / path.name
+            self.inner = real_lock(  # type: ignore[arg-type]
+                self.path,
+                **kwargs,
+            )
+
+        def __enter__(self) -> object:
+            entered_locks.append(self.path)
+            self.inner.__enter__()
+            self.inner.__exit__(None, None, None)
+            raise ValueError("filesystem_path_identity_changed")
+
+        def __exit__(self, *args: object) -> None:
+            self.inner.__exit__(*args)
+
+    monkeypatch.setattr(
+        output_publisher,
+        "_validate_existing_layout",
+        swap_before_first_layout_observation,
+    )
+    monkeypatch.setattr(
+        output_publisher,
+        "ExclusiveFileLock",
+        ObservedExclusiveFileLock,
+    )
+    with hold_plain_directory(output_root) as output_guard:
+        with pytest.raises(ValueError, match="identity|guard"):
+            output_publisher._reconcile_output_under_guard(
+                output_root,
+                output_guard=output_guard,
+            )
+
+    assert entered_locks == []
+    assert _tree_snapshot(replacement_root) == replacement_before
+
+
+def test_guarded_finalize_binds_layout_observation_and_lock_to_held_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig.package_io import hold_plain_directory
+
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    output_publisher._ensure_layout(output_root)
+    (output_root / ".publish.lock").write_bytes(b"")
+    claim_path = output_publisher.output_child_claim_path(output_root)
+    claim_bytes = b"active-claim"
+    claim_path.write_bytes(claim_bytes)
+    claim_identity = path_identity(claim_path)
+    claim_sha256 = "sha256:" + output_publisher.sha256(claim_bytes).hexdigest()
+
+    replacement_root = tmp_path / "replacement-output"
+    (replacement_root / "revisions").mkdir(parents=True)
+    (replacement_root / ".publisher" / "transactions").mkdir(parents=True)
+    (replacement_root / ".publish.lock").write_bytes(b"")
+    replacement_before = _tree_snapshot(replacement_root)
+    real_validate_layout = output_publisher._validate_existing_layout
+    real_lock = output_publisher.ExclusiveFileLock
+    entered_locks: list[Path] = []
+
+    def observe_replacement_layout(
+        _root: Path,
+        **kwargs: object,
+    ) -> None:
+        real_validate_layout(  # type: ignore[arg-type]
+            replacement_root,
+            **kwargs,
+        )
+
+    class ObservedExclusiveFileLock:
+        def __init__(self, path: Path, **kwargs: object) -> None:
+            self.path = replacement_root / path.name
+            self.inner = real_lock(  # type: ignore[arg-type]
+                self.path,
+                **kwargs,
+            )
+
+        def __enter__(self) -> object:
+            entered_locks.append(self.path)
+            self.inner.__enter__()
+            self.inner.__exit__(None, None, None)
+            raise ValueError("filesystem_path_identity_changed")
+
+        def __exit__(self, *args: object) -> None:
+            self.inner.__exit__(*args)
+
+    operation_sha256 = "sha256:" + "a" * 64
+    operation_admission = SimpleNamespace(
+        admission_identity=(1, 2, 3),
+        operator_profile_sha256="profile-sha256",
+        operator_profile_path=tmp_path / "profile.json",
+        operator_profile_identity=(4, 5, 6),
+    )
+    profile_lease = SimpleNamespace(
+        profile=SimpleNamespace(content_sha256="profile-sha256"),
+        profile_path=operation_admission.operator_profile_path,
+        profile_identity=operation_admission.operator_profile_identity,
+    )
+    with hold_plain_directory(output_root) as output_guard:
+        child_binding = {
+            "claim_state": "ACTIVE",
+            "claim_identity": list(claim_identity),
+            "claim_sha256": claim_sha256,
+            "output_child_path": str(output_root),
+            "output_child_identity": output_guard.identity,
+            "content_sha256": "child-binding-sha256",
+        }
+        current = SimpleNamespace(
+            phase=output_publisher.live_session.LiveStartPhase.PUBLICATION_COMMITTED,
+            output_child_binding=child_binding,
+            publication_binding={
+                "output_child_path": str(output_root),
+                "output_child_identity": output_guard.identity,
+                "output_child_binding_sha256": child_binding["content_sha256"],
+                "revision": f"revisions/sha256-{'b' * 64}",
+                "content_root_sha256": "sha256:" + "b" * 64,
+                "prior_current_identity": None,
+            },
+            output_operation_admission_binding={
+                "admission_identity": operation_admission.admission_identity,
+                "admission_sha256": operation_sha256,
+            },
+            pending_transition=None,
+            to_value=lambda: {},
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_require_active_output_bootstrap_lease",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_validate_output_publication_guard",
+            lambda *_args, **_kwargs: output_guard,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "observe_output_operation_admission_under_lease",
+            lambda *_args, **_kwargs: operation_admission,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_load_exact_owning_session",
+            lambda **_kwargs: current,
+        )
+        monkeypatch.setattr(
+            output_publisher.operator_profile_state,
+            "_require_active_lease",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_admission_raw_sha256",
+            lambda *_args, **_kwargs: operation_sha256,
+        )
+        monkeypatch.setattr(
+            output_publisher.live_session,
+            "_seal_session_value",
+            lambda *_args, **_kwargs: SimpleNamespace(
+                content_sha256="sha256:" + "c" * 64
+            ),
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_validate_existing_layout",
+            observe_replacement_layout,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "ExclusiveFileLock",
+            ObservedExclusiveFileLock,
+        )
+
+        with pytest.raises(ValueError, match="identity|guard"):
+            output_publisher._finalize_committed_live_start_publication_under_guard(
+                output_guard=output_guard,
+                operation_lease=object(),  # type: ignore[arg-type]
+                bootstrap_lease=object(),  # type: ignore[arg-type]
+                operation_admission=operation_admission,  # type: ignore[arg-type]
+                session_lease=object(),  # type: ignore[arg-type]
+                expected_session=SimpleNamespace(  # type: ignore[arg-type]
+                    content_sha256="expected-session-sha256"
+                ),
+                profile_lease=profile_lease,  # type: ignore[arg-type]
+            )
+
+    assert entered_locks == []
+    assert _tree_snapshot(replacement_root) == replacement_before
+
+
+def test_legacy_path_publisher_delegates_and_preserves_existing_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.output_operation_admission import (
+        observe_output_operation_admission_under_lease,
+    )
+
+    local = tmp_path / "local-app-data"
+    local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    real_under_guard = getattr(
+        output_publisher,
+        "publish_configure_run_under_guard",
+        None,
+    )
+    delegations: list[tuple[object, object, object, object]] = []
+
+    @contextmanager
+    def observe_under_guard(rendered: RenderedConfigureRun, **kwargs: object):
+        assert real_under_guard is not None
+        output_guard = kwargs["output_guard"]
+        operation_lease = kwargs["operation_lease"]
+        bootstrap_lease = kwargs["bootstrap_lease"]
+        publication_authorization = kwargs["publication_authorization"]
+        assert type(output_guard).__name__ == "PlainDirectoryMutationGuard"
+        assert type(bootstrap_lease).__name__ == "OutputChildBootstrapLease"
+        assert type(publication_authorization).__name__ == (
+            "OutputPublicationAuthorization"
+        )
+        output_guard.validate()
+        assert observe_output_operation_admission_under_lease(operation_lease) is None
+        assert kwargs["fault_hook"] is output_publisher.no_fault
+        delegations.append(
+            (
+                output_guard,
+                operation_lease,
+                bootstrap_lease,
+                publication_authorization,
+            )
+        )
+        with real_under_guard(rendered, **kwargs) as published:
+            yield published
+
+    monkeypatch.setattr(
+        output_publisher,
+        "publish_configure_run_under_guard",
+        observe_under_guard,
+        raising=False,
+    )
+    first = publish_configure_run(rendered_runs[0], output_root)
+    assert len(delegations) == 1
+    delegations.clear()
+    second = publish_configure_run(rendered_runs[0], output_root)
+    assert len(delegations) == 1
+    assert first.content_root_sha256 == second.content_root_sha256
+    assert second.reused_existing_revision is True
+
+
+def test_neutral_lock_bootstrap_supports_first_legacy_publish_without_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    local = tmp_path / "local-app-data"
+    local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    published = publish_configure_run(
+        rendered_runs[0],
+        tmp_path / "outputs" / "ShadowPriest",
+    )
+    state = local / "HSConfig"
+    assert published.package_root.is_dir()
+    neutral = _tree_snapshot(state)
+    assert "." in neutral and neutral["."][0] == "directory"
+    assert "locks" in neutral and neutral["locks"][0] == "directory"
+    lock_files = {
+        name: row
+        for name, row in neutral.items()
+        if row[0] == "file"
+    }
+    assert "locks/output-operation.lock" in lock_files
+    child_locks = [
+        name
+        for name in lock_files
+        if name.startswith("locks/output-child-") and name.endswith(".lock")
+    ]
+    assert len(child_locks) == 1
+    assert set(neutral) == {
+        ".",
+        "locks",
+        "locks/output-operation.lock",
+        child_locks[0],
+    }
+    assert all(row[2] == b"" for row in lock_files.values())
+
+
+def test_neutral_lock_bootstrap_supports_first_legacy_runtime_writer_without_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig.runtime_apply import apply_package
+    from tests.test_package_immutability_after_apply import _published_output
+
+    source_local = tmp_path / "source-local-app-data"
+    source_local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(source_local))
+    output_root, _revision = _published_output(tmp_path / "published-source")
+    local = tmp_path / "local-app-data"
+    local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    runtime_root = tmp_path / "runtime"
+    result = apply_package(
+        package_root=output_root,
+        runtime_root=runtime_root,
+    )
+    state = local / "HSConfig"
+    assert result["runtime_write_performed"] is True
+    assert (runtime_root / ".hsconfig" / "apply.lock").is_file()
+    neutral = _tree_snapshot(state)
+    assert set(neutral) == {
+        ".",
+        "locks",
+        "locks/output-operation.lock",
+    }
+    assert neutral["."][0] == neutral["locks"][0] == "directory"
+    assert neutral["locks/output-operation.lock"][0] == "file"
+    assert neutral["locks/output-operation.lock"][2] == b""
+
+
+def test_live_preview_and_legacy_publishers_share_output_child_bootstrap_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from queue import Empty
+
+    from tests.test_configure_prepublication_apply import (
+        _physical_tree,
+        _prepare_pipeline,
+    )
+
+    real_lease = output_publisher.lease_output_child_bootstrap
+
+    def assert_route_observes_claim_only_after_lock(
+        *,
+        output_root: Path,
+        route_kind: str,
+        payload_pickle_path: Path,
+        session_root: Path | None,
+        local_app_data: Path,
+        expected_error: str,
+    ) -> None:
+        output_publisher._bootstrap_neutral_output_locks(
+            output_root=output_root
+        )
+        context = multiprocessing.get_context("spawn")
+        status_queue = context.Queue()
+        process = context.Process(
+            target=_output_child_bootstrap_route_worker,
+            args=(
+                route_kind,
+                str(payload_pickle_path),
+                None if session_root is None else str(session_root),
+                str(local_app_data),
+                str(output_root),
+                status_queue,
+            ),
+        )
+        process_started = False
+        try:
+            with real_lease(output_root=output_root):
+                try:
+                    process.start()
+                finally:
+                    process_started = process.pid is not None
+                try:
+                    attempted = status_queue.get(timeout=60)
+                except Empty:
+                    pytest.fail(
+                        "publisher route did not reach the output-child "
+                        "bootstrap lease within 60 seconds"
+                    )
+                assert attempted == ("attempted", "", "")
+                process.join(0.1)
+                assert process.is_alive()
+                claim = output_publisher.output_child_claim_path(output_root)
+                claim.write_bytes(b"{}")
+                after_claim = _physical_tree(output_root.parent)
+            process.join(60)
+            if process.is_alive():
+                pytest.fail(
+                    "publisher route did not finish after bootstrap lease release"
+                )
+            assert process.exitcode == 0
+            try:
+                disposition, error_type, detail = status_queue.get(timeout=10)
+            except Empty:
+                pytest.fail("publisher route did not report its result")
+            assert disposition == "error"
+            assert error_type == "ValueError"
+            assert detail == expected_error
+            assert _physical_tree(output_root.parent) == after_claim
+        finally:
+            process_still_alive = False
+            if process_started:
+                if process.is_alive():
+                    process.terminate()
+                    process.join(10)
+                    if process.is_alive():
+                        process.kill()
+                        process.join(10)
+                process_still_alive = process.is_alive()
+                if not process_still_alive:
+                    process.close()
+            status_queue.close()
+            status_queue.join_thread()
+            if process_still_alive:
+                pytest.fail("publisher route worker could not be stopped")
+
+    prepared = _prepare_pipeline(
+        tmp_path / "preview",
+        monkeypatch,
+        preview=True,
+    )
+    preview_payload = tmp_path / "preview-route.pickle"
+    preview_payload.write_bytes(pickle.dumps(prepared.request))
+    assert_route_observes_claim_only_after_lock(
+        output_root=prepared.output_child_root,
+        route_kind="live-preview",
+        payload_pickle_path=preview_payload,
+        session_root=prepared.session_root,
+        local_app_data=prepared.local_app_data,
+        expected_error="live_start_output_claim_direct_final_invalid",
+    )
+
+    legacy_local = tmp_path / "legacy" / "local-app-data"
+    legacy_local.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(legacy_local))
+    legacy_output_root = tmp_path / "legacy" / "outputs" / "ShadowPriest"
+    legacy_output_root.parent.mkdir(parents=True)
+    legacy_payload = tmp_path / "legacy-route.pickle"
+    legacy_payload.write_bytes(
+        pickle.dumps((str(tmp_path / "legacy-route-source"), 1))
+    )
+    assert_route_observes_claim_only_after_lock(
+        output_root=legacy_output_root,
+        route_kind="legacy",
+        payload_pickle_path=legacy_payload,
+        session_root=None,
+        local_app_data=legacy_local,
+        expected_error="output_child_claim_present",
+    )
+
+
+def test_every_publisher_checks_output_child_claim_under_output_base_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    local = tmp_path / "local-app-data"
+    local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    output_root.parent.mkdir(parents=True)
+    output_root.mkdir()
+    output_publisher._bootstrap_neutral_output_locks(output_root=output_root)
+    claim = output_publisher.output_child_claim_path(output_root)
+    claim.write_bytes(b"{}")
+    with pytest.raises(ValueError, match="claim"):
+        publish_configure_run(rendered_runs[0], output_root)
+    assert not (output_root / "current.json").exists()
+
+
+def test_foreign_or_malformed_output_child_claim_blocks_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _physical_tree,
+        _prepare_pipeline,
+    )
+
+    malformed_root = tmp_path / "malformed"
+    local = malformed_root / "local-app-data"
+    local.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    output_root = malformed_root / "outputs" / "ShadowPriest"
+    output_root.mkdir(parents=True)
+    output_publisher._bootstrap_neutral_output_locks(output_root=output_root)
+    claim = output_publisher.output_child_claim_path(output_root)
+    claim.write_bytes(b"{}")
+    before = _physical_tree(malformed_root / "outputs")
+    with pytest.raises(ValueError, match="claim"):
+        publish_configure_run(rendered_runs[0], output_root)
+    assert _physical_tree(malformed_root / "outputs") == before
+
+    prepared = _prepare_pipeline(tmp_path / "foreign", monkeypatch)
+    interrupted = _interrupt_pipeline(
+        prepared,
+        "AFTER_OUTPUT_CHILD_CLAIM_BOUND",
+    )
+    admission_path = Path(
+        interrupted.output_operation_admission_binding["admission_path"]
+    )
+    admission_path.unlink()
+    before = _physical_tree(prepared.output_base_root)
+    with pytest.raises(ValueError, match="claim"):
+        publish_configure_run(rendered_runs[0], prepared.output_child_root)
+    assert _physical_tree(prepared.output_base_root) == before
+
+
+def test_all_publishers_reject_active_malformed_or_replaced_output_operation_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.output_operation_admission import output_operation_admission_path
+    from hsconfig.runtime_apply import apply_package
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _physical_tree,
+        _prepare_pipeline,
+    )
+    from tests.test_package_immutability_after_apply import _published_output
+
+    for state in ("active", "malformed", "replaced"):
+        for route in ("publisher", "runtime"):
+            case = tmp_path / state / route
+            if state == "malformed":
+                local = case / "local-app-data"
+                local.mkdir(parents=True)
+                monkeypatch.setenv("LOCALAPPDATA", str(local))
+                output_root = case / "outputs" / "ShadowPriest"
+                output_root.mkdir(parents=True)
+                output_publisher._bootstrap_neutral_output_locks(
+                    output_root=output_root
+                )
+                output_operation_admission_path().write_bytes(b"{}")
+                observed_root = case
+            else:
+                prepared = _prepare_pipeline(case, monkeypatch)
+                interrupted = _interrupt_pipeline(
+                    prepared,
+                    "AFTER_OUTPUT_OPERATION_ADMISSION_BOUND",
+                )
+                output_root = prepared.output_child_root
+                local = prepared.local_app_data
+                observed_root = case
+                admission = Path(
+                    interrupted.output_operation_admission_binding[
+                        "admission_path"
+                    ]
+                )
+                if state == "replaced":
+                    raw = admission.read_bytes()
+                    identity = path_identity(admission)
+                    admission.unlink()
+                    admission.write_bytes(raw)
+                    assert path_identity(admission) != identity
+            before = _physical_tree(observed_root)
+            runtime_root = case / "runtime-writer-target"
+            if route == "publisher":
+                with pytest.raises(ValueError, match="admission"):
+                    publish_configure_run(rendered_runs[0], output_root)
+            else:
+                published_root, _revision = _published_output(case / "source")
+                source_after_setup = _physical_tree(observed_root)
+                with pytest.raises(ValueError, match="admission"):
+                    apply_package(
+                        package_root=published_root,
+                        runtime_root=runtime_root,
+                    )
+                assert not runtime_root.exists()
+                before = source_after_setup
+            assert _physical_tree(observed_root) == before
+
+
+def test_ordinary_publisher_rejects_foreign_admission_before_output_parent_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from tests.test_configure_prepublication_apply import (
+        _interrupt_pipeline,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path / "active-owner", monkeypatch)
+    _interrupt_pipeline(
+        prepared,
+        "AFTER_OUTPUT_OPERATION_ADMISSION_BOUND",
+    )
+    unrelated_parent = tmp_path / "unrelated-output-base"
+    unrelated_output = unrelated_parent / "ShadowPriest"
+    assert not unrelated_parent.exists()
+
+    with pytest.raises(ValueError, match="admission"):
+        publish_configure_run(rendered_runs[0], unrelated_output)
+
+    assert not unrelated_parent.exists()
+
+
+def test_runtime_apply_acquires_operation_lease_before_package_publication_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig import runtime_apply
+    from tests.test_package_immutability_after_apply import _published_output
+
+    published_root, _revision = _published_output(tmp_path / "source")
+    order: list[str] = []
+    real_operation_lease = runtime_apply.lease_output_operation_admission
+    real_package_lease = runtime_apply._lease_real_apply_input
+
+    @contextmanager
+    def observed_operation_lease() -> object:
+        order.append("operation")
+        with real_operation_lease() as lease:
+            yield lease
+
+    @contextmanager
+    def observed_package_lease(package_input: Path) -> object:
+        order.append("package")
+        with real_package_lease(package_input) as lease:
+            yield lease
+
+    monkeypatch.setattr(
+        runtime_apply,
+        "lease_output_operation_admission",
+        observed_operation_lease,
+    )
+    monkeypatch.setattr(
+        runtime_apply,
+        "_lease_real_apply_input",
+        observed_package_lease,
+    )
+
+    runtime_apply.apply_package(
+        package_root=published_root,
+        runtime_root=tmp_path / "runtime",
+    )
+
+    assert order[:2] == ["operation", "package"]
+
+
+def test_all_publishers_reject_output_operation_staging_or_reserved_temp_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    from hsconfig.output_operation_admission import (
+        output_operation_admission_reserved_temp_path,
+        output_operation_admission_staging_path,
+    )
+    from hsconfig.runtime_apply import apply_package
+    from tests.test_configure_prepublication_apply import _physical_tree
+    from tests.test_package_immutability_after_apply import _published_output
+
+    for residue_name, residue_path_factory in (
+        ("staging", output_operation_admission_staging_path),
+        ("reserved-temp", output_operation_admission_reserved_temp_path),
+    ):
+        for route in ("publisher", "runtime"):
+            case = tmp_path / residue_name / route
+            local = case / "local-app-data"
+            local.mkdir(parents=True)
+            monkeypatch.setenv("LOCALAPPDATA", str(local))
+            output_root = case / "outputs" / "ShadowPriest"
+            output_root.mkdir(parents=True)
+            output_publisher._bootstrap_neutral_output_locks(
+                output_root=output_root
+            )
+            residue_path_factory().write_bytes(b"residue")
+            runtime_root = case / "runtime-writer-target"
+            before = _physical_tree(case)
+            if route == "publisher":
+                with pytest.raises(ValueError, match="residue"):
+                    publish_configure_run(rendered_runs[0], output_root)
+            else:
+                published_root, _revision = _published_output(case / "source")
+                before = _physical_tree(case)
+                with pytest.raises(ValueError, match="residue"):
+                    apply_package(
+                        package_root=published_root,
+                        runtime_root=runtime_root,
+                    )
+                assert not runtime_root.exists()
+            assert _physical_tree(case) == before
+
+
+def test_public_reconcile_fences_legacy_v1_temp_before_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(
+        tmp_path,
+        monkeypatch,
+        existing_legacy_current=True,
+    ) as live:
+        journals = output_publisher._load_valid_transactions(
+            live.prepared.output_child_root
+        )
+        assert len(journals) == 1
+        _journal_path, legacy = journals[0]
+        assert legacy.schema_version == 1
+        assert legacy.phase == "finalized"
+        transactions = (
+            live.prepared.output_child_root / ".publisher" / "transactions"
+        )
+        legacy_temp = transactions / (
+            f".{legacy.transaction_id}.journal.tmp"
+        )
+        legacy_temp.write_bytes(output_publisher._transaction_bytes(legacy))
+        assert output_publisher.output_child_claim_path(
+            live.prepared.output_child_root
+        ).is_file()
+        assert live.operation_admission is not None
+        output_root = live.prepared.output_child_root
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="^publisher_live_start_authority_active$",
+    ):
+        reconcile_output(output_root)
+
+    assert (
+        _tree_snapshot(output_tree_root),
+        path_identity(admission_path),
+        admission_path.read_bytes(),
+    ) == before
+
+
+def test_owned_atomic_replace_preserves_target_binding_through_secure_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "journal.json"
+    temp_path = tmp_path / ".journal.tmp"
+    original = b"original-journal"
+    replacement = b"replacement-journal"
+    target.write_bytes(original)
+    original_identity = path_identity(target)
+    replacement_identity: tuple[int, int, int] | None = None
+    real_secure_replace = output_publisher.secure_replace
+
+    def swap_target_before_secure_replace(
+        source: Path,
+        delegated_target: Path,
+        **kwargs: object,
+    ) -> None:
+        nonlocal replacement_identity
+        assert source == temp_path
+        assert delegated_target == target
+        same_bytes_replacement = tmp_path / "same-bytes-replacement"
+        same_bytes_replacement.write_bytes(original)
+        replacement_identity = path_identity(same_bytes_replacement)
+        assert replacement_identity != original_identity
+        target.unlink()
+        same_bytes_replacement.rename(target)
+        real_secure_replace(  # type: ignore[arg-type]
+            source,
+            delegated_target,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(
+        output_publisher,
+        "secure_replace",
+        swap_target_before_secure_replace,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_path_identity_changed$",
+    ):
+        output_publisher._owned_atomic_replace(
+            target,
+            replacement,
+            temp_path=temp_path,
+            expected_target_identity=original_identity,
+            expected_target_content=original,
+            temp_stage="after_test_temp_write",
+        )
+
+    assert replacement_identity is not None
+    assert path_identity(target) == replacement_identity
+    assert target.read_bytes() == original
+    assert temp_path.read_bytes() == replacement
+
+
+def test_receiptless_foreign_v2_temp_is_rejected_before_any_promotion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(
+        tmp_path,
+        monkeypatch,
+        existing_legacy_current=True,
+    ) as live:
+        transaction = output_publisher._new_transaction(
+            live.rendered,
+            None,
+            schema_version=2,
+        )
+        assert transaction.phase == "prepared"
+        assert transaction.live_start_commit_receipt is None
+        transactions = (
+            live.prepared.output_child_root / ".publisher" / "transactions"
+        )
+        temp_path = transactions / (
+            f".{transaction.transaction_id}.journal.tmp"
+        )
+        final_path = transactions / f"{transaction.transaction_id}.json"
+        temp_path.write_bytes(output_publisher._transaction_bytes(transaction))
+        parsed = output_publisher._parse_transaction(temp_path.read_bytes())
+        assert parsed == transaction
+        assert parsed.schema_version == 2
+        assert not final_path.exists()
+
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        assert live.operation_admission is not None
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        temp_identity = path_identity(temp_path)
+        temp_bytes = temp_path.read_bytes()
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+        secure_replace_calls: list[tuple[Path, Path]] = []
+        real_secure_replace = output_publisher.secure_replace
+
+        def observed_secure_replace(
+            source: Path,
+            target: Path,
+            **kwargs: object,
+        ) -> None:
+            secure_replace_calls.append((source, target))
+            real_secure_replace(  # type: ignore[arg-type]
+                source,
+                target,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            output_publisher,
+            "secure_replace",
+            observed_secure_replace,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="^publisher_transaction_temp_conflict$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("receiptless foreign v2 temp was resumed")
+
+        assert secure_replace_calls == []
+        assert not final_path.exists()
+        assert path_identity(temp_path) == temp_identity
+        assert temp_path.read_bytes() == temp_bytes
+        assert (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        ) == before
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS ADS is Windows-specific")
+@pytest.mark.parametrize(
+    "surface",
+    (
+        "claim",
+        "unbound-staging",
+        "final-journal",
+        "journal-temp",
+        "current-temp",
+        "current-json",
+    ),
+)
+def test_publisher_authority_files_reject_ntfs_ads_before_observation_or_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    case = tmp_path / surface
+    transactions = case / ".publisher" / "transactions"
+    transactions.mkdir(parents=True)
+    transaction = _unit_transaction()
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name=transaction.deck_name,
+        deck_fingerprint=transaction.deck_fingerprint,
+        revision=transaction.revision,
+        content_root_sha256=transaction.content_root_sha256,
+    )
+    if surface == "claim":
+        target = output_publisher.output_child_claim_path(case)
+        target.write_bytes(b"claim-bytes")
+
+        def invoke() -> object:
+            return output_publisher._claim_fingerprint(case)
+
+    elif surface == "unbound-staging":
+        target = output_publisher.output_child_claim_staging_path(case)
+        target.write_bytes(b"unbound-staging")
+
+        def invoke() -> object:
+            return output_publisher._remove_unbound_plain_file(
+                target,
+                expected_parent_identity=path_identity(case),
+                maximum_size=1024,
+            )
+
+    elif surface == "final-journal":
+        target = transactions / f"{transaction.transaction_id}.json"
+        target.write_bytes(output_publisher._transaction_bytes(transaction))
+
+        def invoke() -> object:
+            return output_publisher._recover_owned_atomic_temps(
+                case,
+                current_revision=None,
+            )
+
+    elif surface == "journal-temp":
+        target = transactions / f".{transaction.transaction_id}.journal.tmp"
+        target.write_bytes(output_publisher._transaction_bytes(transaction))
+
+        def invoke() -> object:
+            return output_publisher._recover_owned_atomic_temps(
+                case,
+                current_revision=None,
+            )
+
+    elif surface == "current-temp":
+        final = transactions / f"{transaction.transaction_id}.json"
+        final.write_bytes(output_publisher._transaction_bytes(transaction))
+        target = transactions / f".{transaction.transaction_id}.current.tmp"
+        target.write_bytes(output_publisher.output_publication_bytes(publication))
+
+        def invoke() -> object:
+            return output_publisher._recover_owned_atomic_temps(
+                case,
+                current_revision=None,
+            )
+
+    else:
+        target = case / "current.json"
+        target.write_bytes(output_publisher.output_publication_bytes(publication))
+
+        def invoke() -> object:
+            return output_publisher._snapshot_pointer(case)
+
+    stream = Path(f"{target}:unbound")
+    stream_bytes = b"unbound authority bytes\n"
+    try:
+        stream.write_bytes(stream_bytes)
+    except OSError as error:
+        pytest.skip(f"NTFS ADS unavailable: {error}")
+    monkeypatch.setattr(
+        output_publisher,
+        "_validate_publisher_residue",
+        lambda *_args, **_kwargs: None,
+    )
+    before = _tree_snapshot(case)
+    observed_error: ValueError | None = None
+    try:
+        invoke()
+    except ValueError as error:
+        observed_error = error
+    after = _tree_snapshot(case)
+    stream_after = stream.read_bytes() if stream.exists() else None
+
+    assert (
+        None if observed_error is None else str(observed_error),
+        after,
+        stream_after,
+    ) == (
+        "filesystem_alternate_data_stream_forbidden",
+        before,
+        stream_bytes,
+    )
+
+
+def _pointer_receipt_for_ads_test(
+    *,
+    identity: tuple[int, int, int],
+    content: bytes,
+) -> output_publisher._LiveStartCommitReceipt:
+    digest = "sha256:" + output_publisher.sha256(content).hexdigest()
+    unsigned: dict[str, object] = {
+        "schema_version": 1,
+        "receipt_kind": "live_start_current_pointer_commit",
+        "disposition": "pointer_staged",
+        "expected_session_sha256": "sha256:" + "a" * 64,
+        "operation_admission_identity": [1, 2, 3],
+        "operation_admission_sha256": "sha256:" + "b" * 64,
+        "claim_identity": [4, 5, 6],
+        "claim_sha256": "sha256:" + "c" * 64,
+        "output_child_identity": [7, 8, 9],
+        "pointer_predecessor_identity": list(identity),
+        "pointer_predecessor_size": len(content),
+        "pointer_predecessor_sha256": digest,
+        "pointer_staging_identity": list(identity),
+        "planned_pointer_size": len(content),
+        "planned_pointer_sha256": digest,
+        "owner_journal_predecessor_identity": None,
+        "owner_journal_identity": None,
+    }
+    payload = {
+        **unsigned,
+        "content_sha256": "sha256:"
+        + output_publisher.sha256(
+            output_publisher._canonical_json_bytes(unsigned)
+        ).hexdigest(),
+    }
+    return output_publisher._parse_live_start_commit_receipt(payload)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS ADS is Windows-specific")
+@pytest.mark.parametrize("surface", ("current", "predecessor"))
+def test_pointer_receipt_ads_is_rejected_before_authority_bytes_are_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    pointer = tmp_path / "current.json"
+    content = b"pointer-authority\n"
+    pointer.write_bytes(content)
+    receipt = _pointer_receipt_for_ads_test(
+        identity=path_identity(pointer),
+        content=content,
+    )
+    stream = Path(f"{pointer}:unbound")
+    stream.write_bytes(b"foreign-stream")
+    before = _tree_snapshot(tmp_path)
+    reads: list[Path] = []
+    real_read = output_publisher.read_file_no_follow
+
+    def observed_read(path: Path, **kwargs: object) -> bytes:
+        reads.append(path)
+        return real_read(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(output_publisher, "read_file_no_follow", observed_read)
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_alternate_data_stream_forbidden$",
+    ):
+        if surface == "current":
+            output_publisher._require_current_pointer_receipt_exact(
+                tmp_path,
+                receipt,
+                content,
+            )
+        else:
+            output_publisher._require_pointer_predecessor_exact(
+                tmp_path,
+                receipt,
+            )
+
+    assert reads == []
+    assert _tree_snapshot(tmp_path) == before
+    assert stream.read_bytes() == b"foreign-stream"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS ADS is Windows-specific")
+@pytest.mark.parametrize(
+    "surface",
+    ("existing-journal-fallback", "owned-temp-verification", "target-content"),
+)
+def test_atomic_replace_ads_is_rejected_before_authority_read_or_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    reads: list[Path] = []
+    replacements: list[tuple[Path, Path]] = []
+    injected_before: dict[
+        str,
+        tuple[str, tuple[int, int, int], bytes | None],
+    ] | None = None
+    real_read = output_publisher.read_file_no_follow
+    real_replace = output_publisher.secure_replace
+
+    def observed_read(path: Path, **kwargs: object) -> bytes:
+        reads.append(path)
+        return real_read(path, **kwargs)  # type: ignore[arg-type]
+
+    def observed_replace(source: Path, target: Path, **kwargs: object) -> None:
+        replacements.append((source, target))
+        real_replace(source, target, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(output_publisher, "read_file_no_follow", observed_read)
+    monkeypatch.setattr(output_publisher, "secure_replace", observed_replace)
+    transaction = _unit_transaction()
+    if surface == "existing-journal-fallback":
+        target = tmp_path / f"{transaction.transaction_id}.json"
+        target.write_bytes(output_publisher._transaction_bytes(transaction))
+        stream_owner = target
+
+        def invoke() -> object:
+            return output_publisher._write_transaction(target, transaction)
+
+    elif surface == "owned-temp-verification":
+        target = tmp_path / "target"
+        temp_path = tmp_path / ".target.tmp"
+        stream_owner = temp_path
+        real_status = output_publisher.plain_file_status
+
+        def status_with_ads(path: Path) -> os.stat_result:
+            nonlocal injected_before
+            status = real_status(path)
+            if path == temp_path and injected_before is None:
+                Path(f"{path}:unbound").write_bytes(b"foreign-stream")
+                injected_before = _tree_snapshot(tmp_path)
+            return status
+
+        monkeypatch.setattr(
+            output_publisher,
+            "plain_file_status",
+            status_with_ads,
+        )
+
+        def invoke() -> object:
+            return output_publisher._owned_atomic_replace(
+                target,
+                b"replacement",
+                temp_path=temp_path,
+                temp_stage="after_test_temp_write",
+            )
+
+    else:
+        target = tmp_path / "target"
+        content = b"target-content"
+        target.write_bytes(content)
+        stream_owner = target
+
+        def invoke() -> object:
+            return output_publisher._validate_owned_replace_target(
+                target,
+                expected_identity=path_identity(target),
+                expected_content=content,
+            )
+
+    if surface != "owned-temp-verification":
+        Path(f"{stream_owner}:unbound").write_bytes(b"foreign-stream")
+    before = _tree_snapshot(tmp_path)
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_alternate_data_stream_forbidden$",
+    ):
+        invoke()
+
+    assert reads == []
+    assert replacements == []
+    assert _tree_snapshot(tmp_path) == (
+        injected_before
+        if surface == "owned-temp-verification"
+        else before
+    )
+    assert Path(f"{stream_owner}:unbound").read_bytes() == b"foreign-stream"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS ADS is Windows-specific")
+def test_bound_output_admission_ads_is_rejected_before_publisher_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig.live_start_faults import LiveStartFaultPoint
+    from hsconfig.output_operation_admission import output_operation_admission_path
+    from tests.test_configure_prepublication_apply import (
+        _drive_pipeline,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    final_path = output_operation_admission_path()
+    reads: list[Path] = []
+    injected_tree: dict[
+        str,
+        tuple[str, tuple[int, int, int], bytes | None],
+    ] | None = None
+    injected_final: tuple[tuple[int, int, int], bytes] | None = None
+    stream = Path(f"{final_path}:unbound")
+    real_read = output_publisher.read_file_no_follow
+
+    def observed_read(path: Path, **kwargs: object) -> bytes:
+        if path == final_path:
+            reads.append(path)
+        return real_read(path, **kwargs)  # type: ignore[arg-type]
+
+    def inject_after_bound_commit(point: LiveStartFaultPoint) -> None:
+        nonlocal injected_tree, injected_final
+        if (
+            point
+            is LiveStartFaultPoint.AFTER_OUTPUT_OPERATION_ADMISSION_BOUND_COMMIT_BEFORE_CAS
+        ):
+            stream.write_bytes(b"foreign-stream")
+            injected_tree = _tree_snapshot(prepared.output_base_root)
+            injected_final = (path_identity(final_path), final_path.read_bytes())
+
+    monkeypatch.setattr(output_publisher, "read_file_no_follow", observed_read)
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_alternate_data_stream_forbidden$",
+    ):
+        _drive_pipeline(prepared, fault_hook=inject_after_bound_commit)
+
+    assert injected_tree is not None
+    assert injected_final is not None
+    assert reads == []
+    assert _tree_snapshot(prepared.output_base_root) == injected_tree
+    assert (path_identity(final_path), final_path.read_bytes()) == injected_final
+    assert stream.read_bytes() == b"foreign-stream"
+    assert not (prepared.output_child_root / "current.json").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS ADS is Windows-specific")
+def test_publication_staging_ads_is_rejected_before_read_or_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    output_root = tmp_path / "outputs" / "ShadowPriest"
+    revisions = output_root / "revisions"
+    destination = revisions / ".staging-ads-test"
+    destination.mkdir(parents=True)
+    reads: list[Path] = []
+    replacements: list[tuple[Path, Path]] = []
+    injected_tree: dict[
+        str,
+        tuple[str, tuple[int, int, int], bytes | None],
+    ] | None = None
+    injected_target: Path | None = None
+    real_status = output_publisher.plain_file_status
+    real_read = output_publisher.read_file_no_follow
+    real_replace = output_publisher.secure_replace
+
+    def status_with_ads(path: Path) -> os.stat_result:
+        nonlocal injected_tree, injected_target
+        status = real_status(path)
+        if (
+            path.is_relative_to(destination)
+            and stat.S_ISREG(status.st_mode)
+            and injected_target is None
+        ):
+            injected_target = path
+            Path(f"{path}:unbound").write_bytes(b"foreign-stream")
+            injected_tree = _tree_snapshot(output_root)
+        return status
+
+    def observed_read(path: Path, **kwargs: object) -> bytes:
+        if path.is_relative_to(destination):
+            reads.append(path)
+        return real_read(path, **kwargs)  # type: ignore[arg-type]
+
+    def observed_replace(source: Path, target: Path, **kwargs: object) -> None:
+        replacements.append((source, target))
+        real_replace(source, target, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(output_publisher, "plain_file_status", status_with_ads)
+    monkeypatch.setattr(output_publisher, "read_file_no_follow", observed_read)
+    monkeypatch.setattr(output_publisher, "secure_replace", observed_replace)
+    with pytest.raises(
+        ValueError,
+        match="^filesystem_alternate_data_stream_forbidden$",
+    ):
+        output_publisher._write_rendered_run(rendered_runs[0], destination)
+
+    assert injected_tree is not None
+    assert injected_target is not None
+    assert reads == []
+    assert replacements == []
+    assert _tree_snapshot(output_root) == injected_tree
+    assert Path(f"{injected_target}:unbound").read_bytes() == b"foreign-stream"
+    assert not (output_root / "current.json").exists()
+    assert not any(path.name.startswith("rev-") for path in revisions.iterdir())
+
+
+def test_receiptless_v2_final_with_pointer_temp_is_rejected_before_unlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    output_publisher._ensure_layout(output_root)
+    transaction = output_publisher._new_transaction(
+        rendered_runs[0],
+        None,
+        schema_version=2,
+    )
+    assert transaction.phase == "prepared"
+    assert transaction.live_start_commit_receipt is None
+    transactions = output_root / ".publisher" / "transactions"
+    final_path = transactions / f"{transaction.transaction_id}.json"
+    pointer_temp = transactions / f".{transaction.transaction_id}.current.tmp"
+    final_path.write_bytes(output_publisher._transaction_bytes(transaction))
+    publication = output_publisher.OutputPublication(
+        schema_version=output_publisher.CURRENT_SCHEMA_VERSION,
+        deck_name=transaction.deck_name,
+        deck_fingerprint=transaction.deck_fingerprint,
+        revision=transaction.revision,
+        content_root_sha256=transaction.content_root_sha256,
+    )
+    pointer_temp.write_bytes(output_publisher.output_publication_bytes(publication))
+    authority = output_publisher._LiveStartTempRecoveryAuthority(
+        expected_session_sha256="sha256:" + "a" * 64,
+        operation_admission_identity=(1, 2, 3),
+        operation_admission_sha256="sha256:" + "b" * 64,
+        claim_identity=(4, 5, 6),
+        claim_sha256="sha256:" + "c" * 64,
+        output_child_identity=path_identity(output_root),
+    )
+    before = _tree_snapshot(output_root)
+    unlink_calls: list[Path] = []
+    real_secure_unlink = output_publisher.secure_unlink
+
+    def observed_secure_unlink(path: Path, **kwargs: object) -> None:
+        unlink_calls.append(path)
+        real_secure_unlink(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        output_publisher,
+        "secure_unlink",
+        observed_secure_unlink,
+    )
+    monkeypatch.setattr(
+        output_publisher,
+        "_validate_publisher_residue",
+        lambda *_args, **_kwargs: None,
+    )
+    observed_error: ValueError | None = None
+    try:
+        output_publisher._recover_owned_atomic_temps(
+            output_root,
+            current_revision=None,
+            preserve_bound_live_pointer_temps=True,
+            live_start_authority=authority,
+        )
+    except ValueError as error:
+        observed_error = error
+
+    assert (
+        None if observed_error is None else str(observed_error)
+    ) == "publisher_transaction_temp_conflict"
+    assert unlink_calls == []
+    assert _tree_snapshot(output_root) == before
+
+
+@pytest.mark.parametrize(
+    "authority_field",
+    ("session", "operation", "claim", "output-child"),
+)
+def test_v2_transaction_temp_requires_matching_live_authority_before_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority_field: str,
+) -> None:
+    class PointerCommittedJournalTempCrash(BaseException):
+        pass
+
+    with _task8_live_output_context(tmp_path, monkeypatch) as live:
+        _leave_live_pointer_staging_bound(live, monkeypatch)
+        first_authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+
+        def crash_after_pointer_committed_temp_flush(stage: str) -> None:
+            if stage == "after_journal_pointer_committed_temp_write":
+                raise PointerCommittedJournalTempCrash
+
+        with pytest.raises(PointerCommittedJournalTempCrash):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=first_authorization,
+                fault_hook=crash_after_pointer_committed_temp_flush,
+            ):
+                raise AssertionError(
+                    "pointer-committed journal temp crash was not reached"
+                )
+
+        transactions = (
+            live.prepared.output_child_root / ".publisher" / "transactions"
+        )
+        final_paths = list(transactions.glob("[0-9a-f]*.json"))
+        temp_paths = list(transactions.glob(".*.journal.tmp"))
+        assert len(final_paths) == 1
+        assert len(temp_paths) == 1
+        final_transaction = output_publisher._parse_transaction(
+            final_paths[0].read_bytes()
+        )
+        temp_path = temp_paths[0]
+        temp_identity = path_identity(temp_path)
+        temp_transaction = output_publisher._parse_transaction(
+            temp_path.read_bytes()
+        )
+        assert final_transaction.phase == "pointer_staging_bound"
+        assert temp_transaction.phase == "pointer_committed"
+        receipt = temp_transaction.live_start_commit_receipt
+        assert receipt is not None
+        assert receipt.owner_journal_identity == temp_identity
+
+        def changed_identity(
+            identity: tuple[int, int, int],
+        ) -> tuple[int, int, int]:
+            return (identity[0], identity[1] + 1, identity[2])
+
+        receipt_payload = (
+            output_publisher._live_start_commit_receipt_unsigned_payload(
+                receipt
+            )
+        )
+        if authority_field == "session":
+            receipt_payload["expected_session_sha256"] = (
+                "sha256:" + "0" * 64
+            )
+        elif authority_field == "operation":
+            receipt_payload["operation_admission_identity"] = list(
+                changed_identity(receipt.operation_admission_identity)
+            )
+        elif authority_field == "claim":
+            receipt_payload["claim_identity"] = list(
+                changed_identity(receipt.claim_identity)
+            )
+        else:
+            receipt_payload["output_child_identity"] = list(
+                changed_identity(receipt.output_child_identity)
+            )
+        receipt_payload["content_sha256"] = "sha256:" + output_publisher.sha256(
+            output_publisher._canonical_json_bytes(receipt_payload)
+        ).hexdigest()
+        tampered_receipt = output_publisher._parse_live_start_commit_receipt(
+            receipt_payload
+        )
+        assert tampered_receipt.owner_journal_identity == temp_identity
+        temp_path.write_bytes(
+            output_publisher._transaction_bytes(
+                replace(
+                    temp_transaction,
+                    live_start_commit_receipt=tampered_receipt,
+                )
+            )
+        )
+        assert path_identity(temp_path) == temp_identity
+
+        second_authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="^output_publication_authorization_expired$",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=second_authorization,
+            ):
+                raise AssertionError("tampered v2 temp was resumed")
+
+        assert (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        ) == before
+
+
+def test_legacy_v1_owner_identity_replacement_blocks_v2_upgrade_temp_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task8_live_output_context(
+        tmp_path,
+        monkeypatch,
+        existing_legacy_current=True,
+    ) as live:
+        _transactions, final_path, temp_path = (
+            _leave_legacy_finalized_owner_v2_upgrade_temp(
+                live,
+                monkeypatch,
+            )
+        )
+        legacy_bytes = final_path.read_bytes()
+        legacy_identity = path_identity(final_path)
+        same_bytes_replacement = final_path.with_name("legacy-replacement")
+        same_bytes_replacement.write_bytes(legacy_bytes)
+        replacement_identity = path_identity(same_bytes_replacement)
+        assert replacement_identity != legacy_identity
+        final_path.unlink()
+        same_bytes_replacement.rename(final_path)
+        assert path_identity(final_path) == replacement_identity
+        assert temp_path.is_file()
+        authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+            operation_lease=live.operation_lease,
+            bootstrap_lease=live.bootstrap_lease,
+            output_guard=live.guard,
+            operation_admission=live.operation_admission,
+            session_lease=live.session_lease,
+            expected_session=live.current,
+            profile_lease=live.profile_lease,
+        )
+        output_tree_root = live.prepared.output_base_root
+        admission_path = live.operation_admission.admission_path
+        before = (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="identity|authority|conflict|changed",
+        ):
+            with output_publisher.publish_configure_run_under_guard(
+                live.rendered,
+                output_guard=live.guard,
+                operation_lease=live.operation_lease,
+                bootstrap_lease=live.bootstrap_lease,
+                publication_authorization=authorization,
+            ):
+                raise AssertionError("replaced legacy owner was upgraded")
+
+        assert (
+            _tree_snapshot(output_tree_root),
+            path_identity(admission_path),
+            admission_path.read_bytes(),
+        ) == before
