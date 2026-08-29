@@ -33,6 +33,17 @@ one-directory-at-a-time layout binding -> invocation receipt -> APPLY_STARTED
 was required by the final crash-window review and is part of the approved plan;
 implementers must not restore the earlier receipt-before-admission sequence.
 
+**Focused Task 9 clarification:** The `install_apply_invocation` intent also
+persists the exact canonical invocation-document byte size as
+`apply_invocation_document_size`. The size is derived internally from the
+already sealed `ApplyInvocation`, is carried unchanged through every pending
+successor, and is the sole size authority for the invocation-receipt file action
+installed by the final runtime-layout CAS. This closes the crash-resume gap in
+which the persisted invocation digests alone cannot determine the byte size.
+No valid `install_apply_invocation` cursor predates Task 9, so a cursor missing
+this required field is invalid; no recapture, guessed size, or legacy upgrade is
+permitted.
+
 ## Global Constraints
 
 - Work directly on the sole local `main`; do not create a branch, worktree,
@@ -3143,7 +3154,8 @@ pending_transition:
   cleanup_inventory_identity, cleanup_inventory_size,
   cleanup_inventory_sha256, quarantine_path, cleanup_parent_identity,
   quarantine_identity, cleanup_cursor, apply_attempt_id,
-  apply_invocation_sha256, runtime_admission_document_size,
+  apply_invocation_sha256, apply_invocation_document_size,
+  runtime_admission_document_size,
   runtime_admission_document_sha256,
   runtime_admission_path, runtime_admission_staging_path,
   runtime_admission_staging_inner_temp_path,
@@ -3395,8 +3407,13 @@ outside that row may detect unknown state but cannot authorize it.
 
 Only `install_apply_invocation` may populate the apply/admission fields in
 `pending_transition`. Its `PREPARED` row requires exact attempt ID, invocation
-self-digest, planned admission-document byte size/digest, and canonical admission
-and attempt-owned staging/inner-temp paths plus exact state-parent identity.
+self-digest, canonical invocation-document byte size, planned admission-document
+byte size/digest, and canonical admission and attempt-owned staging/inner-temp
+paths plus exact state-parent identity. The invocation size is an exact non-bool
+integer from 1 through `APPLY_INVOCATION_MAX_BYTES`, is derived only as
+`len(invocation.canonical_json)` during Prepare, and remains unchanged through
+`PREPARED`, `STAGING_BOUND`, `PRIMARY_APPLIED`, every runtime-layout CAS, and
+the invocation-receipt subcursor. It is null for every other pending operation.
 Its `external_file_action` is `PLANNED` and physical admission and staging
 identities/digests remain null. Only a materialization receipt may CAS
 `STAGING_BOUND` with the exact staging identity/size/digest. Only the following
@@ -3407,7 +3424,12 @@ layout are still null. The next session CAS installs the exact ordered
 `runtime_layout_bootstrap`; its seven receipt CASes bind one directory identity
 at a time. The last directory receipt marks the layout `COMPLETE` and installs a
 fresh nested `external_file_action=PLANNED` for the deterministic
-invocation-receipt final/staging/inner-temp paths and planned canonical bytes. A
+invocation-receipt final/staging/inner-temp paths and planned canonical bytes.
+That action takes `planned_successor_size` only from the persisted
+`apply_invocation_document_size` and takes `planned_successor_sha256` only from
+the already persisted raw-byte digest in `successor_artifact_bindings`; neither
+an in-memory invocation, receipt-file observation, nor runtime recapture may
+supply or alter either value. A
 final-only admission while still `PREPARED` is tamper and is never captured.
 Materialize and commit receipts advance only that nested action while the outer
 stage remains `PRIMARY_APPLIED`. The final
@@ -6636,9 +6658,10 @@ The implementation order is fixed:
 1. seal the invocation and planned admission bytes in memory, then CAS an
    `install_apply_invocation/PREPARED` transition from the explicit
    `PUBLICATION_COMMITTED` cursor; it binds attempt ID, invocation self-digest,
-   admission path, exact profile-state-parent identity, and planned admission-
-   document byte size/digest but performs no physical write; the helper accepts that
-   parent identity explicitly and never recaptures it;
+   exact canonical invocation-document byte size, admission path, exact
+   profile-state-parent identity, and planned admission-document byte
+   size/digest but performs no physical write; the helper accepts that parent
+   identity explicitly and never recaptures it;
 2. under the same profile, package/publication, and runtime leases, mint one
    runtime-admission materialize authorization and execute it before any raw
    admission observation. After exact staging is flushed, fault at
@@ -6654,7 +6677,9 @@ The implementation order is fixed:
    fault after its postcondition before receipt CAS, then consume the receipt to
    bind the exact identity and next cursor. After the last row the binding is
    `COMPLETE` and the same CAS installs the nested invocation-receipt file action
-   as durably `PLANNED`;
+   as durably `PLANNED`, with its exact size copied from the persisted
+   `apply_invocation_document_size` and its raw-byte digest copied from the
+   persisted invocation artifact binding;
 5. Task 10 validates the still-active session/profile/output-operation/pair and
    both exact final admission records, mints one receipt-materialize bearer,
    and passes it through `_execute_invocation_receipt_step_from_context()`.
@@ -7225,6 +7250,15 @@ CAS binds its identity before the next directory or any child authority file.
 The completed binding remains in the session and supplies every parent identity
 to the invocation and recovery cursors without recapture. A crash at any row is
 globally fenced by the already committed runtime admission.
+
+On the seventh row,
+`bootstrap_runtime_layout_directory_from_pair()` must build the planned
+invocation-receipt action exclusively from the current sealed session cursor:
+the canonical byte size comes from `apply_invocation_document_size`, and the
+raw-byte digest comes from `successor_artifact_bindings`. It receives no
+`ApplyInvocation`, does not read a receipt or staging file, and does not
+recapture runtime state. The final layout receipt CAS rejects any different
+size even when the supplied digest and paths are otherwise valid.
 
 Consume Task 3's shared `atomic_materialize_staging_bytes()` and
 `atomic_commit_bound_staging_no_replace()` plus Task 8's sole replace extension
