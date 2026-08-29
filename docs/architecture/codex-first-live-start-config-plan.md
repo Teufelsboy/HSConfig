@@ -54,6 +54,76 @@ derives and binds the canonical candidate-tree manifest digest, entry count,
 zero cursor, and exact first-next-entry fields. The schema-2 retention record
 does not duplicate that manifest authority.
 
+**Focused Task 9 candidate-manifest clarification:** The canonical candidate
+manifest is a closed schema-1 JSON object with exactly `schema_version`,
+`manifest_kind`, and `entries`; `manifest_kind` is exactly
+`hsconfig_candidate_tree`, and `schema_version` is exactly the JSON integer
+`1`, with Boolean values rejected as integers. `entries` is a positive list
+bounded by `MAX_FILESYSTEM_NODES`. Each entry has exactly `relative_path`,
+`kind`, `source_identity`, `size`, and `sha256`; `kind` is exactly
+`directory|file`, `source_identity` is the existing JSON `PathIdentity` list
+of exactly three non-Boolean integers, and `size` is a bounded non-Boolean
+integer. Entries contain every runtime-package file plus every non-root parent
+directory derived from those file paths, with no empty or additional source
+directory. Runtime file rows are exactly `_RuntimePackageSpec.files`. Define
+`source_runtime_root = lease.package_root / "CustomConfig" /
+spec.logical_config_dir`; the physical source path for every file or derived
+directory row is `source_runtime_root / relative_path`, and
+`source_runtime_root` itself is not a manifest row.
+
+Paths use the existing NFC and canonical runtime-relative grammar, and the
+`entries` array preserves Python `sorted(relative_path)` order; a file and
+directory may never share one path, so this also places every parent before
+its descendants. Manifest bytes are exactly
+`json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":"),
+sort_keys=True).encode("utf-8")`, with no BOM or final newline. The manifest
+digest is `sha256:` plus the lowercase SHA-256 of those bytes. A file row binds
+the leased physical source file identity, exact package-manifest size, and
+lowercase prefixed raw-byte digest. A directory row binds the leased physical
+source directory identity, size zero, and the lowercase prefixed SHA-256 of
+empty bytes. All `sha256` fields use exactly `sha256:<64-lowercase-hex>`.
+Before `bind_candidate_fence`, before every candidate-entry mutation, and
+before verify, rename, and owner binding, the complete manifest is recomputed
+under the active package lease from the original leased snapshot authority
+plus bounded no-follow checks of physical path, identity, type, bytes, ADS
+state, and package-manifest commitments. At `bind_candidate_fence`, that
+recomputation derives and binds the manifest digest, positive exact row count,
+cursor zero, and `entries[0]` as the sole `candidate_tree_next_*` authority; no
+predecessor manifest authority is recaptured or compared. Before
+`materialize_candidate_tree_entry`, the recomputed digest and count must equal
+the persisted values and `entries[cursor]` must equal the persisted
+`candidate_tree_next_*` row. The receipt CAS advances the cursor by exactly one
+and, from that same recomputed manifest, binds `entries[cursor + 1]` as the new
+next row or clears every next-row field when the new cursor equals count.
+Before verify, rename, and owner binding, the recomputed digest and count must
+remain exact, the cursor must equal the count, every next-row field must be
+null, and full destination-tree parity must pass before mutation.
+
+At `bind_candidate_fence`, the first row must be top-level; its destination
+parent identity is the already bound Candidate-root identity. After each
+`materialize_candidate_tree_entry` receipt, the next row is copied from the
+same recomputed manifest and its destination parent is required to be either
+the Candidate root or an earlier manifest directory. That parent is accepted
+only after a bounded no-follow verification of the exact already-materialized
+manifest prefix under the unchanged Candidate-root identity, and its captured
+identity is persisted in `candidate_tree_next_parent_identity` as the sole
+parent authority for exactly the currently named row. The cursor CAS clears or
+replaces it for the next row; it is excluded only from the candidate manifest,
+schema-2 retention record, and final ownership authority. File-content-
+equivalent action-before-CAS replacement remains permitted only where the
+existing candidate-leaf contract permits it; unsafe type, reparse, hardlink,
+ADS, membership, bytes, source identity, root identity, or parent changes fail
+before the next mutation.
+
+This clarification fixes the previously unspecified candidate-manifest
+representation and source revalidation. It does not change the signed
+New-Target action graph, Candidate create-or-confirm contract, per-entry
+receipt/CAS boundaries, content-equivalent file postcondition, full-tree
+verification, rename, owner binding, Task-9 file scope, or Task-10 ownership.
+The earlier generic statement that the New-Target route binds a package-tree
+manifest is superseded only on manifest-binding timing by the focused
+route-fence clarification; every consistent later clause remains cumulative.
+
 ## Global Constraints
 
 - Work directly on the sole local `main`; do not create a branch, worktree,
