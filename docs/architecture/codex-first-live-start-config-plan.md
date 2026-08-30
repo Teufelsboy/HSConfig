@@ -124,6 +124,17 @@ The earlier generic statement that the New-Target route binds a package-tree
 manifest is superseded only on manifest-binding timing by the focused
 route-fence clarification; every consistent later clause remains cumulative.
 
+**Focused Task 9 Prior-Owner v1 clarification:** The Prior-Owner schema-1
+`PREPARED` journal retains the existing closed schema-1 invariant:
+`target_identity=null` and `owns_target=false`. The deterministic target
+identity and separate exact `FINALIZED,owns_target=true` owner evidence are
+carried by schema-2 `PRIOR_OWNER_PLANNED|PRIOR_OWNER_BOUND` while v1 remains
+`PREPARED`. After durable INI confirmation, the staged direct v1 successor
+`PREPARED -> INI_COMMITTED` additionally binds that already schema-2-authorized
+target identity and retains `owns_target=false`; the separate owner remains the
+ownership authority throughout. This clarification changes no schema-1 parser,
+serializer, validator, monotonicity rule, or journal bytes.
+
 ## Global Constraints
 
 - Work directly on the sole local `main`; do not create a branch, worktree,
