@@ -15,6 +15,7 @@ from hsconfig.runtime_transaction_journal import (
     load_runtime_transaction_journals,
     read_runtime_transaction_journal,
     runtime_transaction_journal_bytes,
+    runtime_transaction_journal_path,
     write_runtime_transaction_journal,
 )
 
@@ -354,3 +355,208 @@ def test_finalized_owner_requires_matching_candidate_and_target_identity() -> No
         owns_target=True,
     )
     assert finalized.owns_target is True
+
+
+def test_transaction_id_requires_exact_lowercase_hex(tmp_path: Path) -> None:
+    valid = "a" * 32
+    assert runtime_transaction_journal_path(tmp_path, valid) == (
+        tmp_path / ".hsconfig" / "transactions" / f"{valid}.json"
+    )
+    for invalid in (
+        "A" * 32,
+        "a" * 31,
+        "a" * 33,
+        "g" * 32,
+        "0" * 31 + "-",
+        True,
+        Path(valid),
+        None,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="runtime_transaction_journal_invalid",
+        ):
+            runtime_transaction_journal_path(  # type: ignore[arg-type]
+                tmp_path,
+                invalid,
+            )
+
+
+def test_schema_v1_owner_bytes_remain_exact_and_field_absent() -> None:
+    owner = replace(
+        journal_fixture(),
+        phase=RuntimeTransactionPhase.FINALIZED,
+        target_identity=(7, 8, 0o40700),
+        owns_target=True,
+    )
+    document = json.loads(runtime_transaction_journal_bytes(owner))
+    assert document["schema_version"] == 1
+    assert set(document) == {
+        "schema_version",
+        "transaction_id",
+        "deck_name",
+        "source_manifest_sha256",
+        "state_key",
+        "logical_config_dir",
+        "package_root_sha256",
+        "candidate_path",
+        "target_path",
+        "candidate_identity",
+        "target_identity",
+        "owns_target",
+        "previous_config_dir",
+        "next_config_dir",
+        "previous_ini_sha256",
+        "next_ini_sha256",
+        "phase",
+        "cleanup_started",
+        "cleanup_entries",
+        "cleanup_cursor",
+    }
+    assert document["owns_target"] is True
+    assert not any(
+        "attempt" in field or "retention" in field
+        for field in document
+    )
+
+
+def test_schema_v2_attempt_record_is_separate_from_schema_v1_target_owner(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    import hsconfig.runtime_installer as runtime_installer
+    from hsconfig.package_io import path_identity
+
+    runtime_root = tmp_path / "runtime"
+    transactions = runtime_root / ".hsconfig" / "transactions"
+    retentions = runtime_root / ".hsconfig" / "attempt-retention"
+    target = runtime_root / "CustomConfig" / (
+        "shadowpriest--sha256-" + "a" * 64
+    )
+    transactions.mkdir(parents=True)
+    retentions.mkdir()
+    target.mkdir(parents=True)
+    target_identity = path_identity(target)
+    owner = replace(
+        journal_fixture(),
+        candidate_identity=target_identity,
+        target_identity=target_identity,
+        phase=RuntimeTransactionPhase.FINALIZED,
+        owns_target=True,
+    )
+    owner_path = runtime_transaction_journal_path(
+        runtime_root,
+        owner.transaction_id,
+    )
+    write_runtime_transaction_journal(owner_path, owner)
+    attempt_id = "2" * 32
+    retention_raw = runtime_installer.build_runtime_attempt_retention_bytes(
+        runtime_root=runtime_root,
+        state="ACTIVE",
+        apply_attempt_id=attempt_id,
+        retention_owner_run_id="3" * 32,
+        journal_path=None,
+        journal_identity=None,
+        journal_sha256=None,
+        package_root_sha256=None,
+        target_path=None,
+        target_identity=None,
+        owns_target=None,
+        target_owner_journal_path=None,
+        target_owner_journal_identity=None,
+        target_owner_journal_sha256=None,
+        planned_journal_path=None,
+        planned_journal_size=None,
+        planned_journal_sha256=None,
+        candidate_path=None,
+        candidate_parent_identity=None,
+        candidate_identity=None,
+    )
+    retention_path = retentions / f"{attempt_id}.json"
+    retention_path.write_bytes(retention_raw)
+    retention_document = json.loads(retention_raw)
+
+    assert retention_document["schema_version"] == 2
+    assert retention_document["record_kind"] == (
+        "live_start_runtime_attempt_retention"
+    )
+    assert set(retention_document) == {
+        "schema_version",
+        "record_kind",
+        "state",
+        "apply_attempt_id",
+        "retention_owner_run_id",
+        "journal_path",
+        "journal_identity",
+        "journal_sha256",
+        "package_root_sha256",
+        "target_path",
+        "target_identity",
+        "owns_target",
+        "target_owner_journal_path",
+        "target_owner_journal_identity",
+        "target_owner_journal_sha256",
+        "planned_journal_path",
+        "planned_journal_size",
+        "planned_journal_sha256",
+        "candidate_path",
+        "candidate_parent_identity",
+        "candidate_identity",
+        "content_sha256",
+    }
+    unsigned = dict(retention_document)
+    claimed = unsigned.pop("content_sha256")
+    canonical_unsigned = json.dumps(
+        unsigned,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    assert claimed == "sha256:" + hashlib.sha256(canonical_unsigned).hexdigest()
+    assert load_runtime_transaction_journals(runtime_root) == (owner,)
+    assert owner_path.read_bytes() == runtime_transaction_journal_bytes(owner)
+    with pytest.raises(ValueError, match="runtime_transaction_journal_invalid"):
+        read_runtime_transaction_journal(retention_path)
+
+
+def test_schema_v1_cleanup_initialization_is_monotone_only_at_finalized_cursor_zero() -> None:
+    import hsconfig.runtime_transaction_journal as journal_module
+
+    entry = journal_module.RuntimeCleanupEntry(
+        kind="file",
+        relative_path="Card.json",
+        identity=(1, 2, 0o100600),
+    )
+    finalized = replace(
+        journal_fixture(),
+        phase=RuntimeTransactionPhase.FINALIZED,
+        target_identity=(7, 8, 0o40700),
+        owns_target=True,
+    )
+    cleanup_started = replace(
+        finalized,
+        cleanup_started=True,
+        cleanup_entries=(entry,),
+        cleanup_cursor=0,
+    )
+    assert journal_module._is_monotonic_successor(
+        finalized,
+        cleanup_started,
+    )
+
+    prefinal = journal_fixture()
+    jumped = replace(
+        cleanup_started,
+        candidate_identity=prefinal.candidate_identity,
+    )
+    assert not journal_module._is_monotonic_successor(prefinal, jumped)
+    advanced_before_initialization = replace(
+        cleanup_started,
+        cleanup_cursor=1,
+    )
+    assert not journal_module._is_monotonic_successor(
+        finalized,
+        advanced_before_initialization,
+    )

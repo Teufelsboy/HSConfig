@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+import hsconfig.atomic_io as atomic_io
 import hsconfig.deck_config_ini as deck_config_ini
 from hsconfig.deck_config_ini import (
     read_deck_config,
@@ -271,7 +272,24 @@ def test_every_accepted_deck_name_survives_render_write_and_reread(
 
 @pytest.mark.parametrize(
     "value",
-    ["", " Config", "Config ", ".", "..", "../Config", "A/B", "A\\B", "CON"],
+    [
+        "",
+        " Config",
+        "Config ",
+        ".",
+        "..",
+        "../Config",
+        "A/B",
+        "A\\B",
+        "CON",
+        "aux.txt",
+        "COM1",
+        "LPT9.json",
+        "COM¹",
+        "lpt².txt",
+        "CON .json",
+        "Config.",
+    ],
 )
 def test_config_directory_validation_fails_closed(
     tmp_path: Path,
@@ -282,6 +300,137 @@ def test_config_directory_validation_fails_closed(
 
     with pytest.raises(ValueError, match="^deck_config_ini_unsafe_config_dir$"):
         render_deck_config(snapshot, deck_name="Deck", config_dir=value)
+
+
+@pytest.mark.parametrize("value", ["CÖM1", "配置¹", "COM０"])
+def test_config_directory_validation_preserves_safe_unicode(
+    tmp_path: Path,
+    value: str,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+
+    rendered = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir=value,
+    )
+
+    assert rendered == f"[CONFIGS]\nDeck = {value}".encode()
+
+
+def test_deck_config_ini_delegates_to_shared_no_replace_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    rendered = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir="Config",
+    )
+    materialize_calls: list[dict[str, object]] = []
+    commit_calls: list[dict[str, object]] = []
+    real_materialize = deck_config_ini.atomic_materialize_staging_bytes
+    real_commit = deck_config_ini.atomic_commit_bound_staging_no_replace
+
+    def track_materialize(**kwargs: object) -> object:
+        materialize_calls.append(dict(kwargs))
+        return real_materialize(**kwargs)
+
+    def track_commit(**kwargs: object) -> object:
+        commit_calls.append(dict(kwargs))
+        return real_commit(**kwargs)
+
+    monkeypatch.setattr(
+        deck_config_ini,
+        "atomic_materialize_staging_bytes",
+        track_materialize,
+    )
+    monkeypatch.setattr(
+        deck_config_ini,
+        "atomic_commit_bound_staging_no_replace",
+        track_commit,
+    )
+
+    replace_deck_config_if_unchanged(snapshot, rendered)
+
+    assert len(materialize_calls) == len(commit_calls) == 1
+    assert materialize_calls[0]["staging_path"] == path.with_name(
+        "deck_config.ini.staged"
+    )
+    assert commit_calls[0]["path"] == path
+    assert commit_calls[0]["staging_path"] == materialize_calls[0][
+        "staging_path"
+    ]
+    assert path.read_bytes() == rendered
+
+
+def test_deck_config_ini_preserves_existing_fault_stage_delegation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    rendered = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir="Config",
+    )
+    observed: list[str] = []
+
+    replace_deck_config_if_unchanged(
+        snapshot,
+        rendered,
+        fault_hook=observed.append,
+    )
+
+    assert observed == list(FAULT_STAGES)
+    assert path.read_bytes() == rendered
+
+
+def test_first_create_commit_failure_leaves_no_residue_and_retry_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "deck_config.ini"
+    snapshot = read_deck_config(path, deck_name="Deck")
+    rendered = render_deck_config(
+        snapshot,
+        deck_name="Deck",
+        config_dir="Config",
+    )
+    staging = path.with_name("deck_config.ini.staged")
+    inner = staging.with_name(f".{staging.name}.live-start-atomic.tmp")
+    real_commit = atomic_io.secure_commit_sibling_no_replace
+    fail_first = True
+
+    def fail_during_first_commit(**kwargs: object) -> tuple[int, int, int]:
+        nonlocal fail_first
+        if fail_first:
+            fail_first = False
+            assert inner.read_bytes() == rendered
+            assert not staging.exists()
+            assert not path.exists()
+            raise OSError(errno.EIO, "deck staging commit")
+        return real_commit(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_commit_sibling_no_replace",
+        fail_during_first_commit,
+    )
+
+    with pytest.raises(ValueError, match="deck_config_ini_unsafe_path"):
+        replace_deck_config_if_unchanged(snapshot, rendered)
+
+    assert not path.exists()
+    assert not staging.exists()
+    assert not inner.exists()
+    replace_deck_config_if_unchanged(snapshot, rendered)
+    assert path.read_bytes() == rendered
+    assert not staging.exists()
+    assert not inner.exists()
 
 
 def test_read_deck_config_rejects_invalid_utf8(tmp_path: Path) -> None:
@@ -536,33 +685,22 @@ def test_create_if_absent_rejects_target_that_appears_before_commit(
 
 def test_posix_mode_rejects_substituted_owned_temp_before_commit(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = tmp_path / "deck_config.ini"
     snapshot = read_deck_config(path, deck_name="Deck")
     new = render_deck_config(snapshot, deck_name="Deck", config_dir="New")
     attacker = b"[CONFIGS]\nDeck = ATTACKER"
-    rename_calls: list[tuple[int, str, str]] = []
-    monkeypatch.setattr(deck_config_ini, "_PLATFORM_NAME", "posix", raising=False)
-    monkeypatch.setattr(
-        deck_config_ini,
-        "_rename_noreplace_posix",
-        lambda descriptor, source, target: rename_calls.append(
-            (descriptor, source, target)
-        ),
-        raising=False,
-    )
+    staging = path.with_name("deck_config.ini.staged")
 
     def substitute_temp(stage: str) -> None:
         if stage != "before_replace":
             return
-        [temp] = _temp_residue(path)
-        temp.unlink()
-        temp.write_bytes(attacker)
+        staging.unlink()
+        staging.write_bytes(attacker)
 
     with pytest.raises(
         RuntimeError,
-        match="^deck_config_ini_temp_identity_changed$",
+        match="^deck_config_ini_concurrent_change$",
     ):
         replace_deck_config_if_unchanged(
             snapshot,
@@ -571,10 +709,7 @@ def test_posix_mode_rejects_substituted_owned_temp_before_commit(
         )
 
     assert not path.exists()
-    assert rename_calls == []
-    residue = _temp_residue(path)
-    assert len(residue) == 1
-    assert residue[0].read_bytes() == attacker
+    assert staging.read_bytes() == attacker
 
 
 def test_posix_no_replace_commit_is_one_parent_descriptor_bound_move(
@@ -1184,40 +1319,40 @@ class _AtomicParent:
         return (self.path / name).stat()
 
 
-def test_atomic_create_exhausts_temp_name_collisions(
+def test_atomic_create_rejects_reserved_staging_collision(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = _AtomicParent(tmp_path)
+    staging = tmp_path / "deck_config.ini.staged"
+    staging.write_bytes(b"foreign")
     try:
-        monkeypatch.setattr(
-            parent,
-            "open_file",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(FileExistsError()),
-        )
-        with pytest.raises(FileExistsError, match="temp_creation_failed"):
+        with pytest.raises(RuntimeError, match="concurrent_change"):
             deck_config_ini._atomic_create_if_absent(
                 tmp_path / "deck_config.ini",
                 b"content",
                 parent=parent,  # type: ignore[arg-type]
                 fault_hook=deck_config_ini.no_fault,
             )
+        assert staging.read_bytes() == b"foreign"
+        assert not (tmp_path / "deck_config.ini").exists()
     finally:
         parent.close()
 
 
-def test_atomic_create_propagates_non_collision_commit_error(
+def test_atomic_create_maps_shared_commit_conflict(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = _AtomicParent(tmp_path)
     monkeypatch.setattr(
         deck_config_ini,
-        "_commit_owned_temp_no_replace",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(errno.EIO, "commit")),
+        "atomic_commit_bound_staging_no_replace",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            deck_config_ini.AtomicWriteConflictError("commit")
+        ),
     )
     try:
-        with pytest.raises(OSError, match="commit"):
+        with pytest.raises(RuntimeError, match="concurrent_change"):
             deck_config_ini._atomic_create_if_absent(
                 tmp_path / "deck_config.ini",
                 b"content",
@@ -1233,28 +1368,19 @@ def test_atomic_create_records_cleanup_failures_without_masking_primary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = _AtomicParent(tmp_path)
-    primary = InjectedBaseFault("write")
-
-    class BrokenHandle:
-        def write(self, _content: bytes) -> int:
-            raise primary
-
-        def close(self) -> None:
-            raise RuntimeError("close")
-
-        def fileno(self) -> int:
-            return 0
-
-    monkeypatch.setattr(parent, "open_file", lambda *_args, **_kwargs: 1)
-    monkeypatch.setattr(deck_config_ini.os, "fdopen", lambda *_args, **_kwargs: BrokenHandle())
-    monkeypatch.setattr(deck_config_ini.os, "fstat", lambda _fd: tmp_path.stat())
+    primary = InjectedBaseFault("commit")
     monkeypatch.setattr(
-        parent,
-        "child_status",
+        deck_config_ini,
+        "atomic_commit_bound_staging_no_replace",
+        lambda **_kwargs: (_ for _ in ()).throw(primary),
+    )
+    monkeypatch.setattr(
+        deck_config_ini,
+        "secure_unlink",
         lambda _name: (_ for _ in ()).throw(OSError("cleanup")),
     )
     try:
-        with pytest.raises(InjectedBaseFault, match="write") as caught:
+        with pytest.raises(InjectedBaseFault, match="commit") as caught:
             deck_config_ini._atomic_create_if_absent(
                 tmp_path / "deck_config.ini",
                 b"content",
@@ -1263,7 +1389,6 @@ def test_atomic_create_records_cleanup_failures_without_masking_primary(
             )
     finally:
         parent.close()
-    assert any("temp handle close failed" in note for note in caught.value.__notes__)
     assert any("owned temp cleanup failed" in note for note in caught.value.__notes__)
 
 
@@ -1272,86 +1397,51 @@ def test_atomic_create_ignores_missing_temp_during_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = _AtomicParent(tmp_path)
-    descriptors: list[int] = []
-    original_open_file = parent.open_file
+    primary = InjectedBaseFault("commit")
 
-    def tracked_open_file(name: str, *, create: bool, write: bool) -> int:
-        descriptor = original_open_file(name, create=create, write=write)
-        descriptors.append(descriptor)
-        return descriptor
+    def remove_staging_then_fail(**kwargs: object) -> object:
+        Path(str(kwargs["staging_path"])).unlink()
+        raise primary
 
-    monkeypatch.setattr(parent, "open_file", tracked_open_file)
     monkeypatch.setattr(
-        deck_config_ini.os,
-        "fdopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(InjectedBaseFault("fdopen")),
+        deck_config_ini,
+        "atomic_commit_bound_staging_no_replace",
+        remove_staging_then_fail,
     )
-    monkeypatch.setattr(
-        parent,
-        "child_status",
-        lambda _name: (_ for _ in ()).throw(FileNotFoundError()),
-    )
-    with pytest.raises(InjectedBaseFault, match="fdopen"):
-        deck_config_ini._atomic_create_if_absent(
-            tmp_path / "deck_config.ini",
-            b"content",
-            parent=parent,  # type: ignore[arg-type]
-            fault_hook=deck_config_ini.no_fault,
-        )
-    assert len(descriptors) == 1
-    with pytest.raises(OSError):
-        os.fstat(descriptors[0])
+    try:
+        with pytest.raises(InjectedBaseFault, match="commit"):
+            deck_config_ini._atomic_create_if_absent(
+                tmp_path / "deck_config.ini",
+                b"content",
+                parent=parent,  # type: ignore[arg-type]
+                fault_hook=deck_config_ini.no_fault,
+            )
+    finally:
+        parent.close()
 
 
-def test_atomic_create_records_raw_descriptor_close_failure_without_masking_primary(
+def test_atomic_create_preserves_shared_materialize_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = _AtomicParent(tmp_path)
-    descriptors: list[int] = []
-    close_calls: list[int] = []
-    original_open_file = parent.open_file
-    original_close = os.close
-
-    def tracked_open_file(name: str, *, create: bool, write: bool) -> int:
-        descriptor = original_open_file(name, create=create, write=write)
-        descriptors.append(descriptor)
-        return descriptor
-
-    def failing_close(descriptor: int) -> None:
-        close_calls.append(descriptor)
-        original_close(descriptor)
-        raise RuntimeError("descriptor close")
-
-    monkeypatch.setattr(parent, "open_file", tracked_open_file)
+    primary = InjectedBaseFault("materialize")
     monkeypatch.setattr(
-        deck_config_ini.os,
-        "fdopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(InjectedBaseFault("fdopen")),
+        deck_config_ini,
+        "atomic_materialize_staging_bytes",
+        lambda **_kwargs: (_ for _ in ()).throw(primary),
     )
-    monkeypatch.setattr(deck_config_ini.os, "close", failing_close)
-    monkeypatch.setattr(
-        parent,
-        "child_status",
-        lambda _name: (_ for _ in ()).throw(FileNotFoundError()),
-    )
-
-    with pytest.raises(InjectedBaseFault, match="fdopen") as caught:
-        deck_config_ini._atomic_create_if_absent(
-            tmp_path / "deck_config.ini",
-            b"content",
-            parent=parent,  # type: ignore[arg-type]
-            fault_hook=deck_config_ini.no_fault,
-        )
-
-    assert len(descriptors) == 1
-    assert close_calls == descriptors
-    assert any(
-        "temp descriptor close failed" in note
-        for note in getattr(caught.value, "__notes__", ())
-    )
-    with pytest.raises(OSError):
-        os.fstat(descriptors[0])
+    try:
+        with pytest.raises(InjectedBaseFault, match="materialize"):
+            deck_config_ini._atomic_create_if_absent(
+                tmp_path / "deck_config.ini",
+                b"content",
+                parent=parent,  # type: ignore[arg-type]
+                fault_hook=deck_config_ini.no_fault,
+            )
+        assert not (tmp_path / "deck_config.ini").exists()
+    finally:
+        parent.close()
 
 
 def test_atomic_create_ignores_temp_that_disappears_after_write(

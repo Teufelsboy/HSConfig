@@ -21,8 +21,14 @@ from unittest.mock import patch
 import pytest
 
 from hsconfig import live_start_session as session
+from hsconfig.apply_invocation import (
+    APPLY_INVOCATION_MAX_BYTES,
+    ApplyInvocation,
+)
 from hsconfig.atomic_io import (
+    AtomicWriteConflictError,
     atomic_commit_bound_staging_no_replace,
+    atomic_materialize_staging_bytes,
 )
 from hsconfig.input_snapshot_manifest import (
     FrozenCompilerInputs,
@@ -37,7 +43,17 @@ from hsconfig.package_request import (
     FrozenJsonDocument,
     PackageResolutionSnapshot,
 )
-from hsconfig.package_io import path_identity
+from hsconfig.package_io import (
+    path_identity,
+    secure_create_directory,
+    secure_unlink_verified,
+)
+from hsconfig.runtime_live_admission import (
+    RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+    RuntimeLiveAttemptAdmissionEvidence,
+    build_runtime_live_attempt_admission_bytes,
+    load_runtime_live_attempt_admission,
+)
 from tests.helpers.audited_package_request import (
     audited_request_with_frozen_input_projections,
 )
@@ -852,6 +868,40 @@ def _seal_literal_document(value: dict[str, object]) -> dict[str, object]:
     return {**unsigned, "content_sha256": f"sha256:{sha256(raw).hexdigest()}"}
 
 
+def _seal_at_exact_size(
+    value: Mapping[str, object],
+    *,
+    path_field: str,
+    target_size: int,
+) -> dict[str, object]:
+    unsigned = session._thaw(value)
+    unsigned.pop("content_sha256", None)
+    prefix = str((Path.cwd() / "size-padding").absolute())
+    unsigned[path_field] = prefix
+    probe = _seal_literal_document(unsigned)
+    padding = target_size - len(session._canonical_json(probe))
+    assert padding >= 0
+    unsigned[path_field] = prefix + ("x" * padding)
+    sealed = _seal_literal_document(unsigned)
+    assert len(session._canonical_json(sealed)) == target_size
+    return sealed
+
+
+def _one_byte_over(
+    value: Mapping[str, object],
+    *,
+    path_field: str,
+) -> dict[str, object]:
+    unsigned = session._thaw(value)
+    unsigned.pop("content_sha256", None)
+    unsigned[path_field] = str(unsigned[path_field]) + "x"
+    sealed = _seal_literal_document(unsigned)
+    assert len(session._canonical_json(sealed)) == (
+        len(session._canonical_json(value)) + 1
+    )
+    return sealed
+
+
 def _terminal_resolution_fixture() -> dict[str, object]:
     sha = "sha256:" + "3" * 64
     value: dict[str, object] = {
@@ -859,6 +909,7 @@ def _terminal_resolution_fixture() -> dict[str, object]:
         "resolution_kind": "live_start_terminal_resolution_evidence",
         "run_id": "a" * 32,
         "apply_attempt_id": "b" * 32,
+        "action_index": 0,
         "predecessor_attempt_record_path": None,
         "predecessor_attempt_record_identity": None,
         "predecessor_attempt_record_sha256": None,
@@ -972,14 +1023,20 @@ def _owner_retirement_fixture() -> dict[str, object]:
         "evidence_kind": "live_start_owner_retirement_evidence",
         "stage": "PREPARED_PLANNED",
         "tombstone_path": str(
-            runtime / ".hsconfig" / "owner-retirements" / "a.json"
+            runtime
+            / ".hsconfig"
+            / "owner-retirements"
+            / f"{'a' * 32}.json"
         ),
         "tombstone_parent_identity": identity,
         "tombstone_identity": None,
         "tombstone_sha256": sha,
         "retired_owner_transaction_id": "a" * 32,
         "initial_owner_journal_path": str(
-            runtime / ".hsconfig" / "transactions" / "a.json"
+            runtime
+            / ".hsconfig"
+            / "transactions"
+            / f"{'a' * 32}.json"
         ),
         "initial_owner_journal_identity": identity,
         "initial_owner_journal_sha256": sha,
@@ -992,7 +1049,10 @@ def _owner_retirement_fixture() -> dict[str, object]:
         "successor_transaction_id": "b" * 32,
         "successor_package_root_sha256": sha,
         "successor_owner_journal_path": str(
-            runtime / ".hsconfig" / "transactions" / "b.json"
+            runtime
+            / ".hsconfig"
+            / "transactions"
+            / f"{'b' * 32}.json"
         ),
         "successor_owner_journal_identity": identity,
         "successor_owner_journal_sha256": sha,
@@ -1028,6 +1088,175 @@ def _terminal_cleanup_inventory_fixture() -> dict[str, object]:
     return _seal_literal_document(value)
 
 
+def test_owner_retirement_nested_size_budget_ladder_is_closed_and_composable() -> None:
+    assert session.LIVE_START_OWNER_RETIREMENT_EVIDENCE_MAX_BYTES == 64 * 1024
+    assert (
+        session.LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_MAX_BYTES
+        == 128 * 1024
+    )
+    assert (
+        session.LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_MAX_BYTES
+        == 128 * 1024
+    )
+    assert session.LIVE_START_RESULT_INTENT_MAX_BYTES == 64 * 1024
+    assert session.LIVE_START_TERMINAL_RETIREMENT_MAX_BYTES == 192 * 1024
+    assert session.LIVE_START_SESSION_MAX_BYTES == 320 * 1024
+
+    owner_value = session._thaw(_owner_retirement_fixture())
+    owner_value.pop("content_sha256")
+    owner_value.update(
+        {
+            "stage": "CLEANING",
+            "tombstone_identity": [1, 2, 0o100644],
+            "planned_completed_tombstone_size": 1,
+            "planned_completed_tombstone_sha256": "sha256:" + "7" * 64,
+        }
+    )
+    owner = _seal_at_exact_size(
+        owner_value,
+        path_field="retired_target_path",
+        target_size=session.LIVE_START_OWNER_RETIREMENT_EVIDENCE_MAX_BYTES,
+    )
+    session.OwnerRetirementEvidence(owner)
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_owner_retirement_size_invalid$",
+    ):
+        session.OwnerRetirementEvidence(
+            _one_byte_over(owner, path_field="retired_target_path")
+        )
+
+    apply_value = session._thaw(_apply_recovery_fixture())
+    apply_value.pop("content_sha256")
+    apply_value.update(
+        {
+            "expected_action": "retire_owner_target_root",
+            "owner_retirement": owner,
+        }
+    )
+    apply_recovery = _seal_at_exact_size(
+        apply_value,
+        path_field="runtime_admission_path",
+        target_size=(
+            session.LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_MAX_BYTES
+        ),
+    )
+    session.RuntimeApplyRecoveryEvidence(apply_recovery)
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_apply_recovery_size_invalid$",
+    ):
+        session.RuntimeApplyRecoveryEvidence(
+            _one_byte_over(
+                apply_recovery,
+                path_field="runtime_admission_path",
+            )
+        )
+
+    resolution_value = session._thaw(_terminal_resolution_fixture())
+    resolution_value.pop("content_sha256")
+    resolution_value.update(
+        {
+            "owner_retirement": owner,
+            "resolved_physical_disposition": "COMMITTED_RECOVERY_PENDING",
+            "candidate_parent_identity": [1, 2, 0o040755],
+        }
+    )
+    resolution = _seal_at_exact_size(
+        resolution_value,
+        path_field="candidate_path",
+        target_size=(
+            session.LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_MAX_BYTES
+        ),
+    )
+    session.TerminalResolutionEvidence(resolution)
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_terminal_resolution_size_invalid$",
+    ):
+        session.TerminalResolutionEvidence(
+            _one_byte_over(resolution, path_field="candidate_path")
+        )
+
+    identity = [1, 2, 0o100644]
+    retirement_value: dict[str, object] = {
+        field_name: None
+        for field_name in session._TERMINAL_RETIREMENT_FIELDS
+        if field_name != "content_sha256"
+    }
+    retirement_value.update(
+        {
+            "schema_version": 1,
+            "retirement_kind": "live_start_terminal_retirement",
+            "run_id": "a" * 32,
+            "apply_attempt_id": "b" * 32,
+            "operation": "release_resolved_terminal",
+            "stage": "RECOVERY_PREPARED",
+            "source_terminal_session_sha256": "sha256:" + "6" * 64,
+            "result_intent_sha256": "sha256:" + "7" * 64,
+            "terminal_resolution_evidence": resolution,
+            "runtime_admission_path": str(
+                (Path.cwd() / "runtime" / "admission.json").absolute()
+            ),
+            "runtime_admission_parent_identity": identity,
+            "runtime_admission_identity": identity,
+            "runtime_admission_sha256": "sha256:" + "8" * 64,
+        }
+    )
+    retirement = _seal_at_exact_size(
+        retirement_value,
+        path_field="runtime_admission_path",
+        target_size=session.LIVE_START_TERMINAL_RETIREMENT_MAX_BYTES,
+    )
+    session.validate_embedded_document("terminal_retirement", retirement)
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_terminal_retirement_size_invalid$",
+    ):
+        session.validate_embedded_document(
+            "terminal_retirement",
+            _one_byte_over(
+                retirement,
+                path_field="runtime_admission_path",
+            ),
+        )
+
+    def embedding_growth(
+        *,
+        field_name: str,
+        nested: Mapping[str, object],
+    ) -> int:
+        empty = session._canonical_json({field_name: None})
+        embedded = session._canonical_json({field_name: nested})
+        return len(embedded) - len(empty)
+
+    assert embedding_growth(
+        field_name="owner_retirement",
+        nested=owner,
+    ) == len(session._canonical_json(owner)) - 5
+    assert embedding_growth(
+        field_name="terminal_resolution_evidence",
+        nested=resolution,
+    ) == len(session._canonical_json(resolution)) - 5
+    session_shell_budget = 64 * 1024
+    assert (
+        session_shell_budget
+        + session.LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_MAX_BYTES
+        - 5
+        + session.LIVE_START_RESULT_INTENT_MAX_BYTES
+        - 5
+        <= 256 * 1024
+    )
+    assert (
+        session_shell_budget
+        + session.LIVE_START_RESULT_INTENT_MAX_BYTES
+        - 5
+        + session.LIVE_START_TERMINAL_RETIREMENT_MAX_BYTES
+        - 5
+        <= session.LIVE_START_SESSION_MAX_BYTES
+    )
+
+
 def test_terminal_resolution_evidence_has_closed_predecessor_successor_matrix() -> None:
     valid = _terminal_resolution_fixture()
     evidence = session.TerminalResolutionEvidence(valid)
@@ -1036,6 +1265,27 @@ def test_terminal_resolution_evidence_has_closed_predecessor_successor_matrix() 
     unknown = {**valid, "unknown": True}
     with pytest.raises(session.SessionValidationError, match="fields"):
         session.TerminalResolutionEvidence(unknown)
+
+    missing_index = dict(valid)
+    missing_index.pop("action_index")
+    with pytest.raises(session.SessionValidationError, match="fields"):
+        session.TerminalResolutionEvidence(missing_index)
+
+    for invalid_index in (
+        True,
+        -1,
+        session.MAX_FILESYSTEM_NODES + 1,
+    ):
+        invalid_cursor = dict(valid)
+        invalid_cursor.pop("content_sha256")
+        invalid_cursor["action_index"] = invalid_index
+        with pytest.raises(
+            session.SessionValidationError,
+            match="action_index",
+        ):
+            session.TerminalResolutionEvidence(
+                _seal_literal_document(invalid_cursor)
+            )
 
     impossible = dict(valid)
     impossible.pop("content_sha256")
@@ -1137,6 +1387,249 @@ def test_owner_retirement_evidence_action_and_nullability_matrix_is_closed() -> 
             owner_value(stage=stage, count=count, cursor=cursor)
         )
         assert session.OwnerRetirementEvidence(sealed).value["stage"] == stage
+
+    large_completed_commitment = owner_value(
+        stage="CLEANING",
+        count=0,
+        cursor=0,
+    )
+    large_completed_commitment[
+        "planned_completed_tombstone_size"
+    ] = 64 * 1024 + 1
+    large_completed_commitment[
+        "planned_completed_tombstone_sha256"
+    ] = "sha256:" + "7" * 64
+    assert session.OwnerRetirementEvidence(
+        _seal_literal_document(large_completed_commitment)
+    ).value["planned_completed_tombstone_size"] == 64 * 1024 + 1
+
+    large_entries = [
+        {
+            "relative_path": f"entry-{index:04d}-{'x' * 64}.json",
+            "entry_kind": "file",
+            "identity": [1000 + index, 2000 + index, 0o100644],
+            "expected_parent_identity": [5, 6, 0o040755],
+            "size": 1,
+            "sha256": "sha256:" + "8" * 64,
+        }
+        for index in reversed(range(600))
+    ]
+    large_tombstone = _seal_literal_document(
+        {
+            "schema_version": 1,
+            "record_kind": "runtime_owner_retirement",
+            "state": "PREPARED",
+            "retired_owner_transaction_id": "a" * 32,
+            "initial_owner_journal_path": str(
+                (
+                    Path.cwd()
+                    / "runtime/.hsconfig/transactions"
+                    / f"{'a' * 32}.json"
+                ).absolute()
+            ),
+            "initial_owner_journal_identity": [1, 2, 0o100644],
+            "initial_owner_journal_sha256": "sha256:" + "1" * 64,
+            "retired_target_path": str(
+                (Path.cwd() / "runtime/CustomConfig/Deck").absolute()
+            ),
+            "retired_target_parent_identity": [3, 4, 0o040755],
+            "retired_target_identity": [5, 6, 0o040755],
+            "retired_target_tree_sha256": "sha256:" + "2" * 64,
+            "successor_transaction_id": "b" * 32,
+            "successor_package_root_sha256": "sha256:" + "3" * 64,
+            "successor_owner_journal_path": str(
+                (
+                    Path.cwd()
+                    / "runtime/.hsconfig/transactions"
+                    / f"{'b' * 32}.json"
+                ).absolute()
+            ),
+            "successor_owner_journal_identity": [7, 8, 0o100644],
+            "successor_owner_journal_sha256": "sha256:" + "4" * 64,
+            "cleanup_manifest_sha256": "sha256:"
+            + sha256(session._canonical_json(large_entries)).hexdigest(),
+            "cleanup_entry_count": len(large_entries),
+            "cleanup_entries": large_entries,
+            "completed_cleanup_cursor": None,
+            "completed_owner_journal_identity": None,
+            "completed_owner_journal_sha256": None,
+        }
+    )
+    assert len(session._canonical_json(large_tombstone)) > 64 * 1024
+    assert session._validate_owner_tombstone_document(large_tombstone)[
+        "cleanup_entry_count"
+    ] == len(large_entries)
+
+    target_identity = [5, 6, 0o040755]
+    directory_identity = [21, 22, 0o040755]
+    nested_identity = [23, 24, 0o040755]
+    canonical_entries = [
+        {
+            "relative_path": "z-dir/nested/b.txt",
+            "entry_kind": "file",
+            "identity": [31, 32, 0o100644],
+            "expected_parent_identity": nested_identity,
+            "size": 1,
+            "sha256": "sha256:" + "8" * 64,
+        },
+        {
+            "relative_path": "z-dir/nested/a.txt",
+            "entry_kind": "file",
+            "identity": [33, 34, 0o100644],
+            "expected_parent_identity": nested_identity,
+            "size": 1,
+            "sha256": "sha256:" + "9" * 64,
+        },
+        {
+            "relative_path": "root.txt",
+            "entry_kind": "file",
+            "identity": [35, 36, 0o100644],
+            "expected_parent_identity": target_identity,
+            "size": 1,
+            "sha256": "sha256:" + "a" * 64,
+        },
+        {
+            "relative_path": "z-dir/nested",
+            "entry_kind": "directory",
+            "identity": nested_identity,
+            "expected_parent_identity": directory_identity,
+            "size": None,
+            "sha256": None,
+        },
+        {
+            "relative_path": "z-dir",
+            "entry_kind": "directory",
+            "identity": directory_identity,
+            "expected_parent_identity": target_identity,
+            "size": None,
+            "sha256": None,
+        },
+    ]
+
+    def tombstone_with_entries(
+        entries: list[dict[str, object]],
+        *,
+        retired_id: str = "a" * 32,
+        successor_id: str = "b" * 32,
+        initial_name: str | None = None,
+        successor_name: str | None = None,
+    ) -> dict[str, object]:
+        initial_name = initial_name or f"{retired_id}.json"
+        successor_name = successor_name or f"{successor_id}.json"
+        return _seal_literal_document(
+            {
+                "schema_version": 1,
+                "record_kind": "runtime_owner_retirement",
+                "state": "PREPARED",
+                "retired_owner_transaction_id": retired_id,
+                "initial_owner_journal_path": str(
+                    (
+                        Path.cwd()
+                        / "runtime/.hsconfig/transactions"
+                        / initial_name
+                    ).absolute()
+                ),
+                "initial_owner_journal_identity": [1, 2, 0o100644],
+                "initial_owner_journal_sha256": "sha256:" + "1" * 64,
+                "retired_target_path": str(
+                    (Path.cwd() / "runtime/CustomConfig/Deck").absolute()
+                ),
+                "retired_target_parent_identity": [3, 4, 0o040755],
+                "retired_target_identity": target_identity,
+                "retired_target_tree_sha256": "sha256:" + "2" * 64,
+                "successor_transaction_id": successor_id,
+                "successor_package_root_sha256": "sha256:" + "3" * 64,
+                "successor_owner_journal_path": str(
+                    (
+                        Path.cwd()
+                        / "runtime/.hsconfig/transactions"
+                        / successor_name
+                    ).absolute()
+                ),
+                "successor_owner_journal_identity": [7, 8, 0o100644],
+                "successor_owner_journal_sha256": "sha256:" + "4" * 64,
+                "cleanup_manifest_sha256": "sha256:"
+                + sha256(session._canonical_json(entries)).hexdigest(),
+                "cleanup_entry_count": len(entries),
+                "cleanup_entries": entries,
+                "completed_cleanup_cursor": None,
+                "completed_owner_journal_identity": None,
+                "completed_owner_journal_sha256": None,
+            }
+        )
+
+    assert session._validate_owner_tombstone_document(
+        tombstone_with_entries(canonical_entries)
+    )["cleanup_entry_count"] == len(canonical_entries)
+
+    invalid_tombstones: list[tuple[str, dict[str, object]]] = []
+    directory_before_file = [dict(entry) for entry in canonical_entries]
+    directory_before_file.insert(0, directory_before_file.pop(3))
+    invalid_tombstones.append(
+        ("order", tombstone_with_entries(directory_before_file))
+    )
+    shallow_before_deep = [dict(entry) for entry in canonical_entries]
+    shallow_before_deep.insert(0, shallow_before_deep.pop(2))
+    invalid_tombstones.append(
+        ("order", tombstone_with_entries(shallow_before_deep))
+    )
+    ascending_lexical = [dict(entry) for entry in canonical_entries]
+    ascending_lexical[0], ascending_lexical[1] = (
+        ascending_lexical[1],
+        ascending_lexical[0],
+    )
+    invalid_tombstones.append(
+        ("order", tombstone_with_entries(ascending_lexical))
+    )
+    wrong_direct_parent = [dict(entry) for entry in canonical_entries]
+    wrong_direct_parent[2]["expected_parent_identity"] = [
+        41,
+        42,
+        0o040755,
+    ]
+    invalid_tombstones.append(
+        ("topology", tombstone_with_entries(wrong_direct_parent))
+    )
+    wrong_nested_parent = [dict(entry) for entry in canonical_entries]
+    wrong_nested_parent[0]["expected_parent_identity"] = directory_identity
+    invalid_tombstones.append(
+        ("topology", tombstone_with_entries(wrong_nested_parent))
+    )
+    missing_parent = [
+        dict(entry)
+        for entry in canonical_entries
+        if entry["relative_path"] != "z-dir/nested"
+    ]
+    invalid_tombstones.append(
+        ("topology", tombstone_with_entries(missing_parent))
+    )
+    invalid_tombstones.append(
+        (
+            "transaction",
+            tombstone_with_entries(
+                canonical_entries,
+                successor_id="a" * 32,
+                successor_name=f"{'a' * 32}.json",
+            ),
+        )
+    )
+    invalid_tombstones.append(
+        (
+            "journal",
+            tombstone_with_entries(
+                canonical_entries,
+                initial_name="wrong.json",
+            ),
+        )
+    )
+    for error_fragment, invalid_tombstone in invalid_tombstones:
+        with pytest.raises(
+            session.SessionValidationError,
+            match=error_fragment,
+        ):
+            session._validate_owner_tombstone_document(
+                invalid_tombstone
+            )
 
     invalid_rows: list[tuple[str, dict[str, object]]] = []
     unknown = owner_value(stage="PREPARED_PLANNED")
@@ -2243,29 +2736,9 @@ def test_terminal_resolution_cleanup_cas_allows_only_exact_cursor_successors(
     assert inventory is None
     predecessor_retirement = prepared.terminal_retirement
     assert predecessor_retirement is not None
-    predecessor_resolution = predecessor_retirement[
-        "terminal_resolution_evidence"
-    ]
-    successor_resolution = session._thaw(predecessor_resolution)
-    successor_resolution.pop("content_sha256")
-    successor_resolution.update(
-        {
-            "successor_attempt_record_path": predecessor_resolution[
-                "predecessor_attempt_record_path"
-            ],
-            "successor_attempt_record_identity": predecessor_resolution[
-                "predecessor_attempt_record_identity"
-            ],
-            "successor_attempt_record_sha256": predecessor_resolution[
-                "predecessor_attempt_record_sha256"
-            ],
-        }
-    )
     successor_value = session._thaw(predecessor_retirement)
     successor_value.pop("content_sha256")
-    successor_value["terminal_resolution_evidence"] = session._thaw(
-        session._seal_terminal_resolution(successor_resolution)
-    )
+    successor_value["stage"] = "RECOVERY_JOURNAL_RETIRED"
     valid_successor = session.seal_embedded_document(
         "terminal_retirement",
         successor_value,
@@ -2293,13 +2766,13 @@ def test_terminal_resolution_cleanup_cas_allows_only_exact_cursor_successors(
             )
         )
         assert invalid_authorization._opaque.action == (
-            "physical_recovery_advanced"
+            "retire_cleanup_journal"
         )
         invalid_receipt = session._execute_terminal_resolution_physical_step(
             terminal_authorization=invalid_authorization,
-            action="physical_recovery_advanced",
+            action="retire_cleanup_journal",
             physical_action=lambda: session.TerminalResolutionPhysicalPostcondition(
-                action="physical_recovery_advanced",
+                action="retire_cleanup_journal",
                 evidence={"terminal_retirement": invalid_successor},
             ),
         )
@@ -2307,7 +2780,7 @@ def test_terminal_resolution_cleanup_cas_allows_only_exact_cursor_successors(
             session.advance_terminal_resolution_under_lock(
                 session_lease=lease,
                 expected_resolution_session=prepared,
-                transition="physical_recovery_advanced",
+                transition="journal_retired",
                 resolved_evidence=None,
                 terminal_authorization=None,
                 physical_step_receipt=invalid_receipt,
@@ -2322,16 +2795,16 @@ def test_terminal_resolution_cleanup_cas_allows_only_exact_cursor_successors(
         )
         receipt = session._execute_terminal_resolution_physical_step(
             terminal_authorization=authorization,
-            action="physical_recovery_advanced",
+            action="retire_cleanup_journal",
             physical_action=lambda: session.TerminalResolutionPhysicalPostcondition(
-                action="physical_recovery_advanced",
+                action="retire_cleanup_journal",
                 evidence={"terminal_retirement": valid_successor},
             ),
         )
         advanced = session.advance_terminal_resolution_under_lock(
             session_lease=lease,
             expected_resolution_session=prepared,
-            transition="physical_recovery_advanced",
+            transition="journal_retired",
             resolved_evidence=None,
             terminal_authorization=None,
             physical_step_receipt=receipt,
@@ -2969,6 +3442,59 @@ def _complete_runtime_layout_fixture(
                         "predecessor_state": "existing",
                         "predecessor_identity": directory_identity,
                         "successor_identity": directory_identity,
+                    }
+                    for role, path in zip(
+                        session.RUNTIME_LAYOUT_DIRECTORY_ROLES,
+                        paths,
+                        strict=True,
+                    )
+                ],
+            },
+        )
+    )
+
+
+def _real_complete_runtime_layout_fixture(
+    runtime_root: Path,
+    *,
+    run_id: str,
+    apply_attempt_id: str,
+) -> dict[str, object]:
+    runtime_root = runtime_root.absolute()
+    paths = (
+        runtime_root / "CustomConfig",
+        runtime_root / ".hsconfig" / "transactions",
+        runtime_root / ".hsconfig" / "staging",
+        runtime_root / ".hsconfig" / "receipts",
+        runtime_root / ".hsconfig" / "receipts" / "state-key",
+        runtime_root / ".hsconfig" / "attempt-retention",
+        runtime_root / ".hsconfig" / "owner-retirements",
+    )
+    for path in paths:
+        path.mkdir(parents=True, exist_ok=True)
+    return dict(
+        session.seal_embedded_document(
+            "runtime_layout_bootstrap",
+            {
+                "schema_version": 1,
+                "binding_kind": "live_start_runtime_layout_bootstrap",
+                "run_id": run_id,
+                "apply_attempt_id": apply_attempt_id,
+                "runtime_root": str(runtime_root),
+                "runtime_root_identity": list(path_identity(runtime_root)),
+                "stage": "COMPLETE",
+                "next_directory_index": len(paths),
+                "directory_count": len(paths),
+                "directories": [
+                    {
+                        "role": role,
+                        "path": str(path),
+                        "expected_parent_identity": list(
+                            path_identity(path.parent)
+                        ),
+                        "predecessor_state": "existing",
+                        "predecessor_identity": list(path_identity(path)),
+                        "successor_identity": list(path_identity(path)),
                     }
                     for role, path in zip(
                         session.RUNTIME_LAYOUT_DIRECTORY_ROLES,
@@ -6488,7 +7014,7 @@ def test_review_revision_pending_rejects_every_inherited_operation_field(
             for field_name, field_value in pending.items()
             if field_value is not None
         } == _REVIEW_REVISION_PENDING_ALLOWED_FIELDS
-        assert len(_REVIEW_REVISION_INHERITED_PENDING_FIELDS) == 61
+        assert len(_REVIEW_REVISION_INHERITED_PENDING_FIELDS) == 62
 
         for inherited_field in _REVIEW_REVISION_INHERITED_PENDING_FIELDS:
             mixed = deepcopy(pending)
@@ -11863,86 +12389,26 @@ def _receipt_committed_apply_cursor(
 ) -> tuple[
     Path,
     session.LiveStartSession,
-    SimpleNamespace,
-    dict[str, object],
+    ApplyInvocation,
+    RuntimeLiveAttemptAdmissionEvidence,
 ]:
-    root, frozen = _new_session(base / "session")
-    operation, child, publication, admission = (
-        _sealed_output_authority_fixtures(
-            base,
-            run_id=frozen.run_id,
-            runtime_handoff=False,
-        )
-    )
-    apply_attempt_id = "b" * 32
-    invocation_sha256 = "sha256:" + "9" * 64
-    layout = _complete_runtime_layout_fixture(
-        base,
-        run_id=frozen.run_id,
-        apply_attempt_id=apply_attempt_id,
-    )
-    successor_bindings = _materialize_phase_artifact_fixtures(
-        root=root,
-        cursor=frozen,
-        phase=session.LiveStartPhase.APPLY_STARTED,
-    )
-    pending = session._empty_pending_transition(
-        session=frozen,
-        operation="install_apply_invocation",
-        external_file_action=None,
-    )
-    pending.update(
-        {
-            "stage": "PRIMARY_APPLIED",
-            "source_phase": "PUBLICATION_COMMITTED",
-            "target_phase": "APPLY_STARTED",
-            "successor_artifact_bindings": successor_bindings,
-            "next_action_index": 1,
-            "apply_attempt_id": apply_attempt_id,
-            "apply_invocation_sha256": invocation_sha256,
-            "runtime_admission_document_size": 5,
-            "runtime_admission_document_sha256": admission[
-                "admission_sha256"
-            ],
-            "runtime_admission_path": admission["admission_path"],
-            "runtime_admission_parent_identity": admission[
-                "admission_parent_identity"
-            ],
-            "runtime_admission_identity": admission[
-                "admission_identity"
-            ],
-            "runtime_admission_sha256": admission["admission_sha256"],
-        }
-    )
-    value = frozen.to_value()
-    value.pop("content_sha256")
-    value.update(
-        {
-            "phase": "PUBLICATION_COMMITTED",
-            "artifact_bindings": _materialize_phase_artifact_fixtures(
-                root=root,
-                cursor=frozen,
-                phase=session.LiveStartPhase.PUBLICATION_COMMITTED,
-            ),
-            "pending_transition": session._seal_pending(pending),
-            "output_operation_admission_binding": operation,
-            "output_child_binding": child,
-            "publication_binding": publication,
-            "prepublication_work_binding": (
-                _prepublication_work_binding_fixture(base)
-            ),
-            "runtime_admission_binding": admission,
-            "runtime_layout_bootstrap": layout,
-        }
-    )
-    with _lease(root) as lease:
-        ready = _publish_session_fixture_under_lock(
+    context = _task9_apply_context(base)
+    with _lease(context.root) as lease:
+        ready = _task9_receipt_committed_cursor(
+            context=context,
             lease=lease,
-            predecessor=frozen,
-            value=value,
         )
-    invocation = SimpleNamespace(content_sha256=invocation_sha256)
-    return root, ready, invocation, admission
+    assert isinstance(context.invocation, ApplyInvocation)
+    assert isinstance(
+        context.runtime_admission,
+        RuntimeLiveAttemptAdmissionEvidence,
+    )
+    return (
+        context.root,
+        ready,
+        context.invocation,
+        context.runtime_admission,
+    )
 
 
 def _exercise_output_contract(base: Path, *, case: str) -> None:
@@ -12549,19 +13015,30 @@ def _exercise_output_contract(base: Path, *, case: str) -> None:
         started = persisted
         assert started.phase is session.LiveStartPhase.APPLY_STARTED
         assert started.pending_transition is None
-        assert session._normalize_json(
-            started.runtime_admission_binding
-        ) == session._normalize_json(admission)
+        assert started.runtime_admission_binding is not None
+        admission_binding = started.runtime_admission_binding
+        assert admission_binding["admission_path"] == str(
+            admission.admission_path
+        )
+        assert tuple(admission_binding["admission_parent_identity"]) == (
+            admission.admission_parent_identity
+        )
+        assert tuple(admission_binding["admission_identity"]) == (
+            admission.admission_identity
+        )
+        assert admission_binding["admission_sha256"] == (
+            admission.admission_sha256
+        )
         assert started.apply_invocation_sha256 == invocation.content_sha256
         assert started.output_operation_admission_binding is not None
         handoff = started.output_operation_admission_binding
         assert handoff["state"] == "RUNTIME_HANDOFF_RELEASE_AUTHORIZED"
-        assert handoff["handoff_runtime_admission_path"] == admission[
-            "admission_path"
-        ]
+        assert handoff["handoff_runtime_admission_path"] == str(
+            admission.admission_path
+        )
         assert tuple(
             handoff["handoff_runtime_admission_identity"]
-        ) == tuple(admission["admission_identity"])
+        ) == admission.admission_identity
         return
 
     if case == "output_operation_release_needs_no_absence_recording_cas":
@@ -13046,6 +13523,8 @@ def _closed_result_cursor(
     *,
     success: bool,
     committed_mismatch: bool = False,
+    retained_evidence: bool = True,
+    install_route: str = "new_target",
     frozen_authority: tuple[
         FrozenCompilerInputs,
         str,
@@ -13055,9 +13534,16 @@ def _closed_result_cursor(
         Path,
     ]
     | None = None,
+    runtime_root: Path | None = None,
 ) -> tuple[Path, session.LiveStartSession, dict[str, object]]:
     assert not (success and committed_mismatch)
-    recovery_fields, acknowledgement_fields = _result_recovery_evidence(base)
+    if retained_evidence:
+        recovery_fields, acknowledgement_fields = (
+            _result_recovery_evidence(base)
+        )
+    else:
+        recovery_fields, acknowledgement_fields = {}, {}
+    recovery_fields["install_route"] = install_route
     committed = success or committed_mismatch
     physical_action = (
         "observe_committed" if committed else "observe_not_committed"
@@ -13067,6 +13553,7 @@ def _closed_result_cursor(
         action=physical_action,
         recovery_changes=recovery_fields,
         frozen_authority=frozen_authority,
+        runtime_root=runtime_root,
     )
     successor = dict(predecessor)
     successor.pop("content_sha256")
@@ -13224,6 +13711,12 @@ def _result_intent(
             "retained_target_owner_journal_sha256": recovery[
                 "predecessor_target_owner_journal_sha256"
             ],
+            "retained_candidate_identity": (
+                recovery["predecessor_candidate_identity"]
+                if recovery["stable_physical_disposition"]
+                == "NOT_COMMITTED"
+                else None
+            ),
             "runtime_admission_path": admission["admission_path"],
             "runtime_admission_parent_identity": admission[
                 "admission_parent_identity"
@@ -13252,6 +13745,7 @@ def _attempt_acknowledgement(
     recovery = cursor.apply_recovery
     admission = cursor.runtime_admission_binding
     assert recovery is not None and admission is not None
+    journal_owns_target = recovery["install_route"] == "new_target"
     value: dict[str, object] = {
         "schema_version": 1,
         "acknowledgement_kind": (
@@ -13268,9 +13762,11 @@ def _attempt_acknowledgement(
         ],
         "runtime_admission_identity": admission["admission_identity"],
         "runtime_admission_sha256": admission["admission_sha256"],
-        "journal_owns_target": True,
+        "journal_owns_target": journal_owns_target,
         "acknowledgement_action": (
             "retain_target_owner_delete_fence"
+            if journal_owns_target
+            else "delete_nonowning_attempt_and_fence"
         ),
     }
     if changes:
@@ -13304,6 +13800,7 @@ def _prepare_terminal_cursor(
     root, closed, acknowledgement_evidence = _closed_result_cursor(
         base,
         success=success,
+        retained_evidence=success,
     )
     intent = _result_intent(cursor=closed, success=success)
     acknowledgement = (
@@ -13331,12 +13828,17 @@ def _prepare_terminal_cursor(
             session_lease=lease,
             expected_result_session=result_bound,
         )
+        assert terminal.closed_apply_recovery_commitment is not None
+        assert session._canonical_json(
+            session._thaw(terminal.closed_apply_recovery_commitment)
+        ) == session._canonical_json(session._thaw(closed.apply_recovery))
         prepared = session.prepare_terminal_retirement_under_lock(
             session_lease=lease,
             expected_terminal_session=terminal,
             operation=operation,
             runtime_observation_receipt=None,
         )
+        assert prepared.closed_apply_recovery_commitment is None
         persisted = session.load_live_start_session_under_lock(
             session_lease=lease
         )
@@ -13358,6 +13860,7 @@ def _terminal_status_cursor(
         base,
         success=success,
         committed_mismatch=committed_mismatch,
+        retained_evidence=(terminal_status != "FAILED_PRESERVED"),
     )
     intent_changes: dict[str, object] = {"terminal_status": terminal_status}
     if terminal_status == "ALREADY_LIVE":
@@ -13399,6 +13902,10 @@ def _terminal_status_cursor(
             session_lease=lease,
             expected_result_session=result_bound,
         )
+        assert terminal.closed_apply_recovery_commitment is not None
+        assert session._canonical_json(
+            session._thaw(terminal.closed_apply_recovery_commitment)
+        ) == session._canonical_json(session._thaw(closed.apply_recovery))
         persisted = session.load_live_start_session_under_lock(
             session_lease=lease
         )
@@ -13787,6 +14294,7 @@ def _prepare_resolved_terminal_cursor(
     base: Path,
     *,
     with_cleanup_inventory: bool,
+    runtime_root: Path | None = None,
 ) -> tuple[
     Path,
     session.LiveStartSession,
@@ -13795,6 +14303,7 @@ def _prepare_resolved_terminal_cursor(
     root, closed, _acknowledgement_evidence = _closed_result_cursor(
         base,
         success=False,
+        runtime_root=runtime_root,
     )
     intent = _result_intent(cursor=closed, success=False)
     resolution_value = _terminal_resolution_fixture()
@@ -13806,6 +14315,7 @@ def _prepare_resolved_terminal_cursor(
         {
             "run_id": closed.run_id,
             "apply_attempt_id": recovery["apply_attempt_id"],
+            "action_index": recovery["action_index"],
             "predecessor_attempt_record_path": recovery[
                 "predecessor_attempt_record_path"
             ],
@@ -13929,6 +14439,10 @@ def _prepare_resolved_terminal_cursor(
             session_lease=lease,
             expected_result_session=result_bound,
         )
+        assert terminal.closed_apply_recovery_commitment is not None
+        assert session._canonical_json(
+            session._thaw(terminal.closed_apply_recovery_commitment)
+        ) == session._canonical_json(session._thaw(recovery))
         attempt_id = str(intent["apply_attempt_id"])
         observation_authorization = (
             session._authorize_runtime_observation_under_lock(
@@ -13955,6 +14469,7 @@ def _prepare_resolved_terminal_cursor(
             operation="release_resolved_terminal",
             runtime_observation_receipt=observation_receipt,
         )
+        assert prepared.closed_apply_recovery_commitment is None
         persisted = session.load_live_start_session_under_lock(
             session_lease=lease
         )
@@ -14400,6 +14915,16 @@ def _exercise_success_acknowledgement_negative_matrix(base: Path) -> None:
         cursor=closed,
         evidence=acknowledgement_evidence,
     )
+    malformed_parent = dict(valid_ack)
+    malformed_parent.pop("content_sha256")
+    malformed_parent["runtime_admission_parent_identity"] = (
+        "not-an-identity"
+    )
+    with pytest.raises(session.SessionValidationError, match="identity"):
+        session.seal_embedded_document(
+            "attempt_acknowledgement",
+            malformed_parent,
+        )
     path_fields = (
         "retention_fence_path",
         "journal_path",
@@ -14570,6 +15095,9 @@ def _exercise_result_cas_consumes_recovery(base: Path) -> None:
         success=False,
     )
     intent = _result_intent(cursor=closed, success=False)
+    expected_closed_recovery = session._canonical_json(
+        session._thaw(closed.apply_recovery)
+    )
     with _lease(root) as lease:
         bound = session.bind_result_intent_under_lock(
             session_lease=lease,
@@ -14581,8 +15109,73 @@ def _exercise_result_cas_consumes_recovery(base: Path) -> None:
         )
         assert persisted.canonical_json == bound.canonical_json
         assert persisted.apply_recovery is None
+        assert persisted.closed_apply_recovery_commitment is not None
+        assert session._canonical_json(
+            session._thaw(persisted.closed_apply_recovery_commitment)
+        ) == expected_closed_recovery
         assert persisted.result_intent == intent
         assert persisted.terminal_status is None
+        missing_carrier = persisted.to_value()
+        missing_carrier.pop("content_sha256")
+        missing_carrier["closed_apply_recovery_commitment"] = None
+        with pytest.raises(
+            session.SessionValidationError,
+            match="closed_recovery_commitment_missing",
+        ):
+            session._seal_session_value(
+                missing_carrier,
+                session_identity=persisted.session_identity,
+            )
+        active_and_closed = persisted.to_value()
+        active_and_closed.pop("content_sha256")
+        active_and_closed["apply_recovery"] = session._thaw(
+            persisted.closed_apply_recovery_commitment
+        )
+        with pytest.raises(session.SessionValidationError):
+            session._seal_session_value(
+                active_and_closed,
+                session_identity=persisted.session_identity,
+            )
+        for field_name, replacement in (
+            ("run_id", "c" * 32),
+            ("apply_attempt_id", "c" * 32),
+            ("apply_invocation_sha256", "sha256:" + "e" * 64),
+            ("runtime_root", str((base / "foreign-runtime").absolute())),
+            ("runtime_root_identity", [71, 72, 0o040755]),
+        ):
+            changed_recovery = session._thaw(
+                persisted.closed_apply_recovery_commitment
+            )
+            changed_recovery.pop("content_sha256")
+            changed_recovery[field_name] = replacement
+            changed_session = persisted.to_value()
+            changed_session.pop("content_sha256")
+            changed_session["closed_apply_recovery_commitment"] = (
+                _seal_literal_document(changed_recovery)
+            )
+            with pytest.raises(session.SessionValidationError):
+                session._seal_session_value(
+                    changed_session,
+                    session_identity=persisted.session_identity,
+                )
+        active_commitment = session._thaw(
+            persisted.closed_apply_recovery_commitment
+        )
+        active_commitment.pop("content_sha256")
+        active_commitment["recovery_stage"] = "ACTIVE"
+        active_commitment_session = persisted.to_value()
+        active_commitment_session.pop("content_sha256")
+        active_commitment_session["closed_apply_recovery_commitment"] = (
+            _seal_literal_document(active_commitment)
+        )
+        with pytest.raises(
+            session.SessionValidationError,
+            match="closed_recovery_commitment_stage_invalid",
+        ):
+            session._seal_session_value(
+                active_commitment_session,
+                session_identity=persisted.session_identity,
+            )
         with pytest.raises(session.SessionConflictError):
             session.bind_result_intent_under_lock(
                 session_lease=lease,
@@ -14592,6 +15185,21 @@ def _exercise_result_cas_consumes_recovery(base: Path) -> None:
         assert session.load_live_start_session_under_lock(
             session_lease=lease
         ).terminal_status is None
+        result_bound = _install_result_artifacts_under_lock(
+            root=root,
+            lease=lease,
+            cursor=persisted,
+        )
+        assert session._canonical_json(
+            session._thaw(result_bound.closed_apply_recovery_commitment)
+        ) == expected_closed_recovery
+        terminal = session.record_terminal_status_under_lock(
+            session_lease=lease,
+            expected_result_session=result_bound,
+        )
+        assert session._canonical_json(
+            session._thaw(terminal.closed_apply_recovery_commitment)
+        ) == expected_closed_recovery
 
 
 def _exercise_result_cursor_negative_matrix(base: Path) -> None:
@@ -14788,7 +15396,7 @@ def _exercise_terminal_contract(base: Path, *, case: str) -> None:
                 expected_retirement_session=resolved,
             )
             assert authorization._opaque.action == (
-                "physical_recovery_advanced"
+                "retire_cleanup_journal"
             )
         return
 
@@ -14988,62 +15596,6 @@ def _exercise_terminal_contract(base: Path, *, case: str) -> None:
             ).content_sha256 == staging_bound.content_sha256
         return
 
-    if case == "terminal_and_nonterminal_recovery_carriers_reject_cross_use":
-        terminal_root, prepared = _prepare_terminal_cursor(
-            base / "terminal",
-            success=False,
-        )
-        recovery_root, recovery_cursor, _recovery = (
-            _apply_recovery_cursor_for_action(
-                base / "recovery",
-                action="observe_not_committed",
-                recovery_changes={},
-            )
-        )
-        callback_calls = 0
-        with _lease(terminal_root) as terminal_lease:
-            terminal_authorization = (
-                session.authorize_terminal_retirement_under_lock(
-                    session_lease=terminal_lease,
-                    expected_retirement_session=prepared,
-                )
-            )
-            with _lease(recovery_root) as recovery_lease:
-                recovery_authorization = (
-                    session._authorize_nonterminal_apply_recovery_under_lock(
-                        session_lease=recovery_lease,
-                        expected_recovery_session=recovery_cursor,
-                        expected_action="observe_not_committed",
-                    )
-                )
-
-                def recovery_callback() -> session.RuntimeApplyRecoveryPhysicalPostcondition:
-                    nonlocal callback_calls
-                    callback_calls += 1
-                    return session.RuntimeApplyRecoveryPhysicalPostcondition(
-                        action="observe_not_committed",
-                    )
-
-                with pytest.raises(session.SessionCapabilityError):
-                    session._execute_apply_recovery_physical_step(
-                        recovery_authorization=terminal_authorization,
-                        action="observe_not_committed",
-                        physical_action=recovery_callback,
-                    )
-                with pytest.raises(session.SessionCapabilityError):
-                    session.advance_terminal_retirement_under_lock(
-                        session_lease=terminal_lease,
-                        expected_retirement_session=prepared,
-                        transition="evidence_retired",
-                        terminal_authorization=recovery_authorization,
-                        physical_step_receipt=None,
-                    )
-                assert callback_calls == 0
-                assert session.load_live_start_session_under_lock(
-                    session_lease=terminal_lease
-                ).content_sha256 == prepared.content_sha256
-        return
-
     if case == "apply_recovery_pending_and_unknown_close_before_terminal_result":
         active_root, active, _recovery = _apply_recovery_cursor_for_action(
             base / "active",
@@ -15082,6 +15634,7 @@ def _exercise_terminal_contract(base: Path, *, case: str) -> None:
         root, closed, _acknowledgement_evidence = _closed_result_cursor(
             base,
             success=False,
+            retained_evidence=False,
         )
         expected_recovery = session._canonical_json(
             session._thaw(closed.apply_recovery)
@@ -15581,6 +16134,7 @@ def _apply_recovery_cursor_for_action(
         Path,
     ]
     | None = None,
+    runtime_root: Path | None = None,
 ) -> tuple[Path, session.LiveStartSession, dict[str, object]]:
     root, frozen = _new_session(
         base,
@@ -15594,10 +16148,23 @@ def _apply_recovery_cursor_for_action(
         )
     )
     invocation_sha256 = "sha256:" + "9" * 64
-    layout = _complete_runtime_layout_fixture(
-        base,
-        run_id=frozen.run_id,
-        apply_attempt_id="b" * 32,
+    owner = recovery_changes.get("owner_retirement")
+    if runtime_root is None and isinstance(owner, Mapping):
+        retired_target = owner.get("retired_target_path")
+        if isinstance(retired_target, str):
+            runtime_root = Path(retired_target).parent.parent
+    layout = (
+        _complete_runtime_layout_fixture(
+            base,
+            run_id=frozen.run_id,
+            apply_attempt_id="b" * 32,
+        )
+        if runtime_root is None
+        else _real_complete_runtime_layout_fixture(
+            runtime_root,
+            run_id=frozen.run_id,
+            apply_attempt_id="b" * 32,
+        )
     )
     recovery = dict(
         _joint_apply_recovery_fixture(
@@ -16333,6 +16900,7 @@ _EXPECTED_NEW_TARGET_ACTION_NEXT = {
     "advance_controller_transaction_journal_write": frozenset(
         {
             "bind_created_candidate",
+            "materialize_file_action_staging",
             "verify_candidate_tree",
             "rename_candidate_to_target",
         }
@@ -16377,7 +16945,7 @@ _EXPECTED_NEW_TARGET_ACTION_NEXT = {
         {"materialize_file_action_staging"}
     ),
     "finalize_attempt_record": frozenset(
-        {"commit_owner_retirement_prepared", "observe_committed"}
+        {"materialize_file_action_staging", "observe_committed"}
     ),
 }
 
@@ -16747,6 +17315,265 @@ def _exercise_new_target_action_graph(base: Path) -> None:
         _exercise_new_target_action_row(base, action=action)
         traversed.append(action)
     assert tuple(traversed) == _EXPECTED_NEW_TARGET_ACTION_ORDER
+
+
+def _assert_finalize_attempt_record_owner_initialization_edge(base: Path) -> None:
+    scenario = _owner_scenario(
+        base,
+        stage="PREPARED_PLANNED",
+        count=1,
+        cursor=0,
+    )
+    owner = scenario["owner"]
+    prepared_bytes = scenario["prepared_bytes"]
+    tombstone_path = scenario["tombstone_path"]
+    successor_owner = scenario["successor_owner"]
+    assert isinstance(owner, Mapping)
+    assert isinstance(prepared_bytes, bytes)
+    assert isinstance(tombstone_path, Path)
+    assert isinstance(successor_owner, Path)
+
+    runtime_root = Path(str(owner["retired_target_path"])).parent.parent
+    active_target = runtime_root / "CustomConfig" / "NewDeck"
+    active_target.mkdir()
+    active_target_identity = list(path_identity(active_target))
+    attempt_path = (
+        runtime_root
+        / ".hsconfig"
+        / "attempt-retention"
+        / f"{'b' * 32}.json"
+    )
+    attempt_path.parent.mkdir(parents=True, exist_ok=True)
+    current_external = _owner_external_action(
+        base / "attempt",
+        action_kind="finalize_attempt_record",
+        payload=b"finalized-attempt\n",
+        final_path=attempt_path,
+        stage="STAGING_BOUND",
+        action_index=11,
+    )
+    planned_external = _owner_external_action(
+        base / "owner-intent",
+        action_kind="commit_owner_retirement_prepared",
+        payload=prepared_bytes,
+        final_path=tombstone_path,
+        stage="PLANNED",
+        action_index=11,
+    )
+    predecessor = dict(_apply_recovery_fixture())
+    predecessor.pop("content_sha256")
+    predecessor.update(
+        {
+            "runtime_root": str(runtime_root),
+            "action_index": 10,
+            "expected_action": "finalize_attempt_record",
+            "external_file_action": current_external,
+            # The admission package digest and the materialized runtime-tree
+            # digest stored by the successor journal are distinct domains.
+            "package_root_sha256": "sha256:" + "f" * 64,
+            "renamed_target_path": str(active_target),
+            "predecessor_renamed_target_identity": active_target_identity,
+            "successor_renamed_target_identity": active_target_identity,
+            "successor_journal_path": str(successor_owner),
+            "successor_journal_identity": owner[
+                "successor_owner_journal_identity"
+            ],
+            "successor_journal_sha256": owner[
+                "successor_owner_journal_sha256"
+            ],
+            "successor_target_owner_journal_path": str(successor_owner),
+            "successor_target_owner_journal_identity": owner[
+                "successor_owner_journal_identity"
+            ],
+            "successor_target_owner_journal_sha256": owner[
+                "successor_owner_journal_sha256"
+            ],
+        }
+    )
+    predecessor = dict(_seal_literal_document(predecessor))
+    successor = dict(predecessor)
+    successor.pop("content_sha256")
+    successor.update(
+        {
+            "action_index": 11,
+            "expected_action": "materialize_file_action_staging",
+            "external_file_action": planned_external,
+            "owner_retirement": dict(owner),
+            "successor_attempt_record_path": current_external["final_path"],
+            "successor_attempt_record_identity": current_external[
+                "staging_identity"
+            ],
+            "successor_attempt_record_sha256": current_external[
+                "staging_sha256"
+            ],
+        }
+    )
+    successor = dict(_seal_literal_document(successor))
+    session._validate_apply_recovery_physical_successor(
+        predecessor=predecessor,
+        successor=successor,
+        action="finalize_attempt_record",
+    )
+
+    wrong_action = dict(predecessor)
+    wrong_action.pop("content_sha256")
+    wrong_action["expected_action"] = "finalize_journal"
+    with pytest.raises(
+        session.SessionCapabilityError,
+        match="owner|history",
+    ):
+        session._validate_apply_recovery_physical_successor(
+            predecessor=_seal_literal_document(wrong_action),
+            successor=successor,
+            action="finalize_journal",
+        )
+
+    wrong_index = session._thaw(planned_external)
+    wrong_index.pop("content_sha256")
+    wrong_index["action_index"] = 12
+    wrong_successor = dict(successor)
+    wrong_successor.pop("content_sha256")
+    wrong_successor["external_file_action"] = session._thaw(
+        session.seal_embedded_document(
+            "external_file_action",
+            wrong_index,
+        )
+    )
+    with pytest.raises(
+        (
+            session.SessionCapabilityError,
+            session.SessionValidationError,
+        ),
+        match="owner",
+    ):
+        session._validate_apply_recovery_physical_successor(
+            predecessor=predecessor,
+            successor=_seal_literal_document(wrong_successor),
+            action="finalize_attempt_record",
+        )
+
+    def rejected_initial_binding(mutation: str) -> None:
+        current = session._thaw(predecessor)
+        current.pop("content_sha256")
+        current_external_value = session._thaw(
+            current["external_file_action"]
+        )
+        current_external_value.pop("content_sha256")
+        next_value = session._thaw(successor)
+        next_value.pop("content_sha256")
+        next_owner = session._thaw(next_value["owner_retirement"])
+        next_owner.pop("content_sha256")
+        next_external = session._thaw(
+            next_value["external_file_action"]
+        )
+        next_external.pop("content_sha256")
+
+        def repath_external(
+            external_value: dict[str, object],
+            final_path: Path,
+        ) -> None:
+            staging_path = final_path.with_name(
+                f"{final_path.name}.staged"
+            )
+            external_value.update(
+                {
+                    "final_path": str(final_path),
+                    "staging_path": str(staging_path),
+                    "inner_temp_path": str(
+                        staging_path.with_name(
+                            f".{staging_path.name}.live-start-atomic.tmp"
+                        )
+                    ),
+                }
+            )
+
+        if mutation == "tombstone_filename":
+            wrong_path = tombstone_path.with_name("wrong-owner.json")
+            next_owner["tombstone_path"] = str(wrong_path)
+            repath_external(next_external, wrong_path)
+        elif mutation == "initial_journal_filename":
+            next_owner["initial_owner_journal_path"] = str(
+                Path(str(next_owner["initial_owner_journal_path"])).with_name(
+                    "wrong-owner.json"
+                )
+            )
+        elif mutation == "same_transaction_id":
+            next_owner["retired_owner_transaction_id"] = next_owner[
+                "successor_transaction_id"
+            ]
+        elif mutation == "current_owner_identity":
+            next_owner["current_owner_journal_identity"] = [
+                901,
+                902,
+                0o100644,
+            ]
+        elif mutation == "current_owner_sha256":
+            next_owner["current_owner_journal_sha256"] = (
+                "sha256:" + "e" * 64
+            )
+        elif mutation == "active_target":
+            next_value["renamed_target_path"] = next_owner[
+                "retired_target_path"
+            ]
+        elif mutation == "finalize_path":
+            wrong_attempt = attempt_path.with_name("wrong-attempt.json")
+            repath_external(current_external_value, wrong_attempt)
+        elif mutation == "finalize_identity":
+            next_value["successor_attempt_record_identity"] = [
+                903,
+                904,
+                0o100644,
+            ]
+        elif mutation == "finalize_sha256":
+            next_value["successor_attempt_record_sha256"] = (
+                "sha256:" + "f" * 64
+            )
+        elif mutation == "route":
+            next_value["install_route"] = "prior_owner"
+        else:
+            raise AssertionError(mutation)
+
+        current["external_file_action"] = session._thaw(
+            session.seal_embedded_document(
+                "external_file_action",
+                current_external_value,
+            )
+        )
+        next_value["owner_retirement"] = _seal_literal_document(
+            next_owner
+        )
+        next_value["external_file_action"] = session._thaw(
+            session.seal_embedded_document(
+                "external_file_action",
+                next_external,
+            )
+        )
+        with pytest.raises(
+            (
+                session.SessionCapabilityError,
+                session.SessionValidationError,
+            ),
+            match="owner|history",
+        ):
+            session._validate_apply_recovery_physical_successor(
+                predecessor=_seal_literal_document(current),
+                successor=_seal_literal_document(next_value),
+                action="finalize_attempt_record",
+            )
+
+    for mutation in (
+        "tombstone_filename",
+        "initial_journal_filename",
+        "same_transaction_id",
+        "current_owner_identity",
+        "current_owner_sha256",
+        "active_target",
+        "finalize_path",
+        "finalize_identity",
+        "finalize_sha256",
+        "route",
+    ):
+        rejected_initial_binding(mutation)
 
 
 def _exercise_bound_renamed_target_to_ini_chain(base: Path) -> None:
@@ -18148,59 +18975,12 @@ def _runtime_layout_pending_cursor(
     Path,
     session.LiveStartSession,
     session.RuntimeLayoutBootstrapEvidence,
+    SimpleNamespace,
 ]:
-    root, frozen = _new_session(base / "session")
-    operation, child, publication, admission = (
-        _sealed_output_authority_fixtures(
-            base,
-            run_id=frozen.run_id,
-            runtime_handoff=True,
-        )
-    )
-    pending = session._empty_pending_transition(
-        session=frozen,
-        operation="install_apply_invocation",
-        external_file_action=None,
-    )
-    pending.update(
-        {
-            "stage": "PRIMARY_APPLIED",
-            "source_phase": "PUBLICATION_COMMITTED",
-            "target_phase": "APPLY_STARTED",
-            "apply_attempt_id": "b" * 32,
-            "runtime_admission_path": admission["admission_path"],
-            "runtime_admission_parent_identity": admission[
-                "admission_parent_identity"
-            ],
-            "runtime_admission_identity": admission[
-                "admission_identity"
-            ],
-            "runtime_admission_sha256": admission["admission_sha256"],
-        }
-    )
-    value = frozen.to_value()
-    value.pop("content_sha256")
-    value.update(
-        {
-            "phase": "PUBLICATION_COMMITTED",
-            "artifact_bindings": _materialize_phase_artifact_fixtures(
-                root=root,
-                cursor=frozen,
-                phase=session.LiveStartPhase.PUBLICATION_COMMITTED,
-            ),
-            "pending_transition": session._seal_pending(pending),
-            "output_operation_admission_binding": operation,
-            "output_child_binding": child,
-            "publication_binding": publication,
-            "prepublication_work_binding": (
-                _prepublication_work_binding_fixture(base)
-            ),
-            "runtime_admission_binding": admission,
-        }
-    )
-    runtime_root = (base / "runtime").absolute()
+    context = _task9_apply_context(base)
+    root = context.root
+    runtime_root = context.runtime_root
     internal = runtime_root / ".hsconfig"
-    internal.mkdir(parents=True)
     paths = (
         runtime_root / "CustomConfig",
         internal / "transactions",
@@ -18223,7 +19003,7 @@ def _runtime_layout_pending_cursor(
                 "expected_parent_identity": (
                     list(path_identity(path.parent))
                     if path.parent.exists()
-                    else [1, 2, 0o040755]
+                    else None
                 ),
                 "predecessor_state": "absent",
                 "predecessor_identity": None,
@@ -18236,8 +19016,8 @@ def _runtime_layout_pending_cursor(
             {
                 "schema_version": 1,
                 "binding_kind": "live_start_runtime_layout_bootstrap",
-                "run_id": frozen.run_id,
-                "apply_attempt_id": "b" * 32,
+                "run_id": context.clean.run_id,
+                "apply_attempt_id": context.invocation.apply_attempt_id,
                 "runtime_root": str(runtime_root),
                 "runtime_root_identity": list(path_identity(runtime_root)),
                 "stage": "INCOMPLETE",
@@ -18248,17 +19028,25 @@ def _runtime_layout_pending_cursor(
         )
     )
     with _lease(root) as lease:
-        cursor = _publish_session_fixture_under_lock(
+        invocation_prepared = _task9_prepare_apply(
+            context=context,
             lease=lease,
-            predecessor=frozen,
-            value=value,
+        )
+        cursor = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=invocation_prepared,
+        )
+        assert cursor.pending_transition is not None
+        assert cursor.pending_transition["apply_invocation_sha256"] == (
+            context.invocation.content_sha256
         )
         prepared = session.prepare_runtime_layout_bootstrap_under_lock(
             session_lease=lease,
             expected_admission_committed_session=cursor,
             layout_evidence=layout,
         )
-    return root, prepared, layout
+    return root, prepared, layout, context
 
 
 def _runtime_layout_successor(
@@ -18269,6 +19057,21 @@ def _runtime_layout_successor(
     layout = session._thaw(current.runtime_layout_bootstrap)
     layout.pop("content_sha256")
     index = layout["next_directory_index"]
+    if layout["directories"][index]["expected_parent_identity"] is None:
+        parent_identity = (
+            layout["directories"][index - 1]["successor_identity"]
+            if layout["directories"][index]["role"] == "state_receipts"
+            else list(
+                path_identity(
+                    Path(
+                        str(layout["directories"][index]["path"])
+                    ).parent
+                )
+            )
+        )
+        layout["directories"][index]["expected_parent_identity"] = (
+            parent_identity
+        )
     layout["directories"][index]["successor_identity"] = list(
         successor_identity
     )
@@ -18289,7 +19092,7 @@ def _runtime_layout_successor(
 def _exercise_runtime_layout_rejection_matrix(base: Path) -> None:
     document_scenarios = ("parent", "new", "skip")
     for scenario in document_scenarios:
-        root, cursor, _ = _runtime_layout_pending_cursor(
+        root, cursor, _, _context = _runtime_layout_pending_cursor(
             base / f"document-{scenario}"
         )
         with _lease(root) as lease:
@@ -18368,7 +19171,9 @@ def _exercise_runtime_layout_rejection_matrix(base: Path) -> None:
 
     for scenario in ("reparse", "ads", "nonempty"):
         scenario_base = base / f"physical-{scenario}"
-        root, cursor, _ = _runtime_layout_pending_cursor(scenario_base)
+        root, cursor, _, _context = _runtime_layout_pending_cursor(
+            scenario_base
+        )
         row = cursor.runtime_layout_bootstrap["directories"][0]
         directory = Path(row["path"])
         callback_count = 0
@@ -18497,7 +19302,7 @@ def _exercise_runtime_layout_real(base: Path, *, case: str) -> None:
                 operation_authorization,
                 session.OutputOperationAdmissionAuthorization,
             )
-    root, cursor, _layout = _runtime_layout_pending_cursor(base)
+    root, cursor, _layout, context = _runtime_layout_pending_cursor(base)
     callback_count = 0
     with _lease(root) as lease:
         if case.endswith("crash_after_mkdir_before_cas_binds_only_exact_empty_child"):
@@ -18536,25 +19341,34 @@ def _exercise_runtime_layout_real(base: Path, *, case: str) -> None:
                     action="create_or_confirm_runtime_layout_directory",
                 )
             )
+
+            def confirm_existing() -> (
+                session.RuntimeLayoutBootstrapPhysicalPostcondition
+            ):
+                successor = _runtime_layout_successor(
+                    cursor,
+                    successor_identity=path_identity(path),
+                )
+                successor_row = successor["directories"][0]
+                return session.RuntimeLayoutBootstrapPhysicalPostcondition(
+                    action="create_or_confirm_runtime_layout_directory",
+                    evidence={
+                        "runtime_layout_bootstrap": successor,
+                        "directory_path": str(path),
+                        "directory_parent_identity": successor_row[
+                            "expected_parent_identity"
+                        ],
+                        "directory_identity": successor_row[
+                            "successor_identity"
+                        ],
+                    },
+                )
+
             resumed_receipt = (
                 session._execute_runtime_layout_bootstrap_physical_step(
                     layout_authorization=resumed_authorization,
                     action="create_or_confirm_runtime_layout_directory",
-                    physical_action=lambda: (
-                        session.RuntimeLayoutBootstrapPhysicalPostcondition(
-                            action=(
-                                "create_or_confirm_runtime_layout_directory"
-                            ),
-                            evidence={
-                                "runtime_layout_bootstrap": (
-                                    _runtime_layout_successor(
-                                        cursor,
-                                        successor_identity=path_identity(path),
-                                    )
-                                )
-                            },
-                        )
-                    ),
+                    physical_action=confirm_existing,
                 )
             )
             advanced = session.advance_runtime_layout_bootstrap_under_lock(
@@ -18598,27 +19412,45 @@ def _exercise_runtime_layout_real(base: Path, *, case: str) -> None:
                     expected_cursor,
                     successor_identity=path_identity(directory),
                 )
+                successor_row = successor["directories"][index]
+                if successor_row["role"] == "state_receipts":
+                    assert successor_row["expected_parent_identity"] == (
+                        successor["directories"][index - 1][
+                            "successor_identity"
+                        ]
+                    ), (successor_row, successor["directories"][index - 1])
                 evidence: dict[str, object] = {
-                    "runtime_layout_bootstrap": successor
+                    "runtime_layout_bootstrap": successor,
+                    "directory_path": str(directory),
+                    "directory_parent_identity": successor_row[
+                        "expected_parent_identity"
+                    ],
+                    "directory_identity": successor_row[
+                        "successor_identity"
+                    ],
                 }
                 if successor["stage"] == "COMPLETE":
-                    invocation = (base / "invocation.json").absolute()
                     evidence["invocation_receipt_file_action"] = session._build_external_file_action(
                         action_kind="materialize_invocation_receipt_staging",
                         action_index=0,
-                        final_path=invocation,
-                        staging_path=invocation.with_name(
-                            "invocation.json.staged"
+                        final_path=context.receipt_path,
+                        staging_path=context.receipt_staging_path,
+                        inner_temp_path=context.receipt_inner_temp_path,
+                        parent_identity=path_identity(
+                            context.receipt_path.parent
                         ),
-                        inner_temp_path=invocation.with_name(
-                            ".invocation.json.staged.live-start-atomic.tmp"
-                        ),
-                        parent_identity=path_identity(base),
                         predecessor_identity=None,
                         predecessor_size=None,
                         predecessor_sha256=None,
-                        planned_successor_size=5,
-                        planned_successor_sha256="sha256:" + "7" * 64,
+                        planned_successor_size=len(
+                            context.invocation.canonical_json
+                        ),
+                        planned_successor_sha256=(
+                            "sha256:"
+                            + sha256(
+                                context.invocation.canonical_json
+                            ).hexdigest()
+                        ),
                         commit_mode="create_no_replace",
                     )
                 return session.RuntimeLayoutBootstrapPhysicalPostcondition(
@@ -18730,6 +19562,7 @@ def _owner_external_action(
     predecessor_identity: tuple[int, int, int] | None = None,
     predecessor_size: int | None = None,
     predecessor_sha256: str | None = None,
+    action_index: int | None = None,
 ) -> dict[str, object]:
     base.mkdir(parents=True, exist_ok=True)
     final_path = (
@@ -18747,13 +19580,16 @@ def _owner_external_action(
     predecessor_state = (
         "absent" if predecessor_identity is None else "exact"
     )
+    resolved_action_index = (
+        9 if stage == "STAGING_BOUND" else 11
+    ) if action_index is None else action_index
     return dict(
         session.seal_embedded_document(
             "external_file_action",
             {
                 "schema_version": 1,
                 "action_kind": action_kind,
-                "action_index": 0,
+                "action_index": resolved_action_index,
                 "stage": stage,
                 "final_path": str(final_path),
                 "staging_path": str(staging_path),
@@ -19102,6 +19938,45 @@ def _owner_recovery_successor(
     return _seal_literal_document(value)
 
 
+def _assert_absent_owner_entry_parent_substitution_rejected(
+    base: Path,
+) -> None:
+    scenario = _owner_scenario(
+        base,
+        stage="CLEANING",
+        count=1,
+        cursor=0,
+    )
+    owner = scenario["owner"]
+    target = scenario["target"]
+    entry_path = scenario["entry_paths"][0]
+    assert isinstance(owner, Mapping)
+    assert isinstance(target, Path)
+    assert isinstance(entry_path, Path)
+    entry_path.unlink()
+    original_path_identity = session.path_identity
+
+    def substituted_parent(path: Path) -> tuple[int, int, int]:
+        if Path(path) == target:
+            return 901, 902, 0o040755
+        return original_path_identity(path)
+
+    with patch.object(
+        session,
+        "path_identity",
+        side_effect=substituted_parent,
+    ), pytest.raises(session.SessionConflictError, match="parent"):
+        session._validate_owner_action_precondition_under_lock(
+            recovery={
+                "action_index": 10,
+                "expected_action": "delete_owner_cleanup_entry",
+                "owner_retirement": owner,
+                "external_file_action": None,
+            },
+            action="delete_owner_cleanup_entry",
+        )
+
+
 def _completed_owner_bytes_from_prepared(
     prepared_bytes: bytes,
     *,
@@ -19317,7 +20192,7 @@ def _assert_owner_authority_precedes_observation(
                 "directory": 0,
             }
         authorization = authorize_valid()
-        assert all(value > 0 for value in counters.values())
+        assert all(value > 0 for value in counters.values()), counters
 
     assert {
         path: path.read_bytes()
@@ -19730,6 +20605,7 @@ def _execute_owner_full_sequence(base: Path) -> list[str]:
         payload=prepared_bytes,
         final_path=tombstone_path,
         stage="PLANNED",
+        action_index=10,
     )
     root, cursor, _predecessor = _apply_recovery_cursor_for_action(
         base / "session",
@@ -19926,6 +20802,7 @@ def _execute_owner_full_sequence(base: Path) -> list[str]:
                 predecessor_sha256=(
                     f"sha256:{sha256(old_journal.read_bytes()).hexdigest()}"
                 ),
+                action_index=int(predecessor["action_index"]) + 1,
             )
             return _owner_recovery_successor(
                 predecessor,
@@ -19992,6 +20869,7 @@ def _execute_owner_full_sequence(base: Path) -> list[str]:
                         "sha256:"
                         + sha256(old_journal.read_bytes()).hexdigest()
                     ),
+                    action_index=int(predecessor["action_index"]) + 1,
                 )
                 return _owner_recovery_successor(
                     predecessor,
@@ -20097,6 +20975,7 @@ def _execute_owner_full_sequence(base: Path) -> list[str]:
                 predecessor_sha256=(
                     f"sha256:{sha256(tombstone_path.read_bytes()).hexdigest()}"
                 ),
+                action_index=int(predecessor["action_index"]) + 1,
             )
             return _owner_recovery_successor(
                 predecessor,
@@ -20255,6 +21134,196 @@ def _assert_owner_authorization_rejects_mutation(
         assert session.load_live_start_session_under_lock(
             session_lease=lease
         ).content_sha256 == cursor.content_sha256
+
+
+def _assert_owner_external_action_index_rejected_before_observation(
+    base: Path,
+    *,
+    external_stage: str,
+) -> None:
+    scenario = _owner_scenario(
+        base / "authority",
+        stage="PREPARED_PLANNED",
+        count=0,
+        cursor=0,
+    )
+    owner = scenario["owner"]
+    prepared_bytes = scenario["prepared_bytes"]
+    tombstone_path = scenario["tombstone_path"]
+    assert isinstance(owner, Mapping)
+    assert isinstance(prepared_bytes, bytes)
+    assert isinstance(tombstone_path, Path)
+    expected_action = (
+        "materialize_file_action_staging"
+        if external_stage == "PLANNED"
+        else "commit_owner_retirement_prepared"
+    )
+    external = _owner_external_action(
+        base / "external",
+        action_kind="commit_owner_retirement_prepared",
+        payload=prepared_bytes,
+        final_path=tombstone_path,
+        stage=external_stage,
+        action_index=10 if external_stage == "PLANNED" else 9,
+    )
+    _root, _cursor, valid_recovery = _apply_recovery_cursor_for_action(
+        base / "session",
+        action=expected_action,
+        recovery_changes={
+            "owner_retirement": dict(owner),
+            "external_file_action": external,
+        },
+    )
+    invalid_recovery = session._thaw(valid_recovery)
+    invalid_recovery.pop("content_sha256")
+    invalid_external = session._thaw(
+        invalid_recovery["external_file_action"]
+    )
+    invalid_external.pop("content_sha256")
+    invalid_external["action_index"] = (
+        9 if external_stage == "PLANNED" else 10
+    )
+    invalid_recovery["external_file_action"] = dict(
+        session.seal_embedded_document(
+            "external_file_action",
+            invalid_external,
+        )
+    )
+    invalid_recovery = dict(_seal_literal_document(invalid_recovery))
+
+    with pytest.raises(
+        session.SessionValidationError,
+        match="owner.*action.*index",
+    ):
+        session._validate_apply_recovery_document(invalid_recovery)
+
+    counters = {"read_exact": 0, "identity": 0, "lexists": 0}
+    original_read_exact = session._read_exact_owner_file
+    original_identity = session.path_identity
+    original_lexists = session.os.path.lexists
+
+    def counted_read_exact(*args: object, **kwargs: object) -> object:
+        counters["read_exact"] += 1
+        return original_read_exact(*args, **kwargs)
+
+    def counted_identity(path: object) -> object:
+        counters["identity"] += 1
+        return original_identity(path)
+
+    def counted_lexists(path: object) -> bool:
+        counters["lexists"] += 1
+        return original_lexists(path)
+
+    with patch.object(
+        session,
+        "_read_exact_owner_file",
+        side_effect=counted_read_exact,
+    ), patch.object(
+        session,
+        "path_identity",
+        side_effect=counted_identity,
+    ), patch.object(
+        session.os.path,
+        "lexists",
+        side_effect=counted_lexists,
+    ):
+        with pytest.raises(
+            session.SessionConflictError,
+            match="owner.*action.*index",
+        ):
+            session._validate_owner_action_precondition_under_lock(
+                recovery=invalid_recovery,
+                action=expected_action,
+            )
+    assert counters == {"read_exact": 0, "identity": 0, "lexists": 0}
+
+
+def _assert_owner_layout_parent_substitution_rejected_before_observation(
+    base: Path,
+) -> None:
+    scenario = _owner_scenario(
+        base / "authority",
+        stage="CLEANING",
+        count=1,
+        cursor=0,
+    )
+    owner = scenario["owner"]
+    assert isinstance(owner, Mapping)
+    root, cursor, _recovery = _apply_recovery_cursor_for_action(
+        base / "session",
+        action="delete_owner_cleanup_entry",
+        recovery_changes={
+            "owner_retirement": dict(owner),
+            "external_file_action": None,
+        },
+    )
+    layout = session._thaw(cursor.runtime_layout_bootstrap)
+    layout.pop("content_sha256")
+    directories = [dict(row) for row in layout["directories"]]
+    transactions_index = session.RUNTIME_LAYOUT_DIRECTORY_ROLES.index(
+        "transactions"
+    )
+    directories[transactions_index]["successor_identity"] = [
+        901,
+        902,
+        0o040755,
+    ]
+    layout["directories"] = directories
+    invalid_layout = session.seal_embedded_document(
+        "runtime_layout_bootstrap",
+        layout,
+    )
+    with _lease(root) as lease:
+        value = cursor.to_value()
+        value.pop("content_sha256")
+        value["runtime_layout_bootstrap"] = dict(invalid_layout)
+        invalid_cursor = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=cursor,
+            value=value,
+        )
+        counters = {"read_exact": 0, "identity": 0, "lexists": 0}
+        original_read_exact = session._read_exact_owner_file
+        original_identity = session.path_identity
+        original_lexists = session.os.path.lexists
+
+        def counted_read_exact(*args: object, **kwargs: object) -> object:
+            counters["read_exact"] += 1
+            return original_read_exact(*args, **kwargs)
+
+        def counted_identity(path: object) -> object:
+            counters["identity"] += 1
+            return original_identity(path)
+
+        def counted_lexists(path: object) -> bool:
+            counters["lexists"] += 1
+            return original_lexists(path)
+
+        with patch.object(
+            session,
+            "_read_exact_owner_file",
+            side_effect=counted_read_exact,
+        ), patch.object(
+            session,
+            "path_identity",
+            side_effect=counted_identity,
+        ), patch.object(
+            session.os.path,
+            "lexists",
+            side_effect=counted_lexists,
+        ):
+            with pytest.raises(
+                session.SessionConflictError,
+                match="owner.*layout|layout.*owner",
+            ):
+                session._authorize_nonterminal_apply_recovery_under_lock(
+                    session_lease=lease,
+                    expected_recovery_session=invalid_cursor,
+                    expected_action="delete_owner_cleanup_entry",
+                )
+        assert counters["read_exact"] == 0
+        assert counters["lexists"] == 0
+        assert counters["identity"] > 0
 
 
 def _assert_owner_root_receipt_rejects_substitution(
@@ -21635,9 +22704,11 @@ def _terminal_owner_noop_is_accepted(base: Path, *, action: str) -> bool:
     assert isinstance(old_journal, Path)
     assert isinstance(tombstone_path, Path)
     assert isinstance(target, Path)
+    runtime_root = Path(str(owner["retired_target_path"])).parent.parent
     root, prepared, _inventory = _prepare_resolved_terminal_cursor(
         base / "terminal",
         with_cleanup_inventory=False,
+        runtime_root=runtime_root,
     )
     retirement = session._thaw(prepared.terminal_retirement)
     retirement.pop("content_sha256")
@@ -21812,6 +22883,9 @@ def _terminal_owner_noop_is_accepted(base: Path, *, action: str) -> bool:
             }
         next_resolution = session._thaw(current_resolution)
         next_resolution.pop("content_sha256")
+        next_resolution["action_index"] = (
+            int(next_resolution["action_index"]) + 1
+        )
         next_resolution.update(
             {
                 "owner_retirement": _seal_literal_document(next_owner),
@@ -21876,6 +22950,288 @@ def _exercise_owner_contract(base: Path, *, case: str) -> None:
     if case == (
         "terminal_resolution_carries_partial_owner_retirement_until_owner_retired"
     ):
+        handoff_scenario = _owner_scenario(
+            base / "handoff-owner",
+            stage="CLEANING",
+            count=0,
+            cursor=0,
+        )
+        handoff_owner = handoff_scenario["owner"]
+        assert isinstance(handoff_owner, Mapping)
+        handoff_root, handoff_cursor, handoff_recovery = (
+            _apply_recovery_cursor_for_action(
+                base / "handoff-session",
+                action="retire_owner_target_root",
+                recovery_changes={"owner_retirement": dict(handoff_owner)},
+            )
+        )
+        selected_value = session._thaw(handoff_recovery)
+        selected_value.pop("content_sha256")
+        selected_value.update(
+            {
+                "action_index": handoff_recovery["action_index"] + 1,
+                "expected_action": "observe_pending",
+            }
+        )
+        selected_evidence = _seal_literal_document(selected_value)
+        with _lease(handoff_root) as lease:
+            classification_authorization = (
+                session._authorize_runtime_observation_under_lock(
+                    session_lease=lease,
+                    expected_session=handoff_cursor,
+                    observation_family="terminal_classification",
+                    apply_attempt_id=str(
+                        handoff_recovery["apply_attempt_id"]
+                    ),
+                )
+            )
+            classification_receipt = session._execute_runtime_observation(
+                observation_authorization=classification_authorization,
+                observation_family="terminal_classification",
+                read_only_observation=lambda: (
+                    session.RuntimeObservationPostcondition(
+                        action=str(handoff_recovery["apply_attempt_id"]),
+                        observation_family="terminal_classification",
+                        evidence={"apply_recovery": selected_evidence},
+                    )
+                ),
+            )
+            selected = session.advance_nonterminal_apply_recovery_under_lock(
+                session_lease=lease,
+                expected_recovery_session=handoff_cursor,
+                transition="select_terminal_classification",
+                recovery_evidence=None,
+                recovery_authorization=None,
+                physical_step_receipt=None,
+                runtime_observation_receipt=classification_receipt,
+            )
+        stable_value = session._thaw(selected.apply_recovery)
+        stable_value.pop("content_sha256")
+        stable_value.update(
+            {
+                "action_index": stable_value["action_index"] + 1,
+                "expected_action": None,
+                "stable_physical_disposition": (
+                    "COMMITTED_RECOVERY_PENDING"
+                ),
+            }
+        )
+        stable = _advance_real_recovery_action(
+            root=handoff_root,
+            cursor=selected,
+            action="observe_pending",
+            successor=dict(_seal_literal_document(stable_value)),
+        )
+        closed_value = session._thaw(stable.apply_recovery)
+        closed_value.pop("content_sha256")
+        closed_value["recovery_stage"] = "CLOSED"
+        closed = _pure_recovery_advance(
+            root=handoff_root,
+            cursor=stable,
+            transition="recovery_closed",
+            successor_recovery=_seal_literal_document(closed_value),
+        )
+        closed_recovery = closed.apply_recovery
+        assert isinstance(closed_recovery, Mapping)
+        assert session._canonical_json(
+            session._thaw(closed_recovery["owner_retirement"])
+        ) == session._canonical_json(session._thaw(handoff_owner))
+        handoff_intent = _result_intent(
+            cursor=closed,
+            success=False,
+            changes={
+                "terminal_status": "APPLIED_BUT_NOT_VERIFIED",
+                "raw_apply_status": "committed_receipt_pending",
+                "error_code": "runtime_recovery_required",
+                "retained_safe_state": "ATTEMPT_EVIDENCE_RETAINED",
+            },
+        )
+        resolution_value = _terminal_resolution_fixture()
+        resolution_value.pop("content_sha256")
+        resolution_value.update(
+            {
+                "run_id": closed.run_id,
+                "apply_attempt_id": closed_recovery["apply_attempt_id"],
+                "action_index": closed_recovery["action_index"],
+                "predecessor_attempt_record_path": closed_recovery[
+                    "predecessor_attempt_record_path"
+                ],
+                "predecessor_attempt_record_identity": closed_recovery[
+                    "predecessor_attempt_record_identity"
+                ],
+                "predecessor_attempt_record_sha256": closed_recovery[
+                    "predecessor_attempt_record_sha256"
+                ],
+                "predecessor_journal_path": closed_recovery[
+                    "predecessor_journal_path"
+                ],
+                "predecessor_journal_identity": closed_recovery[
+                    "predecessor_journal_identity"
+                ],
+                "predecessor_journal_sha256": closed_recovery[
+                    "predecessor_journal_sha256"
+                ],
+                "predecessor_target_owner_journal_path": closed_recovery[
+                    "predecessor_target_owner_journal_path"
+                ],
+                "predecessor_target_owner_journal_identity": (
+                    closed_recovery[
+                        "predecessor_target_owner_journal_identity"
+                    ]
+                ),
+                "predecessor_target_owner_journal_sha256": closed_recovery[
+                    "predecessor_target_owner_journal_sha256"
+                ],
+                "owner_retirement": handoff_owner,
+                "external_file_action": None,
+                "resolved_physical_disposition": (
+                    "COMMITTED_RECOVERY_PENDING"
+                ),
+                "package_root_sha256": closed_recovery[
+                    "package_root_sha256"
+                ],
+                "last_apply_receipt_sha256": closed_recovery[
+                    "last_apply_receipt_sha256"
+                ],
+                "runtime_state_sha256": closed_recovery[
+                    "runtime_state_sha256"
+                ],
+                "deck_config_ini_sha256": closed_recovery[
+                    "deck_config_ini_sha256"
+                ],
+                "runtime_match_status": closed_recovery[
+                    "runtime_match_status"
+                ],
+                "runtime_match_sha256": closed_recovery[
+                    "runtime_match_sha256"
+                ],
+            }
+        )
+        exact_resolution = session.TerminalResolutionEvidence(
+            _seal_literal_document(resolution_value)
+        )
+        with _lease(handoff_root) as lease:
+            result_bound = session.bind_result_intent_under_lock(
+                session_lease=lease,
+                expected_session=closed,
+                result_intent=handoff_intent,
+            )
+            assert result_bound.apply_recovery is None
+            assert (
+                result_bound.closed_apply_recovery_commitment
+                == closed_recovery
+            )
+            result_bound = _install_result_artifacts_under_lock(
+                root=handoff_root,
+                lease=lease,
+                cursor=result_bound,
+            )
+            terminal = session.record_terminal_status_under_lock(
+                session_lease=lease,
+                expected_result_session=result_bound,
+            )
+            assert (
+                terminal.closed_apply_recovery_commitment
+                == closed_recovery
+            )
+
+            def terminal_observation(
+                evidence: Mapping[str, object],
+            ) -> session.RuntimeObservationReceipt:
+                authorization = (
+                    session._authorize_runtime_observation_under_lock(
+                        session_lease=lease,
+                        expected_session=terminal,
+                        observation_family="terminal_resolution",
+                        apply_attempt_id=str(
+                            closed_recovery["apply_attempt_id"]
+                        ),
+                    )
+                )
+                return session._execute_runtime_observation(
+                    observation_authorization=authorization,
+                    observation_family="terminal_resolution",
+                    read_only_observation=lambda: (
+                        session.RuntimeObservationPostcondition(
+                            action=str(
+                                closed_recovery["apply_attempt_id"]
+                            ),
+                            observation_family="terminal_resolution",
+                            evidence={
+                                "terminal_resolution_evidence": evidence
+                            },
+                        )
+                    ),
+                )
+
+            substituted_owner = session._thaw(handoff_owner)
+            substituted_owner.pop("content_sha256")
+            substituted_owner["current_owner_journal_sha256"] = (
+                "sha256:" + "e" * 64
+            )
+            substituted_resolution_value = session._thaw(
+                exact_resolution.value
+            )
+            substituted_resolution_value.pop("content_sha256")
+            substituted_resolution_value["owner_retirement"] = (
+                _seal_literal_document(substituted_owner)
+            )
+            substituted_resolution = session.TerminalResolutionEvidence(
+                _seal_literal_document(substituted_resolution_value)
+            )
+            before = (handoff_root / "session.json").read_bytes()
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="owner_handoff",
+            ):
+                session.prepare_terminal_retirement_under_lock(
+                    session_lease=lease,
+                    expected_terminal_session=terminal,
+                    operation="release_resolved_terminal",
+                    runtime_observation_receipt=terminal_observation(
+                        substituted_resolution.value
+                    ),
+                )
+            assert (handoff_root / "session.json").read_bytes() == before
+            substituted_index_value = session._thaw(
+                exact_resolution.value
+            )
+            substituted_index_value.pop("content_sha256")
+            substituted_index_value["action_index"] = (
+                int(substituted_index_value["action_index"]) + 1
+            )
+            substituted_index = session.TerminalResolutionEvidence(
+                _seal_literal_document(substituted_index_value)
+            )
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="action_index",
+            ):
+                session.prepare_terminal_retirement_under_lock(
+                    session_lease=lease,
+                    expected_terminal_session=terminal,
+                    operation="release_resolved_terminal",
+                    runtime_observation_receipt=terminal_observation(
+                        substituted_index.value
+                    ),
+                )
+            assert (handoff_root / "session.json").read_bytes() == before
+            prepared_handoff = (
+                session.prepare_terminal_retirement_under_lock(
+                    session_lease=lease,
+                    expected_terminal_session=terminal,
+                    operation="release_resolved_terminal",
+                    runtime_observation_receipt=terminal_observation(
+                        exact_resolution.value
+                    ),
+                )
+            )
+            assert prepared_handoff.closed_apply_recovery_commitment is None
+            assert prepared_handoff.terminal_retirement is not None
+            assert prepared_handoff.terminal_retirement[
+                "terminal_resolution_evidence"
+            ]["owner_retirement"] == closed_recovery["owner_retirement"]
+
         accepted_noops = [
             action
             for action in (
@@ -21888,10 +23244,6 @@ def _exercise_owner_contract(base: Path, *, case: str) -> None:
                 action=action,
             )
         ]
-        root, prepared, _inventory = _prepare_resolved_terminal_cursor(
-            base / "terminal",
-            with_cleanup_inventory=False,
-        )
         scenario = _owner_scenario(
             base / "owner",
             stage="PREPARED_PLANNED",
@@ -21904,6 +23256,14 @@ def _exercise_owner_contract(base: Path, *, case: str) -> None:
         assert isinstance(owner, Mapping)
         assert isinstance(prepared_bytes, bytes)
         assert isinstance(tombstone_path, Path)
+        runtime_root = Path(
+            str(owner["retired_target_path"])
+        ).parent.parent
+        root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+            base / "terminal",
+            with_cleanup_inventory=False,
+            runtime_root=runtime_root,
+        )
         planned_external = _owner_external_action(
             base / "owner-external",
             action_kind="commit_owner_retirement_prepared",
@@ -22045,6 +23405,9 @@ def _exercise_owner_contract(base: Path, *, case: str) -> None:
                     retirement["terminal_resolution_evidence"]
                 )
                 next_resolution.pop("content_sha256")
+                next_resolution["action_index"] = (
+                    int(next_resolution["action_index"]) + 1
+                )
                 next_resolution["external_file_action"] = (
                     _seal_literal_document(bound)
                 )
@@ -22138,6 +23501,17 @@ def _exercise_owner_contract(base: Path, *, case: str) -> None:
     if case == (
         "owner_retirement_evidence_binds_target_parent_and_complete_manifest_commitment"
     ):
+        for external_stage in ("PLANNED", "STAGING_BOUND"):
+            _assert_owner_external_action_index_rejected_before_observation(
+                base / f"external-index-{external_stage.lower()}",
+                external_stage=external_stage,
+            )
+        _assert_owner_layout_parent_substitution_rejected_before_observation(
+            base / "layout-parent-substitution"
+        )
+        _assert_absent_owner_entry_parent_substitution_rejected(
+            base / "absent-entry-parent-substitution"
+        )
         rows = (
             (
                 "delete_owner_cleanup_entry",
@@ -23588,6 +24962,40 @@ def test_attempt_acknowledgement_rejects_delete_owner_action_or_mixed_evidence(
     )
 
 
+def test_attempt_acknowledgement_accepts_nonowning_attempt_with_separate_owner(
+    tmp_path: Path,
+) -> None:
+    root, closed, acknowledgement_evidence = _closed_result_cursor(
+        tmp_path / "nonowning",
+        success=True,
+        install_route="prior_owner",
+    )
+    intent = _result_intent(cursor=closed, success=True)
+    acknowledgement = _attempt_acknowledgement(
+        cursor=closed,
+        evidence=acknowledgement_evidence,
+    )
+
+    assert acknowledgement["journal_owns_target"] is False
+    assert acknowledgement["acknowledgement_action"] == (
+        "delete_nonowning_attempt_and_fence"
+    )
+    assert acknowledgement["journal_path"] != acknowledgement[
+        "target_owner_journal_path"
+    ]
+
+    with _lease(root) as lease:
+        bound = session.bind_result_intent_under_lock(
+            session_lease=lease,
+            expected_session=closed,
+            result_intent=intent,
+            attempt_acknowledgement=acknowledgement,
+        )
+
+    assert bound.apply_recovery is None
+    assert bound.attempt_acknowledgement == acknowledgement
+
+
 def test_result_intent_binds_attempt_journal_and_owner_path_identity_and_digest(
     tmp_path: Path,
 ) -> None:
@@ -23595,6 +25003,108 @@ def test_result_intent_binds_attempt_journal_and_owner_path_identity_and_digest(
         tmp_path / "behavior",
         case="result_intent_binds_attempt_journal_and_owner_path_identity_and_digest",
     )
+
+
+def test_result_intent_retains_candidate_identity_only_for_not_committed(
+    tmp_path: Path,
+) -> None:
+    committed_root, committed, _ = _closed_result_cursor(
+        tmp_path / "committed",
+        success=True,
+    )
+    del committed_root
+    committed_intent = _result_intent(cursor=committed, success=True)
+    assert committed_intent["physical_disposition"] == "COMMITTED"
+    assert committed_intent["retained_candidate_identity"] is None
+    not_committed_root, not_committed, _ = _closed_result_cursor(
+        tmp_path / "not-committed",
+        success=False,
+    )
+    del not_committed_root
+    not_committed_intent = _result_intent(
+        cursor=not_committed,
+        success=False,
+    )
+    assert not_committed_intent["physical_disposition"] == "NOT_COMMITTED"
+    assert not_committed_intent["retained_candidate_identity"] == (
+        not_committed.apply_recovery["predecessor_candidate_identity"]
+    )
+    for disposition in ("COMMITTED", "UNKNOWN_REQUIRES_RECOVERY"):
+        with pytest.raises(
+            session.SessionValidationError,
+            match="live_start_result_candidate_identity_invalid",
+        ):
+            _result_intent(
+                cursor=not_committed,
+                success=False,
+                changes={
+                    "physical_disposition": disposition,
+                    "retained_candidate_identity": [991, 992, 0o40755],
+                },
+            )
+
+
+def test_result_intent_retained_candidate_identity_is_null_for_committed_and_unknown_new_target_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests import test_runtime_installer as runtime_tests
+
+    committed = runtime_tests._genuine_closed_result_intent_route(
+        tmp_path / "committed",
+        monkeypatch,
+        disposition="COMMITTED",
+    )
+    committed_recovery = committed.closed.apply_recovery
+    assert committed_recovery is not None
+    assert committed.closed.phase is session.LiveStartPhase.APPLY_COMMITTED
+    assert committed_recovery["recovery_stage"] == "CLOSED"
+    assert committed_recovery["stable_physical_disposition"] == "COMMITTED"
+    assert committed_recovery["runtime_match_status"] == "unknown"
+    assert committed.intent["physical_disposition"] == "COMMITTED"
+    assert committed.intent["retained_candidate_identity"] is None
+    assert committed.result_bound.apply_recovery is None
+    assert committed.terminal.terminal_status == "APPLIED_BUT_NOT_VERIFIED"
+
+    unknown = runtime_tests._genuine_closed_result_intent_route(
+        tmp_path / "unknown",
+        monkeypatch,
+        disposition="UNKNOWN_REQUIRES_RECOVERY",
+    )
+    assert unknown.selected is not None
+    selected_recovery = unknown.selected.apply_recovery
+    assert selected_recovery is not None
+    assert selected_recovery["expected_action"] == "observe_unknown"
+    observed_recovery = unknown.observed.apply_recovery
+    assert observed_recovery is not None
+    assert observed_recovery["stable_physical_disposition"] == (
+        "UNKNOWN_REQUIRES_RECOVERY"
+    )
+    unknown_recovery = unknown.closed.apply_recovery
+    assert unknown_recovery is not None
+    assert unknown.closed.phase is session.LiveStartPhase.APPLY_STARTED
+    assert unknown_recovery["recovery_stage"] == "CLOSED"
+    assert unknown.intent["physical_disposition"] == (
+        "UNKNOWN_REQUIRES_RECOVERY"
+    )
+    assert unknown.intent["retained_candidate_identity"] is None
+    assert unknown.result_bound.apply_recovery is None
+    assert unknown.terminal.terminal_status == "APPLIED_BUT_NOT_VERIFIED"
+
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_result_candidate_identity_invalid$",
+    ):
+        _result_intent(
+            cursor=unknown.closed,
+            success=False,
+            changes={
+                "retained_candidate_identity": [991, 992, 0o40755],
+                "terminal_status": "APPLIED_BUT_NOT_VERIFIED",
+                "error_code": "runtime_recovery_required",
+                "retained_safe_state": "ATTEMPT_EVIDENCE_RETAINED",
+            },
+        )
 
 
 def test_terminal_retirement_has_closed_recovery_evidence_and_release_authorized_stages(
@@ -23779,10 +25289,16 @@ def test_nonterminal_recovery_advance_requires_matching_receipt_or_pure_cas_auth
 
 def test_terminal_and_nonterminal_recovery_carriers_reject_cross_use(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _exercise_terminal_contract(
+    from tests import test_runtime_installer as runtime_tests
+
+    assert session.RuntimeApplyRecoveryEvidence(_apply_recovery_fixture()).value[
+        "recovery_stage"
+    ] == "ACTIVE"
+    runtime_tests._assert_genuine_terminal_and_nonterminal_recovery_authorities_are_mutually_exclusive(
         tmp_path / "behavior",
-        case="terminal_and_nonterminal_recovery_carriers_reject_cross_use",
+        monkeypatch,
     )
 
 
@@ -24011,6 +25527,14 @@ def test_apply_recovery_new_target_action_graph_is_exhaustive_and_linear(
     )
 
 
+def test_finalize_attempt_record_is_only_owner_retirement_initial_cursor_edge(
+    tmp_path: Path,
+) -> None:
+    _assert_finalize_attempt_record_owner_initialization_edge(
+        tmp_path / "behavior"
+    )
+
+
 def test_candidate_tree_copy_verify_rename_and_journal_rows_are_distinct(
     tmp_path: Path,
 ) -> None:
@@ -24117,6 +25641,79 @@ def test_terminal_resolution_carries_partial_owner_retirement_until_owner_retire
         tmp_path / "behavior",
         case="terminal_resolution_carries_partial_owner_retirement_until_owner_retired",
     )
+
+
+def test_terminal_owner_retired_committed_cursor_stabilizes_without_replaying_observation(
+    tmp_path: Path,
+) -> None:
+    scenario = _owner_scenario(
+        tmp_path / "owner",
+        stage="OWNER_RETIRED",
+        count=0,
+        cursor=0,
+    )
+    owner = scenario["owner"]
+    assert isinstance(owner, Mapping)
+    runtime_root = Path(str(owner["retired_target_path"])).parent.parent
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "terminal",
+        with_cleanup_inventory=False,
+        runtime_root=runtime_root,
+    )
+    retirement = session._thaw(prepared.terminal_retirement)
+    retirement.pop("content_sha256")
+    resolution = session._thaw(
+        retirement["terminal_resolution_evidence"]
+    )
+    resolution.pop("content_sha256")
+    resolution.update(
+        {
+            "owner_retirement": owner,
+            "external_file_action": None,
+            "resolved_physical_disposition": "COMMITTED",
+        }
+    )
+    retirement["terminal_resolution_evidence"] = session._thaw(
+        session._seal_terminal_resolution(resolution)
+    )
+    sealed_retirement = session.seal_embedded_document(
+        "terminal_retirement",
+        retirement,
+    )
+    with _lease(root) as lease:
+        value = prepared.to_value()
+        value.pop("content_sha256")
+        value["terminal_retirement"] = dict(sealed_retirement)
+        cursor = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=prepared,
+            value=value,
+        )
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=cursor,
+        )
+        assert authorization._opaque.action == "stabilized"
+        current_retirement = cursor.terminal_retirement
+        assert isinstance(current_retirement, Mapping)
+        current_resolution = session.TerminalResolutionEvidence(
+            current_retirement["terminal_resolution_evidence"]
+        )
+        stabilized = session.advance_terminal_resolution_under_lock(
+            session_lease=lease,
+            expected_resolution_session=cursor,
+            transition="stabilized",
+            resolved_evidence=current_resolution,
+            terminal_authorization=authorization,
+            physical_step_receipt=None,
+        )
+        assert stabilized.terminal_retirement is not None
+        assert stabilized.terminal_retirement["stage"] == (
+            "RECOVERY_STABILIZED"
+        )
+        assert stabilized.terminal_retirement[
+            "terminal_resolution_evidence"
+        ] == current_retirement["terminal_resolution_evidence"]
 
 
 def test_release_authorized_is_final_session_stage_before_physical_unlink(
@@ -24628,10 +26225,10 @@ def test_task3_signed_selector_manifest_and_semantic_routes_are_closed() -> None
         payload = ("\n".join(names) + "\n").encode("utf-8")
         return sha256(payload).hexdigest()
 
-    assert len(signed_selectors) == 138
-    assert len(set(signed_selectors)) == 138
+    assert len(signed_selectors) == 139
+    assert len(set(signed_selectors)) == 139
     assert ordered_digest(signed_selectors) == (
-        "fc460e5464383c8f7c87b3935bccf8e2e9127ce92f2ece61600e2a699dfe8af0"
+        "85e9c231eb4f33edf050898a67919ae343b599bf6d5cec5e8e21ca60b71f5fb9"
     )
 
     external_locations = {
@@ -24673,9 +26270,9 @@ def test_task3_signed_selector_manifest_and_semantic_routes_are_closed() -> None
     assert ordered_digest(external_selectors) == (
         "f8abf25ee0fc66c06dc926cb51222f6b124fb11ff171eaa65a76d6c2de7b89b2"
     )
-    assert len(live_selectors) == 129
+    assert len(live_selectors) == 130
     assert ordered_digest(live_selectors) == (
-        "89c1e95a18653bf6553bbee134e6ceb54744418ef6124f8b7b2b45cf8abb3047"
+        "814c05668c6ea1f02b384b9c56bab2c8e16ac0b839d2bf6b3b5ecb7b5d2d3931"
     )
 
     test_paths = (live_test_path, atomic_test_path, package_test_path)
@@ -24855,7 +26452,7 @@ def test_task3_signed_selector_manifest_and_semantic_routes_are_closed() -> None
         "_exercise_pending_contract": 3,
         "_exercise_output_contract": 16,
         "_exercise_result_contract": 10,
-        "_exercise_terminal_contract": 6,
+            "_exercise_terminal_contract": 5,
         "_exercise_terminal_receipt_contract": 7,
         "_exercise_recovery_contract": 19,
         "_exercise_observation_contract": 9,
@@ -24951,3 +26548,2310 @@ def test_task3_signed_selector_manifest_and_semantic_routes_are_closed() -> None
             assert isinstance(function.body[-1], ast.Raise), dispatcher
             assert isinstance(function.body[-1].exc, ast.Call), dispatcher
             assert dotted_name(function.body[-1].exc.func) == "AssertionError"
+
+
+@pytest.mark.parametrize(
+    "transaction_ids",
+    (
+        tuple(f"{index:032x}" for index in range(128)),
+        ("a" * 32,),
+    ),
+    ids=("representation_full", "attempt_preexisting"),
+)
+def test_prepare_apply_attempt_reserves_one_transaction_slot_before_prepared_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    transaction_ids: tuple[str, ...],
+) -> None:
+    from tests.test_apply_invocation import _invocation, _snapshot
+    from tests.test_configure_prepublication_apply import (
+        _drive_pipeline,
+        _prepare_pipeline,
+    )
+
+    prepared = _prepare_pipeline(tmp_path / "pipeline", monkeypatch)
+    committed = _drive_pipeline(prepared)
+    operation = committed.output_operation_admission_binding
+    child = committed.output_child_binding
+    publication = committed.publication_binding
+    assert operation is not None
+    assert child is not None
+    assert publication is not None
+    invocation = _invocation(
+        tmp_path / "invocation",
+        snapshot=_snapshot(transaction_ids=transaction_ids),
+        run_id=committed.run_id,
+        runtime_root=prepared.runtime_root,
+        output_operation_admission_path=Path(str(operation["admission_path"])),
+        output_operation_admission_identity=tuple(
+            operation["admission_identity"]
+        ),
+        output_operation_admission_sha256=str(operation["admission_sha256"]),
+        output_child_binding_sha256=str(child["content_sha256"]),
+        output_child_path=Path(str(child["output_child_path"])),
+        output_child_identity=tuple(child["output_child_identity"]),
+        operator_profile_sha256=prepared.profile.content_sha256,
+        publication_revision=str(publication["revision"]),
+        publication_content_root_sha256=str(
+            publication["content_root_sha256"]
+        ),
+    )
+    transition_called = False
+
+    def forbidden_transition(**_kwargs: object) -> object:
+        nonlocal transition_called
+        transition_called = True
+        raise AssertionError("prepared CAS reached before capacity admission")
+
+    monkeypatch.setattr(
+        session,
+        "_transition_receipt_authorized_under_lock",
+        forbidden_transition,
+    )
+    session_path = prepared.session_root / "session.json"
+    before = session_path.read_bytes()
+    state_root = prepared.local_app_data / "HSConfig"
+    final = state_root / "live-start-active-attempt.json"
+    staging = state_root / (
+        ".live-start-active-attempt."
+        f"{committed.run_id}.{invocation.apply_attempt_id}.staged"
+    )
+    inner_temp = staging.with_name(
+        f".{staging.name}.live-start-atomic.tmp"
+    )
+    receipt = prepared.session_root / "receipts" / "apply_invocation.json"
+    with session.lease_live_start_session(
+        prepared.session_root,
+        local_app_data_root=prepared.local_app_data,
+    ) as lease:
+        current = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert current.canonical_json == committed.canonical_json
+        expected_error = (
+            "transaction_capacity"
+            if len(transaction_ids) == 128
+            else "pre_apply_attempt_id_already_present"
+        )
+        with pytest.raises(ValueError, match=expected_error):
+            session.prepare_apply_attempt_under_lock(
+                session_lease=lease,
+                expected_session=current,
+                invocation=invocation,
+                planned_admission_path=final,
+                planned_admission_staging_path=staging,
+                planned_admission_staging_inner_temp_path=inner_temp,
+                planned_admission_parent_identity=path_identity(state_root),
+                planned_admission_document_size=10,
+                planned_admission_document_sha256="sha256:" + "f" * 64,
+            )
+    assert transition_called is False
+    assert session_path.read_bytes() == before
+    assert all(
+        not path.exists()
+        for path in (final, staging, inner_temp, receipt)
+    )
+
+
+def _task9_apply_context(
+    base: Path,
+    *,
+    transaction_ids: tuple[str, ...] = (),
+) -> SimpleNamespace:
+    from tests.test_apply_invocation import _invocation, _snapshot
+
+    receipt_ready = _exercise_output_claim_retirement_chain(
+        base,
+        require_confirmation=True,
+    )
+    root = (
+        base
+        / "session"
+        / "local"
+        / "HSConfig"
+        / "runs"
+        / ("a" * 32)
+    )
+    state_root = root.parents[1]
+    local_app_data = root.parents[2]
+    runtime_root = (base / "runtime").absolute()
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    runtime_internal = runtime_root / ".hsconfig"
+    runtime_internal.mkdir()
+    apply_lock = runtime_internal / "apply.lock"
+    apply_lock.write_bytes(b"")
+
+    output_base_root = (base / "operator-output").absolute()
+    output_root = output_base_root / "Deck"
+    output_root.mkdir(parents=True)
+    output_claim_path = output_base_root / ".claim.json"
+    output_operation_path = state_root / "output-operation-admission.json"
+    output_operation_raw = b"task9-output-operation-admission\n"
+    output_operation_path.write_bytes(output_operation_raw)
+    output_bootstrap_lock = (base / "output-bootstrap.lock").absolute()
+    output_bootstrap_lock.write_bytes(b"")
+    operator_profile_path = (base / "operator-profile.json").absolute()
+    operator_profile_raw = b"task9-operator-profile\n"
+    operator_profile_path.write_bytes(operator_profile_raw)
+
+    child_value = _output_child_binding_fixture(base)
+    child_value.update(
+        {
+            "run_id": receipt_ready.run_id,
+            "output_base_path": str(output_base_root),
+            "output_base_identity": list(path_identity(output_base_root)),
+            "output_child_path": str(output_root),
+            "output_child_identity": list(path_identity(output_root)),
+            "predecessor_state": "existing",
+            "predecessor_output_child_identity": list(
+                path_identity(output_root)
+            ),
+            "claim_path": str(output_claim_path),
+            "claim_parent_identity": list(path_identity(output_base_root)),
+            "claim_identity": None,
+            "claim_sha256": None,
+            "claim_state": "RETIRED",
+        }
+    )
+    child = session.seal_embedded_document(
+        "output_child_binding",
+        child_value,
+    )
+    publication_digest = "sha256:" + "6" * 64
+    publication = {
+        "output_child_path": str(output_root),
+        "output_child_identity": list(path_identity(output_root)),
+        "output_child_binding_sha256": child["content_sha256"],
+        "revision": "revisions/sha256-" + "6" * 64,
+        "content_root_sha256": publication_digest,
+        "prior_current_identity": None,
+    }
+    operation_value = _output_operation_binding_fixture(base)
+    operation_value.update(
+        {
+            "state": "ACTIVE",
+            "release_handoff_kind": None,
+            "admission_path": str(output_operation_path),
+            "admission_parent_identity": list(path_identity(state_root)),
+            "admission_identity": list(path_identity(output_operation_path)),
+            "admission_size": len(output_operation_raw),
+            "admission_sha256": (
+                "sha256:" + sha256(output_operation_raw).hexdigest()
+            ),
+            "run_id": receipt_ready.run_id,
+            "session_root": str(root),
+            "session_root_identity": list(path_identity(root)),
+            "expected_session_sha256": receipt_ready.content_sha256,
+            "operator_profile_path": str(operator_profile_path),
+            "operator_profile_parent_identity": list(
+                path_identity(operator_profile_path.parent)
+            ),
+            "operator_profile_identity": list(
+                path_identity(operator_profile_path)
+            ),
+            "operator_profile_sha256": (
+                "sha256:" + sha256(operator_profile_raw).hexdigest()
+            ),
+            "state_root_identity": list(path_identity(state_root)),
+            "output_base_root": str(output_base_root),
+            "output_base_root_identity": list(
+                path_identity(output_base_root)
+            ),
+            "output_child_path": str(output_root),
+            "output_child_predecessor_state": "existing",
+            "output_child_predecessor_identity": list(
+                path_identity(output_root)
+            ),
+            "output_bootstrap_lock_path": str(output_bootstrap_lock),
+            "output_bootstrap_lock_identity": list(
+                path_identity(output_bootstrap_lock)
+            ),
+            "output_claim_path": str(output_claim_path),
+            "handoff_runtime_admission_path": None,
+            "handoff_runtime_admission_parent_identity": None,
+            "handoff_runtime_admission_identity": None,
+            "handoff_runtime_admission_sha256": None,
+        }
+    )
+    operation = session.seal_embedded_document(
+        "output_operation_admission_binding",
+        operation_value,
+    )
+    clean_value = receipt_ready.to_value()
+    clean_value.pop("content_sha256")
+    clean_value.update(
+        {
+            "pending_transition": None,
+            "apply_invocation_sha256": None,
+            "runtime_admission_binding": None,
+            "runtime_layout_bootstrap": None,
+            "output_operation_admission_binding": operation,
+            "output_child_binding": child,
+            "publication_binding": publication,
+        }
+    )
+    with _lease(root) as lease:
+        clean = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=receipt_ready,
+            value=clean_value,
+        )
+    invocation = _invocation(
+        base / "invocation-authority",
+        snapshot=_snapshot(transaction_ids=transaction_ids),
+        run_id=clean.run_id,
+        runtime_root=runtime_root,
+        runtime_root_identity=path_identity(runtime_root),
+        output_operation_admission_path=Path(str(operation["admission_path"])),
+        output_operation_admission_identity=tuple(
+            operation["admission_identity"]
+        ),
+        output_operation_admission_sha256=str(operation["admission_sha256"]),
+        output_child_binding_sha256=str(child["content_sha256"]),
+        output_child_path=Path(str(child["output_child_path"])),
+        output_child_identity=tuple(child["output_child_identity"]),
+        operator_profile_sha256=str(operation["operator_profile_sha256"]),
+        publication_revision=str(publication["revision"]),
+        publication_content_root_sha256=str(
+            publication["content_root_sha256"]
+        ),
+    )
+    admission_path = state_root / "live-start-active-attempt.json"
+    admission_staging_path = state_root / (
+        ".live-start-active-attempt."
+        f"{clean.run_id}.{invocation.apply_attempt_id}.staged"
+    )
+    admission_inner_temp_path = admission_staging_path.with_name(
+        f".{admission_staging_path.name}.live-start-atomic.tmp"
+    )
+    receipt_path = root / "receipts" / "apply_invocation.json"
+    receipt_staging_path = receipt_path.with_name(
+        f"{receipt_path.name}.staged"
+    )
+    receipt_inner_temp_path = receipt_staging_path.with_name(
+        f".{receipt_staging_path.name}.live-start-atomic.tmp"
+    )
+    with patch.dict(
+        os.environ,
+        {"LOCALAPPDATA": str(local_app_data)},
+    ):
+        admission_raw = build_runtime_live_attempt_admission_bytes(
+            run_id=clean.run_id,
+            apply_attempt_id=invocation.apply_attempt_id,
+            retention_owner_run_id=clean.run_id,
+            session_root=root,
+            session_root_identity=path_identity(root),
+            operator_profile_sha256=str(
+                operation["operator_profile_sha256"]
+            ),
+            state_root_identity=path_identity(state_root),
+            runtime_root=runtime_root,
+            runtime_root_identity=path_identity(runtime_root),
+            output_base_root=output_base_root,
+            output_base_root_identity=path_identity(output_base_root),
+            output_root=output_root,
+            output_root_identity=path_identity(output_root),
+            output_operation_admission_path=output_operation_path,
+            output_operation_admission_identity=path_identity(
+                output_operation_path
+            ),
+            output_operation_admission_sha256=str(
+                operation["admission_sha256"]
+            ),
+            output_child_binding_sha256=str(child["content_sha256"]),
+            publication_revision=str(publication["revision"]),
+            publication_content_root_sha256=str(
+                publication["content_root_sha256"]
+            ),
+            package_root_sha256="sha256:" + "7" * 64,
+            pre_apply_runtime_snapshot_sha256=(
+                invocation.pre_apply_runtime_snapshot.content_sha256
+            ),
+            apply_invocation_sha256=invocation.content_sha256,
+            retention_fence_path=(
+                runtime_internal
+                / "attempt-retention"
+                / f"{invocation.apply_attempt_id}.json"
+            ),
+        )
+    admission_sha256 = "sha256:" + sha256(admission_raw).hexdigest()
+    return SimpleNamespace(
+        root=root,
+        clean=clean,
+        invocation=invocation,
+        runtime_root=runtime_root,
+        runtime_internal=runtime_internal,
+        apply_lock=apply_lock,
+        state_root=state_root,
+        local_app_data=local_app_data,
+        output_base_root=output_base_root,
+        output_root=output_root,
+        output_operation_path=output_operation_path,
+        admission_path=admission_path,
+        admission_staging_path=admission_staging_path,
+        admission_inner_temp_path=admission_inner_temp_path,
+        admission_raw=admission_raw,
+        admission_sha256=admission_sha256,
+        runtime_admission=None,
+        receipt_path=receipt_path,
+        receipt_staging_path=receipt_staging_path,
+        receipt_inner_temp_path=receipt_inner_temp_path,
+    )
+
+
+def _task9_prepare_apply(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+) -> session.LiveStartSession:
+    return session.prepare_apply_attempt_under_lock(
+        session_lease=lease,
+        expected_session=context.clean,
+        invocation=context.invocation,
+        planned_admission_path=context.admission_path,
+        planned_admission_staging_path=context.admission_staging_path,
+        planned_admission_staging_inner_temp_path=(
+            context.admission_inner_temp_path
+        ),
+        planned_admission_parent_identity=path_identity(context.state_root),
+        planned_admission_document_size=len(context.admission_raw),
+        planned_admission_document_sha256=context.admission_sha256,
+    )
+
+
+def _task9_drive_admission_claim(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    prepared: session.LiveStartSession,
+    foreign_final_before_commit: bytes | None = None,
+) -> session.LiveStartSession:
+    materialize = session._authorize_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=prepared,
+        action="materialize_runtime_admission_staging",
+    )
+
+    def write_staging() -> session.RuntimeAdmissionPhysicalPostcondition:
+        assert not context.admission_path.exists()
+        assert not context.admission_staging_path.exists()
+        assert not context.admission_inner_temp_path.exists()
+        materialized = atomic_materialize_staging_bytes(
+            staging_path=context.admission_staging_path,
+            inner_temp_path=context.admission_inner_temp_path,
+            payload=context.admission_raw,
+            expected_parent_identity=path_identity(context.state_root),
+            maximum_size=RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+        )
+        return session.RuntimeAdmissionPhysicalPostcondition(
+            action="materialize_runtime_admission_staging",
+            evidence={
+                "staging_path": str(materialized.path),
+                "staging_parent_identity": list(
+                    path_identity(context.state_root)
+                ),
+                "staging_identity": list(materialized.identity),
+                "staging_size": materialized.size,
+                "staging_sha256": materialized.sha256,
+                "final_absent": True,
+                "inner_temp_absent": True,
+            },
+        )
+
+    staging_receipt = session._execute_runtime_admission_physical_step(
+        admission_authorization=materialize,
+        action="materialize_runtime_admission_staging",
+        physical_action=write_staging,
+    )
+    staging_bound = session.advance_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=prepared,
+        transition="staging_bound",
+        physical_step_receipt=staging_receipt,
+    )
+    assert staging_bound.pending_transition is not None
+    assert staging_bound.pending_transition["external_file_action"][
+        "action_kind"
+    ] == "commit_bound_runtime_admission"
+    commit = session._authorize_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=staging_bound,
+        action="commit_bound_runtime_admission",
+    )
+
+    def commit_final() -> session.RuntimeAdmissionPhysicalPostcondition:
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        if foreign_final_before_commit is not None:
+            context.admission_path.write_bytes(foreign_final_before_commit)
+        committed = atomic_commit_bound_staging_no_replace(
+            path=context.admission_path,
+            staging_path=context.admission_staging_path,
+            expected_staging_identity=tuple(
+                pending["runtime_admission_staging_identity"]
+            ),
+            expected_size=int(pending["runtime_admission_staging_size"]),
+            expected_sha256=str(
+                pending["runtime_admission_staging_sha256"]
+            ),
+            expected_parent_identity=path_identity(context.state_root),
+        )
+        with patch.dict(
+            os.environ,
+            {"LOCALAPPDATA": str(context.local_app_data)},
+        ):
+            loaded = load_runtime_live_attempt_admission()
+        assert isinstance(loaded, RuntimeLiveAttemptAdmissionEvidence)
+        assert loaded.admission_identity == committed.identity
+        assert loaded.admission_sha256 == context.admission_sha256
+        context.runtime_admission = loaded
+        return session.RuntimeAdmissionPhysicalPostcondition(
+            action="commit_bound_runtime_admission",
+            evidence={
+                "admission_path": str(committed.path),
+                "admission_parent_identity": list(
+                    path_identity(context.state_root)
+                ),
+                "admission_identity": list(committed.identity),
+                "admission_size": committed.size,
+                "admission_sha256": committed.sha256,
+                "staging_path": str(context.admission_staging_path),
+                "staging_absent": True,
+                "inner_temp_path": str(context.admission_inner_temp_path),
+                "inner_temp_absent": True,
+            },
+        )
+
+    commit_receipt = session._execute_runtime_admission_physical_step(
+        admission_authorization=commit,
+        action="commit_bound_runtime_admission",
+        physical_action=commit_final,
+    )
+    committed_cursor = session.advance_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=staging_bound,
+        transition="admission_primary_applied",
+        physical_step_receipt=commit_receipt,
+    )
+    assert committed_cursor.runtime_admission_binding is None
+    assert isinstance(
+        context.runtime_admission,
+        RuntimeLiveAttemptAdmissionEvidence,
+    )
+    return committed_cursor
+
+
+def _task9_complete_runtime_layout(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    admission_committed: session.LiveStartSession,
+    state_key: str = "state-key",
+    require_all_absent: bool = True,
+) -> session.LiveStartSession:
+    internal = context.runtime_root / ".hsconfig"
+    paths = (
+        context.runtime_root / "CustomConfig",
+        internal / "transactions",
+        internal / "staging",
+        internal / "receipts",
+        internal / "receipts" / state_key,
+        internal / "attempt-retention",
+        internal / "owner-retirements",
+    )
+    rows: list[dict[str, object]] = []
+    for role, path in zip(
+        session.RUNTIME_LAYOUT_DIRECTORY_ROLES,
+        paths,
+        strict=True,
+    ):
+        predecessor = path_identity(path) if path.exists() else None
+        expected_parent_identity = (
+            path_identity(path.parent) if path.parent.exists() else None
+        )
+        rows.append(
+            {
+                "role": role,
+                "path": str(path),
+                "expected_parent_identity": (
+                    None
+                    if expected_parent_identity is None
+                    else list(expected_parent_identity)
+                ),
+                "predecessor_state": (
+                    "existing" if predecessor is not None else "absent"
+                ),
+                "predecessor_identity": (
+                    None if predecessor is None else list(predecessor)
+                ),
+                "successor_identity": None,
+            }
+        )
+    if require_all_absent:
+        assert [row["predecessor_state"] for row in rows] == [
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ]
+    assert rows[4]["expected_parent_identity"] is None
+    evidence = session.RuntimeLayoutBootstrapEvidence(
+        session.seal_embedded_document(
+            "runtime_layout_bootstrap",
+            {
+                "schema_version": 1,
+                "binding_kind": "live_start_runtime_layout_bootstrap",
+                "run_id": admission_committed.run_id,
+                "apply_attempt_id": context.invocation.apply_attempt_id,
+                "runtime_root": str(context.runtime_root),
+                "runtime_root_identity": list(
+                    path_identity(context.runtime_root)
+                ),
+                "stage": "INCOMPLETE",
+                "next_directory_index": 0,
+                "directory_count": len(paths),
+                "directories": rows,
+            },
+        )
+    )
+    cursor = session.prepare_runtime_layout_bootstrap_under_lock(
+        session_lease=lease,
+        expected_admission_committed_session=admission_committed,
+        layout_evidence=evidence,
+    )
+    for index, path in enumerate(paths):
+        assert cursor.runtime_layout_bootstrap is not None
+        assert cursor.runtime_layout_bootstrap["next_directory_index"] == index
+        for prior in cursor.runtime_layout_bootstrap["directories"][:index]:
+            assert prior["successor_identity"] is not None
+            assert path_identity(Path(str(prior["path"]))) == tuple(
+                prior["successor_identity"]
+            )
+        for future in cursor.runtime_layout_bootstrap["directories"][index:]:
+            future_path = Path(str(future["path"]))
+            if future["predecessor_state"] == "absent":
+                assert not future_path.exists()
+            else:
+                assert path_identity(future_path) == tuple(
+                    future["predecessor_identity"]
+                )
+        authorization = (
+            session._authorize_runtime_layout_bootstrap_under_lock(
+                session_lease=lease,
+                expected_layout_session=cursor,
+                action="create_or_confirm_runtime_layout_directory",
+            )
+        )
+
+        def create_or_confirm_current() -> (
+            session.RuntimeLayoutBootstrapPhysicalPostcondition
+        ):
+            current_layout = session._thaw(cursor.runtime_layout_bootstrap)
+            current_layout.pop("content_sha256")
+            row = current_layout["directories"][index]
+            if row["expected_parent_identity"] is None:
+                expected_parent_identity = path_identity(path.parent)
+                row["expected_parent_identity"] = list(
+                    expected_parent_identity
+                )
+            else:
+                expected_parent_identity = tuple(
+                    row["expected_parent_identity"]
+                )
+            if row["predecessor_state"] == "absent":
+                assert not path.exists()
+                successor_identity = secure_create_directory(
+                    path,
+                    expected_parent_identity=expected_parent_identity,
+                )
+            else:
+                successor_identity = path_identity(path)
+                assert successor_identity == tuple(
+                    row["predecessor_identity"]
+                )
+                assert path_identity(path.parent) == expected_parent_identity
+            row["successor_identity"] = list(successor_identity)
+            current_layout["next_directory_index"] = index + 1
+            current_layout["stage"] = (
+                "COMPLETE" if index + 1 == len(paths) else "INCOMPLETE"
+            )
+            sealed_successor = session.seal_embedded_document(
+                "runtime_layout_bootstrap",
+                current_layout,
+            )
+            receipt_evidence: dict[str, object] = {
+                "runtime_layout_bootstrap": sealed_successor,
+                "directory_path": str(path),
+                "directory_parent_identity": list(
+                    expected_parent_identity
+                ),
+                "directory_identity": list(successor_identity),
+            }
+            if index + 1 == len(paths):
+                receipt_evidence["invocation_receipt_file_action"] = (
+                    session._build_external_file_action(
+                        action_kind=(
+                            "materialize_invocation_receipt_staging"
+                        ),
+                        action_index=0,
+                        final_path=context.receipt_path,
+                        staging_path=context.receipt_staging_path,
+                        inner_temp_path=context.receipt_inner_temp_path,
+                        parent_identity=path_identity(
+                            context.receipt_path.parent
+                        ),
+                        predecessor_identity=None,
+                        predecessor_size=None,
+                        predecessor_sha256=None,
+                        planned_successor_size=len(
+                            context.invocation.canonical_json
+                        ),
+                        planned_successor_sha256=(
+                            "sha256:"
+                            + sha256(
+                                context.invocation.canonical_json
+                            ).hexdigest()
+                        ),
+                        commit_mode="create_no_replace",
+                    )
+                )
+            return session.RuntimeLayoutBootstrapPhysicalPostcondition(
+                action="create_or_confirm_runtime_layout_directory",
+                evidence=receipt_evidence,
+            )
+
+        receipt = session._execute_runtime_layout_bootstrap_physical_step(
+            layout_authorization=authorization,
+            action="create_or_confirm_runtime_layout_directory",
+            physical_action=create_or_confirm_current,
+        )
+        cursor = session.advance_runtime_layout_bootstrap_under_lock(
+            session_lease=lease,
+            expected_layout_session=cursor,
+            transition="directory_bound",
+            physical_step_receipt=receipt,
+        )
+        assert cursor.runtime_layout_bootstrap is not None
+        assert path_identity(path) == tuple(
+            cursor.runtime_layout_bootstrap["directories"][index][
+                "successor_identity"
+            ]
+        )
+    return cursor
+
+
+def _task9_materialize_invocation_receipt(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    layout_complete: session.LiveStartSession,
+) -> session.LiveStartSession:
+    authorization = session._authorize_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=layout_complete,
+        action="materialize_invocation_receipt_staging",
+    )
+
+    def write_staging() -> session.RuntimeAdmissionPhysicalPostcondition:
+        raw = context.invocation.canonical_json
+        materialized = atomic_materialize_staging_bytes(
+            staging_path=context.receipt_staging_path,
+            inner_temp_path=context.receipt_inner_temp_path,
+            payload=raw,
+            expected_parent_identity=path_identity(
+                context.receipt_path.parent
+            ),
+            maximum_size=APPLY_INVOCATION_MAX_BYTES,
+        )
+        return session.RuntimeAdmissionPhysicalPostcondition(
+            action="materialize_invocation_receipt_staging",
+            evidence={
+                "staging_path": str(materialized.path),
+                "staging_parent_identity": list(
+                    path_identity(context.receipt_path.parent)
+                ),
+                "staging_identity": list(materialized.identity),
+                "staging_size": materialized.size,
+                "staging_sha256": materialized.sha256,
+                "final_absent": True,
+                "inner_temp_absent": True,
+            },
+        )
+
+    receipt = session._execute_runtime_admission_physical_step(
+        admission_authorization=authorization,
+        action="materialize_invocation_receipt_staging",
+        physical_action=write_staging,
+    )
+    return session.advance_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=layout_complete,
+        transition="invocation_receipt_staging_bound",
+        physical_step_receipt=receipt,
+    )
+
+
+def _task9_commit_invocation_receipt(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    staging_bound: session.LiveStartSession,
+    advance: bool,
+) -> tuple[
+    session.LiveStartSession,
+    session.RuntimeAdmissionStepReceipt,
+]:
+    authorization = session._authorize_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=staging_bound,
+        action="commit_bound_invocation_receipt",
+    )
+
+    def commit_final() -> session.RuntimeAdmissionPhysicalPostcondition:
+        pending = staging_bound.pending_transition
+        assert pending is not None
+        external = pending["external_file_action"]
+        committed = atomic_commit_bound_staging_no_replace(
+            path=context.receipt_path,
+            staging_path=context.receipt_staging_path,
+            expected_staging_identity=tuple(external["staging_identity"]),
+            expected_size=int(external["staging_size"]),
+            expected_sha256=str(external["staging_sha256"]),
+            expected_parent_identity=path_identity(
+                context.receipt_path.parent
+            ),
+        )
+        raw = context.receipt_path.read_bytes()
+        assert raw == context.invocation.canonical_json
+        return session.RuntimeAdmissionPhysicalPostcondition(
+            action="commit_bound_invocation_receipt",
+            evidence={
+                "invocation_receipt_path": str(committed.path),
+                "invocation_receipt_parent_identity": list(
+                    path_identity(context.receipt_path.parent)
+                ),
+                "invocation_receipt_identity": list(committed.identity),
+                "invocation_receipt_size": committed.size,
+                "invocation_receipt_sha256": committed.sha256,
+                "apply_invocation_sha256": (
+                    context.invocation.content_sha256
+                ),
+                "staging_absent": True,
+                "inner_temp_absent": True,
+            },
+        )
+
+    receipt = session._execute_runtime_admission_physical_step(
+        admission_authorization=authorization,
+        action="commit_bound_invocation_receipt",
+        physical_action=commit_final,
+    )
+    if not advance:
+        return staging_bound, receipt
+    committed = session.advance_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=staging_bound,
+        transition="invocation_receipt_committed",
+        physical_step_receipt=receipt,
+    )
+    return committed, receipt
+
+
+def _task9_receipt_committed_cursor(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+) -> session.LiveStartSession:
+    prepared = _task9_prepare_apply(context=context, lease=lease)
+    admission = _task9_drive_admission_claim(
+        context=context,
+        lease=lease,
+        prepared=prepared,
+    )
+    layout = _task9_complete_runtime_layout(
+        context=context,
+        lease=lease,
+        admission_committed=admission,
+    )
+    receipt_staging = _task9_materialize_invocation_receipt(
+        context=context,
+        lease=lease,
+        layout_complete=layout,
+    )
+    committed, _receipt = _task9_commit_invocation_receipt(
+        context=context,
+        lease=lease,
+        staging_bound=receipt_staging,
+        advance=True,
+    )
+    return committed
+
+
+def _task9_retire_unbound_admission_receipt(
+    *,
+    context: SimpleNamespace,
+    lease: session.LiveStartSessionLease,
+    prepared: session.LiveStartSession,
+) -> session.RuntimeAdmissionStepReceipt:
+    authorization = session._authorize_runtime_admission_under_lock(
+        session_lease=lease,
+        expected_admission_session=prepared,
+        action="retire_unbound_runtime_admission_staging",
+    )
+
+    def retire_or_confirm() -> session.RuntimeAdmissionPhysicalPostcondition:
+        reserved_extras = tuple(
+            path
+            for path in context.state_root.iterdir()
+            if context.invocation.apply_attempt_id in path.name
+            and path
+            not in {
+                context.admission_staging_path,
+                context.admission_inner_temp_path,
+            }
+        )
+        if reserved_extras:
+            raise session.SessionConflictError(
+                "live_start_runtime_admission_extra_surface_tamper"
+            )
+        if context.admission_path.exists():
+            raise session.SessionConflictError(
+                "live_start_runtime_admission_direct_final_tamper"
+            )
+        if context.admission_inner_temp_path.exists():
+            raise session.SessionConflictError(
+                "live_start_runtime_admission_inner_temp_tamper"
+            )
+        if context.admission_staging_path.exists():
+            raw = context.admission_staging_path.read_bytes()
+            if raw != context.admission_raw:
+                raise session.SessionConflictError(
+                    "live_start_runtime_admission_staging_tamper"
+                )
+            historical_identity = path_identity(
+                context.admission_staging_path
+            )
+            secure_unlink_verified(
+                context.admission_staging_path,
+                expected_identity=historical_identity,
+                expected_parent_identity=path_identity(context.state_root),
+                expected_size=len(raw),
+                expected_sha256=sha256(raw).hexdigest(),
+            )
+        else:
+            historical_identity = None
+        if context.receipt_path.exists():
+            raise session.SessionConflictError(
+                "live_start_invocation_receipt_early_tamper"
+            )
+        return session.RuntimeAdmissionPhysicalPostcondition(
+            action="retire_unbound_runtime_admission_staging",
+            evidence={
+                "admission_path": str(context.admission_path),
+                "admission_absent": True,
+                "staging_path": str(context.admission_staging_path),
+                "historical_staging_identity": (
+                    None
+                    if historical_identity is None
+                    else list(historical_identity)
+                ),
+                "historical_staging_size": (
+                    None if historical_identity is None else len(context.admission_raw)
+                ),
+                "historical_staging_sha256": (
+                    None
+                    if historical_identity is None
+                    else context.admission_sha256
+                ),
+                "staging_absent": True,
+                "inner_temp_path": str(context.admission_inner_temp_path),
+                "inner_temp_absent": True,
+                "invocation_receipt_path": str(context.receipt_path),
+                "invocation_receipt_absent": True,
+            },
+        )
+
+    return session._execute_runtime_admission_physical_step(
+        admission_authorization=authorization,
+        action="retire_unbound_runtime_admission_staging",
+        physical_action=retire_or_confirm,
+    )
+
+
+def _task9_tree_snapshot(
+    root: Path,
+) -> dict[str, tuple[str, tuple[int, int, int], bytes | None]]:
+    result: dict[
+        str,
+        tuple[str, tuple[int, int, int], bytes | None],
+    ] = {".": ("directory", path_identity(root), None)}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_dir():
+            result[relative] = ("directory", path_identity(path), None)
+        elif path.is_file():
+            if relative.startswith("locks/"):
+                payload = None
+            else:
+                payload = path.read_bytes()
+            result[relative] = (
+                "file",
+                path_identity(path),
+                payload,
+            )
+        else:
+            result[relative] = ("unsafe", path_identity(path), None)
+    return result
+
+
+def test_invocation_prepared_intent_performs_no_physical_write(
+    tmp_path: Path,
+) -> None:
+    transaction_ids = tuple(f"{index:032x}" for index in range(127))
+    assert len(transaction_ids) == 127
+    context = _task9_apply_context(
+        tmp_path,
+        transaction_ids=transaction_ids,
+    )
+    before_runtime = _task9_tree_snapshot(context.runtime_root)
+    before_surface = {
+        path: path.exists()
+        for path in (
+            context.admission_path,
+            context.admission_staging_path,
+            context.admission_inner_temp_path,
+            context.receipt_path,
+            context.receipt_staging_path,
+            context.receipt_inner_temp_path,
+        )
+    }
+
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+
+    assert prepared.phase is session.LiveStartPhase.PUBLICATION_COMMITTED
+    assert prepared.pending_transition is not None
+    assert prepared.pending_transition["operation"] == "install_apply_invocation"
+    assert prepared.pending_transition["stage"] == "PREPARED"
+    assert (
+        prepared.pending_transition["apply_invocation_sha256"]
+        == context.invocation.content_sha256
+    )
+    assert type(
+        prepared.pending_transition["apply_invocation_document_size"]
+    ) is int
+    assert prepared.pending_transition["apply_invocation_document_size"] == len(
+        context.invocation.canonical_json
+    )
+    assert prepared.pending_transition["runtime_admission_document_size"] == len(
+        context.admission_raw
+    )
+    assert (
+        prepared.pending_transition["runtime_admission_document_sha256"]
+        == context.admission_sha256
+    )
+    external = prepared.pending_transition["external_file_action"]
+    assert external["action_kind"] == "materialize_runtime_admission_staging"
+    assert external["stage"] == "PLANNED"
+    assert prepared.runtime_admission_binding is None
+    assert prepared.runtime_layout_bootstrap is None
+    assert _task9_tree_snapshot(context.runtime_root) == before_runtime
+    assert {
+        path: path.exists() for path in before_surface
+    } == before_surface
+
+
+def test_prepared_admission_parent_substitution_fails_without_recapture(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    substituted_state_root = (tmp_path / "substituted-state-root").absolute()
+    substituted_state_root.mkdir()
+    callback_count = 0
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        assert prepared.pending_transition is not None
+        planned_parent_identity = tuple(
+            prepared.pending_transition[
+                "runtime_admission_parent_identity"
+            ]
+        )
+        assert planned_parent_identity == path_identity(context.state_root)
+        substituted_parent_identity = path_identity(substituted_state_root)
+        assert substituted_parent_identity != planned_parent_identity
+        authorization = session._authorize_runtime_admission_under_lock(
+            session_lease=lease,
+            expected_admission_session=prepared,
+            action="materialize_runtime_admission_staging",
+        )
+        before_state = _task9_tree_snapshot(context.state_root)
+        before_runtime = _task9_tree_snapshot(context.runtime_root)
+
+        def attempt_with_substituted_parent() -> (
+            session.RuntimeAdmissionPhysicalPostcondition
+        ):
+            nonlocal callback_count
+            callback_count += 1
+            atomic_materialize_staging_bytes(
+                staging_path=context.admission_staging_path,
+                inner_temp_path=context.admission_inner_temp_path,
+                payload=context.admission_raw,
+                expected_parent_identity=substituted_parent_identity,
+                maximum_size=RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+            )
+            raise AssertionError("substituted parent unexpectedly accepted")
+
+        with pytest.raises(
+            AtomicWriteConflictError,
+            match="parent|identity|changed",
+        ):
+            session._execute_runtime_admission_physical_step(
+                admission_authorization=authorization,
+                action="materialize_runtime_admission_staging",
+                physical_action=attempt_with_substituted_parent,
+            )
+        persisted = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        after_state = _task9_tree_snapshot(context.state_root)
+        after_runtime = _task9_tree_snapshot(context.runtime_root)
+
+    assert callback_count == 1
+    assert persisted.canonical_json == prepared.canonical_json
+    assert after_state == before_state
+    assert after_runtime == before_runtime
+    assert not context.admission_staging_path.exists()
+    assert not context.admission_inner_temp_path.exists()
+    assert not context.admission_path.exists()
+    assert not context.receipt_staging_path.exists()
+    assert not context.receipt_inner_temp_path.exists()
+    assert not context.receipt_path.exists()
+
+
+def test_resealed_primary_applied_receipt_redirect_fails_before_callback(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path / "own")
+    foreign_receipts = (tmp_path / "foreign" / "receipts").absolute()
+    foreign_receipts.mkdir(parents=True)
+    foreign_final = foreign_receipts / "apply_invocation.json"
+    foreign_staging = foreign_receipts / "apply_invocation.json.staged"
+    foreign_inner_temp = foreign_receipts / (
+        ".apply_invocation.json.staged.live-start-atomic.tmp"
+    )
+    callback_count = 0
+
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        layout_complete = _task9_complete_runtime_layout(
+            context=context,
+            lease=lease,
+            admission_committed=admission,
+        )
+        assert layout_complete.pending_transition is not None
+        assert layout_complete.pending_transition["stage"] == "PRIMARY_APPLIED"
+        assert layout_complete.runtime_layout_bootstrap is not None
+        assert layout_complete.runtime_layout_bootstrap["stage"] == "COMPLETE"
+
+        value = layout_complete.to_value()
+        value.pop("content_sha256")
+        pending = session._thaw(layout_complete.pending_transition)
+        pending.pop("content_sha256")
+        external = session._thaw(pending["external_file_action"])
+        external.pop("content_sha256")
+        external.update(
+            {
+                "final_path": str(foreign_final),
+                "staging_path": str(foreign_staging),
+                "inner_temp_path": str(foreign_inner_temp),
+                "parent_identity": list(path_identity(foreign_receipts)),
+            }
+        )
+        pending["external_file_action"] = session.seal_embedded_document(
+            "external_file_action",
+            external,
+        )
+        value["pending_transition"] = session._seal_pending(pending)
+        redirected = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=layout_complete,
+            value=value,
+        )
+
+        def write_foreign_receipt() -> session.RuntimeAdmissionPhysicalPostcondition:
+            nonlocal callback_count
+            callback_count += 1
+            foreign_final.write_bytes(context.invocation.canonical_json)
+            return session.RuntimeAdmissionPhysicalPostcondition(
+                action="materialize_invocation_receipt_staging",
+            )
+
+        with pytest.raises(
+            session.SessionConflictError,
+            match="^live_start_invocation_receipt_run_location_changed$",
+        ):
+            authorization = session._authorize_runtime_admission_under_lock(
+                session_lease=lease,
+                expected_admission_session=redirected,
+                action="materialize_invocation_receipt_staging",
+            )
+            session._execute_runtime_admission_physical_step(
+                admission_authorization=authorization,
+                action="materialize_invocation_receipt_staging",
+                physical_action=write_foreign_receipt,
+            )
+        persisted = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+
+    assert callback_count == 0
+    assert persisted.canonical_json == redirected.canonical_json
+    assert list(foreign_receipts.iterdir()) == []
+    assert not foreign_final.exists()
+    assert not foreign_staging.exists()
+    assert not foreign_inner_temp.exists()
+
+
+def test_admission_is_durable_before_invocation_receipt(
+    tmp_path: Path,
+) -> None:
+    foreign_context = _task9_apply_context(tmp_path / "foreign-final")
+    foreign_bytes = b"foreign-final-must-survive\n"
+    with _lease(foreign_context.root) as lease:
+        foreign_prepared = _task9_prepare_apply(
+            context=foreign_context,
+            lease=lease,
+        )
+        with pytest.raises(Exception, match="no-replace|conflict"):
+            _task9_drive_admission_claim(
+                context=foreign_context,
+                lease=lease,
+                prepared=foreign_prepared,
+                foreign_final_before_commit=foreign_bytes,
+            )
+    assert foreign_context.admission_path.read_bytes() == foreign_bytes
+
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+
+    assert context.admission_path.read_bytes() == context.admission_raw
+    assert isinstance(
+        context.runtime_admission,
+        RuntimeLiveAttemptAdmissionEvidence,
+    )
+    assert path_identity(context.admission_path) == tuple(
+        admission.pending_transition["runtime_admission_identity"]
+    )
+    assert admission.pending_transition["stage"] == "PRIMARY_APPLIED"
+    assert admission.pending_transition["external_file_action"] is None
+    assert admission.runtime_layout_bootstrap is None
+    assert admission.runtime_admission_binding is None
+    assert not context.receipt_path.exists()
+    assert not context.receipt_staging_path.exists()
+
+
+def test_invocation_receipt_is_durable_before_apply_started_cas(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        receipt_committed = _task9_receipt_committed_cursor(
+            context=context,
+            lease=lease,
+        )
+
+    assert context.receipt_path.read_bytes() == context.invocation.canonical_json
+    assert receipt_committed.phase is session.LiveStartPhase.PUBLICATION_COMMITTED
+    assert receipt_committed.apply_invocation_sha256 is None
+    assert receipt_committed.pending_transition is not None
+    assert receipt_committed.pending_transition["stage"] == "PRIMARY_APPLIED"
+    assert receipt_committed.pending_transition["external_file_action"] is None
+    assert receipt_committed.pending_transition["next_action_index"] == 1
+
+
+def test_complete_apply_started_is_io_free_and_requires_committed_receipt_cursor(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        with pytest.raises(session.SessionConflictError, match="receipt_cursor"):
+            session._complete_apply_started_under_lock(
+                session_lease=lease,
+                expected_receipt_committed_session=prepared,
+                invocation=context.invocation,
+                runtime_admission=None,
+            )
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        assert isinstance(
+            context.runtime_admission,
+            RuntimeLiveAttemptAdmissionEvidence,
+        )
+        with pytest.raises(session.SessionConflictError, match="receipt_cursor"):
+            session._complete_apply_started_under_lock(
+                session_lease=lease,
+                expected_receipt_committed_session=admission,
+                invocation=context.invocation,
+                runtime_admission=context.runtime_admission,
+            )
+        layout = _task9_complete_runtime_layout(
+            context=context,
+            lease=lease,
+            admission_committed=admission,
+        )
+        assert layout.pending_transition is not None
+        assert layout.pending_transition["external_file_action"]["stage"] == (
+            "PLANNED"
+        )
+        with pytest.raises(session.SessionConflictError, match="receipt_cursor"):
+            session._complete_apply_started_under_lock(
+                session_lease=lease,
+                expected_receipt_committed_session=layout,
+                invocation=context.invocation,
+                runtime_admission=context.runtime_admission,
+            )
+        staging_bound = _task9_materialize_invocation_receipt(
+            context=context,
+            lease=lease,
+            layout_complete=layout,
+        )
+        assert staging_bound.pending_transition is not None
+        assert staging_bound.pending_transition["external_file_action"]["stage"] == (
+            "STAGING_BOUND"
+        )
+        with pytest.raises(session.SessionConflictError, match="receipt_cursor"):
+            session._complete_apply_started_under_lock(
+                session_lease=lease,
+                expected_receipt_committed_session=staging_bound,
+                invocation=context.invocation,
+                runtime_admission=context.runtime_admission,
+            )
+        committed, _receipt = _task9_commit_invocation_receipt(
+            context=context,
+            lease=lease,
+            staging_bound=staging_bound,
+            advance=True,
+        )
+
+        admission_fields = (
+            RuntimeLiveAttemptAdmissionEvidence.__dataclass_fields__
+        )
+        admission_dict = {
+            name: getattr(context.runtime_admission, name)
+            for name in admission_fields
+        }
+        for forged in (
+            admission_dict,
+            SimpleNamespace(**admission_dict),
+        ):
+            with pytest.raises(
+                (session.SessionCapabilityError, TypeError),
+                match="admission|evidence|required",
+            ):
+                session._complete_apply_started_under_lock(
+                    session_lease=lease,
+                    expected_receipt_committed_session=committed,
+                    invocation=context.invocation,
+                    runtime_admission=forged,
+                )
+
+        before_runtime = _task9_tree_snapshot(context.runtime_root)
+        before_authority = {
+            path: (path_identity(path), path.read_bytes())
+            for path in (context.admission_path, context.receipt_path)
+        }
+        started = session._complete_apply_started_under_lock(
+            session_lease=lease,
+            expected_receipt_committed_session=committed,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+        )
+        after_runtime = _task9_tree_snapshot(context.runtime_root)
+        after_authority = {
+            path: (path_identity(path), path.read_bytes())
+            for path in (context.admission_path, context.receipt_path)
+        }
+
+    assert after_runtime == before_runtime
+    assert after_authority == before_authority
+    assert started.phase is session.LiveStartPhase.APPLY_STARTED
+    assert started.pending_transition is None
+    assert started.apply_invocation_sha256 == context.invocation.content_sha256
+    assert started.runtime_admission_binding is not None
+
+
+def test_complete_apply_started_final_cas_reads_only_session_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        committed = _task9_receipt_committed_cursor(
+            context=context,
+            lease=lease,
+        )
+        read_paths: list[Path] = []
+        layout_validation_calls: list[str] = []
+        original_read = session._read_bound_file
+        original_layout_validation = session._validate_run_layout_under_lock
+
+        def track_read(path: Path, **kwargs: object) -> object:
+            read_paths.append(Path(path))
+            return original_read(path, **kwargs)
+
+        def track_layout_validation(**kwargs: object) -> None:
+            layout_validation_calls.append("called")
+            original_layout_validation(**kwargs)
+
+        monkeypatch.setattr(session, "_read_bound_file", track_read)
+        monkeypatch.setattr(
+            session,
+            "_validate_run_layout_under_lock",
+            track_layout_validation,
+        )
+        started = session._complete_apply_started_under_lock(
+            session_lease=lease,
+            expected_receipt_committed_session=committed,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+        )
+
+    assert started.phase is session.LiveStartPhase.APPLY_STARTED
+    assert read_paths == [context.root / "session.json"]
+    assert layout_validation_calls == []
+
+
+_TASK9_APPLY_PENDING_ALLOWED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "transition_kind",
+        "run_id",
+        "operation",
+        "stage",
+        "expected_session_sha256",
+        "source_phase",
+        "target_phase",
+        "source_candidate_revision",
+        "target_candidate_revision",
+        "source_revisions_used",
+        "target_revisions_used",
+        "successor_artifact_bindings",
+        "actions",
+        "next_action_index",
+        "external_file_action",
+        "apply_attempt_id",
+        "apply_invocation_sha256",
+        "apply_invocation_document_size",
+        "runtime_admission_document_size",
+        "runtime_admission_document_sha256",
+        "runtime_admission_path",
+        "runtime_admission_staging_path",
+        "runtime_admission_staging_inner_temp_path",
+        "runtime_admission_staging_identity",
+        "runtime_admission_staging_size",
+        "runtime_admission_staging_sha256",
+        "runtime_admission_parent_identity",
+        "runtime_admission_identity",
+        "runtime_admission_sha256",
+        "content_sha256",
+    }
+)
+_TASK9_APPLY_PENDING_FOREIGN_FIELDS = tuple(
+    sorted(
+        session._PENDING_TRANSITION_FIELDS
+        - _TASK9_APPLY_PENDING_ALLOWED_FIELDS
+    )
+)
+
+
+@pytest.fixture(scope="module")
+def _task9_prepared_pending_template(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> dict[str, object]:
+    context = _task9_apply_context(
+        tmp_path_factory.mktemp("task9-pending-field-closure")
+    )
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+    return session._thaw(prepared.pending_transition)
+
+
+@pytest.mark.parametrize(
+    "foreign_field",
+    _TASK9_APPLY_PENDING_FOREIGN_FIELDS,
+)
+def test_apply_invocation_pending_rejects_every_foreign_authority_field(
+    _task9_prepared_pending_template: dict[str, object],
+    foreign_field: str,
+) -> None:
+    pending = deepcopy(_task9_prepared_pending_template)
+    pending.pop("content_sha256")
+    pending[foreign_field] = 0
+
+    with pytest.raises(
+        session.SessionValidationError,
+        match="^live_start_apply_invocation_pending_field_forbidden$",
+    ):
+        session._seal_pending(pending)
+
+
+@pytest.mark.parametrize(
+    "invalid_size",
+    (None, True, 0, APPLY_INVOCATION_MAX_BYTES + 1),
+)
+def test_apply_invocation_pending_requires_exact_invocation_document_size(
+    _task9_prepared_pending_template: dict[str, object],
+    invalid_size: object,
+) -> None:
+    pending = deepcopy(_task9_prepared_pending_template)
+    pending.pop("content_sha256")
+    if invalid_size is None:
+        pending.pop("apply_invocation_document_size", None)
+    else:
+        pending["apply_invocation_document_size"] = invalid_size
+
+    with pytest.raises(session.SessionValidationError):
+        session._seal_pending(pending)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "planned_successor_size",
+        "planned_successor_sha256",
+        "staging_path",
+        "inner_temp_path",
+    ),
+)
+def test_final_layout_receipt_action_is_bound_to_invocation_digest_and_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        original_builder = session._build_external_file_action
+
+        def mutate_final_action(**kwargs: object) -> Mapping[str, object]:
+            action = original_builder(**kwargs)
+            if kwargs.get("action_kind") != (
+                "materialize_invocation_receipt_staging"
+            ):
+                return action
+            changed = session._thaw(action)
+            changed.pop("content_sha256")
+            if mutation == "planned_successor_size":
+                changed[mutation] = int(changed[mutation]) + 1
+            elif mutation == "planned_successor_sha256":
+                changed[mutation] = "sha256:" + ("0" * 64)
+            else:
+                changed[mutation] = str(
+                    Path(str(changed[mutation])).with_name(
+                        "wrong-" + Path(str(changed[mutation])).name
+                    )
+                )
+            return session.seal_embedded_document(
+                "external_file_action",
+                changed,
+            )
+
+        monkeypatch.setattr(
+            session,
+            "_build_external_file_action",
+            mutate_final_action,
+        )
+        expected_error = (
+            session.SessionCapabilityError
+            if mutation
+            in {"planned_successor_size", "planned_successor_sha256"}
+            else session.SessionValidationError
+        )
+        expected_message = (
+            "live_start_invocation_receipt_intent_invalid"
+            if mutation
+            in {"planned_successor_size", "planned_successor_sha256"}
+            else "live_start_external_file_action_paths_invalid"
+        )
+        with pytest.raises(
+            expected_error,
+            match=expected_message,
+        ):
+            _task9_complete_runtime_layout(
+                context=context,
+                lease=lease,
+                admission_committed=admission,
+            )
+        persisted = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+
+    assert persisted.runtime_layout_bootstrap is not None
+    assert persisted.runtime_layout_bootstrap["next_directory_index"] == 6
+    assert persisted.pending_transition is not None
+    assert persisted.pending_transition["external_file_action"] is None
+
+
+def test_public_session_surface_exposes_no_invocation_receipt_mutator() -> None:
+    public_names = {
+        name
+        for name in dir(session)
+        if not name.startswith("_") and callable(getattr(session, name))
+    }
+    forbidden = {
+        "begin_apply_attempt",
+        "write_apply_invocation",
+        "write_apply_invocation_receipt",
+        "materialize_invocation_receipt",
+        "commit_invocation_receipt",
+    }
+    intended_session_surfaces = {
+        "prepare_apply_attempt_under_lock",
+        "resume_pending_apply_invocation_under_lock",
+    }
+    neutral_imports = {"require_apply_invocation_admission_capacity"}
+    invocation_public = {
+        name
+        for name in public_names
+        if (
+            name in intended_session_surfaces
+            or "apply_invocation" in name
+            or "invocation_receipt" in name
+        )
+        and name not in neutral_imports
+    }
+    assert intended_session_surfaces <= public_names
+    assert invocation_public == intended_session_surfaces
+    assert public_names.isdisjoint(forbidden)
+    assert not {
+        name
+        for name in public_names
+        if "invocation_receipt" in name
+        and not name.endswith("_under_lock")
+    }
+    module = ast.parse(
+        (
+            Path(__file__).parents[1]
+            / "src"
+            / "hsconfig"
+            / "live_start_session.py"
+        ).read_text(encoding="utf-8")
+    )
+    physical_calls = {
+        "_execute_runtime_admission_physical_step",
+        "atomic_materialize_staging_bytes",
+        "atomic_commit_bound_staging_no_replace",
+        "write_bytes",
+        "replace",
+        "unlink",
+    }
+    for function in module.body:
+        if (
+            isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and function.name
+            in {
+                "prepare_apply_attempt_under_lock",
+                "resume_pending_apply_invocation_under_lock",
+                "_complete_apply_started_under_lock",
+            }
+        ):
+            observed = {
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, (ast.Name, ast.Attribute))
+            }
+            assert observed.isdisjoint(physical_calls)
+
+
+def test_invocation_pending_intent_absent_receipt_rolls_back_without_apply(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    before_runtime = _task9_tree_snapshot(context.runtime_root)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        rolled_back = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=prepared,
+            invocation=context.invocation,
+            runtime_admission=None,
+            transition="rollback_prepared",
+            physical_step_receipt=None,
+        )
+
+    assert rolled_back.canonical_json == context.clean.canonical_json
+    assert rolled_back.phase is session.LiveStartPhase.PUBLICATION_COMMITTED
+    assert rolled_back.pending_transition is None
+    assert not context.admission_path.exists()
+    assert not context.receipt_path.exists()
+    assert _task9_tree_snapshot(context.runtime_root) == before_runtime
+
+
+def test_staging_only_admission_crash_securely_deletes_then_rolls_back(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        materialized = atomic_materialize_staging_bytes(
+            staging_path=context.admission_staging_path,
+            inner_temp_path=context.admission_inner_temp_path,
+            payload=context.admission_raw,
+            expected_parent_identity=path_identity(context.state_root),
+            maximum_size=RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+        )
+        historical_identity = materialized.identity
+        abandoned_receipt = _task9_retire_unbound_admission_receipt(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        assert not context.admission_staging_path.exists()
+        assert abandoned_receipt is not None
+        cleanup_receipt = _task9_retire_unbound_admission_receipt(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        rolled_back = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=prepared,
+            invocation=context.invocation,
+            runtime_admission=None,
+            transition="rollback_prepared",
+            physical_step_receipt=cleanup_receipt,
+        )
+
+    assert historical_identity is not None
+    assert rolled_back.canonical_json == context.clean.canonical_json
+    assert not context.admission_staging_path.exists()
+    assert not context.admission_path.exists()
+
+
+def test_partial_or_replaced_admission_staging_is_preserved_as_tamper(
+    tmp_path: Path,
+) -> None:
+    for case in (
+        "partial",
+        "same_bytes_replaced",
+        "inner_temp",
+        "extra",
+        "direct_final",
+        "mixed",
+    ):
+        context = _task9_apply_context(tmp_path / case)
+        with _lease(context.root) as lease:
+            prepared = _task9_prepare_apply(context=context, lease=lease)
+            if case == "partial":
+                context.admission_staging_path.write_bytes(b'{"partial"')
+            elif case == "same_bytes_replaced":
+                first = atomic_materialize_staging_bytes(
+                    staging_path=context.admission_staging_path,
+                    inner_temp_path=context.admission_inner_temp_path,
+                    payload=context.admission_raw,
+                    expected_parent_identity=path_identity(context.state_root),
+                    maximum_size=RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+                )
+                held_old = context.admission_staging_path.with_name(
+                    context.admission_staging_path.name + ".held-old"
+                )
+                context.admission_staging_path.rename(held_old)
+                replacement = atomic_materialize_staging_bytes(
+                    staging_path=context.admission_staging_path,
+                    inner_temp_path=context.admission_inner_temp_path,
+                    payload=context.admission_raw,
+                    expected_parent_identity=path_identity(context.state_root),
+                    maximum_size=RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES,
+                )
+                assert replacement.identity != first.identity
+                assert path_identity(held_old) == first.identity
+            elif case == "inner_temp":
+                context.admission_inner_temp_path.write_bytes(b"inner-temp")
+            elif case == "extra":
+                context.admission_staging_path.with_name(
+                    context.admission_staging_path.name + ".extra"
+                ).write_bytes(b"extra")
+            elif case == "direct_final":
+                context.admission_path.write_bytes(context.admission_raw)
+            else:
+                context.admission_staging_path.write_bytes(
+                    context.admission_raw
+                )
+                context.admission_inner_temp_path.write_bytes(b"mixed")
+            before = _task9_tree_snapshot(context.state_root)
+            with pytest.raises(
+                session.SessionConflictError,
+                match="tamper",
+            ):
+                _task9_retire_unbound_admission_receipt(
+                    context=context,
+                    lease=lease,
+                    prepared=prepared,
+                )
+            persisted = session.load_live_start_session_under_lock(
+                session_lease=lease
+            )
+
+        assert persisted.content_sha256 == prepared.content_sha256
+        assert _task9_tree_snapshot(context.state_root) == before
+
+
+def test_admission_without_receipt_reconstructs_exact_same_invocation(
+    tmp_path: Path,
+) -> None:
+    from tests.test_apply_invocation import _invocation, _snapshot
+
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        resumed = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=admission,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+            transition="validate_primary",
+            physical_step_receipt=None,
+        )
+        copied_digest_forgery = SimpleNamespace(
+            content_sha256=context.invocation.content_sha256,
+            canonical_json=context.invocation.canonical_json,
+        )
+        different = _invocation(
+            tmp_path / "different-invocation",
+            snapshot=_snapshot(transaction_ids=("f" * 32,)),
+            run_id=context.invocation.run_id,
+            runtime_root=context.runtime_root,
+            runtime_root_identity=path_identity(context.runtime_root),
+            output_operation_admission_path=(
+                context.invocation.output_operation_admission_path
+            ),
+            output_operation_admission_identity=(
+                context.invocation.output_operation_admission_identity
+            ),
+            output_operation_admission_sha256=(
+                context.invocation.output_operation_admission_sha256
+            ),
+            output_child_binding_sha256=(
+                context.invocation.output_child_binding_sha256
+            ),
+            output_child_path=context.invocation.output_child_path,
+            output_child_identity=context.invocation.output_child_identity,
+            operator_profile_sha256=(
+                context.invocation.operator_profile_sha256
+            ),
+            publication_revision=context.invocation.publication_revision,
+            publication_content_root_sha256=(
+                context.invocation.publication_content_root_sha256
+            ),
+        )
+        assert isinstance(different, ApplyInvocation)
+        assert different.content_sha256 != context.invocation.content_sha256
+        for foreign in (
+            copied_digest_forgery,
+            dict(context.invocation.value),
+            different,
+        ):
+            with pytest.raises(
+                (session.SessionCapabilityError, TypeError),
+                match="invocation|required",
+            ):
+                session.resume_pending_apply_invocation_under_lock(
+                    session_lease=lease,
+                    expected_session=admission,
+                    invocation=foreign,
+                    runtime_admission=context.runtime_admission,
+                    transition="validate_primary",
+                    physical_step_receipt=None,
+                )
+
+    assert resumed.canonical_json == admission.canonical_json
+    assert resumed.pending_transition["apply_invocation_sha256"] == (
+        context.invocation.content_sha256
+    )
+    assert resumed.pending_transition["apply_invocation_document_size"] == len(
+        context.invocation.canonical_json
+    )
+
+    with _lease(context.root) as lease:
+        predecessor = admission
+        for field_name, wrong_value in (
+            (
+                "apply_invocation_document_size",
+                len(context.invocation.canonical_json) + 1,
+            ),
+            (
+                "successor_artifact_bindings",
+                {
+                    **dict(admission.artifact_bindings),
+                    "receipts/apply_invocation.json": (
+                        "sha256:" + ("0" * 64)
+                    ),
+                },
+            ),
+            ("apply_invocation_sha256", "sha256:" + ("1" * 64)),
+        ):
+            value = predecessor.to_value()
+            value.pop("content_sha256")
+            pending = session._thaw(value["pending_transition"])
+            pending.pop("content_sha256")
+            pending["apply_invocation_document_size"] = len(
+                context.invocation.canonical_json
+            )
+            pending["successor_artifact_bindings"] = {
+                **dict(admission.artifact_bindings),
+                "receipts/apply_invocation.json": (
+                    "sha256:"
+                    + sha256(context.invocation.canonical_json).hexdigest()
+                ),
+            }
+            pending["apply_invocation_sha256"] = (
+                context.invocation.content_sha256
+            )
+            pending[field_name] = wrong_value
+            value["pending_transition"] = session._seal_pending(pending)
+            predecessor = _publish_session_fixture_under_lock(
+                lease=lease,
+                predecessor=predecessor,
+                value=value,
+            )
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="invocation|required|binding",
+            ):
+                session.resume_pending_apply_invocation_under_lock(
+                    session_lease=lease,
+                    expected_session=predecessor,
+                    invocation=context.invocation,
+                    runtime_admission=context.runtime_admission,
+                    transition="validate_primary",
+                    physical_step_receipt=None,
+                )
+    assert not context.receipt_path.exists()
+
+
+def test_invocation_pending_exact_receipt_completes_apply_started_recovery_only(
+    tmp_path: Path,
+) -> None:
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        committed = _task9_receipt_committed_cursor(
+            context=context,
+            lease=lease,
+        )
+        started = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=committed,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+            transition="complete_apply_started",
+            physical_step_receipt=None,
+        )
+        with pytest.raises(
+            (session.SessionConflictError, session.SessionCapabilityError),
+        ):
+            session.resume_pending_apply_invocation_under_lock(
+                session_lease=lease,
+                expected_session=committed,
+                invocation=context.invocation,
+                runtime_admission=context.runtime_admission,
+                transition="complete_apply_started",
+                physical_step_receipt=None,
+            )
+
+    assert started.phase is session.LiveStartPhase.APPLY_STARTED
+    assert started.apply_recovery is None
+    assert not (
+        context.runtime_root
+        / ".hsconfig"
+        / "attempt-retention"
+        / f"{context.invocation.apply_attempt_id}.json"
+    ).exists()
+    assert not (
+        context.runtime_root
+        / ".hsconfig"
+        / "transactions"
+        / f"{context.invocation.apply_attempt_id}.json"
+    ).exists()
+
+
+def test_invocation_or_apply_started_without_admission_is_rejected(
+    tmp_path: Path,
+) -> None:
+    foreign_context = _task9_apply_context(tmp_path / "foreign-authority")
+    with _lease(foreign_context.root) as foreign_lease:
+        foreign_prepared = _task9_prepare_apply(
+            context=foreign_context,
+            lease=foreign_lease,
+        )
+        _task9_drive_admission_claim(
+            context=foreign_context,
+            lease=foreign_lease,
+            prepared=foreign_prepared,
+        )
+    assert isinstance(
+        foreign_context.runtime_admission,
+        RuntimeLiveAttemptAdmissionEvidence,
+    )
+
+    for case in ("none", "foreign", "physically_absent", "replaced"):
+        context = _task9_apply_context(tmp_path / case)
+        with _lease(context.root) as lease:
+            committed = _task9_receipt_committed_cursor(
+                context=context,
+                lease=lease,
+            )
+            assert isinstance(
+                context.runtime_admission,
+                RuntimeLiveAttemptAdmissionEvidence,
+            )
+            supplied_admission = context.runtime_admission
+            if case in {"none", "physically_absent"}:
+                supplied_admission = None
+            if case == "foreign":
+                supplied_admission = foreign_context.runtime_admission
+            if case == "physically_absent":
+                secure_unlink_verified(
+                    context.admission_path,
+                    expected_identity=(
+                        context.runtime_admission.admission_identity
+                    ),
+                    expected_parent_identity=(
+                        context.runtime_admission.admission_parent_identity
+                    ),
+                    expected_size=len(context.admission_raw),
+                    expected_sha256=sha256(
+                        context.admission_raw
+                    ).hexdigest(),
+                )
+            if case == "replaced":
+                held_old = context.admission_path.with_name(
+                    "held-old-live-start-active-attempt.json"
+                )
+                context.admission_path.rename(held_old)
+                context.admission_path.write_bytes(
+                    foreign_context.admission_raw
+                )
+                supplied_admission = foreign_context.runtime_admission
+            before = _task9_tree_snapshot(context.runtime_root)
+            for mode in ("direct", "resume"):
+                with pytest.raises(
+                    (
+                        session.SessionConflictError,
+                        session.SessionCapabilityError,
+                        TypeError,
+                    ),
+                    match="runtime_admission_missing_or_invalid",
+                ):
+                    if mode == "direct":
+                        session._complete_apply_started_under_lock(
+                            session_lease=lease,
+                            expected_receipt_committed_session=committed,
+                            invocation=context.invocation,
+                            runtime_admission=supplied_admission,
+                        )
+                    else:
+                        session.resume_pending_apply_invocation_under_lock(
+                            session_lease=lease,
+                            expected_session=committed,
+                            invocation=context.invocation,
+                            runtime_admission=supplied_admission,
+                            transition="complete_apply_started",
+                            physical_step_receipt=None,
+                        )
+            assert _task9_tree_snapshot(context.runtime_root) == before
+
+    valid_context = _task9_apply_context(tmp_path / "valid")
+    with _lease(valid_context.root) as lease:
+        committed = _task9_receipt_committed_cursor(
+            context=valid_context,
+            lease=lease,
+        )
+        started = session._complete_apply_started_under_lock(
+            session_lease=lease,
+            expected_receipt_committed_session=committed,
+            invocation=valid_context.invocation,
+            runtime_admission=valid_context.runtime_admission,
+        )
+
+    invalid = started.to_value()
+    invalid.pop("content_sha256")
+    invalid["runtime_admission_binding"] = None
+    with pytest.raises(
+        session.SessionValidationError,
+        match="runtime_admission",
+    ):
+        session._seal_session_value(
+            invalid,
+            session_identity=started.session_identity,
+        )
+
+
+def test_apply_attempt_primitives_never_reacquire_any_authority_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = ast.parse(
+        (
+            Path(__file__).parents[1]
+            / "src"
+            / "hsconfig"
+            / "live_start_session.py"
+        ).read_text(encoding="utf-8")
+    )
+    target_functions = {
+        "prepare_apply_attempt_under_lock",
+        "resume_pending_apply_invocation_under_lock",
+        "_complete_apply_started_under_lock",
+    }
+    forbidden_calls = {
+        "lease_live_start_session",
+        "lease_operator_profile",
+        "lease_package_input",
+        "lease_output_operation_admission",
+        "lease_runtime_apply",
+        "lease_controller_apply_pair",
+    }
+    definitions = {
+        node.name: node
+        for node in module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    pending_names = list(target_functions)
+    visited: set[str] = set()
+    observed: set[str] = set()
+    while pending_names:
+        function_name = pending_names.pop()
+        if function_name in visited or function_name not in definitions:
+            continue
+        visited.add(function_name)
+        for node in ast.walk(definitions[function_name]):
+            if not isinstance(node, ast.Call) or not isinstance(
+                node.func,
+                (ast.Name, ast.Attribute),
+            ):
+                continue
+            called = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+            )
+            observed.add(called)
+            if called in definitions:
+                pending_names.append(called)
+    assert observed.isdisjoint(forbidden_calls)
+
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+
+        def forbidden_reacquire(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("authority lock reacquired")
+
+        from hsconfig import (
+            current_output,
+            live_start_controller,
+            operator_profile,
+            output_operation_admission,
+            output_publisher,
+            runtime_installer,
+        )
+
+        lease_owners = (
+            (session, "lease_live_start_session"),
+            (operator_profile, "lease_operator_profile"),
+            (current_output, "lease_package_input"),
+            (
+                output_operation_admission,
+                "lease_output_operation_admission",
+            ),
+            (output_publisher, "lease_output_child_bootstrap"),
+            (live_start_controller, "lease_validated_prepublication"),
+            (runtime_installer, "lease_runtime_apply"),
+            (runtime_installer, "lease_controller_apply_pair"),
+        )
+        assert all(callable(getattr(owner, name)) for owner, name in lease_owners)
+        for owner, name in lease_owners:
+            monkeypatch.setattr(owner, name, forbidden_reacquire)
+
+        rolled_back = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=prepared,
+            invocation=context.invocation,
+            runtime_admission=None,
+            transition="rollback_prepared",
+            physical_step_receipt=None,
+        )
+        context.clean = rolled_back
+        prepared_again = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared_again,
+        )
+        resumed = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=admission,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+            transition="validate_primary",
+            physical_step_receipt=None,
+        )
+        assert resumed.canonical_json == admission.canonical_json
+        layout = _task9_complete_runtime_layout(
+            context=context,
+            lease=lease,
+            admission_committed=admission,
+        )
+        staging_bound = _task9_materialize_invocation_receipt(
+            context=context,
+            lease=lease,
+            layout_complete=layout,
+        )
+        committed, _commit_receipt = _task9_commit_invocation_receipt(
+            context=context,
+            lease=lease,
+            staging_bound=staging_bound,
+            advance=True,
+        )
+        started = session._complete_apply_started_under_lock(
+            session_lease=lease,
+            expected_receipt_committed_session=committed,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+        )
+
+    assert rolled_back.canonical_json == context.clean.canonical_json
+    assert started.phase is session.LiveStartPhase.APPLY_STARTED
+
+
+def test_resume_completes_pending_invocation_cas_then_recovers_without_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig import (
+        deck_config_ini,
+        runtime_installer,
+        runtime_transaction_journal,
+    )
+
+    context = _task9_apply_context(tmp_path)
+    with _lease(context.root) as lease:
+        prepared = _task9_prepare_apply(context=context, lease=lease)
+        admission = _task9_drive_admission_claim(
+            context=context,
+            lease=lease,
+            prepared=prepared,
+        )
+        layout = _task9_complete_runtime_layout(
+            context=context,
+            lease=lease,
+            admission_committed=admission,
+        )
+        receipt_staging = _task9_materialize_invocation_receipt(
+            context=context,
+            lease=lease,
+            layout_complete=layout,
+        )
+        pending_cursor, commit_receipt = _task9_commit_invocation_receipt(
+            context=context,
+            lease=lease,
+            staging_bound=receipt_staging,
+            advance=False,
+        )
+
+        def forbidden_apply(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("runtime apply restarted")
+
+        mutation_entries = (
+            (runtime_installer, "install_runtime_package"),
+            (runtime_installer, "recover_runtime_state"),
+            (runtime_installer, "_install_locked"),
+            (runtime_installer, "_ensure_runtime_layout"),
+            (runtime_installer, "_copy_runtime_files"),
+            (runtime_installer, "_write_journal"),
+            (runtime_installer, "_write_selected_state"),
+            (runtime_installer, "_repair_selected_state_without_journal"),
+            (runtime_installer, "_write_receipt"),
+            (runtime_installer, "_cleanup_old_revision"),
+            (runtime_installer, "_prepare_cleanup_journal"),
+            (runtime_installer, "_resume_owned_cleanup"),
+            (runtime_installer, "_remove_owned_tree"),
+            (runtime_installer, "_delete_journal"),
+            (
+                runtime_transaction_journal,
+                "write_runtime_transaction_journal",
+            ),
+            (deck_config_ini, "replace_deck_config_if_unchanged"),
+        )
+        for owner, name in mutation_entries:
+            assert callable(getattr(owner, name))
+            monkeypatch.setattr(owner, name, forbidden_apply)
+        before_runtime = _task9_tree_snapshot(context.runtime_root)
+        before_authority = {
+            path: (path_identity(path), path.read_bytes())
+            for path in (context.admission_path, context.receipt_path)
+        }
+        receipt_committed = (
+            session.resume_pending_apply_invocation_under_lock(
+                session_lease=lease,
+                expected_session=pending_cursor,
+                invocation=context.invocation,
+                runtime_admission=context.runtime_admission,
+                transition="commit_invocation_receipt",
+                physical_step_receipt=commit_receipt,
+            )
+        )
+        assert (
+            receipt_committed.phase
+            is session.LiveStartPhase.PUBLICATION_COMMITTED
+        )
+        started = session.resume_pending_apply_invocation_under_lock(
+            session_lease=lease,
+            expected_session=receipt_committed,
+            invocation=context.invocation,
+            runtime_admission=context.runtime_admission,
+            transition="complete_apply_started",
+            physical_step_receipt=None,
+        )
+        after_runtime = _task9_tree_snapshot(context.runtime_root)
+        after_authority = {
+            path: (path_identity(path), path.read_bytes())
+            for path in (context.admission_path, context.receipt_path)
+        }
+
+    assert started.phase is session.LiveStartPhase.APPLY_STARTED
+    assert started.apply_recovery is None
+    assert context.receipt_path.read_bytes() == context.invocation.canonical_json
+    assert after_runtime == before_runtime
+    assert after_authority == before_authority

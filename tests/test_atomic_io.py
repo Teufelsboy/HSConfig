@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import multiprocessing
 import os
@@ -135,6 +136,175 @@ def test_atomic_materialize_staging_binds_identity_only_after_complete_flush(
     assert published.sha256.startswith("sha256:")
     assert staging.read_bytes() == payload
     assert not inner.exists()
+
+
+def test_atomic_materialize_commit_failure_cleans_owned_inner_and_retry_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    inner = tmp_path / ".authority.json.staged.live-start-atomic.tmp"
+    payload = b'{"authority":"retry"}\n'
+    parent_identity = path_identity(tmp_path)
+    real_commit = atomic_io.secure_commit_sibling_no_replace
+    fail_first = True
+
+    def fail_during_first_commit(**kwargs: object) -> tuple[int, int, int]:
+        nonlocal fail_first
+        if fail_first:
+            fail_first = False
+            assert inner.read_bytes() == payload
+            assert not staging.exists()
+            raise OSError(errno.EIO, "inner-to-staging commit")
+        return real_commit(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_commit_sibling_no_replace",
+        fail_during_first_commit,
+    )
+
+    with pytest.raises(OSError, match="inner-to-staging commit"):
+        atomic_materialize_staging_bytes(
+            staging_path=staging,
+            inner_temp_path=inner,
+            payload=payload,
+            expected_parent_identity=parent_identity,
+            maximum_size=1024,
+        )
+
+    assert not inner.exists()
+    assert not staging.exists()
+    materialized = atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=inner,
+        payload=payload,
+        expected_parent_identity=parent_identity,
+        maximum_size=1024,
+    )
+    assert materialized.identity == path_identity(staging)
+    assert staging.read_bytes() == payload
+    assert not inner.exists()
+
+
+def test_atomic_materialize_cleanup_preserves_same_byte_inner_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    inner = tmp_path / ".authority.json.staged.live-start-atomic.tmp"
+    payload = b'{"authority":"bound-identity"}\n'
+    replaced_identity: tuple[int, int, int] | None = None
+
+    def substitute_then_fail(**_kwargs: object) -> tuple[int, int, int]:
+        nonlocal replaced_identity
+        assert inner.read_bytes() == payload
+        owned_identity = path_identity(inner)
+        inner.unlink()
+        inner.write_bytes(payload)
+        replaced_identity = path_identity(inner)
+        assert replaced_identity != owned_identity
+        raise OSError(errno.EIO, "substituted inner")
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_commit_sibling_no_replace",
+        substitute_then_fail,
+    )
+
+    with pytest.raises(OSError, match="substituted inner"):
+        atomic_materialize_staging_bytes(
+            staging_path=staging,
+            inner_temp_path=inner,
+            payload=payload,
+            expected_parent_identity=path_identity(tmp_path),
+            maximum_size=1024,
+        )
+
+    assert replaced_identity is not None
+    assert path_identity(inner) == replaced_identity
+    assert inner.read_bytes() == payload
+    assert not staging.exists()
+
+
+def test_atomic_materialize_post_staging_fault_preserves_durable_staging(
+    tmp_path: Path,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    inner = tmp_path / ".authority.json.staged.live-start-atomic.tmp"
+    payload = b'{"authority":"durable"}\n'
+
+    def fail_after_staging(point: str) -> None:
+        if point == STAGING_MATERIALIZE_FAULT_POINT:
+            raise OSError(errno.EIO, "post-staging fault")
+
+    with pytest.raises(OSError, match="post-staging fault"):
+        atomic_materialize_staging_bytes(
+            staging_path=staging,
+            inner_temp_path=inner,
+            payload=payload,
+            expected_parent_identity=path_identity(tmp_path),
+            maximum_size=1024,
+            fault_hook=fail_after_staging,
+        )
+
+    assert staging.read_bytes() == payload
+    assert not inner.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link rollback")
+def test_atomic_materialize_posix_partial_link_failure_cleans_and_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staging = tmp_path / "authority.json.staged"
+    inner = tmp_path / ".authority.json.staged.live-start-atomic.tmp"
+    payload = b'{"authority":"partial-link"}\n'
+    parent_identity = path_identity(tmp_path)
+    real_commit = atomic_io.secure_commit_sibling_no_replace
+    fail_first = True
+
+    def fail_after_first_link(**kwargs: object) -> tuple[int, int, int]:
+        nonlocal fail_first
+        if fail_first:
+            fail_first = False
+
+            def stop_after_link(point: str) -> None:
+                assert point == "after_posix_link_before_source_unlink"
+                raise OSError(errno.EIO, "partial hard link")
+
+            return real_commit(  # type: ignore[arg-type]
+                **kwargs,
+                fault_hook=stop_after_link,
+            )
+        return real_commit(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        atomic_io,
+        "secure_commit_sibling_no_replace",
+        fail_after_first_link,
+    )
+
+    with pytest.raises(OSError, match="partial hard link"):
+        atomic_materialize_staging_bytes(
+            staging_path=staging,
+            inner_temp_path=inner,
+            payload=payload,
+            expected_parent_identity=parent_identity,
+            maximum_size=1024,
+        )
+
+    assert not inner.exists()
+    assert not staging.exists()
+    materialized = atomic_materialize_staging_bytes(
+        staging_path=staging,
+        inner_temp_path=inner,
+        payload=payload,
+        expected_parent_identity=parent_identity,
+        maximum_size=1024,
+    )
+    assert materialized.identity == path_identity(staging)
+    assert staging.read_bytes() == payload
 
 
 def test_atomic_bound_no_replace_commit_preserves_persisted_staging_identity(
@@ -1717,6 +1887,45 @@ def test_atomic_publish_no_replace_default_hook_and_named_stage_are_compatible(
     assert not named_staging.with_name(
         ".named-authority.json.staged.live-start-atomic.tmp"
     ).exists()
+
+
+def test_atomic_publish_bytes_no_replace_never_exposes_partial_target(
+    tmp_path: Path,
+) -> None:
+    payload = b"complete-authority\n" * 4096
+    fault_points = [
+        STAGING_MATERIALIZE_FAULT_POINT,
+        NO_REPLACE_COMMIT_FAULT_POINT,
+    ]
+    if os.name != "nt":
+        fault_points.append(NO_REPLACE_POSIX_LINK_FAULT_POINT)
+
+    for index, fault_point in enumerate(fault_points):
+        parent = tmp_path / str(index)
+        parent.mkdir()
+        target = parent / "authority.bin"
+        staging = parent / "authority.bin.staged"
+        observed_targets: list[bytes] = []
+
+        def stop_at(point: str) -> None:
+            if target.exists():
+                observed_targets.append(target.read_bytes())
+            if point == fault_point:
+                raise InjectedFault(point)
+
+        with pytest.raises(InjectedFault, match=fault_point):
+            atomic_io.atomic_publish_bytes_no_replace(
+                path=target,
+                staging_path=staging,
+                payload=payload,
+                expected_parent_identity=path_identity(parent),
+                maximum_size=len(payload),
+                fault_hook=stop_at,
+            )
+
+        assert all(observed == payload for observed in observed_targets)
+        if target.exists():
+            assert target.read_bytes() == payload
 
 
 def test_atomic_publish_no_replace_never_overwrites_two_process_winner(

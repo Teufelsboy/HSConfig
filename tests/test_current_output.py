@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import copy
 import errno
 import json
 import os
+import pickle
 import stat
 import threading
 import time
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -545,6 +548,141 @@ def test_package_input_lease_preserves_direct_package_compatibility(
         assert lease.output_root is None
 
 
+def test_package_input_lease_token_is_nonforgeable_thread_bound_and_expires(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    token_type = getattr(
+        current_output_module,
+        "PackageInputLockToken",
+        None,
+    )
+    require_active = current_output_module._require_active_package_input_lease
+    assert isinstance(token_type, type)
+
+    with pytest.raises(TypeError, match="not_constructible"):
+        token_type()
+
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    with current_output_module.lease_package_input(output_root) as lease:
+        assert isinstance(lease.lock_token, token_type)
+        assert require_active(lease).lease is lease
+
+        with pytest.raises(TypeError, match="not_copyable"):
+            copy.copy(lease.lock_token)
+        with pytest.raises(TypeError, match="not_copyable"):
+            copy.deepcopy(lease.lock_token)
+        with pytest.raises(TypeError, match="not_serializable"):
+            pickle.dumps(lease.lock_token)
+
+        forged_token = object.__new__(token_type)
+        forged = replace(lease, lock_token=forged_token)
+        with pytest.raises(ValueError, match="package_input_lease_(invalid|inactive)"):
+            require_active(forged)
+
+        copied = copy.copy(lease)
+        reconstructed = type(lease)(
+            package_root=lease.package_root,
+            publication=lease.publication,
+            content_root_sha256=lease.content_root_sha256,
+            output_root=lease.output_root,
+            snapshot=lease.snapshot,
+            lock_token=lease.lock_token,
+        )
+        for impostor in (copied, reconstructed):
+            with pytest.raises(ValueError, match="package_input_lease_invalid"):
+                require_active(impostor)
+
+        thread_errors: list[BaseException] = []
+
+        def use_from_wrong_thread() -> None:
+            try:
+                require_active(lease)
+            except BaseException as error:
+                thread_errors.append(error)
+
+        worker = threading.Thread(target=use_from_wrong_thread)
+        worker.start()
+        worker.join(10)
+        assert not worker.is_alive()
+        assert len(thread_errors) == 1
+        assert isinstance(thread_errors[0], ValueError)
+        assert str(thread_errors[0]) == "package_input_lease_wrong_thread"
+
+        original_package_root = lease.package_root
+        object.__setattr__(lease, "package_root", tmp_path / "other-package")
+        with pytest.raises(ValueError, match="package_input_lease_binding_invalid"):
+            require_active(lease)
+        object.__setattr__(lease, "package_root", original_package_root)
+        assert require_active(lease).lease is lease
+
+    with pytest.raises(ValueError, match="package_input_lease_inactive"):
+        require_active(lease)
+
+    direct_root = tmp_path / "direct-package"
+    direct_root.mkdir()
+    with current_output_module.lease_package_input(direct_root) as direct:
+        assert isinstance(direct.lock_token, token_type)
+        assert direct.publication is None
+        assert require_active(direct).lease is direct
+
+        masquerading = replace(
+            direct,
+            package_root=lease.package_root,
+            publication=lease.publication,
+            content_root_sha256=lease.content_root_sha256,
+            output_root=lease.output_root,
+            snapshot=lease.snapshot,
+        )
+        with pytest.raises(ValueError, match="package_input_lease_invalid"):
+            require_active(masquerading)
+
+    with pytest.raises(ValueError, match="package_input_lease_inactive"):
+        require_active(direct)
+
+
+def test_package_input_lease_token_retires_before_publish_lock_exit(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    real_lock_type = current_output_module.ExclusiveFileLock
+    lease_box: list[object] = []
+    exit_errors: list[BaseException] = []
+
+    class ObservedLock:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.inner = real_lock_type(*args, **kwargs)
+
+        def __enter__(self) -> object:
+            return self.inner.__enter__()
+
+        def __exit__(
+            self,
+            exc_type: object,
+            exc: object,
+            traceback: object,
+        ) -> object:
+            try:
+                current_output_module._require_active_package_input_lease(
+                    lease_box[0]
+                )
+            except BaseException as error:
+                exit_errors.append(error)
+            return self.inner.__exit__(exc_type, exc, traceback)
+
+    monkeypatch.setattr(current_output_module, "ExclusiveFileLock", ObservedLock)
+
+    with current_output_module.lease_package_input(output_root) as lease:
+        lease_box.append(lease)
+        current_output_module._require_active_package_input_lease(lease)
+
+    assert len(exit_errors) == 1
+    assert isinstance(exit_errors[0], ValueError)
+    assert str(exit_errors[0]) == "package_input_lease_inactive"
+
+
 def test_package_input_lease_rejects_existing_non_plain_candidate(
     tmp_path: Path,
 ) -> None:
@@ -571,21 +709,22 @@ def test_package_input_lease_preserves_consumer_exception_when_exit_guard_fails(
 
     class FailingExitGuard:
         def __init__(self) -> None:
-            self.calls = 0
+            self.fail = False
 
         def validate(self) -> None:
-            self.calls += 1
-            if self.calls == 3:
+            if self.fail:
                 raise ValueError("lease_guard_changed")
 
+    guard = FailingExitGuard()
     monkeypatch.setattr(
         current_output_module,
         "capture_plain_ancestor_guard",
-        lambda _path: FailingExitGuard(),
+        lambda _path: guard,
     )
 
     with pytest.raises(RuntimeError, match="consumer_failure") as captured:
         with current_output_module.lease_package_input(output_root):
+            guard.fail = True
             raise RuntimeError("consumer_failure")
 
     assert "lease_guard_changed" in "\n".join(captured.value.__notes__)
@@ -655,22 +794,22 @@ def test_lease_rejects_exit_guard_change_without_consumer_failure(
 
     class FailingExitGuard:
         def __init__(self) -> None:
-            self.calls = 0
+            self.fail = False
 
         def validate(self) -> None:
-            self.calls += 1
-            if self.calls == 3:
+            if self.fail:
                 raise ValueError("lease_guard_changed")
 
+    guard = FailingExitGuard()
     monkeypatch.setattr(
         current_output_module,
         "capture_plain_ancestor_guard",
-        lambda _path: FailingExitGuard(),
+        lambda _path: guard,
     )
 
     with pytest.raises(ValueError, match="lease_guard_changed"):
         with current_output_module.lease_package_input(output_root):
-            pass
+            guard.fail = True
 
 
 def test_resolve_current_package_rejects_direct_package_compatibility_path(

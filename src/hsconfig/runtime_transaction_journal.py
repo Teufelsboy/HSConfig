@@ -348,6 +348,45 @@ def read_runtime_transaction_journal(
     )
 
 
+def parse_runtime_transaction_journal_bytes(
+    content: bytes,
+    *,
+    expected_transaction_id: str | None = None,
+) -> RuntimeTransactionJournal:
+    """Parse one canonical journal from an already identity-bound read."""
+
+    try:
+        if (
+            not isinstance(content, bytes)
+            or not content
+            or len(content) > MAX_RUNTIME_TRANSACTION_BYTES
+            or (
+                expected_transaction_id is not None
+                and (
+                    not isinstance(expected_transaction_id, str)
+                    or _TRANSACTION_ID.fullmatch(expected_transaction_id) is None
+                )
+            )
+        ):
+            raise ValueError("content")
+        payload = json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+        )
+        journal = _journal_from_payload(payload)
+        if (
+            expected_transaction_id is not None
+            and journal.transaction_id != expected_transaction_id
+        ):
+            raise ValueError("transaction")
+        if content != runtime_transaction_journal_bytes(journal):
+            raise ValueError("noncanonical")
+        return journal
+    except Exception as error:
+        raise ValueError("runtime_transaction_journal_invalid") from error
+
+
 def _read_runtime_transaction_journal(
     path: Path,
     *,
@@ -361,23 +400,15 @@ def _read_runtime_transaction_journal(
             expected_status=status,
             maximum_size=MAX_RUNTIME_TRANSACTION_BYTES,
         )
-        payload = json.loads(
-            content.decode("utf-8"),
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
+        journal = parse_runtime_transaction_journal_bytes(
+            content,
+            expected_transaction_id=expected_transaction_id,
         )
-        journal = _journal_from_payload(payload)
-        expected = expected_transaction_id or journal.transaction_id
         if (
-            journal.transaction_id != expected
-            or (
-                expected_transaction_id is None
-                and target.name != f"{journal.transaction_id}.json"
-            )
+            expected_transaction_id is None
+            and target.name != f"{journal.transaction_id}.json"
         ):
             raise ValueError("filename")
-        if content != runtime_transaction_journal_bytes(journal):
-            raise ValueError("noncanonical")
         return journal
     except Exception as error:
         raise ValueError("runtime_transaction_journal_invalid") from error
@@ -385,7 +416,18 @@ def _read_runtime_transaction_journal(
 
 def load_runtime_transaction_journals(
     runtime_root: Path,
+    *,
+    protected_transaction_ids: frozenset[str] = frozenset(),
 ) -> tuple[RuntimeTransactionJournal, ...]:
+    if (
+        not isinstance(protected_transaction_ids, frozenset)
+        or any(
+            not isinstance(transaction_id, str)
+            or _TRANSACTION_ID.fullmatch(transaction_id) is None
+            for transaction_id in protected_transaction_ids
+        )
+    ):
+        raise ValueError("runtime_transaction_store_invalid")
     transactions = Path(runtime_root) / ".hsconfig" / "transactions"
     if not path_lexists(transactions):
         return ()
@@ -428,6 +470,10 @@ def load_runtime_transaction_journals(
         journals: list[RuntimeTransactionJournal] = []
         transaction_ids = sorted(set(finals) | set(temps))
         for transaction_id in transaction_ids:
+            if transaction_id in protected_transaction_ids:
+                if temps.get(transaction_id):
+                    raise ValueError("protected temp")
+                continue
             final_row = finals.get(transaction_id)
             final = (
                 _read_runtime_transaction_journal(
@@ -620,10 +666,15 @@ def _is_monotonic_successor(
             and successor.cleanup_entries == previous.cleanup_entries
             and successor.cleanup_cursor >= previous.cleanup_cursor
         )
-    return not successor.cleanup_started or (
-        successor.cleanup_cursor == 0
-        and successor.phase == RuntimeTransactionPhase.FINALIZED
-    )
+    if successor.cleanup_started:
+        return (
+            previous.phase == RuntimeTransactionPhase.FINALIZED
+            and previous.owns_target
+            and successor.phase == RuntimeTransactionPhase.FINALIZED
+            and successor.owns_target
+            and successor.cleanup_cursor == 0
+        )
+    return True
 
 
 def _journal_progress_key(
@@ -726,6 +777,7 @@ __all__ = (
     "RuntimeTransactionPhase",
     "RuntimeCleanupEntry",
     "load_runtime_transaction_journals",
+    "parse_runtime_transaction_journal_bytes",
     "read_runtime_transaction_journal",
     "runtime_transaction_journal_bytes",
     "runtime_transaction_journal_path",

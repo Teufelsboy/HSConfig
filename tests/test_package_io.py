@@ -116,6 +116,29 @@ def test_bounded_package_snapshot_returns_stable_sorted_content(tmp_path: Path) 
 def test_no_replace_commit_is_parent_identity_bound_on_windows_and_posix(
     tmp_path: Path,
 ) -> None:
+    rejected_source = tmp_path / "rejected.json.staged"
+    rejected_target = tmp_path / "rejected.json"
+    rejected_source.write_bytes(b"rejected")
+    parent_identity = package_io.path_identity(tmp_path)
+    wrong_parent_identity = (
+        parent_identity[0],
+        parent_identity[1] + 1,
+        parent_identity[2],
+    )
+
+    with pytest.raises(ValueError, match="identity"):
+        package_io.secure_commit_sibling_no_replace(
+            source_path=rejected_source,
+            target_path=rejected_target,
+            expected_source_identity=package_io.path_identity(
+                rejected_source
+            ),
+            expected_parent_identity=wrong_parent_identity,
+        )
+
+    assert rejected_source.read_bytes() == b"rejected"
+    assert not rejected_target.exists()
+
     source = tmp_path / "authority.json.staged"
     target = tmp_path / "authority.json"
     source.write_bytes(b"authority")
@@ -124,7 +147,7 @@ def test_no_replace_commit_is_parent_identity_bound_on_windows_and_posix(
         source_path=source,
         target_path=target,
         expected_source_identity=expected,
-        expected_parent_identity=package_io.path_identity(tmp_path),
+        expected_parent_identity=parent_identity,
     )
     assert result == expected == package_io.path_identity(target)
     assert not source.exists()

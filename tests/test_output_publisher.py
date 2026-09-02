@@ -11,10 +11,13 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from queue import Queue
+from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
 
+import hsconfig.atomic_io as atomic_io
 import hsconfig.output_publisher as output_publisher
 
 from hsconfig.configure_run_model import (
@@ -58,6 +61,35 @@ def _make_symlink(
         ):
             pytest.skip(f"symlinks unavailable: {error}")
         raise
+
+
+def _require_windows_short_path_alias(path: Path) -> Path:
+    if os.name != "nt":
+        pytest.skip("Windows 8.3 path alias regression")
+    import ctypes
+    from ctypes import wintypes
+
+    get_short_path = ctypes.WinDLL(
+        "kernel32",
+        use_last_error=True,
+    ).GetShortPathNameW
+    get_short_path.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+    )
+    get_short_path.restype = wintypes.DWORD
+    required = get_short_path(str(path), None, 0)
+    if required == 0:
+        pytest.skip("Windows short paths unavailable")
+    buffer = ctypes.create_unicode_buffer(required)
+    written = get_short_path(str(path), buffer, len(buffer))
+    if written == 0 or written >= len(buffer):
+        pytest.skip("Windows short path could not be obtained")
+    alias = Path(buffer.value)
+    if alias.resolve(strict=True) == alias.absolute():
+        pytest.skip("Windows volume did not provide an alternate spelling")
+    return alias
 
 
 def build_rendered_run(
@@ -234,35 +266,11 @@ def test_windows_publish_accepts_same_identity_short_path_alias(
     tmp_path: Path,
     rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
 ) -> None:
-    if os.name != "nt":
-        pytest.skip("Windows 8.3 path alias regression")
-    import ctypes
-    from ctypes import wintypes
-
     import hsconfig.package_io as package_io
 
     long_parent = tmp_path / "Long Ancestor Directory For Short Path Alias"
     long_parent.mkdir()
-    get_short_path = ctypes.WinDLL(
-        "kernel32",
-        use_last_error=True,
-    ).GetShortPathNameW
-    get_short_path.argtypes = (
-        wintypes.LPCWSTR,
-        wintypes.LPWSTR,
-        wintypes.DWORD,
-    )
-    get_short_path.restype = wintypes.DWORD
-    required = get_short_path(str(long_parent), None, 0)
-    if required == 0:
-        pytest.skip("Windows short paths unavailable")
-    buffer = ctypes.create_unicode_buffer(required)
-    written = get_short_path(str(long_parent), buffer, len(buffer))
-    if written == 0 or written >= len(buffer):
-        pytest.skip("Windows short path could not be obtained")
-    alias_parent = Path(buffer.value)
-    if alias_parent.resolve(strict=True) == alias_parent.absolute():
-        pytest.skip("Windows volume did not provide an alternate spelling")
+    alias_parent = _require_windows_short_path_alias(long_parent)
 
     assert package_io.path_identity(alias_parent) == package_io.path_identity(
         long_parent
@@ -6305,3 +6313,221 @@ def test_legacy_v1_owner_identity_replacement_blocks_v2_upgrade_temp_resume(
             path_identity(admission_path),
             admission_path.read_bytes(),
         ) == before
+@pytest.mark.parametrize(
+    "entrypoint",
+    ("controller", "unwrapped", "shared", "reconcile"),
+)
+def test_controller_legacy_and_preview_publishers_reject_matching_admission_before_pointer_or_revision_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    from tests.test_runtime_live_admission import _build_admission
+
+    case = tmp_path / entrypoint
+    admission_path, _raw = _build_admission(case, monkeypatch)
+    operation_path = admission_path.with_name("output-operation-admission.json")
+    operation_path.unlink()
+    output_root = case / "output" / "ShadowPriest"
+    first = build_rendered_run(case / "rendered-first", 1)
+    rendered = build_rendered_run(case / "rendered-second", 2)
+    output_publisher.publish_configure_run(first, output_root)
+    before = _tree_snapshot(output_root)
+    publish_lock_held = Event()
+    release_publish = Event()
+    result: Queue[object] = Queue()
+    real_lock = output_publisher.ExclusiveFileLock
+    paused = False
+
+    @contextmanager
+    def pause_under_publish_lock(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ):
+        nonlocal paused
+        with real_lock(path, *args, **kwargs) as lock:
+            if Path(path).name == ".publish.lock" and not paused:
+                paused = True
+                publish_lock_held.set()
+                assert release_publish.wait(timeout=15)
+            yield lock
+
+    def invoke() -> None:
+        try:
+            if entrypoint == "controller":
+                result.put(
+                    output_publisher.publish_configure_run(rendered, output_root)
+                )
+            elif entrypoint == "unwrapped":
+                result.put(
+                    output_publisher._publish_configure_run_unwrapped(
+                        rendered,
+                        output_root,
+                    )
+                )
+            elif entrypoint == "reconcile":
+                result.put(output_publisher.reconcile_output(output_root))
+            else:
+                from hsconfig.output_operation_admission import (
+                    lease_output_operation_admission,
+                )
+                from hsconfig.package_io import hold_plain_directory
+
+                with lease_output_operation_admission() as operation_lease:
+                    with output_publisher.lease_output_child_bootstrap(
+                        output_root=output_root
+                    ) as bootstrap_lease:
+                        with hold_plain_directory(output_root) as output_guard:
+                            authorization = output_publisher.authorize_output_publication_under_bootstrap_lease(
+                                operation_lease=operation_lease,
+                                bootstrap_lease=bootstrap_lease,
+                                output_guard=output_guard,
+                                operation_admission=None,
+                                session_lease=None,
+                                expected_session=None,
+                                profile_lease=None,
+                            )
+                            with output_publisher.publish_configure_run_under_guard(
+                                rendered,
+                                output_guard=output_guard,
+                                operation_lease=operation_lease,
+                                bootstrap_lease=bootstrap_lease,
+                                publication_authorization=authorization,
+                            ) as published:
+                                result.put(published)
+        except BaseException as error:
+            result.put(error)
+
+    monkeypatch.setattr(
+        output_publisher,
+        "ExclusiveFileLock",
+        pause_under_publish_lock,
+    )
+    worker = Thread(target=invoke)
+    worker.start()
+    assert publish_lock_held.wait(timeout=15)
+    admission_path, raw = _build_admission(case, monkeypatch)
+    atomic_io.atomic_publish_bytes_no_replace(
+        path=admission_path,
+        staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+        payload=raw,
+        expected_parent_identity=path_identity(admission_path.parent),
+        maximum_size=64 * 1024,
+    )
+    release_publish.set()
+    worker.join(timeout=20)
+
+    assert not worker.is_alive()
+    error = result.get_nowait()
+    assert isinstance(error, ValueError)
+    assert str(error).startswith("runtime_live_admission")
+    assert _tree_snapshot(output_root) == before
+
+
+@pytest.mark.parametrize("entrypoint", ("controller", "unwrapped"))
+def test_matching_admission_blocks_missing_output_root_before_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    from tests.test_runtime_live_admission import _build_admission
+
+    case = tmp_path / entrypoint
+    admission_path, raw = _build_admission(case, monkeypatch)
+    output_root = case / "output" / "ShadowPriest"
+    output_root.rmdir()
+    atomic_io.atomic_publish_bytes_no_replace(
+        path=admission_path,
+        staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+        payload=raw,
+        expected_parent_identity=path_identity(admission_path.parent),
+        maximum_size=64 * 1024,
+    )
+    rendered = build_rendered_run(case / "rendered", 1)
+
+    with pytest.raises(ValueError, match="runtime_live_admission"):
+        if entrypoint == "controller":
+            output_publisher.publish_configure_run(rendered, output_root)
+        else:
+            output_publisher._publish_configure_run_unwrapped(
+                rendered,
+                output_root,
+            )
+
+    assert not output_root.exists()
+
+
+def test_unrelated_output_root_remains_publishable_under_runtime_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_runtime_live_admission import _build_admission
+
+    admission_path, raw = _build_admission(tmp_path, monkeypatch)
+    atomic_io.atomic_publish_bytes_no_replace(
+        path=admission_path,
+        staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+        payload=raw,
+        expected_parent_identity=path_identity(admission_path.parent),
+        maximum_size=64 * 1024,
+    )
+    unrelated = tmp_path / "unrelated-output" / "OtherDeck"
+    rendered = build_rendered_run(tmp_path / "unrelated-rendered", 1)
+
+    published = output_publisher._publish_configure_run_unwrapped(
+        rendered,
+        unrelated,
+    )
+
+    assert published.output_root == unrelated
+    assert (unrelated / "current.json").is_file()
+
+
+@pytest.mark.parametrize("entrypoint", ("publish", "reconcile"))
+def test_windows_runtime_admission_blocks_same_identity_short_alias_before_output_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    entrypoint: str,
+) -> None:
+    from hsconfig.runtime_live_admission import (
+        load_runtime_live_attempt_admission,
+    )
+    from tests.test_runtime_live_admission import _build_admission
+
+    long_parent = tmp_path / "Long Runtime Admission Output Ancestor"
+    long_parent.mkdir()
+    alias_parent = _require_windows_short_path_alias(long_parent)
+    admission_path, _raw = _build_admission(long_parent, monkeypatch)
+    operation_path = admission_path.with_name("output-operation-admission.json")
+    operation_path.unlink()
+    long_output_root = long_parent / "output" / "ShadowPriest"
+    publish_configure_run(rendered_runs[0], long_output_root)
+    admission_path, raw = _build_admission(long_parent, monkeypatch)
+    operation_path.unlink()
+    atomic_io.atomic_publish_bytes_no_replace(
+        path=admission_path,
+        staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+        payload=raw,
+        expected_parent_identity=path_identity(admission_path.parent),
+        maximum_size=64 * 1024,
+    )
+    observed = load_runtime_live_attempt_admission()
+    assert observed is not None
+    assert observed.output_root == long_output_root
+    alias_output_root = alias_parent / "output" / "ShadowPriest"
+    assert alias_output_root != long_output_root
+    assert path_identity(alias_output_root) == observed.output_root_identity
+    before = _tree_snapshot(long_output_root)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^runtime_live_admission_blocks_publication$",
+    ):
+        if entrypoint == "publish":
+            publish_configure_run(rendered_runs[1], alias_output_root)
+        else:
+            reconcile_output(alias_output_root)
+
+    assert _tree_snapshot(long_output_root) == before

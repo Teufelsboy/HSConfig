@@ -40,6 +40,9 @@ from hsconfig.package_io import (
     secure_open_file_descriptor,
     status_is_reparse,
 )
+from hsconfig.runtime_live_admission import (
+    require_live_admission_allows_profile_mutation,
+)
 
 
 OPERATOR_PROFILE_SCHEMA_VERSION = 1
@@ -188,6 +191,7 @@ def enable_operator_profile(
 
     if expected_predecessor_sha256 is not None:
         _require_standard_digest(expected_predecessor_sha256, "predecessor")
+    require_live_admission_allows_profile_mutation()
     requested_runtime = _validated_plain_root(Path(runtime_root))
     requested_output = _validated_plain_root(Path(output_base_root))
     requested_runtime_identity = path_identity(requested_runtime)
@@ -197,6 +201,7 @@ def enable_operator_profile(
         requested_output,
     )
     state_root_identity = _ensure_state_root_for_enable(state_root)
+    require_live_admission_allows_profile_mutation()
     profile_path = state_root / OPERATOR_PROFILE_NAME
     profile_lock_path = state_root / OPERATOR_PROFILE_LOCK_NAME
     profile_lock_identity = _bootstrap_profile_lock(
@@ -215,11 +220,13 @@ def enable_operator_profile(
             "operator_profile_lock_not_empty",
             expected_identity=profile_lock_identity,
         )
+        require_live_admission_allows_profile_mutation()
         _bootstrap_output_operation_lock(state_root, state_root_identity)
         with _lease_output_operation_admission_for_state_root(
             state_root=state_root,
             state_root_identity=state_root_identity,
         ) as operation_lease:
+            require_live_admission_allows_profile_mutation()
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_optional_observation(
                 profile_path,
@@ -233,6 +240,7 @@ def enable_operator_profile(
                 requested_output=requested_output,
                 requested_output_identity=requested_output_identity,
             ):
+                require_live_admission_allows_profile_mutation()
                 return predecessor.profile
             canonical = _seal_profile(
                 live_by_default=True,
@@ -241,6 +249,7 @@ def enable_operator_profile(
                 output_base_root=requested_output,
                 output_base_root_identity=requested_output_identity,
             )
+            require_live_admission_allows_profile_mutation()
             _write_profile_cas(
                 profile_path,
                 canonical,
@@ -263,6 +272,7 @@ def disable_operator_profile(
     """Disable live-by-default without changing either bound root."""
 
     _require_standard_digest(expected_predecessor_sha256, "predecessor")
+    require_live_admission_allows_profile_mutation()
     state_root, state_root_identity = _require_existing_state_root()
     profile_path = state_root / OPERATOR_PROFILE_NAME
     profile_lock_path = state_root / OPERATOR_PROFILE_LOCK_NAME
@@ -284,10 +294,12 @@ def disable_operator_profile(
             "operator_profile_lock_not_empty",
             expected_identity=profile_lock_identity,
         )
+        require_live_admission_allows_profile_mutation()
         with _lease_output_operation_admission_for_state_root(
             state_root=state_root,
             state_root_identity=state_root_identity,
         ) as operation_lease:
+            require_live_admission_allows_profile_mutation()
             require_output_operation_allows_profile_mutation(operation_lease)
             predecessor = _read_observation(
                 profile_path,
@@ -296,6 +308,7 @@ def disable_operator_profile(
             if predecessor.profile.content_sha256 != expected_predecessor_sha256:
                 raise ValueError("operator_profile_predecessor_mismatch")
             if not predecessor.profile.live_by_default:
+                require_live_admission_allows_profile_mutation()
                 return predecessor.profile
             canonical = _seal_profile(
                 live_by_default=False,
@@ -306,6 +319,7 @@ def disable_operator_profile(
                     predecessor.profile.output_base_root_identity
                 ),
             )
+            require_live_admission_allows_profile_mutation()
             _write_profile_cas(
                 profile_path,
                 canonical,

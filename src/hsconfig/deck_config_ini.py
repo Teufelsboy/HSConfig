@@ -5,12 +5,20 @@ import errno
 import hashlib
 import os
 import stat
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
-from hsconfig.atomic_io import FaultHook, atomic_write_bytes, no_fault
+from hsconfig.atomic_io import (
+    NO_REPLACE_COMMIT_FAULT_POINT,
+    NO_REPLACE_POSIX_LINK_FAULT_POINT,
+    AtomicWriteConflictError,
+    FaultHook,
+    atomic_commit_bound_staging_no_replace,
+    atomic_materialize_staging_bytes,
+    atomic_write_bytes,
+    no_fault,
+)
 from hsconfig.package_io import (
     PlainDirectoryMutationGuard,
     capture_plain_ancestor_guard,
@@ -26,14 +34,18 @@ _UTF8_BOM = b"\xef\xbb\xbf"
 MAX_DECK_CONFIG_BYTES = 1024 * 1024
 _MAX_NAME_LENGTH = 255
 _PLATFORM_NAME = os.name
-_WINDOWS_RESERVED = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{number}" for number in range(1, 10)),
-    *(f"LPT{number}" for number in range(1, 10)),
-}
+_WINDOWS_RESERVED = frozenset(
+    {
+        "con",
+        "prn",
+        "aux",
+        "nul",
+        *(f"com{suffix}" for suffix in "123456789"),
+        *(f"lpt{suffix}" for suffix in "123456789"),
+        *(f"com{suffix}" for suffix in ("¹", "²", "³")),
+        *(f"lpt{suffix}" for suffix in ("¹", "²", "³")),
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,7 +341,8 @@ def _validate_config_dir(value: str) -> None:
         or any(character in value for character in '<>:"/\\|?*\0')
         or any(ord(character) < 32 for character in value)
         or value.endswith((".", " "))
-        or value.split(".", 1)[0].upper() in _WINDOWS_RESERVED
+        or value.split(".", 1)[0].rstrip(" .").casefold()
+        in _WINDOWS_RESERVED
     ):
         raise ValueError("deck_config_ini_unsafe_config_dir")
 
@@ -417,77 +430,62 @@ def _atomic_create_if_absent(
     fault_hook: FaultHook,
 ) -> None:
     parent_identity = parent.identity
-    temp_path: Path | None = None
-    temp_identity: tuple[int, int, int] | None = None
-    descriptor: int | None = None
-    handle: BinaryIO | None = None
+    staging_path = target.with_name(f"{target.name}.staged")
+    inner_temp_path = staging_path.with_name(
+        f".{staging_path.name}.live-start-atomic.tmp"
+    )
+    materialized = None
     fault_hook("before_temp_write")
     try:
-        for _ in range(100):
-            candidate = target.with_name(
-                f".{target.name}.{uuid.uuid4().hex}.tmp"
+        try:
+            materialized = atomic_materialize_staging_bytes(
+                staging_path=staging_path,
+                inner_temp_path=inner_temp_path,
+                payload=content,
+                expected_parent_identity=parent_identity,
+                maximum_size=MAX_DECK_CONFIG_BYTES,
             )
-            try:
-                descriptor = parent.open_file(
-                    candidate.name,
-                    create=True,
-                    write=True,
-                )
-            except FileExistsError:
-                continue
-            temp_path = candidate
-            opened = os.fstat(descriptor)
-            temp_identity = (opened.st_dev, opened.st_ino, opened.st_mode)
-            handle = os.fdopen(descriptor, "w+b")
-            descriptor = None
-            break
-        else:
-            raise FileExistsError("deck_config_ini_temp_creation_failed")
-        handle.write(content)
+        except AtomicWriteConflictError as exc:
+            raise RuntimeError("deck_config_ini_concurrent_change") from exc
         fault_hook("after_temp_write")
-        handle.flush()
-        os.fsync(handle.fileno())
         fault_hook("after_temp_flush")
-        handle.close()
-        handle = None
         fault_hook("before_replace")
         parent.validate()
+
+        def delegate_commit_fault(stage: str) -> None:
+            if stage == NO_REPLACE_POSIX_LINK_FAULT_POINT:
+                return
+            if stage != NO_REPLACE_COMMIT_FAULT_POINT:
+                raise RuntimeError(
+                    "deck_config_ini_unknown_no_replace_fault_stage"
+                )
+            fault_hook("after_replace")
+
         try:
-            _commit_owned_temp_no_replace(
-                parent,
-                temp_name=temp_path.name,
-                target_name=target.name,
-                expected_identity=temp_identity,
-                expected_content=content,
-                platform_name=_PLATFORM_NAME,
+            atomic_commit_bound_staging_no_replace(
+                path=target,
+                staging_path=staging_path,
+                expected_staging_identity=materialized.identity,
+                expected_size=materialized.size,
+                expected_sha256=materialized.sha256,
+                expected_parent_identity=parent_identity,
+                fault_hook=delegate_commit_fault,
             )
-            temp_path = None
-            temp_identity = None
-        except OSError as exc:
-            if not _is_already_exists_error(exc):
-                raise
+        except AtomicWriteConflictError as exc:
             raise RuntimeError("deck_config_ini_concurrent_change") from exc
-        fault_hook("after_replace")
         _flush_parent(parent)
         fault_hook("after_parent_flush")
     except BaseException as primary:
-        if descriptor is not None:
+        if materialized is not None:
             try:
-                os.close(descriptor)
-            except BaseException as cleanup_error:
-                _add_note(primary, "temp descriptor close failed", cleanup_error)
-        if handle is not None:
-            try:
-                handle.close()
-            except BaseException as cleanup_error:
-                _add_note(primary, "temp handle close failed", cleanup_error)
-        if temp_path is not None and temp_identity is not None:
-            try:
-                current_status = parent.child_status(temp_path.name)
-                if path_identity_from_status(current_status) == temp_identity:
+                current_status = parent.child_status(staging_path.name)
+                if (
+                    path_identity_from_status(current_status)
+                    == materialized.identity
+                ):
                     secure_unlink(
-                        temp_path,
-                        expected_identity=temp_identity,
+                        staging_path,
+                        expected_identity=materialized.identity,
                         expected_parent_identity=parent_identity,
                         missing_ok=True,
                     )
@@ -501,7 +499,7 @@ def _atomic_create_if_absent(
 def _flush_parent(parent: PlainDirectoryMutationGuard) -> None:
     try:
         os.fsync(parent.descriptor)
-    except OSError:
+    except (OSError, ValueError):
         pass
 
 

@@ -7,12 +7,14 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock, get_ident
 from typing import Any, Iterator
 
 from hsconfig.atomic_io import ExclusiveFileLock
 from hsconfig.package_io import (
     BoundedFilesystemPackageView,
     capture_plain_ancestor_guard,
+    path_identity,
     path_lexists,
     plain_file_status,
     read_file_no_follow,
@@ -40,6 +42,7 @@ _CURRENT_KEYS = frozenset(
         "content_root_sha256",
     }
 )
+_TOKEN_AUTHORITY = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,29 @@ class VerifiedRevision:
     snapshot: BoundedFilesystemPackageView
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class PackageInputLockToken:
+    """Opaque process-local capability for one active Package-input lease."""
+
+    _nonce: object
+    _thread_id: int
+
+    def __init__(self, authority: object | None = None) -> None:
+        if authority is not _TOKEN_AUTHORITY:
+            raise TypeError("package_input_lock_token_not_constructible")
+        object.__setattr__(self, "_nonce", object())
+        object.__setattr__(self, "_thread_id", get_ident())
+
+    def __copy__(self) -> PackageInputLockToken:
+        raise TypeError("package_input_lock_token_not_copyable")
+
+    def __deepcopy__(self, memo: dict[int, object]) -> PackageInputLockToken:
+        raise TypeError("package_input_lock_token_not_copyable")
+
+    def __reduce__(self) -> object:
+        raise TypeError("package_input_lock_token_not_serializable")
+
+
 @dataclass(frozen=True, slots=True)
 class PackageInputLease:
     package_root: Path
@@ -78,6 +104,23 @@ class PackageInputLease:
     content_root_sha256: str | None
     output_root: Path | None
     snapshot: BoundedFilesystemPackageView | None
+    lock_token: PackageInputLockToken
+
+
+@dataclass(frozen=True, slots=True)
+class _PackageInputLeaseBinding:
+    token: PackageInputLockToken
+    lease: PackageInputLease
+    thread_id: int
+    package_root: Path
+    publication: OutputPublication | None
+    content_root_sha256: str | None
+    output_root: Path | None
+    snapshot: BoundedFilesystemPackageView | None
+
+
+_active_package_input_leases: dict[int, _PackageInputLeaseBinding] = {}
+_active_package_input_leases_lock = Lock()
 
 
 @contextmanager
@@ -91,18 +134,37 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
 
     candidate = Path(package_input)
     if not _has_output_layout_marker(candidate):
-        yield PackageInputLease(
+        token = PackageInputLockToken(_TOKEN_AUTHORITY)
+        lease = PackageInputLease(
             package_root=candidate,
             publication=None,
             content_root_sha256=None,
             output_root=None,
             snapshot=None,
+            lock_token=token,
         )
+        _register_package_input_lease(
+            _PackageInputLeaseBinding(
+                token=token,
+                lease=lease,
+                thread_id=get_ident(),
+                package_root=candidate,
+                publication=None,
+                content_root_sha256=None,
+                output_root=None,
+                snapshot=None,
+            )
+        )
+        try:
+            yield lease
+        finally:
+            _retire_package_input_lease(token, lease)
         return
 
     try:
         guard = capture_plain_ancestor_guard(candidate / ".publish.lock")
         require_plain_directory(candidate)
+        output_root_identity = path_identity(candidate)
         lock_path = candidate / ".publish.lock"
         if not path_lexists(lock_path):
             raise ValueError("current_output_invalid")
@@ -110,30 +172,50 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
     except Exception as error:
         raise ValueError("current_output_invalid") from error
 
-    with ExclusiveFileLock(lock_path):
+    with ExclusiveFileLock(
+        lock_path,
+        expected_parent_identity=output_root_identity,
+        path_guard=guard,
+        create_if_missing=False,
+    ):
         try:
             guard.validate()
             publication, verified = resolve_current_publication_unlocked(
                 candidate
             )
             guard.validate()
+            package_root = candidate / publication.revision / "04_package"
         except Exception as error:
             raise ValueError("current_output_invalid") from error
-        consumer_error: BaseException | None = None
-        try:
-            yield PackageInputLease(
-                package_root=(
-                    candidate / publication.revision / "04_package"
-                ),
+        token = PackageInputLockToken(_TOKEN_AUTHORITY)
+        lease = PackageInputLease(
+            package_root=package_root,
+            publication=publication,
+            content_root_sha256=publication.content_root_sha256,
+            output_root=candidate,
+            snapshot=verified.snapshot,
+            lock_token=token,
+        )
+        _register_package_input_lease(
+            _PackageInputLeaseBinding(
+                token=token,
+                lease=lease,
+                thread_id=get_ident(),
+                package_root=package_root,
                 publication=publication,
                 content_root_sha256=publication.content_root_sha256,
                 output_root=candidate,
                 snapshot=verified.snapshot,
             )
+        )
+        consumer_error: BaseException | None = None
+        try:
+            yield lease
         except BaseException as error:
             consumer_error = error
             raise
         finally:
+            _retire_package_input_lease(token, lease)
             try:
                 guard.validate()
             except Exception as error:
@@ -142,6 +224,58 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
                 consumer_error.add_note(
                     f"lease exit guard validation failed: {error}"
                 )
+
+
+def _register_package_input_lease(binding: _PackageInputLeaseBinding) -> None:
+    with _active_package_input_leases_lock:
+        if id(binding.token) in _active_package_input_leases:
+            raise ValueError("package_input_lease_token_collision")
+        _active_package_input_leases[id(binding.token)] = binding
+
+
+def _retire_package_input_lease(
+    token: PackageInputLockToken,
+    lease: PackageInputLease,
+) -> None:
+    with _active_package_input_leases_lock:
+        active = _active_package_input_leases.get(id(token))
+        if (
+            active is not None
+            and active.token is token
+            and active.lease is lease
+        ):
+            _active_package_input_leases.pop(id(token), None)
+
+
+def _require_active_package_input_lease(
+    lease: PackageInputLease,
+) -> _PackageInputLeaseBinding:
+    if not isinstance(lease, PackageInputLease):
+        raise ValueError("package_input_lease_invalid")
+    token = lease.lock_token
+    if not isinstance(token, PackageInputLockToken):
+        raise ValueError("package_input_lease_invalid")
+    with _active_package_input_leases_lock:
+        binding = _active_package_input_leases.get(id(token))
+    if binding is None:
+        raise ValueError("package_input_lease_inactive")
+    if binding.token is not token or binding.lease is not lease:
+        raise ValueError("package_input_lease_invalid")
+    if (
+        getattr(token, "_thread_id", None) != binding.thread_id
+        or binding.thread_id != get_ident()
+    ):
+        raise ValueError("package_input_lease_wrong_thread")
+    if (
+        lease.package_root != binding.package_root
+        or lease.publication is not binding.publication
+        or lease.content_root_sha256 != binding.content_root_sha256
+        or lease.output_root != binding.output_root
+        or lease.snapshot is not binding.snapshot
+        or lease.lock_token is not binding.token
+    ):
+        raise ValueError("package_input_lease_binding_invalid")
+    return binding
 
 
 def resolve_current_package(output_root: Path) -> Path:
@@ -318,6 +452,7 @@ def _is_sha256(value: object) -> bool:
 __all__ = (
     "OutputPublication",
     "PackageInputLease",
+    "PackageInputLockToken",
     "VerifiedRevision",
     "lease_package_input",
     "output_publication_bytes",

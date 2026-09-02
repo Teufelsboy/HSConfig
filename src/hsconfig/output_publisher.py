@@ -95,6 +95,9 @@ from hsconfig.output_operation_admission import (
     require_output_operation_allows_publication,
 )
 from hsconfig.package_domain import canonical_relative_path
+from hsconfig.runtime_live_admission import (
+    require_live_admission_allows_publication,
+)
 
 
 _TRANSACTION_SCHEMA_VERSION = 1
@@ -2632,6 +2635,7 @@ def publish_configure_run(
     if not isinstance(rendered, RenderedConfigureRun):
         raise TypeError("rendered_configure_run_required")
     root = _canonical_output_root(output_root)
+    _require_runtime_live_admission_allows_output_mutation(root)
     _bootstrap_neutral_output_locks(output_root=root)
     with lease_output_operation_admission() as operation_lease:
         root_identity = path_identity(root) if path_lexists(root) else None
@@ -2686,14 +2690,15 @@ def _publish_configure_run_context(
     root = Path(output_root)
     if output_guard is not None:
         _validate_output_root_guard(root, output_guard)
+    _require_runtime_live_admission_allows_output_mutation(root)
     ancestor_guard = capture_plain_ancestor_guard(root)
     if path_lexists(root):
         require_plain_directory(root)
         lock_candidate = root / ".publish.lock"
         if path_lexists(lock_candidate):
             plain_file_status(lock_candidate)
-    _ensure_layout(root, output_guard=output_guard)
-    layout_guards = _capture_layout_guards(root)
+    elif output_guard is None:
+        _secure_create_directory_chain(root)
     with ExclusiveFileLock(
         root / ".publish.lock",
         expected_parent_identity=(
@@ -2703,6 +2708,8 @@ def _publish_configure_run_context(
     ):
         if output_guard is not None:
             _validate_output_root_guard(root, output_guard)
+        _require_runtime_live_admission_allows_output_mutation(root)
+        _ensure_layout(root, output_guard=output_guard)
         layout_guards = _capture_layout_guards(root)
         ancestor_guard.validate()
         _validate_layout_guards(layout_guards)
@@ -2975,6 +2982,7 @@ def reconcile_output(output_root: Path) -> PublishedOutput | None:
     root = _canonical_output_root(output_root)
     if not path_lexists(root):
         return None
+    _require_runtime_live_admission_allows_output_mutation(root)
     _bootstrap_neutral_output_locks(output_root=root)
     with lease_output_operation_admission() as operation_lease:
         root_identity = path_identity(root)
@@ -3018,6 +3026,7 @@ def _reconcile_output_under_guard(
         path_guard=output_guard,
     ):
         output_guard.validate()
+        _require_runtime_live_admission_allows_output_mutation(root)
         layout_guards = _capture_layout_guards(root)
         ancestor_guard.validate()
         _validate_layout_guards(layout_guards)
@@ -3026,6 +3035,16 @@ def _reconcile_output_under_guard(
         _validate_layout_guards(layout_guards)
         output_guard.validate()
         return result
+
+
+def _require_runtime_live_admission_allows_output_mutation(
+    output_root: Path,
+) -> None:
+    root = Path(output_root)
+    require_live_admission_allows_publication(
+        output_root=root,
+        output_root_identity=(path_identity(root) if path_lexists(root) else None),
+    )
 
 
 def _reject_active_live_start_publication_locked(output_root: Path) -> None:

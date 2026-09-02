@@ -13,6 +13,7 @@ from threading import Event, Thread
 
 import pytest
 
+import hsconfig.atomic_io as atomic_io
 import hsconfig.operator_profile as operator_profile
 import hsconfig.output_operation_admission as output_operation_admission
 from hsconfig import package_io
@@ -1422,3 +1423,144 @@ def test_profile_observation_registry_is_weak_identity_bound_and_bounded(
     disable_operator_profile(expected_predecessor_sha256=stale.content_sha256)
     with pytest.raises(ValueError):
         revalidate_operator_profile(stale)
+@pytest.mark.parametrize("mutation", ("enable", "rebind", "disable"))
+def test_profile_enable_disable_and_rebind_reject_any_admission_before_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    from tests.test_runtime_live_admission import _build_admission
+
+    case = tmp_path / mutation
+    admission_path, _raw = _build_admission(case, monkeypatch)
+    operation_path = admission_path.with_name("output-operation-admission.json")
+    operation_path.unlink()
+    runtime_root = case / "runtime"
+    output_base_root = case / "output"
+    profile = _enable(runtime_root, output_base_root)
+    rebound_output_root = case / "rebound-output"
+    rebound_output_root.mkdir()
+    if mutation == "enable":
+        profile = disable_operator_profile(
+            expected_predecessor_sha256=profile.content_sha256
+        )
+    profile_path = operator_profile_path()
+    before = (path_identity(profile_path), profile_path.read_bytes())
+    initial_gate_passed = Event()
+    release_mutation = Event()
+    outcome: Queue[object] = Queue()
+
+    if mutation == "disable":
+        boundary_name = "_require_existing_state_root"
+        real_boundary = operator_profile._require_existing_state_root
+
+        def pause_after_initial_gate(*args: object, **kwargs: object) -> object:
+            result = real_boundary(*args, **kwargs)
+            initial_gate_passed.set()
+            assert release_mutation.wait(timeout=10)
+            return result
+
+    else:
+        boundary_name = "_validated_plain_root"
+        real_boundary = operator_profile._validated_plain_root
+        paused = False
+
+        def pause_after_initial_gate(*args: object, **kwargs: object) -> object:
+            nonlocal paused
+            result = real_boundary(*args, **kwargs)
+            if not paused:
+                paused = True
+                initial_gate_passed.set()
+                assert release_mutation.wait(timeout=10)
+            return result
+
+    def mutate_profile() -> None:
+        try:
+            if mutation == "disable":
+                result = disable_operator_profile(
+                    expected_predecessor_sha256=profile.content_sha256
+                )
+            else:
+                result = enable_operator_profile(
+                    runtime_root=runtime_root,
+                    output_base_root=(
+                        rebound_output_root
+                        if mutation == "rebind"
+                        else output_base_root
+                    ),
+                    expected_predecessor_sha256=profile.content_sha256,
+                )
+            outcome.put(result)
+        except BaseException as error:
+            outcome.put(error)
+
+    with monkeypatch.context() as boundary_patch:
+        boundary_patch.setattr(
+            operator_profile,
+            boundary_name,
+            pause_after_initial_gate,
+        )
+        worker = Thread(target=mutate_profile)
+        worker.start()
+        assert initial_gate_passed.wait(timeout=10)
+        admission_path, raw = _build_admission(case, monkeypatch)
+        atomic_io.atomic_publish_bytes_no_replace(
+            path=admission_path,
+            staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+            payload=raw,
+            expected_parent_identity=path_identity(admission_path.parent),
+            maximum_size=64 * 1024,
+        )
+        release_mutation.set()
+        worker.join(timeout=15)
+
+    assert not worker.is_alive()
+    error = outcome.get_nowait()
+    assert isinstance(error, ValueError)
+    assert str(error).startswith("runtime_live_admission")
+    assert (path_identity(profile_path), profile_path.read_bytes()) == before
+    assert tuple(rebound_output_root.iterdir()) == ()
+
+
+def test_deleted_profile_cannot_be_reenabled_on_unrelated_root_while_admission_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_runtime_live_admission import _build_admission
+
+    admission_path, _raw = _build_admission(tmp_path, monkeypatch)
+    admission_path.with_name("output-operation-admission.json").unlink()
+    runtime_root = tmp_path / "runtime"
+    output_base_root = tmp_path / "output"
+    profile = _enable(runtime_root, output_base_root)
+    profile_path = operator_profile_path()
+    profile_path.unlink()
+    admission_path, raw = _build_admission(tmp_path, monkeypatch)
+    atomic_io.atomic_publish_bytes_no_replace(
+        path=admission_path,
+        staging_path=admission_path.with_name(f"{admission_path.name}.staged"),
+        payload=raw,
+        expected_parent_identity=path_identity(admission_path.parent),
+        maximum_size=64 * 1024,
+    )
+    replacement = admission_path.with_name("same-bytes-replacement.json")
+    replacement.write_bytes(raw)
+    admission_path.unlink()
+    replacement.rename(admission_path)
+    unrelated_runtime = tmp_path / "unrelated-runtime"
+    unrelated_output = tmp_path / "unrelated-output"
+    unrelated_runtime.mkdir()
+    unrelated_output.mkdir()
+
+    for occupant in (raw, b"{}"):
+        admission_path.write_bytes(occupant)
+        with pytest.raises(ValueError, match="runtime_live_admission"):
+            enable_operator_profile(
+                runtime_root=unrelated_runtime,
+                output_base_root=unrelated_output,
+                expected_predecessor_sha256=None,
+            )
+        assert tuple(unrelated_runtime.iterdir()) == ()
+        assert tuple(unrelated_output.iterdir()) == ()
+    assert not profile_path.exists()
+    assert profile.content_sha256

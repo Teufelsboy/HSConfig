@@ -105,45 +105,107 @@ def atomic_materialize_staging_bytes(
     if os.path.lexists(staging) or os.path.lexists(inner):
         raise AtomicWriteConflictError("reserved staging surface already exists")
 
-    descriptor = secure_open_file_descriptor(
-        inner,
-        create=True,
-        write=True,
-        expected_parent_identity=expected_parent_identity,
-    )
+    inner_identity: PathIdentity | None = None
+    staging_bound = False
     try:
-        with os.fdopen(descriptor, "w+b", closefd=False) as handle:
-            written = handle.write(content)
-            if written != len(content):
-                raise OSError(errno.EIO, "atomic staging short write")
-            handle.flush()
-            os.fsync(descriptor)
-        inner_identity = path_identity_from_status(os.fstat(descriptor))
-    finally:
-        os.close(descriptor)
+        descriptor = secure_open_file_descriptor(
+            inner,
+            create=True,
+            write=True,
+            expected_parent_identity=expected_parent_identity,
+        )
+        try:
+            inner_identity = path_identity_from_status(os.fstat(descriptor))
+            with os.fdopen(descriptor, "w+b", closefd=False) as handle:
+                written = handle.write(content)
+                if written != len(content):
+                    raise OSError(errno.EIO, "atomic staging short write")
+                handle.flush()
+                os.fsync(descriptor)
+            if path_identity_from_status(os.fstat(descriptor)) != inner_identity:
+                raise AtomicWriteConflictError(
+                    "owned staging inner identity changed"
+                )
+        finally:
+            os.close(descriptor)
 
-    secure_commit_sibling_no_replace(
-        source_path=inner,
-        target_path=staging,
-        expected_source_identity=inner_identity,
-        expected_parent_identity=expected_parent_identity,
-    )
-    identity, size, digest = _require_exact_bound_file(
-        staging,
-        expected_identity=inner_identity,
-        expected_size=len(content),
-        expected_sha256=_prefixed_sha256(content),
-        expected_parent_identity=expected_parent_identity,
-        allowed_links=frozenset({1}),
-        maximum_size=maximum_size,
-    )
-    fault_hook(STAGING_MATERIALIZE_FAULT_POINT)
-    return MaterializedStagingBytes(
-        path=staging,
-        identity=identity,
-        size=size,
-        sha256=digest,
-    )
+        secure_commit_sibling_no_replace(
+            source_path=inner,
+            target_path=staging,
+            expected_source_identity=inner_identity,
+            expected_parent_identity=expected_parent_identity,
+        )
+        identity, size, digest = _require_exact_bound_file(
+            staging,
+            expected_identity=inner_identity,
+            expected_size=len(content),
+            expected_sha256=_prefixed_sha256(content),
+            expected_parent_identity=expected_parent_identity,
+            allowed_links=frozenset({1}),
+            maximum_size=maximum_size,
+        )
+        staging_bound = True
+        fault_hook(STAGING_MATERIALIZE_FAULT_POINT)
+        return MaterializedStagingBytes(
+            path=staging,
+            identity=identity,
+            size=size,
+            sha256=digest,
+        )
+    except BaseException as primary:
+        if inner_identity is not None and not staging_bound:
+            _cleanup_failed_staging_materialization(
+                staging=staging,
+                inner=inner,
+                owned_identity=inner_identity,
+                expected_parent_identity=expected_parent_identity,
+                primary=primary,
+            )
+        raise
+
+
+def _cleanup_failed_staging_materialization(
+    *,
+    staging: Path,
+    inner: Path,
+    owned_identity: PathIdentity,
+    expected_parent_identity: PathIdentity,
+    primary: BaseException,
+) -> None:
+    """Retire only the exact unbound identity created by this call."""
+
+    try:
+        secure_commit_sibling_no_replace(
+            source_path=inner,
+            target_path=staging,
+            expected_source_identity=owned_identity,
+            expected_parent_identity=expected_parent_identity,
+        )
+    except FileNotFoundError:
+        pass
+    except BaseException as cleanup_error:
+        _add_cleanup_note(
+            primary,
+            "owned staging convergence failed",
+            cleanup_error,
+        )
+
+    for path in (staging, inner):
+        try:
+            secure_unlink(
+                path,
+                expected_identity=owned_identity,
+                expected_parent_identity=expected_parent_identity,
+                missing_ok=True,
+            )
+        except FileNotFoundError:
+            pass
+        except BaseException as cleanup_error:
+            _add_cleanup_note(
+                primary,
+                "owned staging cleanup failed",
+                cleanup_error,
+            )
 
 
 def atomic_commit_bound_staging_no_replace(
