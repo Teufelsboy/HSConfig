@@ -13,8 +13,11 @@ from typing import Any, Iterator
 from hsconfig.atomic_io import ExclusiveFileLock
 from hsconfig.package_io import (
     BoundedFilesystemPackageView,
+    FilesystemPathGuard,
+    PathIdentity,
     capture_plain_ancestor_guard,
     path_identity,
+    path_identity_from_status,
     path_lexists,
     plain_file_status,
     read_file_no_follow,
@@ -117,6 +120,12 @@ class _PackageInputLeaseBinding:
     content_root_sha256: str | None
     output_root: Path | None
     snapshot: BoundedFilesystemPackageView | None
+    output_root_identity: PathIdentity | None = None
+    lock_path: Path | None = None
+    lock_identity: PathIdentity | None = None
+    pointer_path: Path | None = None
+    pointer_identity: PathIdentity | None = None
+    path_guard: FilesystemPathGuard | None = None
 
 
 _active_package_input_leases: dict[int, _PackageInputLeaseBinding] = {}
@@ -132,7 +141,7 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
     lease so a consumer can validate and read the selected revision safely.
     """
 
-    candidate = Path(package_input)
+    candidate = Path(package_input).absolute()
     if not _has_output_layout_marker(candidate):
         token = PackageInputLockToken(_TOKEN_AUTHORITY)
         lease = PackageInputLease(
@@ -180,9 +189,23 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
     ):
         try:
             guard.validate()
+            lock_identity = path_identity_from_status(
+                plain_file_status(lock_path)
+            )
+            pointer_path = candidate / CURRENT_PATH
+            pointer_identity = path_identity_from_status(
+                plain_file_status(pointer_path)
+            )
             publication, verified = resolve_current_publication_unlocked(
                 candidate
             )
+            if (
+                path_identity_from_status(plain_file_status(lock_path))
+                != lock_identity
+                or path_identity_from_status(plain_file_status(pointer_path))
+                != pointer_identity
+            ):
+                raise ValueError("current_output_identity_changed")
             guard.validate()
             package_root = candidate / publication.revision / "04_package"
         except Exception as error:
@@ -206,6 +229,12 @@ def lease_package_input(package_input: Path) -> Iterator[PackageInputLease]:
                 content_root_sha256=publication.content_root_sha256,
                 output_root=candidate,
                 snapshot=verified.snapshot,
+                output_root_identity=output_root_identity,
+                lock_path=lock_path,
+                lock_identity=lock_identity,
+                pointer_path=pointer_path,
+                pointer_identity=pointer_identity,
+                path_guard=guard,
             )
         )
         consumer_error: BaseException | None = None
@@ -276,6 +305,87 @@ def _require_active_package_input_lease(
     ):
         raise ValueError("package_input_lease_binding_invalid")
     return binding
+
+
+def revalidate_package_input_lease(lease: PackageInputLease) -> None:
+    """Require one active published-package lease to remain exactly current."""
+
+    binding = _require_active_package_input_lease(lease)
+    if (
+        lease.publication is None
+        or lease.content_root_sha256 is None
+        or lease.output_root is None
+        or lease.snapshot is None
+        or binding.publication is None
+        or binding.content_root_sha256 is None
+        or binding.output_root is None
+        or binding.snapshot is None
+        or binding.output_root_identity is None
+        or binding.lock_path is None
+        or binding.lock_identity is None
+        or binding.pointer_path is None
+        or binding.pointer_identity is None
+        or binding.path_guard is None
+    ):
+        raise ValueError("package_input_lease_published_required")
+
+    try:
+        binding.path_guard.validate()
+        if (
+            path_identity(lease.output_root) != binding.output_root_identity
+            or binding.lock_path != lease.output_root / ".publish.lock"
+            or path_identity_from_status(
+                plain_file_status(binding.lock_path)
+            )
+            != binding.lock_identity
+            or binding.pointer_path != lease.output_root / CURRENT_PATH
+            or path_identity_from_status(
+                plain_file_status(binding.pointer_path)
+            )
+            != binding.pointer_identity
+        ):
+            raise ValueError("package_input_lease_publication_changed")
+        publication, verified = resolve_current_publication_unlocked(
+            lease.output_root
+        )
+        if (
+            path_identity_from_status(plain_file_status(binding.lock_path))
+            != binding.lock_identity
+            or path_identity_from_status(
+                plain_file_status(binding.pointer_path)
+            )
+            != binding.pointer_identity
+        ):
+            raise ValueError("package_input_lease_publication_changed")
+        binding.path_guard.validate()
+    except Exception as error:
+        raise ValueError("package_input_lease_publication_changed") from error
+
+    expected_package_root = (
+        lease.output_root / publication.revision / "04_package"
+    )
+    if (
+        publication != lease.publication
+        or publication.content_root_sha256 != lease.content_root_sha256
+        or expected_package_root != lease.package_root
+        or not _package_snapshots_equal(verified.snapshot, lease.snapshot)
+    ):
+        raise ValueError("package_input_lease_publication_changed")
+
+
+def _package_snapshots_equal(
+    left: BoundedFilesystemPackageView,
+    right: BoundedFilesystemPackageView,
+) -> bool:
+    if (
+        left.directory_names != right.directory_names
+        or left.file_names() != right.file_names()
+    ):
+        return False
+    return all(
+        left.read_bytes(name) == right.read_bytes(name)
+        for name in left.file_names()
+    )
 
 
 def resolve_current_package(output_root: Path) -> Path:
@@ -457,6 +567,7 @@ __all__ = (
     "lease_package_input",
     "output_publication_bytes",
     "parse_output_publication",
+    "revalidate_package_input_lease",
     "resolve_current_package",
     "resolve_current_publication_unlocked",
     "snapshot_and_verify_revision",

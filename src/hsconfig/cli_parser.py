@@ -471,4 +471,15 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     live_policy_disable.add_argument("--json", action="store_true")
+
+    recover_apply = subparsers.add_parser(
+        "recover-apply",
+        help="recover only the exact apply attempt sealed in a live-start session",
+        description=(
+            "Recover only the exact apply attempt already sealed in a live-start "
+            "session. This command never starts a new apply attempt."
+        ),
+    )
+    recover_apply.add_argument("--session", required=True)
+    recover_apply.add_argument("--json", action="store_true")
     return parser

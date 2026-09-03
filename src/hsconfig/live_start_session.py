@@ -22,7 +22,7 @@ import secrets
 import stat
 import threading
 from types import MappingProxyType
-from typing import Any, Literal, TypeVar
+from typing import Any, BinaryIO, Literal, TypeVar
 
 from hsconfig import input_snapshot_manifest as _task2_inputs
 from hsconfig.atomic_io import (
@@ -77,6 +77,8 @@ LIVE_START_SESSION_MAX_BYTES = 320 * 1024
 LIVE_START_RESULT_INTENT_SCHEMA_VERSION = 1
 LIVE_START_RESULT_INTENT_MAX_BYTES = 64 * 1024
 LIVE_START_RESULT_INTENT_KIND = "live_start_result_intent"
+LIVE_START_RESULT_SUMMARY_MAX_BYTES = 64 * 1024
+LIVE_START_RESULT_SUMMARY_KIND = "live_start_result"
 LIVE_START_ATTEMPT_ACKNOWLEDGEMENT_SCHEMA_VERSION = 1
 LIVE_START_ATTEMPT_ACKNOWLEDGEMENT_MAX_BYTES = 32 * 1024
 LIVE_START_ATTEMPT_ACKNOWLEDGEMENT_KIND = (
@@ -508,7 +510,7 @@ _INTERNAL_EVENT_FIELD_ALLOWLIST = MappingProxyType(
         "publication_committed": frozenset(
             {"publication_binding"}
         ),
-        "bind_terminal": frozenset({"terminal_status"}),
+        "bind_terminal": frozenset({"artifact_bindings", "terminal_status"}),
         "replacement_draft": frozenset(
             {"artifact_bindings", "pending_transition"}
         ),
@@ -642,11 +644,24 @@ class LiveStartSessionLease:
     lock_token: SessionLockToken
 
 
+@dataclass(frozen=True, slots=True)
+class _SessionContextRegistration:
+    bearer: _SessionBearer
+    token: SessionLockToken
+    thread_id: int
+    nonce: str
+    session_root: Path
+    session_root_identity: PathIdentity
+    session_lock_path: Path
+    session_lock_identity: PathIdentity
+    session_lock: ExclusiveFileLock
+    session_lock_object_path: Path
+    session_lock_handle: BinaryIO
+    session_lock_handle_identity: PathIdentity
+
+
 _AUTHORITY_REGISTRY_LOCK = threading.RLock()
-_ACTIVE_SESSION_CONTEXTS: dict[
-    int,
-    tuple[_SessionBearer, SessionLockToken],
-] = {}
+_ACTIVE_SESSION_CONTEXTS: dict[int, _SessionContextRegistration] = {}
 
 
 def _register_session_context(
@@ -659,7 +674,101 @@ def _register_session_context(
             raise SessionCapabilityError(
                 "live_start_session_capability_registry_conflict"
             )
-        _ACTIVE_SESSION_CONTEXTS[id(bearer)] = (bearer, token)
+        session_lock = bearer.session_lock
+        session_lock_handle = getattr(session_lock, "_handle", None)
+        try:
+            session_lock_handle_identity = path_identity_from_status(
+                os.fstat(session_lock_handle.fileno())
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError) as error:
+            raise SessionCapabilityError(
+                "live_start_session_capability_registry_invalid"
+            ) from error
+        if (
+            not bearer.active
+            or not bearer.nonce
+            or token._bearer is not bearer
+            or not isinstance(session_lock, ExclusiveFileLock)
+            or session_lock.path != bearer.session_lock_path
+            or session_lock_handle_identity != bearer.session_lock_identity
+        ):
+            raise SessionCapabilityError(
+                "live_start_session_capability_registry_invalid"
+            )
+        _ACTIVE_SESSION_CONTEXTS[id(bearer)] = (
+            _SessionContextRegistration(
+                bearer=bearer,
+                token=token,
+                thread_id=bearer.thread_id,
+                nonce=bearer.nonce,
+                session_root=bearer.session_root,
+                session_root_identity=bearer.session_root_identity,
+                session_lock_path=bearer.session_lock_path,
+                session_lock_identity=bearer.session_lock_identity,
+                session_lock=session_lock,
+                session_lock_object_path=session_lock.path,
+                session_lock_handle=session_lock_handle,
+                session_lock_handle_identity=session_lock_handle_identity,
+            )
+        )
+
+
+def _session_context_registration(
+    *,
+    bearer: _SessionBearer,
+    token: SessionLockToken | None = None,
+) -> _SessionContextRegistration | None:
+    with _AUTHORITY_REGISTRY_LOCK:
+        registered = _ACTIVE_SESSION_CONTEXTS.get(id(bearer))
+        if (
+            registered is None
+            or registered.bearer is not bearer
+            or (token is not None and registered.token is not token)
+        ):
+            return None
+        return registered
+
+
+def _session_context_registration_matches(
+    registration: _SessionContextRegistration,
+    *,
+    bearer: _SessionBearer,
+    token: SessionLockToken | None = None,
+) -> bool:
+    return (
+        registration.bearer is bearer
+        and (token is None or registration.token is token)
+        and getattr(registration.token, "_bearer", None) is bearer
+        and bearer.active
+        and bearer.thread_id == registration.thread_id
+        and bearer.nonce == registration.nonce
+        and bearer.session_root == registration.session_root
+        and bearer.session_root_identity
+        == registration.session_root_identity
+        and bearer.session_lock_path == registration.session_lock_path
+        and bearer.session_lock_identity
+        == registration.session_lock_identity
+        and bearer.session_lock is registration.session_lock
+        and getattr(registration.session_lock, "path", None)
+        == registration.session_lock_object_path
+        and _registered_session_lock_handle_matches(registration)
+    )
+
+
+def _registered_session_lock_handle_matches(
+    registration: _SessionContextRegistration,
+) -> bool:
+    handle = getattr(registration.session_lock, "_handle", None)
+    if handle is not registration.session_lock_handle:
+        return False
+    try:
+        return (
+            not handle.closed
+            and path_identity_from_status(os.fstat(handle.fileno()))
+            == registration.session_lock_handle_identity
+        )
+    except (AttributeError, OSError, RuntimeError, ValueError):
+        return False
 
 
 def _session_context_is_registered(
@@ -671,15 +780,18 @@ def _session_context_is_registered(
         registered = _ACTIVE_SESSION_CONTEXTS.get(id(bearer))
         return (
             registered is not None
-            and registered[0] is bearer
-            and (token is None or registered[1] is token)
+            and _session_context_registration_matches(
+                registered,
+                bearer=bearer,
+                token=token,
+            )
         )
 
 
 def _deregister_session_context(*, bearer: _SessionBearer) -> None:
     with _AUTHORITY_REGISTRY_LOCK:
         registered = _ACTIVE_SESSION_CONTEXTS.get(id(bearer))
-        if registered is not None and registered[0] is bearer:
+        if registered is not None and registered.bearer is bearer:
             del _ACTIVE_SESSION_CONTEXTS[id(bearer)]
 
 
@@ -2347,34 +2459,51 @@ def _require_session_lease(lease: LiveStartSessionLease) -> _SessionBearer:
     if not isinstance(token, SessionLockToken) or not hasattr(token, "_bearer"):
         raise SessionCapabilityError("live_start_session_capability_forged")
     bearer = token._bearer
+    if not isinstance(bearer, _SessionBearer):
+        raise SessionCapabilityError("live_start_session_capability_forged")
     if not bearer.active or not bearer.nonce:
         raise SessionCapabilityError("live_start_session_capability_expired")
-    if not _session_context_is_registered(bearer=bearer, token=token):
+    registration = _session_context_registration(
+        bearer=bearer,
+        token=token,
+    )
+    if registration is None:
         raise SessionCapabilityError("live_start_session_capability_forged")
-    if bearer.thread_id != threading.get_ident():
+    if registration.thread_id != threading.get_ident():
         raise SessionCapabilityError("live_start_session_capability_wrong_thread")
     if (
-        lease.session_root != bearer.session_root
-        or lease.session_root_identity != bearer.session_root_identity
-        or lease.session_lock_path != bearer.session_lock_path
-        or lease.session_lock_identity != bearer.session_lock_identity
-        or path_identity(lease.session_root) != bearer.session_root_identity
-        or path_identity(lease.session_lock_path) != bearer.session_lock_identity
+        not _session_context_registration_matches(
+            registration,
+            bearer=bearer,
+            token=token,
+        )
+        or lease.session_root != registration.session_root
+        or lease.session_root_identity != registration.session_root_identity
+        or lease.session_lock_path != registration.session_lock_path
+        or lease.session_lock_identity != registration.session_lock_identity
+        or path_identity(registration.session_root)
+        != registration.session_root_identity
+        or path_identity(registration.session_lock_path)
+        != registration.session_lock_identity
     ):
         raise SessionCapabilityError("live_start_session_capability_context_mismatch")
-    lock_status = lease.session_lock_path.lstat()
-    if lock_status.st_size != 0 or bearer.session_lock is None:
+    lock_status = registration.session_lock_path.lstat()
+    if lock_status.st_size != 0:
         raise SessionCapabilityError(
             "live_start_session_capability_lock_invalid"
         )
     try:
-        bearer.session_lock.validate_no_alternate_data_streams(
+        registration.session_lock.validate_no_alternate_data_streams(
             expected_size=0
         )
     except (OSError, RuntimeError, ValueError) as error:
         raise SessionCapabilityError(
             "live_start_session_capability_lock_invalid"
         ) from error
+    if not _session_context_is_registered(bearer=bearer, token=token):
+        raise SessionCapabilityError(
+            "live_start_session_capability_context_mismatch"
+        )
     return bearer
 
 
@@ -7749,10 +7878,19 @@ def _validate_apply_recovery_closure_successor(
         raise SessionCapabilityError(
             "live_start_apply_recovery_closure_invalid"
         )
-    for field_name in _APPLY_RECOVERY_FIELDS - {
-        "recovery_stage",
-        "content_sha256",
-    }:
+    bind_committed_mismatch = (
+        current.get("stable_physical_disposition") == "COMMITTED"
+        and current.get("runtime_match_status") == "unknown"
+        and current.get("runtime_match_sha256") is None
+        and next_value.get("runtime_match_status") == "mismatch"
+        and isinstance(next_value.get("runtime_match_sha256"), str)
+    )
+    mutable_fields = {"recovery_stage", "content_sha256"}
+    if bind_committed_mismatch:
+        mutable_fields.update(
+            {"runtime_match_status", "runtime_match_sha256"}
+        )
+    for field_name in _APPLY_RECOVERY_FIELDS - mutable_fields:
         if current.get(field_name) != next_value.get(field_name):
             raise SessionCapabilityError(
                 "live_start_apply_recovery_closure_changed"
@@ -7767,7 +7905,24 @@ def _validate_apply_recovery_pure_phase_successor(
 ) -> None:
     current = _validate_apply_recovery_document(predecessor)
     next_value = _validate_apply_recovery_document(successor)
-    if current != next_value:
+    runtime_match_bound = (
+        transition == "runtime_matched"
+        and current.get("stable_physical_disposition") == "COMMITTED"
+        and current.get("runtime_match_status") == "unknown"
+        and current.get("runtime_match_sha256") is None
+        and next_value.get("runtime_match_status") == "matched"
+        and isinstance(next_value.get("runtime_match_sha256"), str)
+        and all(
+            current.get(field_name) == next_value.get(field_name)
+            for field_name in _APPLY_RECOVERY_FIELDS
+            - {
+                "content_sha256",
+                "runtime_match_status",
+                "runtime_match_sha256",
+            }
+        )
+    )
+    if current != next_value and not runtime_match_bound:
         raise SessionCapabilityError(
             f"live_start_{transition}_successor_invalid"
         )
@@ -8020,6 +8175,10 @@ _TERMINAL_RESOLUTION_MUTABLE_FIELDS = MappingProxyType(
                 "runtime_match_status",
                 "runtime_match_sha256",
             }
+        )
+        | (
+            _APPLY_RECOVERY_TERMINAL_OBSERVATION_PROMOTION_FIELDS
+            & _TERMINAL_RESOLUTION_FIELDS
         ),
         "stabilized": frozenset(
             {
@@ -8047,6 +8206,1222 @@ _TERMINAL_RESOLUTION_MUTABLE_FIELDS = MappingProxyType(
 )
 
 
+def _terminal_resolution_effective_triplet(
+    resolution: Mapping[str, Any],
+    *,
+    authority: str,
+) -> tuple[str, PathIdentity, str]:
+    if authority not in {"attempt_record", "journal"}:
+        raise SessionCapabilityError(
+            "live_start_terminal_authority_family_invalid"
+        )
+    prefix = (
+        f"successor_{authority}"
+        if resolution.get(f"successor_{authority}_path") is not None
+        else f"predecessor_{authority}"
+    )
+    path = resolution.get(f"{prefix}_path")
+    identity = resolution.get(f"{prefix}_identity")
+    digest = resolution.get(f"{prefix}_sha256")
+    if (
+        not isinstance(path, str)
+        or not isinstance(identity, (list, tuple))
+        or not isinstance(digest, str)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_authority_triplet_invalid"
+        )
+    return path, tuple(identity), digest
+
+
+def _validate_terminal_ownerless_commit_ini_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_commit_ini_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    state_path = Path(current_journal[0]).parent.parent / "state.json"
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_journal_successor_phase")
+        != "INI_COMMITTED"
+        or predecessor.get("planned_journal_successor_phase")
+        != "INI_COMMITTED"
+        or predecessor.get("planned_journal_successor_path")
+        != current_journal[0]
+        or predecessor.get("planned_journal_successor_parent_identity")
+        != current_external.get("parent_identity")
+        or predecessor.get("planned_journal_successor_size")
+        != current_external.get("planned_successor_size")
+        or predecessor.get("planned_journal_successor_sha256")
+        != current_external.get("planned_successor_sha256")
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind") != "commit_ini_journal"
+        or current_external.get("action_index") != current_action_index
+        or current_external.get("final_path") != current_journal[0]
+        or current_external.get("predecessor_state") != "exact"
+        or current_external.get("predecessor_identity")
+        != current_journal[1]
+        or current_external.get("predecessor_sha256")
+        != current_journal[2]
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or successor.get("allowed_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or successor.get("planned_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or successor.get("planned_journal_successor_path")
+        != next_journal[0]
+        or successor.get("planned_journal_successor_parent_identity")
+        != current_external.get("parent_identity")
+        or next_journal[0] != current_journal[0]
+        or next_journal[1] != current_external.get("staging_identity")
+        or next_journal[2] != current_external.get("staging_sha256")
+        or next_external.get("stage") != "PLANNED"
+        or next_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or next_external.get("action_index") != next_action_index
+        or Path(str(next_external.get("final_path"))) != state_path
+        or next_external.get("staging_identity") is not None
+        or next_external.get("staging_size") is not None
+        or next_external.get("staging_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_commit_ini_invalid"
+        )
+    mutable_fields = {
+        "action_index",
+        "allowed_journal_successor_phase",
+        "successor_journal_path",
+        "successor_journal_identity",
+        "successor_journal_sha256",
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in _TERMINAL_RESOLUTION_FIELDS - mutable_fields:
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_commit_ini_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_commit_state_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_commit_state_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    journal_path = Path(current_journal[0])
+    metadata_root = journal_path.parent.parent
+    receipt_path = Path(str(next_external.get("final_path")))
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is None
+        or predecessor.get("last_apply_receipt_sha256") is not None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or predecessor.get("planned_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or predecessor.get("planned_journal_successor_path")
+        != current_journal[0]
+        or predecessor.get("planned_journal_successor_parent_identity")
+        != current_external.get("parent_identity")
+        or predecessor.get("planned_journal_successor_size")
+        != current_external.get("planned_successor_size")
+        or predecessor.get("planned_journal_successor_sha256")
+        != current_external.get("planned_successor_sha256")
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind") != "commit_state_journal"
+        or current_external.get("action_index") != current_action_index
+        or current_external.get("final_path") != current_journal[0]
+        or current_external.get("predecessor_state") != "exact"
+        or current_external.get("predecessor_identity")
+        != current_journal[1]
+        or current_external.get("predecessor_sha256")
+        != current_journal[2]
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or successor.get("allowed_journal_successor_phase")
+        != "FINALIZED"
+        or successor.get("planned_journal_successor_phase")
+        != "FINALIZED"
+        or successor.get("planned_journal_successor_path")
+        != next_journal[0]
+        or successor.get("planned_journal_successor_parent_identity")
+        != current_external.get("parent_identity")
+        or next_journal[0] != current_journal[0]
+        or next_journal[1] != current_external.get("staging_identity")
+        or next_journal[2] != current_external.get("staging_sha256")
+        or next_external.get("stage") != "PLANNED"
+        or next_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or next_external.get("action_index") != next_action_index
+        or receipt_path.name != "last_apply_receipt.json"
+        or receipt_path.parent.parent != metadata_root / "receipts"
+        or not receipt_path.parent.name
+        or Path(str(next_external.get("staging_path")))
+        != receipt_path.with_name(f"{receipt_path.name}.staged")
+        or Path(str(next_external.get("inner_temp_path")))
+        != receipt_path.with_name(
+            f".{receipt_path.name}.staged.live-start-atomic.tmp"
+        )
+        or next_external.get("staging_identity") is not None
+        or next_external.get("staging_size") is not None
+        or next_external.get("staging_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_commit_state_invalid"
+        )
+    mutable_fields = {
+        "action_index",
+        "allowed_journal_successor_phase",
+        "successor_journal_path",
+        "successor_journal_identity",
+        "successor_journal_sha256",
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in _TERMINAL_RESOLUTION_FIELDS - mutable_fields:
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_commit_state_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_finalize_journal_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_finalize_journal_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_attempt = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="attempt_record",
+    )
+    next_attempt = _terminal_resolution_effective_triplet(
+        successor,
+        authority="attempt_record",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    planned_fields = tuple(
+        successor.get(f"planned_journal_successor_{suffix}")
+        for suffix in ("path", "parent_identity", "phase", "size", "sha256")
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is None
+        or predecessor.get("last_apply_receipt_sha256") is None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_attempt_record_successor_state")
+        is not None
+        or predecessor.get("allowed_journal_successor_phase")
+        != "FINALIZED"
+        or predecessor.get("planned_journal_successor_phase")
+        != "FINALIZED"
+        or predecessor.get("planned_journal_successor_path")
+        != current_journal[0]
+        or predecessor.get("planned_journal_successor_parent_identity")
+        != current_external.get("parent_identity")
+        or predecessor.get("planned_journal_successor_size")
+        != current_external.get("planned_successor_size")
+        or predecessor.get("planned_journal_successor_sha256")
+        != current_external.get("planned_successor_sha256")
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind") != "finalize_journal"
+        or current_external.get("action_index") != current_action_index
+        or current_external.get("final_path") != current_journal[0]
+        or current_external.get("predecessor_state") != "exact"
+        or current_external.get("predecessor_identity")
+        != current_journal[1]
+        or current_external.get("predecessor_sha256")
+        != current_journal[2]
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or successor.get("allowed_journal_successor_phase") is not None
+        or successor.get("allowed_attempt_record_successor_state")
+        != "FINALIZED"
+        or any(value is not None for value in planned_fields)
+        or next_journal[0] != current_journal[0]
+        or next_journal[1] != current_external.get("staging_identity")
+        or next_journal[2] != current_external.get("staging_sha256")
+        or next_attempt != current_attempt
+        or next_external.get("stage") != "PLANNED"
+        or next_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or next_external.get("action_index") != next_action_index
+        or next_external.get("final_path") != current_attempt[0]
+        or next_external.get("predecessor_state") != "exact"
+        or next_external.get("predecessor_identity") != current_attempt[1]
+        or next_external.get("predecessor_sha256") != current_attempt[2]
+        or next_external.get("staging_identity") is not None
+        or next_external.get("staging_size") is not None
+        or next_external.get("staging_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_finalize_journal_invalid"
+        )
+    mutable_fields = {
+        "action_index",
+        "allowed_attempt_record_successor_state",
+        "allowed_journal_successor_phase",
+        "successor_journal_path",
+        "successor_journal_identity",
+        "successor_journal_sha256",
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in _TERMINAL_RESOLUTION_FIELDS - mutable_fields:
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_finalize_journal_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_materialize_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action
+        not in {None, "retire_unbound_file_action_staging"}
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_state_materialize_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_attempt = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="attempt_record",
+    )
+    next_attempt = _terminal_resolution_effective_triplet(
+        successor,
+        authority="attempt_record",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    retiring_unbound = (
+        authorized_owner_action == "retire_unbound_file_action_staging"
+    )
+    state_path = Path(current_journal[0]).parent.parent / "state.json"
+    metadata_root = Path(current_journal[0]).parent.parent
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    current_final_path = Path(str(current_external.get("final_path")))
+    materialize_kind = (
+        "state"
+        if (
+            current_final_path == state_path
+            and predecessor.get("runtime_state_sha256") is None
+        )
+        else "journal"
+        if (
+            current_final_path == Path(current_journal[0])
+            and predecessor.get("runtime_state_sha256") is not None
+            and current_external.get("predecessor_state") == "exact"
+            and current_external.get("predecessor_identity")
+            == current_journal[1]
+            and current_external.get("predecessor_sha256")
+            == current_journal[2]
+            and current_external.get("planned_successor_size")
+            == predecessor.get("planned_journal_successor_size")
+            and current_external.get("planned_successor_sha256")
+            == predecessor.get("planned_journal_successor_sha256")
+            and (
+                (
+                    predecessor.get("planned_journal_successor_phase")
+                    == "STATE_COMMITTED"
+                    and predecessor.get("last_apply_receipt_sha256") is None
+                )
+                or (
+                    predecessor.get("planned_journal_successor_phase")
+                    == "FINALIZED"
+                    and predecessor.get("last_apply_receipt_sha256")
+                    is not None
+                )
+            )
+        )
+        else "receipt"
+        if (
+            current_final_path.name == "last_apply_receipt.json"
+            and current_final_path.parent.parent
+            == metadata_root / "receipts"
+            and bool(current_final_path.parent.name)
+            and predecessor.get("runtime_state_sha256") is not None
+            and predecessor.get("last_apply_receipt_sha256") is None
+        )
+        else "attempt"
+        if (
+            current_final_path == Path(current_attempt[0])
+            and current_external.get("predecessor_state") == "exact"
+            and current_external.get("predecessor_identity")
+            == current_attempt[1]
+            and current_external.get("predecessor_sha256")
+            == current_attempt[2]
+            and predecessor.get("runtime_state_sha256") is not None
+            and predecessor.get("last_apply_receipt_sha256") is not None
+            and predecessor.get("allowed_journal_successor_phase") is None
+            and predecessor.get("allowed_attempt_record_successor_state")
+            == "FINALIZED"
+            and all(
+                predecessor.get(field_name) is None
+                for field_name in (
+                    "planned_journal_successor_path",
+                    "planned_journal_successor_parent_identity",
+                    "planned_journal_successor_phase",
+                    "planned_journal_successor_size",
+                    "planned_journal_successor_sha256",
+                )
+            )
+        )
+        else None
+    )
+    expected_planned_journal_phase = {
+        "state": "STATE_COMMITTED",
+        "receipt": "FINALIZED",
+    }.get(materialize_kind) or (
+        predecessor.get("planned_journal_successor_phase")
+        if materialize_kind == "journal"
+        else None
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_journal_successor_phase")
+        != expected_planned_journal_phase
+        or predecessor.get("planned_journal_successor_phase")
+        != expected_planned_journal_phase
+        or (
+            materialize_kind != "attempt"
+            and predecessor.get("planned_journal_successor_path")
+            != current_journal[0]
+        )
+        or (
+            materialize_kind == "attempt"
+            and predecessor.get("allowed_attempt_record_successor_state")
+            != "FINALIZED"
+        )
+        or current_external.get("stage") != "PLANNED"
+        or current_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or current_external.get("action_index") != current_action_index
+        or materialize_kind is None
+        or current_external.get("staging_identity") is not None
+        or current_external.get("staging_size") is not None
+        or current_external.get("staging_sha256") is not None
+        or next_journal != current_journal
+        or next_attempt != current_attempt
+        or next_external.get("action_index") != next_action_index
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_materialize_invalid"
+        )
+    mutable_external_fields = (
+        {"action_index", "content_sha256"}
+        if retiring_unbound
+        else {
+            "action_index",
+            "action_kind",
+            "stage",
+            "staging_identity",
+            "staging_size",
+            "staging_sha256",
+            "content_sha256",
+        }
+    )
+    transition_invalid = (
+        (
+            next_external.get("stage") != "PLANNED"
+            or next_external.get("action_kind")
+            != "materialize_file_action_staging"
+            or next_external.get("staging_identity") is not None
+            or next_external.get("staging_size") is not None
+            or next_external.get("staging_sha256") is not None
+        )
+        if retiring_unbound
+        else (
+            next_external.get("stage") != "STAGING_BOUND"
+            or next_external.get("action_kind")
+            != (
+                "write_runtime_state"
+                if materialize_kind == "state"
+                else (
+                    "write_last_apply_receipt"
+                    if materialize_kind == "receipt"
+                    else (
+                        "finalize_attempt_record"
+                        if materialize_kind == "attempt"
+                        else (
+                            "finalize_journal"
+                            if expected_planned_journal_phase == "FINALIZED"
+                            else "commit_state_journal"
+                        )
+                    )
+                )
+            )
+            or next_external.get("staging_size")
+            != current_external.get("planned_successor_size")
+            or next_external.get("staging_sha256")
+            != current_external.get("planned_successor_sha256")
+        )
+    )
+    if transition_invalid or any(
+        current_external.get(field_name)
+        != next_external.get(field_name)
+        for field_name in (
+            _EXTERNAL_FILE_ACTION_FIELDS - mutable_external_fields
+        )
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_materialize_invalid"
+        )
+    mutable_resolution_fields = {
+        "action_index",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in (
+        _TERMINAL_RESOLUTION_FIELDS - mutable_resolution_fields
+    ):
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_materialize_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_state_write_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_state_write_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    journal_path = Path(current_journal[0])
+    state_path = journal_path.parent.parent / "state.json"
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is not None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or predecessor.get("planned_journal_successor_phase")
+        != "STATE_COMMITTED"
+        or predecessor.get("planned_journal_successor_path")
+        != current_journal[0]
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind") != "write_runtime_state"
+        or current_external.get("action_index") != current_action_index
+        or Path(str(current_external.get("final_path"))) != state_path
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or next_journal != current_journal
+        or successor.get("runtime_state_sha256")
+        != current_external.get("planned_successor_sha256")
+        or next_external.get("stage") != "PLANNED"
+        or next_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or next_external.get("action_index") != next_action_index
+        or Path(str(next_external.get("final_path"))) != journal_path
+        or next_external.get("predecessor_state") != "exact"
+        or next_external.get("predecessor_identity")
+        != current_journal[1]
+        or next_external.get("predecessor_sha256")
+        != current_journal[2]
+        or next_external.get("planned_successor_size")
+        != successor.get("planned_journal_successor_size")
+        or next_external.get("planned_successor_sha256")
+        != successor.get("planned_journal_successor_sha256")
+        or next_external.get("staging_identity") is not None
+        or next_external.get("staging_size") is not None
+        or next_external.get("staging_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_state_write_invalid"
+        )
+    mutable_resolution_fields = {
+        "action_index",
+        "runtime_state_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in (
+        _TERMINAL_RESOLUTION_FIELDS - mutable_resolution_fields
+    ):
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_state_write_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_receipt_write_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    next_external_raw = successor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or not isinstance(next_external_raw, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_receipt_write_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    next_external = validate_embedded_document(
+        "external_file_action",
+        next_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    journal_path = Path(current_journal[0])
+    metadata_root = journal_path.parent.parent
+    receipt_path = Path(str(current_external.get("final_path")))
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is None
+        or predecessor.get("last_apply_receipt_sha256") is not None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("allowed_journal_successor_phase")
+        != "FINALIZED"
+        or predecessor.get("planned_journal_successor_phase")
+        != "FINALIZED"
+        or predecessor.get("planned_journal_successor_path")
+        != current_journal[0]
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind")
+        != "write_last_apply_receipt"
+        or current_external.get("action_index") != current_action_index
+        or receipt_path.name != "last_apply_receipt.json"
+        or receipt_path.parent.parent != metadata_root / "receipts"
+        or not receipt_path.parent.name
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or next_journal != current_journal
+        or successor.get("last_apply_receipt_sha256")
+        != current_external.get("planned_successor_sha256")
+        or next_external.get("stage") != "PLANNED"
+        or next_external.get("action_kind")
+        != "materialize_file_action_staging"
+        or next_external.get("action_index") != next_action_index
+        or Path(str(next_external.get("final_path"))) != journal_path
+        or next_external.get("parent_identity")
+        != predecessor.get("planned_journal_successor_parent_identity")
+        or next_external.get("predecessor_state") != "exact"
+        or next_external.get("predecessor_identity")
+        != current_journal[1]
+        or next_external.get("predecessor_sha256")
+        != current_journal[2]
+        or next_external.get("planned_successor_size")
+        != successor.get("planned_journal_successor_size")
+        or next_external.get("planned_successor_sha256")
+        != successor.get("planned_journal_successor_sha256")
+        or next_external.get("staging_identity") is not None
+        or next_external.get("staging_size") is not None
+        or next_external.get("staging_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_receipt_write_invalid"
+        )
+    mutable_resolution_fields = {
+        "action_index",
+        "last_apply_receipt_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in (
+        _TERMINAL_RESOLUTION_FIELDS - mutable_resolution_fields
+    ):
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_receipt_write_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_finalize_attempt_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_external_raw = predecessor.get("external_file_action")
+    if (
+        authorized_owner_action is not None
+        or not isinstance(current_external_raw, Mapping)
+        or successor.get("external_file_action") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_finalize_attempt_invalid"
+        )
+    current_external = validate_embedded_document(
+        "external_file_action",
+        current_external_raw,
+    )
+    current_journal = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="journal",
+    )
+    next_journal = _terminal_resolution_effective_triplet(
+        successor,
+        authority="journal",
+    )
+    current_attempt = _terminal_resolution_effective_triplet(
+        predecessor,
+        authority="attempt_record",
+    )
+    next_attempt = _terminal_resolution_effective_triplet(
+        successor,
+        authority="attempt_record",
+    )
+    current_action_index = predecessor.get("action_index")
+    next_action_index = successor.get("action_index")
+    candidate_fields = (
+        predecessor.get("candidate_path"),
+        predecessor.get("candidate_parent_identity"),
+        predecessor.get("predecessor_candidate_identity"),
+        predecessor.get("successor_candidate_identity"),
+    )
+    owner_triplet = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    current_planned_journal = tuple(
+        predecessor.get(field_name)
+        for field_name in (
+            "planned_journal_successor_path",
+            "planned_journal_successor_parent_identity",
+            "planned_journal_successor_phase",
+            "planned_journal_successor_size",
+            "planned_journal_successor_sha256",
+        )
+    )
+    next_planned_journal = tuple(
+        successor.get(field_name)
+        for field_name in (
+            "planned_journal_successor_path",
+            "planned_journal_successor_parent_identity",
+            "planned_journal_successor_phase",
+            "planned_journal_successor_size",
+            "planned_journal_successor_sha256",
+        )
+    )
+    staging_identity = current_external.get("staging_identity")
+    expected_next_attempt = (
+        current_attempt[0],
+        (
+            tuple(staging_identity)
+            if isinstance(staging_identity, (list, tuple))
+            else None
+        ),
+        current_external.get("staging_sha256"),
+    )
+    if (
+        type(current_action_index) is not int
+        or next_action_index != current_action_index + 1
+        or predecessor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is None
+        or predecessor.get("last_apply_receipt_sha256") is None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or any(value is not None for value in candidate_fields)
+        or any(value is None for value in owner_triplet)
+        or predecessor.get("owner_retirement") is not None
+        or successor.get("owner_retirement") is not None
+        or predecessor.get("allowed_journal_successor_phase") is not None
+        or predecessor.get("allowed_attempt_record_successor_state")
+        != "FINALIZED"
+        or successor.get("allowed_journal_successor_phase") is not None
+        or successor.get("allowed_attempt_record_successor_state") is not None
+        or any(value is not None for value in current_planned_journal)
+        or any(value is not None for value in next_planned_journal)
+        or current_external.get("stage") != "STAGING_BOUND"
+        or current_external.get("action_kind")
+        != "finalize_attempt_record"
+        or current_external.get("action_index") != current_action_index
+        or current_external.get("final_path") != current_attempt[0]
+        or current_external.get("predecessor_state") != "exact"
+        or current_external.get("predecessor_identity") != current_attempt[1]
+        or current_external.get("predecessor_sha256") != current_attempt[2]
+        or current_external.get("staging_size")
+        != current_external.get("planned_successor_size")
+        or current_external.get("staging_sha256")
+        != current_external.get("planned_successor_sha256")
+        or next_journal != current_journal
+        or next_attempt != expected_next_attempt
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_finalize_attempt_invalid"
+        )
+    mutable_resolution_fields = {
+        "action_index",
+        "allowed_attempt_record_successor_state",
+        "successor_attempt_record_path",
+        "successor_attempt_record_identity",
+        "successor_attempt_record_sha256",
+        "external_file_action",
+        "content_sha256",
+    }
+    for field_name in (
+        _TERMINAL_RESOLUTION_FIELDS - mutable_resolution_fields
+    ):
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_finalize_attempt_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_classification_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_disposition = predecessor.get("resolved_physical_disposition")
+    next_disposition = successor.get("resolved_physical_disposition")
+    if (
+        authorized_owner_action is not None
+        or predecessor.get("owner_retirement") is not None
+        or successor.get("owner_retirement") is not None
+        or predecessor.get("external_file_action") is not None
+        or successor.get("external_file_action") is not None
+        or predecessor.get("cleanup_stage") is not None
+        or successor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or successor.get("predecessor_transaction_temp_path") is not None
+        or current_disposition
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or next_disposition
+        not in {
+            "NOT_COMMITTED",
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or next_disposition == current_disposition
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_classification_invalid"
+        )
+    mutable_fields = {
+        "action_index",
+        "resolved_physical_disposition",
+        "content_sha256",
+    }
+    for field_name in _TERMINAL_RESOLUTION_FIELDS - mutable_fields:
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_classification_history_changed"
+            )
+
+
+def _validate_terminal_ownerless_observe_committed_successor(
+    *,
+    predecessor: Mapping[str, Any],
+    successor: Mapping[str, Any],
+    authorized_owner_action: str | None,
+) -> None:
+    current_successor_attempt = tuple(
+        predecessor.get(f"successor_attempt_record_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    current_successor_journal = tuple(
+        predecessor.get(f"successor_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    current_owner = tuple(
+        predecessor.get(f"predecessor_target_owner_journal_{suffix}")
+        for suffix in ("path", "identity", "sha256")
+    )
+    current_candidate = tuple(
+        predecessor.get(field_name)
+        for field_name in (
+            "candidate_path",
+            "candidate_parent_identity",
+            "predecessor_candidate_identity",
+            "successor_candidate_identity",
+        )
+    )
+    next_candidate = tuple(
+        successor.get(field_name)
+        for field_name in (
+            "candidate_path",
+            "candidate_parent_identity",
+            "predecessor_candidate_identity",
+            "successor_candidate_identity",
+        )
+    )
+    current_planned = tuple(
+        predecessor.get(field_name)
+        for field_name in (
+            "planned_journal_successor_path",
+            "planned_journal_successor_parent_identity",
+            "planned_journal_successor_phase",
+            "planned_journal_successor_size",
+            "planned_journal_successor_sha256",
+        )
+    )
+    next_planned = tuple(
+        successor.get(field_name)
+        for field_name in (
+            "planned_journal_successor_path",
+            "planned_journal_successor_parent_identity",
+            "planned_journal_successor_phase",
+            "planned_journal_successor_size",
+            "planned_journal_successor_sha256",
+        )
+    )
+    current_action_index = predecessor.get("action_index")
+    if (
+        authorized_owner_action is not None
+        or type(current_action_index) is not int
+        or successor.get("action_index") != current_action_index + 1
+        or predecessor.get("owner_retirement") is not None
+        or successor.get("owner_retirement") is not None
+        or predecessor.get("external_file_action") is not None
+        or successor.get("external_file_action") is not None
+        or predecessor.get("cleanup_stage") is not None
+        or successor.get("cleanup_stage") is not None
+        or predecessor.get("predecessor_transaction_temp_path") is not None
+        or predecessor.get("resolved_physical_disposition")
+        not in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }
+        or successor.get("resolved_physical_disposition") != "COMMITTED"
+        or predecessor.get("allowed_journal_successor_phase") is not None
+        or successor.get("allowed_journal_successor_phase") is not None
+        or predecessor.get("allowed_attempt_record_successor_state") is not None
+        or successor.get("allowed_attempt_record_successor_state") is not None
+        or any(value is not None for value in current_planned)
+        or any(value is not None for value in next_planned)
+        or any(value is None for value in current_successor_attempt)
+        or any(value is None for value in current_successor_journal)
+        or any(value is None for value in current_owner)
+        or any(value is not None for value in current_candidate)
+        or any(value is not None for value in next_candidate)
+        or predecessor.get("deck_config_ini_sha256") is None
+        or predecessor.get("runtime_state_sha256") is None
+        or predecessor.get("last_apply_receipt_sha256") is None
+        or predecessor.get("runtime_match_status")
+        not in {"not_run", "unknown"}
+        or predecessor.get("runtime_match_sha256") is not None
+        or successor.get("runtime_match_status") != "unknown"
+        or successor.get("runtime_match_sha256") is not None
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_observe_committed_invalid"
+        )
+    mutable_resolution_fields = {
+        "action_index",
+        "resolved_physical_disposition",
+        "runtime_match_status",
+        "runtime_match_sha256",
+        "content_sha256",
+    }
+    for field_name in (
+        _TERMINAL_RESOLUTION_FIELDS - mutable_resolution_fields
+    ):
+        if predecessor.get(field_name) != successor.get(field_name):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_observe_committed_history_changed"
+            )
+
+
 def _validate_terminal_owner_successor(
     *,
     predecessor: Mapping[str, Any],
@@ -8056,16 +9431,107 @@ def _validate_terminal_owner_successor(
     current_owner_raw = predecessor.get("owner_retirement")
     next_owner_raw = successor.get("owner_retirement")
     if current_owner_raw is None and next_owner_raw is None:
+        current_action_index = predecessor.get("action_index")
         if (
-            authorized_owner_action is not None
-            or predecessor.get("action_index") != successor.get(
-                "action_index"
-            )
+            type(current_action_index) is not int
+            or successor.get("action_index") != current_action_index + 1
         ):
             raise SessionCapabilityError(
                 "live_start_terminal_owner_action_index_invalid"
             )
-        return None
+        current_external = predecessor.get("external_file_action")
+        if (
+            current_external is None
+            and successor.get("external_file_action") is None
+        ):
+            if (
+                successor.get("resolved_physical_disposition")
+                == "COMMITTED"
+            ):
+                _validate_terminal_ownerless_observe_committed_successor(
+                    predecessor=predecessor,
+                    successor=successor,
+                    authorized_owner_action=authorized_owner_action,
+                )
+            else:
+                _validate_terminal_ownerless_classification_successor(
+                    predecessor=predecessor,
+                    successor=successor,
+                    authorized_owner_action=authorized_owner_action,
+                )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "PLANNED"
+            and current_external.get("action_kind")
+            == "materialize_file_action_staging"
+        ):
+            _validate_terminal_ownerless_materialize_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "STAGING_BOUND"
+            and current_external.get("action_kind")
+            == "finalize_attempt_record"
+        ):
+            _validate_terminal_ownerless_finalize_attempt_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "STAGING_BOUND"
+            and current_external.get("action_kind")
+            == "finalize_journal"
+        ):
+            _validate_terminal_ownerless_finalize_journal_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "STAGING_BOUND"
+            and current_external.get("action_kind")
+            == "commit_state_journal"
+        ):
+            _validate_terminal_ownerless_commit_state_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "STAGING_BOUND"
+            and current_external.get("action_kind")
+            == "write_last_apply_receipt"
+        ):
+            _validate_terminal_ownerless_receipt_write_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        elif (
+            isinstance(current_external, Mapping)
+            and current_external.get("stage") == "STAGING_BOUND"
+            and current_external.get("action_kind")
+            == "write_runtime_state"
+        ):
+            _validate_terminal_ownerless_state_write_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        else:
+            _validate_terminal_ownerless_commit_ini_successor(
+                predecessor=predecessor,
+                successor=successor,
+                authorized_owner_action=authorized_owner_action,
+            )
+        return authorized_owner_action
     if not isinstance(current_owner_raw, Mapping) or not isinstance(
         next_owner_raw,
         Mapping,
@@ -8184,6 +9650,7 @@ def _validate_terminal_resolution_successor(
     successor: Mapping[str, Any],
     transition: str,
     authorized_owner_action: str | None = None,
+    ownerless_issuer_context: Mapping[str, Any] | None = None,
 ) -> str | None:
     current = validate_embedded_document(
         "terminal_retirement", predecessor
@@ -8239,8 +9706,21 @@ def _validate_terminal_resolution_successor(
         and current_resolution.get("resolved_physical_disposition")
         == "COMMITTED"
     )
+    evidence_free_stabilized_outer_only = (
+        transition == "stabilized"
+        and current_resolution == next_resolution
+        and current_owner is None
+        and current_resolution.get("external_file_action") is None
+        and current_resolution.get("cleanup_stage") is None
+        and current_resolution.get("resolved_physical_disposition")
+        in {"NOT_COMMITTED", "COMMITTED"}
+    )
     if (
-        not (outer_only_metadata or owner_stabilized_outer_only)
+        not (
+            outer_only_metadata
+            or owner_stabilized_outer_only
+            or evidence_free_stabilized_outer_only
+        )
         and (
             not changed
             or not changed
@@ -8252,6 +9732,51 @@ def _validate_terminal_resolution_successor(
         )
     owner_action: str | None = None
     if transition == "physical_recovery_advanced":
+        current_external = current_resolution.get("external_file_action")
+        if current_owner is None:
+            if (
+                not isinstance(ownerless_issuer_context, Mapping)
+                or set(ownerless_issuer_context)
+                != {
+                    "apply_attempt_id",
+                    "action_index",
+                    "predecessor_resolution_sha256",
+                    "predecessor_external_sha256",
+                    "successor_retirement_sha256",
+                    "successor_resolution_sha256",
+                }
+                or ownerless_issuer_context.get("apply_attempt_id")
+                != current_resolution.get("apply_attempt_id")
+                or ownerless_issuer_context.get("action_index")
+                != current_resolution.get("action_index")
+                or ownerless_issuer_context.get(
+                    "predecessor_resolution_sha256"
+                )
+                != current_resolution.get("content_sha256")
+                or ownerless_issuer_context.get(
+                    "predecessor_external_sha256"
+                )
+                != (
+                    current_external.get("content_sha256")
+                    if isinstance(current_external, Mapping)
+                    else None
+                )
+                or ownerless_issuer_context.get(
+                    "successor_retirement_sha256"
+                )
+                != next_value.get("content_sha256")
+                or ownerless_issuer_context.get(
+                    "successor_resolution_sha256"
+                )
+                != next_resolution.get("content_sha256")
+            ):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_issuer_invalid"
+                )
+        elif ownerless_issuer_context is not None:
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_issuer_unexpected"
+            )
         owner_action = _validate_terminal_owner_successor(
             predecessor=current_resolution,
             successor=next_resolution,
@@ -10601,7 +12126,9 @@ def _freeze_optional_mapping(value: Any) -> Mapping[str, Any] | None:
 def _freeze_json(value: Any) -> Any:
     if isinstance(value, Mapping):
         return _freeze_mapping(value)
-    if isinstance(value, list):
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
         return tuple(_freeze_json(item) for item in value)
     return value
 
@@ -10838,6 +12365,7 @@ RuntimeObservationFamily = Literal[
     "nonterminal_apply",
     "terminal_resolution",
     "terminal_classification",
+    "terminal_release",
 ]
 RUNTIME_OBSERVATION_FAMILIES = frozenset(
     {
@@ -10845,6 +12373,7 @@ RUNTIME_OBSERVATION_FAMILIES = frozenset(
         "nonterminal_apply",
         "terminal_resolution",
         "terminal_classification",
+        "terminal_release",
     }
 )
 
@@ -11035,6 +12564,49 @@ class CandidateReviewRevisionPhysicalPostcondition(_PhysicalPostcondition):
     pass
 
 
+def _physical_postcondition_value_sha256(value: Any) -> str | None:
+    try:
+        if isinstance(value, _PhysicalPostcondition):
+            observation_family = (
+                value.observation_family
+                if isinstance(value, RuntimeObservationPostcondition)
+                else None
+            )
+            canonical_value = {
+                "type_module": type(value).__module__,
+                "type_qualname": type(value).__qualname__,
+                "action": value.action,
+                "observation_family": observation_family,
+                "evidence": _normalize_json(value.evidence),
+            }
+        elif type(value) is _RuntimeAdmissionReleasePrecondition:
+            canonical_value = {
+                "type_module": type(value).__module__,
+                "type_qualname": type(value).__qualname__,
+                "admission_path": str(value.admission_path),
+                "admission_parent_identity": list(
+                    value.admission_parent_identity
+                ),
+                "historical_admission_identity": list(
+                    value.historical_admission_identity
+                ),
+                "historical_admission_sha256": (
+                    value.historical_admission_sha256
+                ),
+            }
+        else:
+            return None
+        return _bytes_sha256(_canonical_json(canonical_value))
+    except (
+        AttributeError,
+        RecursionError,
+        SessionValidationError,
+        TypeError,
+        ValueError,
+    ):
+        return None
+
+
 RuntimeAdmissionReleaseDisposition = Literal[
     "old_unlinked", "already_absent", "valid_foreign_successor"
 ]
@@ -11082,6 +12654,63 @@ class RuntimeAdmissionReleasePostcondition:
             raise SessionValidationError("live_start_runtime_admission_release_nullability_invalid")
 
 
+@dataclass(frozen=True, slots=True)
+class _RuntimeAdmissionReleasePrecondition:
+    admission_path: Path
+    admission_parent_identity: PathIdentity
+    historical_admission_identity: PathIdentity
+    historical_admission_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.admission_path, Path)
+            or not self.admission_path.is_absolute()
+        ):
+            raise SessionValidationError(
+                "live_start_runtime_admission_release_path_invalid"
+            )
+        _require_identity(
+            self.admission_parent_identity,
+            "runtime_admission_release_parent_identity",
+        )
+        _require_identity(
+            self.historical_admission_identity,
+            "historical_admission_identity",
+        )
+        _require_sha256(
+            self.historical_admission_sha256,
+            "historical_admission_sha256",
+        )
+
+
+def _detached_registered_postcondition(
+    value: Any,
+) -> _PhysicalPostcondition | _RuntimeAdmissionReleasePrecondition | None:
+    if isinstance(value, RuntimeObservationPostcondition):
+        return type(value)(
+            action=value.action,
+            evidence=_thaw(value.evidence),
+            observation_family=value.observation_family,
+        )
+    if isinstance(value, _PhysicalPostcondition):
+        return type(value)(
+            action=value.action,
+            evidence=_thaw(value.evidence),
+        )
+    if type(value) is _RuntimeAdmissionReleasePrecondition:
+        return _RuntimeAdmissionReleasePrecondition(
+            admission_path=Path(str(value.admission_path)),
+            admission_parent_identity=tuple(value.admission_parent_identity),
+            historical_admission_identity=tuple(
+                value.historical_admission_identity
+            ),
+            historical_admission_sha256=str(
+                value.historical_admission_sha256
+            ),
+        )
+    return None
+
+
 class _OpaqueBearer:
     __slots__ = (
         "active",
@@ -11092,6 +12721,7 @@ class _OpaqueBearer:
         "physical_slot_family",
         "physical_precondition",
         "session_bearer",
+        "terminal_owner_context",
         "thread_id",
         "successor",
     )
@@ -11112,8 +12742,62 @@ class _OpaqueBearer:
         self.physical_slot_family: str | None = None
         self.physical_precondition: Mapping[str, Any] | None = None
         self.session_bearer = session_bearer
+        self.terminal_owner_context: Mapping[str, Any] | None = None
         self.thread_id = threading.get_ident()
         self.successor: Any = None
+
+
+@dataclass(frozen=True, slots=True)
+class _OpaqueBearerRegistration:
+    bearer: _OpaqueBearer
+    session_bearer: _SessionBearer
+    family: str
+    cursor_sha256: str
+    action: str
+    thread_id: int
+    nonce: str
+    physical_slot_family: str | None
+    registered_successor: Any
+    registered_successor_snapshot: Any
+    registered_successor_postcondition_sha256: str | None
+    registered_physical_precondition: Mapping[str, Any] | None
+    registered_terminal_owner_context: Mapping[str, Any] | None
+    parent_terminal_bearer: _OpaqueBearer | None
+    parent_registration: _OpaqueBearerRegistration | None
+
+
+@dataclass(frozen=True, slots=True)
+class _OpaqueBearerConsumption:
+    bearer: _OpaqueBearer
+    registration: _OpaqueBearerRegistration
+    session_bearer: _SessionBearer
+    family: str
+    cursor_sha256: str
+    action: str
+    thread_id: int
+    successor: Any
+    successor_postcondition_sha256: str | None
+    successor_was_registry_bound: bool
+    physical_precondition: Mapping[str, Any] | None
+    terminal_owner_context: Mapping[str, Any] | None
+    parent_terminal_bearer: _OpaqueBearer | None
+    parent_registration: _OpaqueBearerRegistration | None
+
+
+@dataclass(frozen=True, slots=True)
+class _TerminalOwnerlessIssuerBinding:
+    issuer_bearer: _OpaqueBearer
+    physical_action: Callable[..., Any]
+    physical_precondition: Mapping[str, Any]
+    parent_terminal_bearer: _OpaqueBearer
+    parent_registration: _OpaqueBearerRegistration
+
+
+@dataclass(frozen=True, slots=True)
+class _TerminalOwnerContextBinding:
+    bearer: _OpaqueBearer
+    registration: _OpaqueBearerRegistration
+    context: Mapping[str, Any] | None
 
 
 _OPAQUE_MINT = object()
@@ -11149,6 +12833,11 @@ class _OpaqueCarrier:
 
 @dataclass(frozen=True, slots=True, init=False)
 class TerminalRetirementAuthorization(_OpaqueCarrier):
+    pass
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class TerminalOwnerlessSuccessorIssuer(_OpaqueCarrier):
     pass
 
 
@@ -11233,17 +12922,29 @@ class CandidateReviewRevisionStepReceipt(_OpaqueCarrier):
 
 
 _ACTIVE_OPAQUE_BEARERS: dict[int, _OpaqueBearer] = {}
+_OPAQUE_BEARER_REGISTRATIONS: dict[
+    int,
+    _OpaqueBearerRegistration,
+] = {}
 _ACTIVE_OPAQUE_CARRIERS: dict[
     int,
     tuple[_OpaqueCarrier, _OpaqueBearer],
 ] = {}
 _BOUND_PHYSICAL_POSTCONDITIONS: dict[
     int,
-    _PhysicalPostcondition,
+    _PhysicalPostcondition | _RuntimeAdmissionReleasePrecondition,
 ] = {}
-_TERMINAL_OWNER_CONTEXT_BY_BEARER: dict[
+_BOUND_TERMINAL_OWNERLESS_ISSUERS: dict[
     int,
-    Mapping[str, Any],
+    _TerminalOwnerlessIssuerBinding,
+] = {}
+_ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT: dict[
+    int,
+    _OpaqueBearer,
+] = {}
+_BOUND_TERMINAL_OWNER_CONTEXTS: dict[
+    int,
+    _TerminalOwnerContextBinding,
 ] = {}
 _ACTIVE_TERMINAL_PHYSICAL_SLOTS: dict[
     tuple[int, str, str, str],
@@ -11414,6 +13115,44 @@ def _release_nonterminal_physical_slot(*, bearer: _OpaqueBearer) -> None:
             del _ACTIVE_NONTERMINAL_PHYSICAL_SLOTS[key]
 
 
+def _freeze_terminal_owner_context_for_registration(
+    *,
+    bearer: _OpaqueBearer,
+    context: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    if context is None:
+        return None
+    if (
+        bearer.family != "terminal_retirement"
+        or bearer.action != "physical_recovery_advanced"
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_owner_capability_invalid"
+        )
+    frozen = _freeze_mapping(context)
+    owner_action = frozen.get("owner_action")
+    ownerless = frozen.get("ownerless")
+    object_preexisting = frozen.get("owner_object_preexisting")
+    if (
+        not isinstance(owner_action, str)
+        or set(frozen)
+        not in (
+            {"owner_action"},
+            {"owner_action", "owner_object_preexisting"},
+            {"ownerless", "owner_action"},
+        )
+        or (
+            "owner_object_preexisting" in frozen
+            and type(object_preexisting) is not bool
+        )
+        or ("ownerless" in frozen and ownerless is not True)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_owner_capability_invalid"
+        )
+    return frozen
+
+
 def _mint_registered_opaque_carrier(
     *,
     carrier_type: type[_AuthorizationT],
@@ -11422,11 +13161,20 @@ def _mint_registered_opaque_carrier(
     terminal_slot_source: _OpaqueBearer | None = None,
     claim_nonterminal_slot: bool = False,
     nonterminal_slot_source: _OpaqueBearer | None = None,
+    ownerless_parent_terminal_bearer: _OpaqueBearer | None = None,
+    terminal_owner_context: Mapping[str, Any] | None = None,
 ) -> _AuthorizationT:
     if not _session_context_is_registered(bearer=bearer.session_bearer):
         raise SessionCapabilityError(
             "live_start_physical_capability_session_forged"
         )
+    registered_terminal_owner_context = (
+        _freeze_terminal_owner_context_for_registration(
+            bearer=bearer,
+            context=terminal_owner_context,
+        )
+    )
+    bearer.terminal_owner_context = registered_terminal_owner_context
     carrier = carrier_type._mint(bearer)
     with _AUTHORITY_REGISTRY_LOCK:
         if id(bearer) in _ACTIVE_OPAQUE_BEARERS:
@@ -11478,14 +13226,124 @@ def _mint_registered_opaque_carrier(
                 raise SessionCapabilityError(
                     "live_start_nonterminal_physical_authorization_invalid"
                 )
+        ownerless_issuer = (
+            bearer.family == "terminal_ownerless_successor_issuer"
+        )
+        parent_registration: _OpaqueBearerRegistration | None = None
+        if ownerless_issuer:
+            parent = ownerless_parent_terminal_bearer
+            if (
+                parent is None
+                or not callable(bearer.successor)
+                or not isinstance(bearer.physical_precondition, Mapping)
+            ):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_issuer_invalid"
+                )
+            parent_registration = _OPAQUE_BEARER_REGISTRATIONS.get(
+                id(parent)
+            )
+            if (
+                _ACTIVE_OPAQUE_BEARERS.get(id(parent)) is not parent
+                or parent_registration is None
+                or parent_registration.bearer is not parent
+                or not _opaque_bearer_registration_matches(parent)
+                or not _terminal_physical_slot_is_consistent(bearer=parent)
+                or id(parent)
+                in _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT
+            ):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_issuer_invalid"
+                )
+        elif ownerless_parent_terminal_bearer is not None:
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_issuer_invalid"
+            )
         if nonterminal_slot_key is not None:
             bearer.physical_slot_family = "nonterminal"
+        registered_successor_snapshot = _detached_registered_postcondition(
+            bearer.successor
+        )
+        registered_successor_postcondition_sha256 = (
+            _physical_postcondition_value_sha256(bearer.successor)
+        )
+        if (
+            isinstance(
+                bearer.successor,
+                (_PhysicalPostcondition, _RuntimeAdmissionReleasePrecondition),
+            )
+            and (
+                registered_successor_postcondition_sha256 is None
+                or registered_successor_snapshot is None
+                or _physical_postcondition_value_sha256(
+                    registered_successor_snapshot
+                )
+                != registered_successor_postcondition_sha256
+            )
+        ):
+            raise SessionCapabilityError(
+                "live_start_physical_postcondition_invalid"
+            )
+        registration = _OpaqueBearerRegistration(
+            bearer=bearer,
+            session_bearer=bearer.session_bearer,
+            family=bearer.family,
+            cursor_sha256=bearer.cursor_sha256,
+            action=bearer.action,
+            thread_id=bearer.thread_id,
+            nonce=bearer.nonce,
+            physical_slot_family=bearer.physical_slot_family,
+            registered_successor=bearer.successor,
+            registered_successor_snapshot=registered_successor_snapshot,
+            registered_successor_postcondition_sha256=(
+                registered_successor_postcondition_sha256
+            ),
+            registered_physical_precondition=bearer.physical_precondition,
+            registered_terminal_owner_context=(
+                registered_terminal_owner_context
+            ),
+            parent_terminal_bearer=ownerless_parent_terminal_bearer,
+            parent_registration=parent_registration,
+        )
         _ACTIVE_OPAQUE_BEARERS[id(bearer)] = bearer
+        _OPAQUE_BEARER_REGISTRATIONS[id(bearer)] = registration
         _ACTIVE_OPAQUE_CARRIERS[id(carrier)] = (carrier, bearer)
-        if isinstance(bearer.successor, _PhysicalPostcondition):
+        if (
+            bearer.family == "terminal_retirement"
+            and bearer.action == "physical_recovery_advanced"
+        ):
+            _BOUND_TERMINAL_OWNER_CONTEXTS[id(bearer)] = (
+                _TerminalOwnerContextBinding(
+                    bearer=bearer,
+                    registration=registration,
+                    context=registered_terminal_owner_context,
+                )
+            )
+        if isinstance(
+            bearer.successor,
+            (_PhysicalPostcondition, _RuntimeAdmissionReleasePrecondition),
+        ):
             _BOUND_PHYSICAL_POSTCONDITIONS[id(bearer)] = (
                 bearer.successor
             )
+        if ownerless_issuer:
+            assert ownerless_parent_terminal_bearer is not None
+            assert parent_registration is not None
+            assert bearer.physical_precondition is not None
+            _BOUND_TERMINAL_OWNERLESS_ISSUERS[id(bearer)] = (
+                _TerminalOwnerlessIssuerBinding(
+                    issuer_bearer=bearer,
+                    physical_action=bearer.successor,
+                    physical_precondition=bearer.physical_precondition,
+                    parent_terminal_bearer=(
+                        ownerless_parent_terminal_bearer
+                    ),
+                    parent_registration=parent_registration,
+                )
+            )
+            _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT[
+                id(ownerless_parent_terminal_bearer)
+            ] = bearer
         if terminal_slot_key is not None:
             if terminal_slot_source is not None:
                 _TERMINAL_PHYSICAL_SLOT_BY_BEARER.pop(
@@ -11522,6 +13380,7 @@ def _register_opaque_carrier_copy(
             and registered[1].active
             and _ACTIVE_OPAQUE_BEARERS.get(id(registered[1]))
             is registered[1]
+            and _opaque_bearer_registration_matches(registered[1])
             and _terminal_physical_slot_is_consistent(
                 bearer=registered[1]
             )
@@ -11535,6 +13394,75 @@ def _register_opaque_carrier_copy(
             )
 
 
+def _opaque_bearer_registration_matches(bearer: _OpaqueBearer) -> bool:
+    registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+    owner_context_binding = _BOUND_TERMINAL_OWNER_CONTEXTS.get(id(bearer))
+    terminal_owner_context_required = (
+        bearer.family == "terminal_retirement"
+        and bearer.action == "physical_recovery_advanced"
+    )
+    return (
+        registration is not None
+        and registration.bearer is bearer
+        and registration.session_bearer is bearer.session_bearer
+        and registration.family == bearer.family
+        and registration.cursor_sha256 == bearer.cursor_sha256
+        and registration.action == bearer.action
+        and registration.thread_id == bearer.thread_id
+        and registration.nonce == bearer.nonce
+        and registration.physical_slot_family
+        == bearer.physical_slot_family
+        and registration.registered_successor is bearer.successor
+        and registration.registered_successor_postcondition_sha256
+        == _physical_postcondition_value_sha256(bearer.successor)
+        and (
+            (
+                isinstance(
+                    registration.registered_successor,
+                    (
+                        _PhysicalPostcondition,
+                        _RuntimeAdmissionReleasePrecondition,
+                    ),
+                )
+                and registration.registered_successor_snapshot is not None
+                and _physical_postcondition_value_sha256(
+                    registration.registered_successor_snapshot
+                )
+                == registration.registered_successor_postcondition_sha256
+            )
+            or (
+                not isinstance(
+                    registration.registered_successor,
+                    (
+                        _PhysicalPostcondition,
+                        _RuntimeAdmissionReleasePrecondition,
+                    ),
+                )
+                and registration.registered_successor_snapshot is None
+            )
+        )
+        and registration.registered_physical_precondition
+        is bearer.physical_precondition
+        and registration.registered_terminal_owner_context
+        is bearer.terminal_owner_context
+        and (
+            (
+                terminal_owner_context_required
+                and owner_context_binding is not None
+                and owner_context_binding.bearer is bearer
+                and owner_context_binding.registration is registration
+                and owner_context_binding.context
+                is registration.registered_terminal_owner_context
+            )
+            or (
+                not terminal_owner_context_required
+                and owner_context_binding is None
+                and registration.registered_terminal_owner_context is None
+            )
+        )
+    )
+
+
 def _opaque_carrier_is_registered(
     *,
     carrier: _OpaqueCarrier,
@@ -11546,14 +13474,79 @@ def _opaque_carrier_is_registered(
         bound_postcondition = _BOUND_PHYSICAL_POSTCONDITIONS.get(
             id(bearer)
         )
+        bound_ownerless_issuer = _BOUND_TERMINAL_OWNERLESS_ISSUERS.get(
+            id(bearer)
+        )
+        registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+        runtime_release_precondition_required = (
+            bearer.family == "terminal_retirement"
+            and bearer.action == "release_runtime_admission"
+        )
+        immutable_postcondition_required = (
+            runtime_release_precondition_required
+            or registration is not None
+            and isinstance(
+                registration.registered_successor,
+                _PhysicalPostcondition,
+            )
+        )
         return (
             bearer_registered is bearer
+            and _opaque_bearer_registration_matches(bearer)
             and carrier_registered is not None
             and carrier_registered[0] is carrier
             and carrier_registered[1] is bearer
             and (
-                bound_postcondition is None
-                or bearer.successor is bound_postcondition
+                (
+                    immutable_postcondition_required
+                    and registration is not None
+                    and (
+                        not runtime_release_precondition_required
+                        or type(registration.registered_successor)
+                        is _RuntimeAdmissionReleasePrecondition
+                    )
+                    and bearer.successor
+                    is registration.registered_successor
+                    and bound_postcondition
+                    is registration.registered_successor
+                )
+                or (
+                    not immutable_postcondition_required
+                    and (
+                        bound_postcondition is None
+                        or bearer.successor is bound_postcondition
+                    )
+                )
+            )
+            and (
+                (
+                    bearer.family
+                    == "terminal_ownerless_successor_issuer"
+                    and registration is not None
+                    and bound_ownerless_issuer is not None
+                    and bound_ownerless_issuer.issuer_bearer is bearer
+                    and bearer.successor
+                    is bound_ownerless_issuer.physical_action
+                    and bearer.successor
+                    is registration.registered_successor
+                    and bearer.physical_precondition
+                    is bound_ownerless_issuer.physical_precondition
+                    and bearer.physical_precondition
+                    is registration.registered_physical_precondition
+                    and bound_ownerless_issuer.parent_terminal_bearer
+                    is registration.parent_terminal_bearer
+                    and bound_ownerless_issuer.parent_registration
+                    is registration.parent_registration
+                    and _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.get(
+                        id(bound_ownerless_issuer.parent_terminal_bearer)
+                    )
+                    is bearer
+                )
+                or (
+                    bearer.family
+                    != "terminal_ownerless_successor_issuer"
+                    and bound_ownerless_issuer is None
+                )
             )
             and _terminal_physical_slot_is_consistent(bearer=bearer)
             and _nonterminal_physical_slot_is_consistent(bearer=bearer)
@@ -11568,7 +13561,27 @@ def _deregister_opaque_bearer(
 ) -> None:
     with _AUTHORITY_REGISTRY_LOCK:
         _BOUND_PHYSICAL_POSTCONDITIONS.pop(id(bearer), None)
-        _TERMINAL_OWNER_CONTEXT_BY_BEARER.pop(id(bearer), None)
+        _BOUND_TERMINAL_OWNER_CONTEXTS.pop(id(bearer), None)
+        ownerless_binding = _BOUND_TERMINAL_OWNERLESS_ISSUERS.pop(
+            id(bearer),
+            None,
+        )
+        if (
+            ownerless_binding is not None
+            and _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.get(
+                id(ownerless_binding.parent_terminal_bearer)
+            )
+            is bearer
+        ):
+            del _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT[
+                id(ownerless_binding.parent_terminal_bearer)
+            ]
+        for parent_id, active_issuer in tuple(
+            _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.items()
+        ):
+            if active_issuer is bearer:
+                del _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT[parent_id]
+        _OPAQUE_BEARER_REGISTRATIONS.pop(id(bearer), None)
         if _ACTIVE_OPAQUE_BEARERS.get(id(bearer)) is bearer:
             del _ACTIVE_OPAQUE_BEARERS[id(bearer)]
         for carrier_id, (_carrier, registered_bearer) in tuple(
@@ -11591,25 +13604,27 @@ def _register_terminal_owner_context(
         raise SessionCapabilityError(
             "live_start_terminal_owner_capability_forged"
         )
-    bearer = authorization._opaque
-    frozen = _freeze_mapping(context)
-    if not isinstance(frozen.get("owner_action"), str):
-        raise SessionCapabilityError(
-            "live_start_terminal_owner_action_missing"
-        )
+    bearer = _require_opaque_carrier(
+        authorization,
+        carrier_type=TerminalRetirementAuthorization,
+        family="terminal_retirement",
+        action=authorization._opaque.action,
+        consume=False,
+    )
+    frozen = _freeze_terminal_owner_context_for_registration(
+        bearer=bearer,
+        context=context,
+    )
     with _AUTHORITY_REGISTRY_LOCK:
-        registered = _ACTIVE_OPAQUE_CARRIERS.get(id(authorization))
+        registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
         if (
-            registered is None
-            or registered[0] is not authorization
-            or registered[1] is not bearer
-            or _ACTIVE_OPAQUE_BEARERS.get(id(bearer)) is not bearer
-            or id(bearer) in _TERMINAL_OWNER_CONTEXT_BY_BEARER
+            registration is None
+            or registration.bearer is not bearer
+            or registration.registered_terminal_owner_context != frozen
         ):
             raise SessionCapabilityError(
                 "live_start_terminal_owner_capability_invalid"
             )
-        _TERMINAL_OWNER_CONTEXT_BY_BEARER[id(bearer)] = frozen
 
 
 def _terminal_owner_context_for_authorization(
@@ -11627,7 +13642,16 @@ def _terminal_owner_context_for_authorization(
         consume=False,
     )
     with _AUTHORITY_REGISTRY_LOCK:
-        return _TERMINAL_OWNER_CONTEXT_BY_BEARER.get(id(bearer))
+        registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+        if (
+            registration is None
+            or registration.bearer is not bearer
+            or not _opaque_bearer_registration_matches(bearer)
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_owner_capability_invalid"
+            )
+        return registration.registered_terminal_owner_context
 
 
 def _deactivate_opaque_bearers_for_session(
@@ -11705,6 +13729,8 @@ def _mint_authorization_for_authenticated_cursor(
     family: str,
     action: str,
     claim_nonterminal_slot: bool = False,
+    registered_successor: Any = None,
+    registered_physical_precondition: Mapping[str, Any] | None = None,
 ) -> _AuthorizationT:
     bearer = _OpaqueBearer(
         session_bearer=session_bearer,
@@ -11712,6 +13738,8 @@ def _mint_authorization_for_authenticated_cursor(
         cursor_sha256=current.content_sha256,
         action=action,
     )
+    bearer.successor = registered_successor
+    bearer.physical_precondition = registered_physical_precondition
     return _mint_registered_opaque_carrier(
         carrier_type=authorization_type,
         bearer=bearer,
@@ -11728,7 +13756,8 @@ def _require_opaque_carrier(
     consume: bool,
     preserve_terminal_slot: bool = False,
     preserve_nonterminal_slot: bool = False,
-) -> _OpaqueBearer:
+    capture_registered_state: bool = False,
+) -> _OpaqueBearer | _OpaqueBearerConsumption:
     if not isinstance(carrier, carrier_type) or not hasattr(carrier, "_opaque"):
         raise SessionCapabilityError("live_start_physical_capability_forged")
     bearer = carrier._opaque
@@ -11751,14 +13780,101 @@ def _require_opaque_carrier(
     ):
         raise SessionCapabilityError("live_start_physical_capability_invalid")
     _require_opaque_cursor_current(bearer)
+    consumption: _OpaqueBearerConsumption | None = None
     if consume:
-        _deregister_opaque_bearer(
-            bearer=bearer,
-            release_terminal_slot=not preserve_terminal_slot,
-            release_nonterminal_slot=not preserve_nonterminal_slot,
-        )
+        with _AUTHORITY_REGISTRY_LOCK:
+            registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+            if (
+                registration is None
+                or not _opaque_carrier_is_registered(
+                    carrier=carrier,
+                    bearer=bearer,
+                )
+                or _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+                is not registration
+            ):
+                raise SessionCapabilityError(
+                    "live_start_physical_capability_forged"
+                )
+            if isinstance(
+                registration.registered_successor,
+                (_PhysicalPostcondition, _RuntimeAdmissionReleasePrecondition),
+            ) and (
+                bearer.successor is not registration.registered_successor
+                or _BOUND_PHYSICAL_POSTCONDITIONS.get(id(bearer))
+                is not registration.registered_successor
+            ):
+                raise SessionCapabilityError(
+                    "live_start_physical_capability_forged"
+                )
+            successor_postcondition_sha256 = (
+                _physical_postcondition_value_sha256(
+                    registration.registered_successor
+                )
+            )
+            if (
+                successor_postcondition_sha256
+                != registration.registered_successor_postcondition_sha256
+            ):
+                raise SessionCapabilityError(
+                    "live_start_physical_capability_forged"
+                )
+            consumed_successor = registration.registered_successor
+            if registration.registered_successor_snapshot is not None:
+                consumed_successor = _detached_registered_postcondition(
+                    registration.registered_successor_snapshot
+                )
+                if (
+                    consumed_successor is None
+                    or _physical_postcondition_value_sha256(
+                        consumed_successor
+                    )
+                    != registration.registered_successor_postcondition_sha256
+                ):
+                    raise SessionCapabilityError(
+                        "live_start_physical_capability_forged"
+                    )
+            if capture_registered_state:
+                consumption = _OpaqueBearerConsumption(
+                    bearer=bearer,
+                    registration=registration,
+                    session_bearer=registration.session_bearer,
+                    family=registration.family,
+                    cursor_sha256=registration.cursor_sha256,
+                    action=registration.action,
+                    thread_id=registration.thread_id,
+                    successor=consumed_successor,
+                    successor_postcondition_sha256=(
+                        registration.registered_successor_postcondition_sha256
+                    ),
+                    successor_was_registry_bound=True,
+                    physical_precondition=(
+                        registration.registered_physical_precondition
+                    ),
+                    terminal_owner_context=(
+                        registration.registered_terminal_owner_context
+                    ),
+                    parent_terminal_bearer=(
+                        registration.parent_terminal_bearer
+                    ),
+                    parent_registration=registration.parent_registration,
+                )
+            _deregister_opaque_bearer(
+                bearer=bearer,
+                release_terminal_slot=not preserve_terminal_slot,
+                release_nonterminal_slot=not preserve_nonterminal_slot,
+            )
         bearer.active = False
         bearer.nonce = ""
+    if consumption is not None:
+        if (
+            _physical_postcondition_value_sha256(consumption.successor)
+            != consumption.successor_postcondition_sha256
+        ):
+            raise SessionCapabilityError(
+                "live_start_physical_capability_forged"
+            )
+        return consumption
     return bearer
 
 
@@ -11893,6 +14009,9 @@ def _execute_physical_step(
     physical_action: Callable[[], _PostconditionT],
     before_authorization_consume: Callable[[], None] | None = None,
     before_physical_action: Callable[[], None] | None = None,
+    receipt_physical_precondition: (
+        Callable[[], Mapping[str, Any] | None] | None
+    ) = None,
 ) -> _ReceiptT:
     if before_authorization_consume is not None:
         _require_opaque_carrier(
@@ -11903,25 +14022,32 @@ def _execute_physical_step(
             consume=False,
         )
         before_authorization_consume()
-    bearer = _require_opaque_carrier(
+    consumed = _require_opaque_carrier(
         authorization,
         carrier_type=authorization_type,
         family=family,
         action=action,
         consume=True,
+        capture_registered_state=True,
     )
+    if not isinstance(consumed, _OpaqueBearerConsumption):
+        raise SessionCapabilityError("live_start_physical_capability_invalid")
     if before_physical_action is not None:
         before_physical_action()
     result = physical_action()
     if not isinstance(result, postcondition_type) or result.action != action:
         raise SessionCapabilityError("live_start_physical_postcondition_invalid")
     receipt_bearer = _OpaqueBearer(
-        session_bearer=bearer.session_bearer,
+        session_bearer=consumed.session_bearer,
         family=f"{family}_receipt",
-        cursor_sha256=bearer.cursor_sha256,
+        cursor_sha256=consumed.cursor_sha256,
         action=action,
     )
     receipt_bearer.successor = result
+    if receipt_physical_precondition is not None:
+        receipt_bearer.physical_precondition = (
+            receipt_physical_precondition()
+        )
     return _mint_registered_opaque_carrier(
         carrier_type=receipt_type,
         bearer=receipt_bearer,
@@ -13034,7 +15160,7 @@ def _validate_owner_physical_postcondition(
         )
 
 
-def _consume_receipt_under_lock(
+def _consume_receipt_registration_under_lock(
     *,
     receipt: _OpaqueCarrier,
     receipt_type: type[_ReceiptT],
@@ -13042,7 +15168,7 @@ def _consume_receipt_under_lock(
     expected_session: LiveStartSession,
     family: str,
     action: str,
-) -> _PhysicalPostcondition:
+) -> _OpaqueBearerConsumption:
     session_bearer = _require_session_lease(session_lease)
     bearer = _require_opaque_carrier(
         receipt,
@@ -13057,19 +15183,46 @@ def _consume_receipt_under_lock(
         session_lease=session_lease,
         expected_session=expected_session,
     )
-    bearer = _require_opaque_carrier(
+    consumed = _require_opaque_carrier(
         receipt,
         carrier_type=receipt_type,
         family=f"{family}_receipt",
         action=action,
         consume=True,
+        capture_registered_state=True,
     )
     if (
-        bearer.cursor_sha256 != current.content_sha256
-        or not isinstance(bearer.successor, _PhysicalPostcondition)
+        not isinstance(consumed, _OpaqueBearerConsumption)
+        or consumed.session_bearer is not session_bearer
+        or consumed.family != f"{family}_receipt"
+        or consumed.action != action
+        or consumed.cursor_sha256 != current.content_sha256
+        or not consumed.successor_was_registry_bound
+        or not isinstance(consumed.successor, _PhysicalPostcondition)
     ):
         raise SessionCapabilityError("live_start_physical_receipt_stale")
-    return bearer.successor
+    return consumed
+
+
+def _consume_receipt_under_lock(
+    *,
+    receipt: _OpaqueCarrier,
+    receipt_type: type[_ReceiptT],
+    session_lease: LiveStartSessionLease,
+    expected_session: LiveStartSession,
+    family: str,
+    action: str,
+) -> _PhysicalPostcondition:
+    consumed = _consume_receipt_registration_under_lock(
+        receipt=receipt,
+        receipt_type=receipt_type,
+        session_lease=session_lease,
+        expected_session=expected_session,
+        family=family,
+        action=action,
+    )
+    assert isinstance(consumed.successor, _PhysicalPostcondition)
+    return consumed.successor
 
 
 def _validate_apply_recovery_action_precondition_under_lock(
@@ -13237,10 +15390,88 @@ def _authorize_nonterminal_apply_recovery_under_lock(
         family="nonterminal_apply_recovery",
         action=expected_action,
         claim_nonterminal_slot=physical_action,
+        registered_successor=(
+            _freeze_mapping(owner_context)
+            if owner_context is not None
+            else None
+        ),
     )
-    if owner_context is not None:
-        authorization._opaque.successor = owner_context
     return authorization
+
+
+def _discard_unused_nonterminal_apply_recovery_authorization(
+    authorization: RuntimeAttemptRecoveryAuthorization,
+    *,
+    expected_action: str,
+) -> bool:
+    """Retire an unconsumed physical slot without re-reading a stale cursor."""
+
+    if (
+        type(authorization) is not RuntimeAttemptRecoveryAuthorization
+        or not hasattr(authorization, "_opaque")
+        or expected_action not in RUNTIME_APPLY_RECOVERY_ACTIONS
+    ):
+        raise SessionCapabilityError(
+            "live_start_unused_apply_recovery_authorization_invalid"
+        )
+    bearer = authorization._opaque
+    if not isinstance(bearer, _OpaqueBearer):
+        raise SessionCapabilityError(
+            "live_start_unused_apply_recovery_authorization_invalid"
+        )
+    with _AUTHORITY_REGISTRY_LOCK:
+        bearer_registration = _OPAQUE_BEARER_REGISTRATIONS.get(id(bearer))
+        carrier_registration = _ACTIVE_OPAQUE_CARRIERS.get(id(authorization))
+        reverse_slot = _NONTERMINAL_PHYSICAL_SLOT_BY_BEARER.get(id(bearer))
+        slot_contains_bearer = any(
+            active_bearer is bearer
+            for active_bearer in _ACTIVE_NONTERMINAL_PHYSICAL_SLOTS.values()
+        )
+        fully_inactive = (
+            not bearer.active
+            and not bearer.nonce
+            and _ACTIVE_OPAQUE_BEARERS.get(id(bearer)) is None
+            and bearer_registration is None
+            and carrier_registration is None
+            and reverse_slot is None
+            and not slot_contains_bearer
+            and _BOUND_PHYSICAL_POSTCONDITIONS.get(id(bearer)) is None
+            and _BOUND_TERMINAL_OWNERLESS_ISSUERS.get(id(bearer)) is None
+        )
+        if fully_inactive:
+            return False
+        if (
+            not bearer.active
+            or not bearer.nonce
+            or bearer.family != "nonterminal_apply_recovery"
+            or bearer.action != expected_action
+            or bearer.thread_id != threading.get_ident()
+            or bearer.physical_slot_family != "nonterminal"
+            or not bearer.session_bearer.active
+            or bearer.session_bearer.thread_id != threading.get_ident()
+            or not _session_context_is_registered(
+                bearer=bearer.session_bearer
+            )
+            or _ACTIVE_OPAQUE_BEARERS.get(id(bearer)) is not bearer
+            or bearer_registration is None
+            or bearer_registration.bearer is not bearer
+            or carrier_registration is None
+            or carrier_registration[0] is not authorization
+            or carrier_registration[1] is not bearer
+            or not _opaque_bearer_registration_matches(bearer)
+            or not _opaque_carrier_is_registered(
+                carrier=authorization,
+                bearer=bearer,
+            )
+            or not _nonterminal_physical_slot_is_consistent(bearer=bearer)
+        ):
+            raise SessionCapabilityError(
+                "live_start_unused_apply_recovery_authorization_invalid"
+            )
+        _deregister_opaque_bearer(bearer=bearer)
+        bearer.active = False
+        bearer.nonce = ""
+        return True
 
 
 def _execute_apply_recovery_physical_step(
@@ -13251,35 +15482,42 @@ def _execute_apply_recovery_physical_step(
 ) -> ApplyRecoveryStepReceipt:
     if action not in RUNTIME_APPLY_RECOVERY_ACTIONS:
         raise SessionValidationError("live_start_apply_recovery_action_invalid")
-    owner_context: Mapping[str, Any] | None = None
-    if action in {
-        "delete_owner_cleanup_entry",
-        "retire_owner_target_root",
-        "retire_old_owner_journal",
-    }:
-        bearer = _require_opaque_carrier(
-            recovery_authorization,
-            carrier_type=RuntimeAttemptRecoveryAuthorization,
-            family="nonterminal_apply_recovery",
-            action=action,
-            consume=False,
-        )
-        if not isinstance(bearer.successor, Mapping):
-            raise SessionCapabilityError(
-                "live_start_owner_authorization_context_missing"
-            )
-        owner_context = bearer.successor
-    bearer = _require_opaque_carrier(
+    consumed = _require_opaque_carrier(
         recovery_authorization,
         carrier_type=RuntimeAttemptRecoveryAuthorization,
         family="nonterminal_apply_recovery",
         action=action,
         consume=True,
         preserve_nonterminal_slot=True,
+        capture_registered_state=True,
+    )
+    bearer = (
+        consumed.bearer
+        if isinstance(consumed, _OpaqueBearerConsumption)
+        else recovery_authorization._opaque
     )
     slot_owner = bearer
     receipt_bearer: _OpaqueBearer | None = None
     try:
+        if not isinstance(consumed, _OpaqueBearerConsumption):
+            raise SessionCapabilityError(
+                "live_start_apply_recovery_authorization_invalid"
+            )
+        owner_context: Mapping[str, Any] | None = None
+        if action in {
+            "delete_owner_cleanup_entry",
+            "retire_owner_target_root",
+            "retire_old_owner_journal",
+        }:
+            if not isinstance(consumed.successor, Mapping):
+                raise SessionCapabilityError(
+                    "live_start_owner_authorization_context_missing"
+                )
+            owner_context = consumed.successor
+        elif consumed.successor is not None:
+            raise SessionCapabilityError(
+                "live_start_apply_recovery_authorization_invalid"
+            )
         postcondition = physical_action()
         if (
             not isinstance(
@@ -13301,9 +15539,9 @@ def _execute_apply_recovery_physical_step(
                 evidence=evidence,
             )
         receipt_bearer = _OpaqueBearer(
-            session_bearer=bearer.session_bearer,
+            session_bearer=consumed.session_bearer,
             family="nonterminal_apply_recovery_receipt",
-            cursor_sha256=bearer.cursor_sha256,
+            cursor_sha256=consumed.cursor_sha256,
             action=action,
         )
         receipt_bearer.successor = postcondition
@@ -13326,6 +15564,7 @@ def authorize_terminal_retirement_under_lock(
     *,
     session_lease: LiveStartSessionLease,
     expected_retirement_session: LiveStartSession,
+    runtime_observation_receipt: RuntimeObservationReceipt | None = None,
 ) -> TerminalRetirementAuthorization:
     session_bearer, current = (
         _authenticate_authorization_cursor_under_lock(
@@ -13342,6 +15581,28 @@ def authorize_terminal_retirement_under_lock(
             current.attempt_acknowledgement
         ),
     )
+    if action == "admission_release_authorized":
+        if runtime_observation_receipt is None:
+            raise SessionCapabilityError(
+                "live_start_terminal_release_observation_missing"
+            )
+        postcondition = _consume_runtime_observation_receipt_under_lock(
+            receipt=runtime_observation_receipt,
+            session_lease=session_lease,
+            expected_session=current,
+            observation_family="terminal_release",
+            apply_attempt_id=_session_apply_attempt_id(current),
+        )
+        if postcondition.evidence.get(
+            "terminal_retirement_sha256"
+        ) != retirement.get("content_sha256"):
+            raise SessionCapabilityError(
+                "live_start_terminal_release_observation_invalid"
+            )
+    elif runtime_observation_receipt is not None:
+        raise SessionCapabilityError(
+            "live_start_terminal_release_observation_unexpected"
+        )
     if action in TERMINAL_RESOLUTION_PHYSICAL_ACTIONS:
         _require_terminal_physical_cursor_slot_available(
             session_bearer=session_bearer,
@@ -13422,6 +15683,38 @@ def authorize_terminal_retirement_under_lock(
                 owner_context["owner_object_preexisting"] = (
                     os.path.lexists(owner_path)
                 )
+        elif isinstance(resolution, Mapping):
+            ownerless_external_raw = resolution.get(
+                "external_file_action"
+            )
+            ownerless_external = (
+                validate_embedded_document(
+                    "external_file_action",
+                    ownerless_external_raw,
+                )
+                if isinstance(ownerless_external_raw, Mapping)
+                else None
+            )
+            if (
+                ownerless_external is not None
+                and ownerless_external.get("stage") == "PLANNED"
+                and ownerless_external.get("action_kind")
+                == "materialize_file_action_staging"
+                and (
+                    os.path.lexists(
+                        Path(str(ownerless_external["staging_path"]))
+                    )
+                    or os.path.lexists(
+                        Path(str(ownerless_external["inner_temp_path"]))
+                    )
+                )
+            ):
+                owner_context = {
+                    "ownerless": True,
+                    "owner_action": (
+                        "retire_unbound_file_action_staging"
+                    )
+                }
     elif action == "stabilized":
         resolution = retirement.get("terminal_resolution_evidence")
         owner_raw = (
@@ -13462,39 +15755,33 @@ def authorize_terminal_retirement_under_lock(
         cursor_sha256=current.content_sha256,
         action=action,
     )
+    if action == "release_runtime_admission":
+        authorization_bearer.successor = (
+            _RuntimeAdmissionReleasePrecondition(
+                admission_path=Path(
+                    retirement["runtime_admission_path"]
+                ),
+                admission_parent_identity=_require_identity(
+                    retirement["runtime_admission_parent_identity"],
+                    "runtime_admission_parent_identity",
+                ),
+                historical_admission_identity=_require_identity(
+                    retirement["runtime_admission_identity"],
+                    "runtime_admission_identity",
+                ),
+                historical_admission_sha256=retirement[
+                    "runtime_admission_sha256"
+                ],
+            )
+        )
     authorization = _mint_registered_opaque_carrier(
         carrier_type=TerminalRetirementAuthorization,
         bearer=authorization_bearer,
         claim_terminal_slot=(
             action in TERMINAL_RESOLUTION_PHYSICAL_ACTIONS
         ),
+        terminal_owner_context=owner_context,
     )
-    if owner_context is not None:
-        try:
-            _register_terminal_owner_context(
-                authorization=authorization,
-                context=owner_context,
-            )
-        except BaseException:
-            _deregister_opaque_bearer(bearer=authorization_bearer)
-            authorization_bearer.active = False
-            authorization_bearer.nonce = ""
-            raise
-    elif action == "release_runtime_admission":
-        authorization._opaque.successor = {
-            "admission_path": Path(retirement["runtime_admission_path"]),
-            "admission_parent_identity": _require_identity(
-                retirement["runtime_admission_parent_identity"],
-                "runtime_admission_parent_identity",
-            ),
-            "historical_admission_identity": _require_identity(
-                retirement["runtime_admission_identity"],
-                "runtime_admission_identity",
-            ),
-            "historical_admission_sha256": retirement[
-                "runtime_admission_sha256"
-            ],
-        }
     return authorization
 
 
@@ -13568,6 +15855,14 @@ def _terminal_action_for_retirement(
     external = resolution.get("external_file_action")
     if stage == "RECOVERY_PREPARED":
         owner = resolution.get("owner_retirement")
+        if (
+            owner is None
+            and external is None
+            and cleanup_stage is None
+            and resolution.get("resolved_physical_disposition")
+            == "COMMITTED"
+        ):
+            return "stabilized"
         if isinstance(owner, Mapping):
             if (
                 owner.get("stage") == "OWNER_RETIRED"
@@ -13625,33 +15920,273 @@ def _terminal_action_for_retirement(
     raise SessionConflictError("live_start_terminal_cursor_invalid")
 
 
+def _mint_terminal_ownerless_successor_issuer(
+    *,
+    terminal_authorization: TerminalRetirementAuthorization,
+    physical_action: Callable[
+        [], TerminalResolutionPhysicalPostcondition
+    ],
+    predecessor_resolution: Mapping[str, Any],
+) -> TerminalOwnerlessSuccessorIssuer:
+    """Bind the vetted Runtime projector to one exact ownerless cursor."""
+
+    terminal_bearer = _require_opaque_carrier(
+        terminal_authorization,
+        carrier_type=TerminalRetirementAuthorization,
+        family="terminal_retirement",
+        action="physical_recovery_advanced",
+        consume=False,
+    )
+    if not callable(physical_action):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_issuer_invalid"
+        )
+    predecessor = _validate_terminal_resolution_document(
+        predecessor_resolution
+    )
+    external = predecessor.get("external_file_action")
+    if predecessor.get("owner_retirement") is not None or (
+        external is not None and not isinstance(external, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_issuer_invalid"
+        )
+    try:
+        raw, identity = _read_bound_file(
+            terminal_bearer.session_bearer.session_root / "session.json",
+            expected_parent_identity=(
+                terminal_bearer.session_bearer.session_root_identity
+            ),
+            maximum_size=LIVE_START_SESSION_MAX_BYTES,
+        )
+        current = _load_session_bytes(raw, session_identity=identity)
+        retirement = current.terminal_retirement
+        current_resolution = (
+            retirement.get("terminal_resolution_evidence")
+            if isinstance(retirement, Mapping)
+            else None
+        )
+        if (
+            current.content_sha256 != terminal_bearer.cursor_sha256
+            or not isinstance(current_resolution, Mapping)
+            or current_resolution.get("content_sha256")
+            != predecessor.get("content_sha256")
+            or current_resolution != predecessor
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_issuer_invalid"
+            )
+    except SessionCapabilityError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_issuer_invalid"
+        ) from error
+    issuer_bearer = _OpaqueBearer(
+        session_bearer=terminal_bearer.session_bearer,
+        family="terminal_ownerless_successor_issuer",
+        cursor_sha256=terminal_bearer.cursor_sha256,
+        action="physical_recovery_advanced",
+    )
+    issuer_bearer.successor = physical_action
+    issuer_bearer.physical_precondition = _freeze_mapping(
+        {
+            "apply_attempt_id": predecessor.get("apply_attempt_id"),
+            "action_index": predecessor.get("action_index"),
+            "predecessor_resolution_sha256": predecessor.get(
+                "content_sha256"
+            ),
+            "predecessor_external_sha256": (
+                external.get("content_sha256")
+                if isinstance(external, Mapping)
+                else None
+            ),
+        }
+    )
+    return _mint_registered_opaque_carrier(
+        carrier_type=TerminalOwnerlessSuccessorIssuer,
+        bearer=issuer_bearer,
+        ownerless_parent_terminal_bearer=terminal_bearer,
+    )
+
+
 def _execute_terminal_resolution_physical_step(
     *,
     terminal_authorization: TerminalRetirementAuthorization,
     action: str,
     physical_action: Callable[[], TerminalResolutionPhysicalPostcondition | SuccessAckStepEvidence],
+    ownerless_successor_issuer: TerminalOwnerlessSuccessorIssuer | None = None,
 ) -> TerminalResolutionStepReceipt:
     if action not in TERMINAL_RESOLUTION_PHYSICAL_ACTIONS:
         raise SessionValidationError("live_start_terminal_resolution_action_invalid")
-    owner_context = (
-        _terminal_owner_context_for_authorization(
-            terminal_authorization
-        )
-        if action == "physical_recovery_advanced"
-        else None
-    )
-    bearer = _require_opaque_carrier(
+    terminal_bearer = _require_opaque_carrier(
         terminal_authorization,
         carrier_type=TerminalRetirementAuthorization,
         family="terminal_retirement",
         action=action,
-        consume=True,
-        preserve_terminal_slot=True,
+        consume=False,
     )
+    with _AUTHORITY_REGISTRY_LOCK:
+        terminal_registration = _OPAQUE_BEARER_REGISTRATIONS.get(
+            id(terminal_bearer)
+        )
+        if (
+            terminal_registration is None
+            or terminal_registration.bearer is not terminal_bearer
+            or not _opaque_bearer_registration_matches(terminal_bearer)
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_authorization_invalid"
+            )
+    owner_context = (
+        terminal_registration.registered_terminal_owner_context
+        if action == "physical_recovery_advanced"
+        else None
+    )
+    ownerless_physical_recovery = (
+        action == "physical_recovery_advanced"
+        and (
+            owner_context is None
+            or owner_context.get("ownerless") is True
+        )
+    )
+    issuer_bearer: _OpaqueBearer | None = None
+    issuer_context: Mapping[str, Any] | None = None
+    issuer_parent_registration: _OpaqueBearerRegistration | None = None
+    if ownerless_physical_recovery:
+        if ownerless_successor_issuer is None:
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_issuer_missing"
+            )
+        issuer_bearer = _require_opaque_carrier(
+            ownerless_successor_issuer,
+            carrier_type=TerminalOwnerlessSuccessorIssuer,
+            family="terminal_ownerless_successor_issuer",
+            action=action,
+            consume=False,
+        )
+        issuer_context = issuer_bearer.physical_precondition
+        with _AUTHORITY_REGISTRY_LOCK:
+            issuer_binding = _BOUND_TERMINAL_OWNERLESS_ISSUERS.get(
+                id(issuer_bearer)
+            )
+            issuer_parent_registration = _OPAQUE_BEARER_REGISTRATIONS.get(
+                id(terminal_bearer)
+            )
+        if (
+            issuer_bearer.session_bearer is not terminal_bearer.session_bearer
+            or issuer_bearer.cursor_sha256 != terminal_bearer.cursor_sha256
+            or issuer_bearer.successor is not physical_action
+            or not isinstance(issuer_context, Mapping)
+            or issuer_binding is None
+            or issuer_binding.issuer_bearer is not issuer_bearer
+            or issuer_binding.parent_terminal_bearer is not terminal_bearer
+            or issuer_binding.parent_registration
+            is not issuer_parent_registration
+            or issuer_binding.physical_action is not physical_action
+            or issuer_binding.physical_precondition is not issuer_context
+            or _ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.get(
+                id(terminal_bearer)
+            )
+            is not issuer_bearer
+            or set(issuer_context)
+            != {
+                "apply_attempt_id",
+                "action_index",
+                "predecessor_resolution_sha256",
+                "predecessor_external_sha256",
+            }
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_ownerless_issuer_invalid"
+            )
+    elif ownerless_successor_issuer is not None:
+        raise SessionCapabilityError(
+            "live_start_terminal_ownerless_issuer_unexpected"
+        )
+    try:
+        terminal_consumed = _require_opaque_carrier(
+            terminal_authorization,
+            carrier_type=TerminalRetirementAuthorization,
+            family="terminal_retirement",
+            action=action,
+            consume=True,
+            preserve_terminal_slot=True,
+            capture_registered_state=True,
+        )
+        if not isinstance(terminal_consumed, _OpaqueBearerConsumption):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_authorization_invalid"
+            )
+    except BaseException:
+        if issuer_bearer is not None:
+            _deregister_opaque_bearer(bearer=issuer_bearer)
+            issuer_bearer.active = False
+            issuer_bearer.nonce = ""
+        _deregister_opaque_bearer(bearer=terminal_bearer)
+        terminal_bearer.active = False
+        terminal_bearer.nonce = ""
+        _release_terminal_physical_slot(bearer=terminal_bearer)
+        raise
+    bearer = terminal_consumed.bearer
+    issued_physical_action = physical_action
+    try:
+        if (
+            terminal_consumed.registration is not terminal_registration
+            or terminal_consumed.terminal_owner_context is not owner_context
+        ):
+            raise SessionCapabilityError(
+                "live_start_terminal_resolution_authorization_invalid"
+            )
+        owner_context = terminal_consumed.terminal_owner_context
+        if issuer_bearer is not None:
+            consumed_issuer = _require_opaque_carrier(
+                ownerless_successor_issuer,
+                carrier_type=TerminalOwnerlessSuccessorIssuer,
+                family="terminal_ownerless_successor_issuer",
+                action=action,
+                consume=True,
+                capture_registered_state=True,
+            )
+            if (
+                not isinstance(consumed_issuer, _OpaqueBearerConsumption)
+                or consumed_issuer.family
+                != "terminal_ownerless_successor_issuer"
+                or consumed_issuer.action != action
+                or consumed_issuer.thread_id != threading.get_ident()
+                or consumed_issuer.session_bearer
+                is not terminal_consumed.session_bearer
+                or consumed_issuer.cursor_sha256
+                != terminal_consumed.cursor_sha256
+                or not consumed_issuer.successor_was_registry_bound
+                or consumed_issuer.successor is not physical_action
+                or not isinstance(
+                    consumed_issuer.physical_precondition,
+                    Mapping,
+                )
+                or consumed_issuer.physical_precondition is not issuer_context
+                or consumed_issuer.parent_terminal_bearer is not bearer
+                or consumed_issuer.parent_registration
+                is not terminal_consumed.registration
+                or issuer_parent_registration
+                is not terminal_consumed.registration
+            ):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_issuer_invalid"
+                )
+            issued_physical_action = consumed_issuer.successor
+            issuer_context = consumed_issuer.physical_precondition
+    except BaseException:
+        if issuer_bearer is not None:
+            _deregister_opaque_bearer(bearer=issuer_bearer)
+            issuer_bearer.active = False
+            issuer_bearer.nonce = ""
+        _release_terminal_physical_slot(bearer=bearer)
+        raise
     slot_owner = bearer
     receipt_bearer: _OpaqueBearer | None = None
     try:
-        result = physical_action()
+        result = issued_physical_action()
         expected_postcondition_type: type[
             TerminalResolutionPhysicalPostcondition | SuccessAckStepEvidence
         ] = (
@@ -13666,6 +16201,38 @@ def _execute_terminal_resolution_physical_step(
         if result.action != action:
             raise SessionCapabilityError(
                 "live_start_terminal_resolution_postcondition_invalid"
+            )
+        if ownerless_physical_recovery:
+            evidence = dict(result.evidence)
+            successor_retirement = evidence.get("terminal_retirement")
+            if not isinstance(successor_retirement, Mapping):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_successor_missing"
+                )
+            successor_retirement = validate_embedded_document(
+                "terminal_retirement",
+                successor_retirement,
+            )
+            successor_resolution = successor_retirement.get(
+                "terminal_resolution_evidence"
+            )
+            if not isinstance(successor_resolution, Mapping):
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_successor_missing"
+                )
+            assert issuer_context is not None
+            evidence["_terminal_ownerless_issuer_context"] = {
+                **dict(issuer_context),
+                "successor_retirement_sha256": successor_retirement.get(
+                    "content_sha256"
+                ),
+                "successor_resolution_sha256": successor_resolution.get(
+                    "content_sha256"
+                ),
+            }
+            result = TerminalResolutionPhysicalPostcondition(
+                action=result.action,
+                evidence=evidence,
             )
         if action == "physical_recovery_advanced" and isinstance(
             owner_context,
@@ -13686,9 +16253,9 @@ def _execute_terminal_resolution_physical_step(
                 evidence=evidence,
             )
         receipt_bearer = _OpaqueBearer(
-            session_bearer=bearer.session_bearer,
+            session_bearer=terminal_consumed.session_bearer,
             family="terminal_retirement_receipt",
-            cursor_sha256=bearer.cursor_sha256,
+            cursor_sha256=terminal_consumed.cursor_sha256,
             action=action,
         )
         receipt_bearer.successor = result
@@ -13739,21 +16306,26 @@ def _execute_runtime_observation(
     bearer = observation_authorization._opaque
     if bearer.family != f"runtime_observation:{observation_family}":
         raise SessionCapabilityError("live_start_runtime_observation_family_mismatch")
-    _require_opaque_carrier(
+    consumed = _require_opaque_carrier(
         observation_authorization,
         carrier_type=RuntimeObservationAuthorization,
         family=bearer.family,
         action=bearer.action,
         consume=True,
+        capture_registered_state=True,
     )
+    if not isinstance(consumed, _OpaqueBearerConsumption):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_capability_invalid"
+        )
     result = read_only_observation()
     if not isinstance(result, RuntimeObservationPostcondition) or result.observation_family != observation_family:
         raise SessionCapabilityError("live_start_runtime_observation_postcondition_invalid")
     receipt_bearer = _OpaqueBearer(
-        session_bearer=bearer.session_bearer,
+        session_bearer=consumed.session_bearer,
         family=f"runtime_observation_receipt:{observation_family}",
-        cursor_sha256=bearer.cursor_sha256,
-        action=bearer.action,
+        cursor_sha256=consumed.cursor_sha256,
+        action=consumed.action,
     )
     receipt_bearer.successor = result
     return _mint_registered_opaque_carrier(
@@ -13802,7 +16374,20 @@ def _consume_runtime_observation_receipt_under_lock(
         family=f"runtime_observation_receipt:{observation_family}",
         action=apply_attempt_id,
         consume=True,
+        capture_registered_state=True,
     )
+    if (
+        not isinstance(consumed, _OpaqueBearerConsumption)
+        or consumed.session_bearer is not session_lease.lock_token._bearer
+        or consumed.family
+        != f"runtime_observation_receipt:{observation_family}"
+        or consumed.action != apply_attempt_id
+        or consumed.cursor_sha256 != current.content_sha256
+        or not consumed.successor_was_registry_bound
+    ):
+        raise SessionCapabilityError(
+            "live_start_runtime_observation_receipt_postcondition_invalid"
+        )
     postcondition = consumed.successor
     if (
         not isinstance(postcondition, RuntimeObservationPostcondition)
@@ -13931,25 +16516,41 @@ def _execute_runtime_admission_release(
 ) -> RuntimeAdmissionReleasePostcondition:
     if action != "release_runtime_admission":
         raise SessionValidationError("live_start_runtime_admission_release_action_invalid")
-    bearer = _require_opaque_carrier(
+    consumed = _require_opaque_carrier(
         terminal_authorization,
         carrier_type=TerminalRetirementAuthorization,
         family="terminal_retirement",
         action=action,
         consume=True,
+        capture_registered_state=True,
     )
+    if (
+        not isinstance(consumed, _OpaqueBearerConsumption)
+        or consumed.family != "terminal_retirement"
+        or consumed.action != action
+        or consumed.thread_id != threading.get_ident()
+        or not consumed.session_bearer.active
+        or not _session_context_is_registered(
+            bearer=consumed.session_bearer
+        )
+        or not consumed.successor_was_registry_bound
+    ):
+        raise SessionCapabilityError(
+            "live_start_runtime_admission_release_binding_invalid"
+        )
+    expected = consumed.successor
+    if type(expected) is not _RuntimeAdmissionReleasePrecondition:
+        raise SessionCapabilityError(
+            "live_start_runtime_admission_release_binding_invalid"
+        )
     result = physical_action()
     if not isinstance(result, RuntimeAdmissionReleasePostcondition):
         raise SessionCapabilityError("live_start_runtime_admission_release_postcondition_invalid")
-    expected = bearer.successor
-    if not isinstance(expected, Mapping) or any(
-        actual != expected.get(key)
-        for key, actual in (
+    if any(
+        actual != getattr(expected, field_name)
+        for field_name, actual in (
             ("admission_path", result.admission_path),
-            (
-                "admission_parent_identity",
-                result.admission_parent_identity,
-            ),
+            ("admission_parent_identity", result.admission_parent_identity),
             (
                 "historical_admission_identity",
                 result.historical_admission_identity,
@@ -15175,12 +17776,12 @@ def _execute_candidate_review_revision_physical_step(
         action=action,
         physical_action=physical_action,
         before_authorization_consume=require_physical_precondition,
+        receipt_physical_precondition=lambda: physical_precondition,
     )
     if physical_precondition is None:
         raise SessionCapabilityError(
             "live_start_review_revision_physical_precondition_missing"
         )
-    receipt._opaque.physical_precondition = physical_precondition
     return receipt
 
 
@@ -15199,7 +17800,8 @@ def _validate_candidate_review_revision_receipt_postcondition_under_lock(
     *,
     session_lease: LiveStartSessionLease,
     current: LiveStartSession,
-    receipt: CandidateReviewRevisionStepReceipt,
+    postcondition: CandidateReviewRevisionPhysicalPostcondition,
+    physical_precondition: Mapping[str, Any],
     action: str,
 ) -> None:
     error_code = "live_start_review_revision_receipt_postcondition_invalid"
@@ -15207,8 +17809,6 @@ def _validate_candidate_review_revision_receipt_postcondition_under_lock(
         pending = current.pending_transition
         if not isinstance(pending, Mapping):
             raise SessionCapabilityError(error_code)
-        postcondition = receipt._opaque.successor
-        physical_precondition = receipt._opaque.physical_precondition
         if (
             not isinstance(
                 postcondition,
@@ -15617,15 +18217,31 @@ def advance_candidate_review_revision_under_lock(
         raise SessionCapabilityError(
             "live_start_review_revision_physical_postcondition_changed"
         ) from error
-    postcondition = revision_step_receipt._opaque.successor
-    assert isinstance(
-        postcondition,
-        CandidateReviewRevisionPhysicalPostcondition,
+    consumed = _consume_receipt_registration_under_lock(
+        receipt=revision_step_receipt,
+        receipt_type=CandidateReviewRevisionStepReceipt,
+        session_lease=session_lease,
+        expected_session=expected_revision_session,
+        family="candidate_review_revision",
+        action=action,
     )
+    postcondition = consumed.successor
+    physical_precondition = consumed.physical_precondition
+    if (
+        not isinstance(
+            postcondition,
+            CandidateReviewRevisionPhysicalPostcondition,
+        )
+        or not isinstance(physical_precondition, Mapping)
+    ):
+        raise SessionCapabilityError(
+            "live_start_review_revision_receipt_postcondition_invalid"
+        )
     _validate_candidate_review_revision_receipt_postcondition_under_lock(
         session_lease=session_lease,
         current=current,
-        receipt=revision_step_receipt,
+        postcondition=postcondition,
+        physical_precondition=physical_precondition,
         action=action,
     )
     update = _build_candidate_review_revision_update(
@@ -15637,14 +18253,6 @@ def advance_candidate_review_revision_under_lock(
         current=current,
         update=update,
         transition_authority=_INTERNAL_TRANSITION_AUTHORITY,
-    )
-    _consume_receipt_under_lock(
-        receipt=revision_step_receipt,
-        receipt_type=CandidateReviewRevisionStepReceipt,
-        session_lease=session_lease,
-        expected_session=expected_revision_session,
-        family="candidate_review_revision",
-        action=action,
     )
     return _publish_session_successor_under_lock(
         session_lease=session_lease,
@@ -18287,24 +20895,316 @@ def bind_result_intent_under_lock(
     return persisted
 
 
+def _live_start_result_payloads(
+    result_intent: Mapping[str, Any],
+) -> tuple[bytes, bytes]:
+    intent = validate_embedded_document("result_intent", result_intent)
+    summary = FrozenJsonDocument.from_value(
+        {
+            "schema_version": 1,
+            "summary_kind": LIVE_START_RESULT_SUMMARY_KIND,
+            "run_id": intent["run_id"],
+            "status": intent["terminal_status"],
+            "deck_name": intent["deck_name"],
+            "candidate_revision": intent["candidate_revision"],
+            "unique_main_deck_cards": intent["unique_main_deck_cards"],
+            "configured_cards": intent["configured_cards"],
+            "deliberately_unconfigured_cards": intent[
+                "deliberately_unconfigured_cards"
+            ],
+            "review_confidence": intent["review_confidence"],
+            "visible_limitations": intent["visible_limitations"],
+            "raw_apply_status": intent["raw_apply_status"],
+            "physical_disposition": intent["physical_disposition"],
+            "runtime_match_status": intent["runtime_match_status"],
+            "error_code": intent["error_code"],
+            "retained_safe_state": intent["retained_safe_state"],
+        }
+    ).canonical_json
+    if len(summary) > LIVE_START_RESULT_SUMMARY_MAX_BYTES:
+        raise SessionValidationError("live_start_result_summary_too_large")
+
+    def markdown_text(value: Any) -> str:
+        rendered = "unavailable" if value is None else str(value)
+        rendered = rendered.replace("\r", " ").replace("\n", " ")
+        rendered = rendered.replace("&", "&amp;")
+        rendered = rendered.replace("<", "&lt;").replace(">", "&gt;")
+        return re.sub(r"([\\`*_{}\[\]()#+\-.!|])", r"\\\1", rendered)
+
+    limitations = tuple(intent["visible_limitations"])
+    lines = [
+        "# Live start result",
+        "",
+        f"- Status: {markdown_text(intent['terminal_status'])}",
+        f"- Deck: {markdown_text(intent['deck_name'])}",
+        f"- Candidate revision: {intent['candidate_revision']}",
+        (
+            "- Card coverage: "
+            f"{markdown_text(intent['configured_cards'])} configured, "
+            f"{markdown_text(intent['deliberately_unconfigured_cards'])} "
+            "deliberately unconfigured, "
+            f"{intent['unique_main_deck_cards']} unique main-deck cards"
+        ),
+        f"- Review confidence: {markdown_text(intent['review_confidence'])}",
+        f"- Apply status: {markdown_text(intent['raw_apply_status'])}",
+        (
+            "- Physical disposition: "
+            f"{markdown_text(intent['physical_disposition'])}"
+        ),
+        (
+            "- Runtime match: "
+            f"{markdown_text(intent['runtime_match_status'])}"
+        ),
+        f"- Safe state: {markdown_text(intent['retained_safe_state'])}",
+    ]
+    if intent["error_code"] is not None:
+        lines.append(f"- Error: {markdown_text(intent['error_code'])}")
+    if limitations:
+        lines.extend(("", "## Visible limitations", ""))
+        lines.extend(f"- {markdown_text(item)}" for item in limitations)
+    markdown = ("\n".join(lines) + "\n").encode("utf-8")
+    if len(markdown) > LIVE_START_RESULT_SUMMARY_MAX_BYTES:
+        raise SessionValidationError("live_start_result_summary_too_large")
+    return summary, markdown
+
+
+def _require_or_create_result_directory_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+) -> tuple[Path, PathIdentity]:
+    _require_session_lease(session_lease)
+    root = session_lease.session_root
+    if path_identity(root) != session_lease.session_root_identity:
+        raise SessionConflictError("live_start_result_parent_changed")
+    result_root = root / "result"
+    try:
+        status = result_root.lstat()
+    except FileNotFoundError:
+        try:
+            identity = secure_create_directory(
+                result_root,
+                expected_parent_identity=session_lease.session_root_identity,
+            )
+        except FileExistsError:
+            status = result_root.lstat()
+        else:
+            status = result_root.lstat()
+            if path_identity_from_status(status) != identity:
+                raise SessionConflictError("live_start_result_parent_changed")
+    if (
+        not stat.S_ISDIR(status.st_mode)
+        or status_is_reparse(status)
+        or path_identity(root) != session_lease.session_root_identity
+    ):
+        raise SessionLayoutError("live_start_result_parent_invalid")
+    identity = path_identity_from_status(status)
+    require_same_identity_resolution(result_root, expected_status=status)
+    _validate_path_no_ads(result_root, status=status, directory=True)
+    return result_root, identity
+
+
+def _read_exact_result_file_or_absent(
+    *,
+    path: Path,
+    payload: bytes,
+    parent_identity: PathIdentity,
+) -> bool:
+    try:
+        raw, _identity = _read_bound_file(
+            path,
+            expected_parent_identity=parent_identity,
+            maximum_size=LIVE_START_RESULT_SUMMARY_MAX_BYTES,
+        )
+    except FileNotFoundError:
+        return False
+    if raw != payload:
+        raise SessionConflictError("live_start_result_final_bytes_changed")
+    return True
+
+
+def _retire_reserved_result_temp(
+    *,
+    path: Path,
+    parent_identity: PathIdentity,
+) -> None:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return
+    identity = path_identity_from_status(status)
+    if (
+        not stat.S_ISREG(status.st_mode)
+        or status_is_reparse(status)
+        or status.st_nlink != 1
+        or status.st_size > LIVE_START_RESULT_SUMMARY_MAX_BYTES
+        or path_identity(path.parent) != parent_identity
+    ):
+        raise SessionLayoutError("live_start_result_reserved_temp_invalid")
+    _validate_path_no_ads(path, status=status, directory=False)
+    secure_unlink(
+        path,
+        expected_identity=identity,
+        expected_parent_identity=parent_identity,
+        missing_ok=False,
+    )
+    if os.path.lexists(path) or path_identity(path.parent) != parent_identity:
+        raise SessionConflictError("live_start_result_reserved_temp_changed")
+
+
+def _materialize_exact_result_file(
+    *,
+    path: Path,
+    payload: bytes,
+    parent_identity: PathIdentity,
+) -> None:
+    if _read_exact_result_file_or_absent(
+        path=path,
+        payload=payload,
+        parent_identity=parent_identity,
+    ):
+        return
+    published = atomic_write_reserved_bytes(
+        path=path,
+        payload=payload,
+        expected_parent_identity=parent_identity,
+        expected_predecessor_identity=None,
+        expected_predecessor_sha256=None,
+        maximum_size=LIVE_START_RESULT_SUMMARY_MAX_BYTES,
+    )
+    if published.sha256 != _bytes_sha256(payload):
+        raise SessionConflictError("live_start_result_persistence_mismatch")
+
+
+def complete_live_start_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    expected_result_session: LiveStartSession,
+) -> LiveStartSession:
+    """Persist one intent-derived result pair and terminalize in one CAS."""
+
+    _require_session_lease(session_lease)
+    persisted = load_live_start_session_under_lock(session_lease=session_lease)
+    if (
+        persisted != expected_result_session
+        or persisted.canonical_json != expected_result_session.canonical_json
+        or persisted.content_sha256 != expected_result_session.content_sha256
+        or persisted.session_identity != expected_result_session.session_identity
+        or persisted.terminal_status is not None
+        or not isinstance(persisted.result_intent, Mapping)
+        or persisted.apply_recovery is not None
+        or persisted.pending_transition is not None
+        or any(
+            logical_path in persisted.artifact_bindings
+            for logical_path in ("result/summary.json", "result/summary.md")
+        )
+    ):
+        raise SessionConflictError("live_start_result_completion_cursor_invalid")
+    summary_json, summary_markdown = _live_start_result_payloads(
+        persisted.result_intent
+    )
+    result_root, result_parent_identity = (
+        _require_or_create_result_directory_under_lock(
+            session_lease=session_lease
+        )
+    )
+    json_path = result_root / "summary.json"
+    markdown_path = result_root / "summary.md"
+    json_temp = result_root / ".summary.json.live-start-atomic.tmp"
+    markdown_temp = result_root / ".summary.md.live-start-atomic.tmp"
+    json_present = _read_exact_result_file_or_absent(
+        path=json_path,
+        payload=summary_json,
+        parent_identity=result_parent_identity,
+    )
+    markdown_present = _read_exact_result_file_or_absent(
+        path=markdown_path,
+        payload=summary_markdown,
+        parent_identity=result_parent_identity,
+    )
+    json_temp_present = os.path.lexists(json_temp)
+    markdown_temp_present = os.path.lexists(markdown_temp)
+    if (
+        json_temp_present
+        and json_present
+        or markdown_temp_present
+        and (not json_present or markdown_present)
+        or markdown_present
+        and not json_present
+    ):
+        raise SessionConflictError("live_start_result_physical_state_invalid")
+    if json_temp_present:
+        _retire_reserved_result_temp(
+            path=json_temp,
+            parent_identity=result_parent_identity,
+        )
+    _materialize_exact_result_file(
+        path=json_path,
+        payload=summary_json,
+        parent_identity=result_parent_identity,
+    )
+    if markdown_temp_present:
+        _retire_reserved_result_temp(
+            path=markdown_temp,
+            parent_identity=result_parent_identity,
+        )
+    _materialize_exact_result_file(
+        path=markdown_path,
+        payload=summary_markdown,
+        parent_identity=result_parent_identity,
+    )
+    for path, payload in (
+        (json_path, summary_json),
+        (markdown_path, summary_markdown),
+    ):
+        if not _read_exact_result_file_or_absent(
+            path=path,
+            payload=payload,
+            parent_identity=result_parent_identity,
+        ):
+            raise SessionConflictError("live_start_result_persistence_mismatch")
+    if (
+        os.path.lexists(json_temp)
+        or os.path.lexists(markdown_temp)
+        or path_identity(result_root) != result_parent_identity
+    ):
+        raise SessionConflictError("live_start_result_persistence_mismatch")
+    current = load_live_start_session_under_lock(session_lease=session_lease)
+    if (
+        current != persisted
+        or current.canonical_json != persisted.canonical_json
+        or current.content_sha256 != persisted.content_sha256
+        or current.session_identity != persisted.session_identity
+    ):
+        raise SessionConflictError("live_start_result_completion_cursor_changed")
+    artifact_bindings = dict(persisted.artifact_bindings)
+    artifact_bindings.update(
+        {
+            "result/summary.json": _bytes_sha256(summary_json),
+            "result/summary.md": _bytes_sha256(summary_markdown),
+        }
+    )
+    terminal = _transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=persisted,
+        event="bind_terminal",
+        changes={
+            "artifact_bindings": artifact_bindings,
+            "terminal_status": persisted.result_intent["terminal_status"],
+        },
+    )
+    return terminal
+
+
 def record_terminal_status_under_lock(
     *,
     session_lease: LiveStartSessionLease,
     expected_result_session: LiveStartSession,
 ) -> LiveStartSession:
-    intent = expected_result_session.result_intent
-    if (
-        not isinstance(intent, Mapping)
-        or expected_result_session.terminal_status is not None
-        or expected_result_session.apply_recovery is not None
-        or expected_result_session.pending_transition is not None
-    ):
-        raise SessionConflictError("live_start_terminal_status_cursor_invalid")
-    return _transition_receipt_authorized_under_lock(
+    """Compatibility entry point for the single intent-derived completion CAS."""
+
+    return complete_live_start_under_lock(
         session_lease=session_lease,
-        expected_session=expected_result_session,
-        event="bind_terminal",
-        changes={"terminal_status": intent["terminal_status"]},
+        expected_result_session=expected_result_session,
     )
 
 
@@ -18678,6 +21578,13 @@ def advance_terminal_resolution_under_lock(
             transition=transition,
             authorized_owner_action=(
                 postcondition.evidence.get("_terminal_owner_action")
+                if transition == "physical_recovery_advanced"
+                else None
+            ),
+            ownerless_issuer_context=(
+                postcondition.evidence.get(
+                    "_terminal_ownerless_issuer_context"
+                )
                 if transition == "physical_recovery_advanced"
                 else None
             ),

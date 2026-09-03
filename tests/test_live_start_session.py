@@ -4,6 +4,7 @@ import ast
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from copy import copy, deepcopy
+from dataclasses import replace
 from functools import partial
 from hashlib import sha256
 import json
@@ -16,6 +17,7 @@ import sys
 from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -2393,6 +2395,982 @@ def test_runtime_admission_release_executor_binds_path_parent_old_identity_and_d
     _exercise_runtime_admission_release_binding_contract(tmp_path)
 
 
+def test_runtime_admission_release_authority_requires_exact_registered_precondition_before_callback(
+    tmp_path: Path,
+) -> None:
+    for tamper in (
+        "equal-copy",
+        "precondition-registry-loss",
+        "descriptor-registry-loss",
+    ):
+        root, chain = _prepare_runtime_admission_release_chain(
+            tmp_path / tamper
+        )
+        authorized = chain["authorized"]
+        admission_path = chain["admission_path"]
+        assert isinstance(authorized, session.LiveStartSession)
+        assert isinstance(admission_path, Path)
+
+        with _lease(root) as lease:
+            authorization = (
+                session.authorize_terminal_retirement_under_lock(
+                    session_lease=lease,
+                    expected_retirement_session=authorized,
+                )
+            )
+            if tamper == "equal-copy":
+                authorization._opaque.successor = copy(
+                    authorization._opaque.successor
+                )
+            elif tamper == "precondition-registry-loss":
+                session._BOUND_PHYSICAL_POSTCONDITIONS.pop(
+                    id(authorization._opaque),
+                    None,
+                )
+            else:
+                session._OPAQUE_BEARER_REGISTRATIONS.pop(
+                    id(authorization._opaque),
+                    None,
+                )
+
+            callback_calls = 0
+
+            def forbidden_callback() -> (
+                session.RuntimeAdmissionReleasePostcondition
+            ):
+                nonlocal callback_calls
+                callback_calls += 1
+                raise AssertionError("release callback must not run")
+
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="forged",
+            ):
+                session._execute_runtime_admission_release(
+                    terminal_authorization=authorization,
+                    action="release_runtime_admission",
+                    physical_action=forbidden_callback,
+                )
+            assert callback_calls == 0
+            assert admission_path.exists()
+
+
+def test_terminal_authorization_registry_rejects_coherent_early_release_rebinding_before_callback(
+    tmp_path: Path,
+) -> None:
+    root, prepared = _prepare_terminal_cursor(
+        tmp_path / "early-release-rebinding",
+        success=False,
+    )
+    retirement = prepared.terminal_retirement
+    assert isinstance(retirement, Mapping)
+    admission_path = Path(str(retirement["runtime_admission_path"]))
+    admission_existed_before = os.path.lexists(admission_path)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        assert authorization._opaque.action == "evidence_retired"
+        rebound_precondition = session._RuntimeAdmissionReleasePrecondition(
+            admission_path=admission_path,
+            admission_parent_identity=tuple(
+                retirement["runtime_admission_parent_identity"]
+            ),
+            historical_admission_identity=tuple(
+                retirement["runtime_admission_identity"]
+            ),
+            historical_admission_sha256=str(
+                retirement["runtime_admission_sha256"]
+            ),
+        )
+        authorization._opaque.action = "release_runtime_admission"
+        authorization._opaque.successor = rebound_precondition
+        session._BOUND_PHYSICAL_POSTCONDITIONS[
+            id(authorization._opaque)
+        ] = rebound_precondition
+        before = (root / "session.json").read_bytes()
+        callback_calls = 0
+
+        def forbidden_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            raise AssertionError("early release callback must not run")
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="forged",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=forbidden_callback,
+            )
+        assert callback_calls == 0
+        assert (root / "session.json").read_bytes() == before
+        assert os.path.lexists(admission_path) is admission_existed_before
+
+
+def test_runtime_release_registration_rejects_coherent_precondition_retarget_before_callback(
+    tmp_path: Path,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "coherent-release-retarget"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+    retirement = authorized.terminal_retirement
+    assert isinstance(retirement, Mapping)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        forged_path = (tmp_path / "forged-admission.json").absolute()
+        replacement = session._RuntimeAdmissionReleasePrecondition(
+            admission_path=forged_path,
+            admission_parent_identity=tuple(
+                retirement["runtime_admission_parent_identity"]
+            ),
+            historical_admission_identity=tuple(
+                retirement["runtime_admission_identity"]
+            ),
+            historical_admission_sha256=str(
+                retirement["runtime_admission_sha256"]
+            ),
+        )
+        authorization._opaque.successor = replacement
+        session._BOUND_PHYSICAL_POSTCONDITIONS[
+            id(authorization._opaque)
+        ] = replacement
+        callback_calls = 0
+
+        def replacement_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            return _runtime_admission_release_postcondition(
+                retirement,
+                disposition="already_absent",
+                changes={"admission_path": forged_path},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="forged|binding",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=replacement_callback,
+            )
+        assert callback_calls == 0
+        assert admission_path.exists()
+
+
+def test_runtime_release_consume_snapshot_rejects_preterminal_rebind_race_before_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, prepared = _prepare_terminal_cursor(
+        tmp_path / "preterminal-consume-race",
+        success=False,
+    )
+    retirement = prepared.terminal_retirement
+    assert isinstance(retirement, Mapping)
+    admission_path = Path(str(retirement["runtime_admission_path"]))
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        assert authorization._opaque.action == "evidence_retired"
+        forged_precondition = session._RuntimeAdmissionReleasePrecondition(
+            admission_path=admission_path,
+            admission_parent_identity=tuple(
+                retirement["runtime_admission_parent_identity"]
+            ),
+            historical_admission_identity=tuple(
+                retirement["runtime_admission_identity"]
+            ),
+            historical_admission_sha256=str(
+                retirement["runtime_admission_sha256"]
+            ),
+        )
+        real_registered = session._opaque_carrier_is_registered
+        registration_checks = 0
+
+        def interleave_rebinding(
+            *,
+            carrier: object,
+            bearer: object,
+        ) -> bool:
+            nonlocal registration_checks
+            if carrier is not authorization:
+                return real_registered(carrier=carrier, bearer=bearer)
+            registration_checks += 1
+            if registration_checks == 2:
+                authorization._opaque.action = "evidence_retired"
+            registered = real_registered(carrier=carrier, bearer=bearer)
+            authorization._opaque.action = "release_runtime_admission"
+            authorization._opaque.successor = forged_precondition
+            return registered
+
+        monkeypatch.setattr(
+            session,
+            "_opaque_carrier_is_registered",
+            interleave_rebinding,
+        )
+        callback_calls = 0
+
+        def forbidden_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            raise AssertionError("preterminal release callback must not run")
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="binding|forged",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=forbidden_callback,
+            )
+        assert registration_checks == 2
+        assert callback_calls == 0
+
+
+def test_runtime_admission_release_uses_captured_precondition_after_consume(
+    tmp_path: Path,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "post-consume-rebinding"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+    retirement = authorized.terminal_retirement
+    assert isinstance(retirement, Mapping)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        callback_calls = 0
+        forged_path = (tmp_path / "forged-admission.json").absolute()
+
+        def rebound_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            authorization._opaque.successor = (
+                session._RuntimeAdmissionReleasePrecondition(
+                    admission_path=forged_path,
+                    admission_parent_identity=tuple(
+                        retirement["runtime_admission_parent_identity"]
+                    ),
+                    historical_admission_identity=tuple(
+                        retirement["runtime_admission_identity"]
+                    ),
+                    historical_admission_sha256=str(
+                        retirement["runtime_admission_sha256"]
+                    ),
+                )
+            )
+            return _runtime_admission_release_postcondition(
+                retirement,
+                disposition="already_absent",
+                changes={"admission_path": forged_path},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="binding",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=rebound_callback,
+            )
+        assert callback_calls == 1
+        assert admission_path.exists()
+
+
+def test_runtime_admission_release_uses_detached_precondition_value_after_consume(
+    tmp_path: Path,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "post-consume-in-place-rebinding"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+    retirement = authorized.terminal_retirement
+    assert isinstance(retirement, Mapping)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        registered = authorization._opaque.successor
+        assert type(registered) is session._RuntimeAdmissionReleasePrecondition
+        forged_path = (tmp_path / "forged-in-place-admission.json").absolute()
+        callback_calls = 0
+
+        def mutate_registered_value() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            object.__setattr__(registered, "admission_path", forged_path)
+            return _runtime_admission_release_postcondition(
+                retirement,
+                disposition="already_absent",
+                changes={"admission_path": forged_path},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="binding|forged",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=mutate_registered_value,
+            )
+        assert callback_calls == 1
+        assert admission_path.exists()
+
+
+def test_runtime_admission_release_authority_copy_cannot_rebind_shared_bearer(
+    tmp_path: Path,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "copy-rebinding"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        alias = copy(authorization)
+        alias._opaque.action = "evidence_retired"
+        callback_calls = 0
+
+        def forbidden_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            raise AssertionError("release callback must not run")
+
+        for candidate in (authorization, alias):
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="forged",
+            ):
+                session._execute_runtime_admission_release(
+                    terminal_authorization=candidate,
+                    action="release_runtime_admission",
+                    physical_action=forbidden_callback,
+                )
+        assert callback_calls == 0
+        assert admission_path.exists()
+
+
+def test_runtime_admission_release_captures_registered_precondition_atomically_with_consume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "consume-capture"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+    retirement = authorized.terminal_retirement
+    assert isinstance(retirement, Mapping)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        forged_path = (tmp_path / "forged-after-consume.json").absolute()
+        forged_precondition = session._RuntimeAdmissionReleasePrecondition(
+            admission_path=forged_path,
+            admission_parent_identity=tuple(
+                retirement["runtime_admission_parent_identity"]
+            ),
+            historical_admission_identity=tuple(
+                retirement["runtime_admission_identity"]
+            ),
+            historical_admission_sha256=str(
+                retirement["runtime_admission_sha256"]
+            ),
+        )
+        real_registered = session._opaque_carrier_is_registered
+        registration_checks = 0
+
+        def rebind_during_final_registration_check(
+            *,
+            carrier: object,
+            bearer: object,
+        ) -> bool:
+            nonlocal registration_checks
+            registered = real_registered(
+                carrier=carrier,
+                bearer=bearer,
+            )
+            if (
+                carrier is authorization
+                and registered
+            ):
+                registration_checks += 1
+                if registration_checks == 2:
+                    authorization._opaque.successor = forged_precondition
+            return registered
+
+        monkeypatch.setattr(
+            session,
+            "_opaque_carrier_is_registered",
+            rebind_during_final_registration_check,
+        )
+        callback_calls = 0
+
+        def forged_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            return _runtime_admission_release_postcondition(
+                retirement,
+                disposition="already_absent",
+                changes={"admission_path": forged_path},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="binding|forged",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=forged_callback,
+            )
+        assert callback_calls == 0
+        assert registration_checks == 2
+        assert admission_path.exists()
+
+
+def test_runtime_admission_release_rejects_registration_descriptor_swap_after_final_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, chain = _prepare_runtime_admission_release_chain(
+        tmp_path / "registration-descriptor-swap"
+    )
+    authorized = chain["authorized"]
+    admission_path = chain["admission_path"]
+    assert isinstance(authorized, session.LiveStartSession)
+    assert isinstance(admission_path, Path)
+    retirement = authorized.terminal_retirement
+    assert isinstance(retirement, Mapping)
+
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=authorized,
+        )
+        forged_path = (tmp_path / "forged-descriptor-path.json").absolute()
+        forged_precondition = session._RuntimeAdmissionReleasePrecondition(
+            admission_path=forged_path,
+            admission_parent_identity=tuple(
+                retirement["runtime_admission_parent_identity"]
+            ),
+            historical_admission_identity=tuple(
+                retirement["runtime_admission_identity"]
+            ),
+            historical_admission_sha256=str(
+                retirement["runtime_admission_sha256"]
+            ),
+        )
+        real_registered = session._opaque_carrier_is_registered
+        registration_checks = 0
+
+        def swap_descriptor_after_final_check(
+            *,
+            carrier: object,
+            bearer: object,
+        ) -> bool:
+            nonlocal registration_checks
+            registered = real_registered(carrier=carrier, bearer=bearer)
+            if carrier is authorization and registered:
+                registration_checks += 1
+                if registration_checks == 2:
+                    original = session._OPAQUE_BEARER_REGISTRATIONS[
+                        id(authorization._opaque)
+                    ]
+                    session._OPAQUE_BEARER_REGISTRATIONS[
+                        id(authorization._opaque)
+                    ] = replace(
+                        original,
+                        registered_successor=forged_precondition,
+                    )
+            return registered
+
+        monkeypatch.setattr(
+            session,
+            "_opaque_carrier_is_registered",
+            swap_descriptor_after_final_check,
+        )
+        callback_calls = 0
+
+        def forged_callback() -> (
+            session.RuntimeAdmissionReleasePostcondition
+        ):
+            nonlocal callback_calls
+            callback_calls += 1
+            return _runtime_admission_release_postcondition(
+                retirement,
+                disposition="already_absent",
+                changes={"admission_path": forged_path},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="forged",
+        ):
+            session._execute_runtime_admission_release(
+                terminal_authorization=authorization,
+                action="release_runtime_admission",
+                physical_action=forged_callback,
+            )
+        assert registration_checks == 2
+        assert callback_calls == 0
+        assert admission_path.exists()
+
+
+@pytest.mark.parametrize(
+    "tamper_kind",
+    ["coherent_before", "coherent_after_final_check", "descriptor_swap"],
+)
+def test_runtime_observation_receipt_rejects_coherent_registered_successor_retarget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper_kind: str,
+) -> None:
+    root, cursor, _recovery = _apply_started_cursor_without_recovery(
+        tmp_path / tamper_kind
+    )
+    attempt_id = "b" * 32
+
+    with _lease(root) as lease:
+        authorization = session._authorize_runtime_observation_under_lock(
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+        receipt = session._execute_runtime_observation(
+            observation_authorization=authorization,
+            observation_family="first_install",
+            read_only_observation=lambda: session.RuntimeObservationPostcondition(
+                action=attempt_id,
+                observation_family="first_install",
+                evidence={"source": "registered"},
+            ),
+        )
+        forged = session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="first_install",
+            evidence={"source": "forged"},
+        )
+        if tamper_kind == "coherent_before":
+            receipt._opaque.successor = forged
+            session._BOUND_PHYSICAL_POSTCONDITIONS[
+                id(receipt._opaque)
+            ] = forged
+        else:
+            real_registered = session._opaque_carrier_is_registered
+            registration_checks = 0
+
+            def retarget_after_final_check(
+                *,
+                carrier: object,
+                bearer: object,
+            ) -> bool:
+                nonlocal registration_checks
+                registered = real_registered(carrier=carrier, bearer=bearer)
+                if carrier is receipt and registered:
+                    registration_checks += 1
+                    if registration_checks == 2:
+                        if tamper_kind == "coherent_after_final_check":
+                            receipt._opaque.successor = forged
+                            session._BOUND_PHYSICAL_POSTCONDITIONS[
+                                id(receipt._opaque)
+                            ] = forged
+                        else:
+                            assert tamper_kind == "descriptor_swap"
+                            original = session._OPAQUE_BEARER_REGISTRATIONS[
+                                id(receipt._opaque)
+                            ]
+                            session._OPAQUE_BEARER_REGISTRATIONS[
+                                id(receipt._opaque)
+                            ] = replace(
+                                original,
+                                registered_successor=forged,
+                            )
+                return registered
+
+            monkeypatch.setattr(
+                session,
+                "_opaque_carrier_is_registered",
+                retarget_after_final_check,
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="forged",
+        ):
+            session._consume_runtime_observation_receipt_under_lock(
+                receipt=receipt,
+                session_lease=lease,
+                expected_session=cursor,
+                observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+
+
+def test_runtime_observation_receipt_rejects_in_place_postcondition_mutation_before_consume(
+    tmp_path: Path,
+) -> None:
+    root, cursor, _recovery = _apply_started_cursor_without_recovery(
+        tmp_path
+    )
+    attempt_id = "b" * 32
+
+    with _lease(root) as lease:
+        authorization = session._authorize_runtime_observation_under_lock(
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+        receipt = session._execute_runtime_observation(
+            observation_authorization=authorization,
+            observation_family="first_install",
+            read_only_observation=lambda: session.RuntimeObservationPostcondition(
+                action=attempt_id,
+                observation_family="first_install",
+                evidence={"source": "registered"},
+            ),
+        )
+        postcondition = receipt._opaque.successor
+        assert isinstance(
+            postcondition,
+            session.RuntimeObservationPostcondition,
+        )
+        replacement = session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="first_install",
+            evidence={"source": "mutated"},
+        )
+        object.__setattr__(
+            postcondition,
+            "evidence",
+            replacement.evidence,
+        )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="forged",
+        ):
+            session._consume_runtime_observation_receipt_under_lock(
+                receipt=receipt,
+                session_lease=lease,
+                expected_session=cursor,
+                observation_family="first_install",
+                apply_attempt_id=attempt_id,
+            )
+        assert receipt._opaque.active is True
+
+
+def test_physical_postcondition_deeply_freezes_sequence_evidence() -> None:
+    mutable_row = {"source": "registered"}
+    postcondition = session.RuntimeApplyRecoveryPhysicalPostcondition(
+        action="observe_not_committed",
+        evidence={"rows": (mutable_row,)},
+    )
+
+    mutable_row["source"] = "forged"
+
+    rows = postcondition.evidence["rows"]
+    assert isinstance(rows, tuple)
+    assert rows[0]["source"] == "registered"
+
+
+def test_runtime_observation_receipt_returns_detached_value_snapshot_after_final_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, cursor, _recovery = _apply_started_cursor_without_recovery(
+        tmp_path / "post-digest-in-place-retarget"
+    )
+    attempt_id = "b" * 32
+
+    with _lease(root) as lease:
+        authorization = session._authorize_runtime_observation_under_lock(
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+        receipt = session._execute_runtime_observation(
+            observation_authorization=authorization,
+            observation_family="first_install",
+            read_only_observation=lambda: session.RuntimeObservationPostcondition(
+                action=attempt_id,
+                observation_family="first_install",
+                evidence={"source": "registered"},
+            ),
+        )
+        registered = receipt._opaque.successor
+        assert isinstance(registered, session.RuntimeObservationPostcondition)
+        replacement = session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="first_install",
+            evidence={"source": "forged"},
+        )
+        real_digest = session._physical_postcondition_value_sha256
+        mutation_performed = False
+
+        def mutate_after_final_digest(value: Any) -> str | None:
+            nonlocal mutation_performed
+            digest = real_digest(value)
+            if not receipt._opaque.active and not mutation_performed:
+                mutation_performed = True
+                object.__setattr__(
+                    registered,
+                    "evidence",
+                    replacement.evidence,
+                )
+            return digest
+
+        monkeypatch.setattr(
+            session,
+            "_physical_postcondition_value_sha256",
+            mutate_after_final_digest,
+        )
+
+        observed = session._consume_runtime_observation_receipt_under_lock(
+            receipt=receipt,
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+
+    assert mutation_performed is True
+    assert observed.evidence == {"source": "registered"}
+
+
+def test_runtime_observation_receipt_consumes_immutable_snapshot_after_deregister(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, cursor, _recovery = _apply_started_cursor_without_recovery(
+        tmp_path / "post-deregister-retarget"
+    )
+    attempt_id = "b" * 32
+
+    with _lease(root) as lease:
+        authorization = session._authorize_runtime_observation_under_lock(
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+        receipt = session._execute_runtime_observation(
+            observation_authorization=authorization,
+            observation_family="first_install",
+            read_only_observation=lambda: session.RuntimeObservationPostcondition(
+                action=attempt_id,
+                observation_family="first_install",
+                evidence={"source": "registered"},
+            ),
+        )
+        forged = session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="first_install",
+            evidence={"source": "forged"},
+        )
+        real_deregister = session._deregister_opaque_bearer
+
+        def retarget_after_deregister(*args: Any, **kwargs: Any) -> None:
+            real_deregister(*args, **kwargs)
+            if kwargs.get("bearer") is receipt._opaque:
+                receipt._opaque.successor = forged
+
+        monkeypatch.setattr(
+            session,
+            "_deregister_opaque_bearer",
+            retarget_after_deregister,
+        )
+
+        observed = session._consume_runtime_observation_receipt_under_lock(
+            receipt=receipt,
+            session_lease=lease,
+            expected_session=cursor,
+            observation_family="first_install",
+            apply_attempt_id=attempt_id,
+        )
+
+    assert observed.evidence == {"source": "registered"}
+
+
+def test_runtime_observation_executor_mints_receipt_from_consumed_snapshot(
+    tmp_path: Path,
+) -> None:
+    first_root, first = _new_session(tmp_path / "first")
+    second_root, second = _new_session(tmp_path / "second")
+    attempt_id = "b" * 32
+
+    with _lease(first_root) as first_lease:
+        with _lease(second_root) as second_lease:
+            authorization = session._authorize_runtime_observation_under_lock(
+                session_lease=first_lease,
+                expected_session=first,
+                observation_family="first_install",
+                apply_attempt_id=attempt_id,
+            )
+
+            def retarget_consumed_bearer() -> (
+                session.RuntimeObservationPostcondition
+            ):
+                authorization._opaque.session_bearer = (
+                    second_lease.lock_token._bearer
+                )
+                authorization._opaque.cursor_sha256 = second.content_sha256
+                return session.RuntimeObservationPostcondition(
+                    action=attempt_id,
+                    observation_family="first_install",
+                    evidence={"source": "first"},
+                )
+
+            receipt = session._execute_runtime_observation(
+                observation_authorization=authorization,
+                observation_family="first_install",
+                read_only_observation=retarget_consumed_bearer,
+            )
+            observed = (
+                session._consume_runtime_observation_receipt_under_lock(
+                    receipt=receipt,
+                    session_lease=first_lease,
+                    expected_session=first,
+                    observation_family="first_install",
+                    apply_attempt_id=attempt_id,
+                )
+            )
+
+    assert observed.evidence == {"source": "first"}
+
+
+def test_apply_recovery_receipt_consumes_immutable_snapshot_after_deregister(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, active, predecessor = _apply_recovery_cursor_for_action(
+        tmp_path / "generic-post-deregister-retarget",
+        action="observe_not_committed",
+        recovery_changes={},
+    )
+    successor = dict(predecessor)
+    successor.pop("content_sha256")
+    successor.update(
+        {
+            "action_index": predecessor["action_index"] + 1,
+            "expected_action": None,
+            "stable_physical_disposition": "NOT_COMMITTED",
+        }
+    )
+    sealed_successor = dict(_seal_literal_document(successor))
+    forged_successor = dict(successor)
+    forged_successor["stable_physical_disposition"] = (
+        "UNKNOWN_REQUIRES_RECOVERY"
+    )
+    forged_successor = dict(_seal_literal_document(forged_successor))
+
+    with _lease(root) as lease:
+        authorization = (
+            session._authorize_nonterminal_apply_recovery_under_lock(
+                session_lease=lease,
+                expected_recovery_session=active,
+                expected_action="observe_not_committed",
+            )
+        )
+        receipt = session._execute_apply_recovery_physical_step(
+            recovery_authorization=authorization,
+            action="observe_not_committed",
+            physical_action=lambda: session.RuntimeApplyRecoveryPhysicalPostcondition(
+                action="observe_not_committed",
+                evidence={"apply_recovery": sealed_successor},
+            ),
+        )
+        forged = session.RuntimeApplyRecoveryPhysicalPostcondition(
+            action="observe_not_committed",
+            evidence={"apply_recovery": forged_successor},
+        )
+        real_deregister = session._deregister_opaque_bearer
+
+        def retarget_after_deregister(*args: Any, **kwargs: Any) -> None:
+            real_deregister(*args, **kwargs)
+            if kwargs.get("bearer") is receipt._opaque:
+                receipt._opaque.successor = forged
+
+        monkeypatch.setattr(
+            session,
+            "_deregister_opaque_bearer",
+            retarget_after_deregister,
+        )
+        stable = session.advance_nonterminal_apply_recovery_under_lock(
+            session_lease=lease,
+            expected_recovery_session=active,
+            transition="physical_recovery_advanced",
+            recovery_evidence=None,
+            recovery_authorization=None,
+            physical_step_receipt=receipt,
+            runtime_observation_receipt=None,
+        )
+
+    assert stable.apply_recovery is not None
+    assert stable.apply_recovery["stable_physical_disposition"] == (
+        "NOT_COMMITTED"
+    )
+
+
 def test_output_child_bootstrap_rejects_constructed_stale_or_wrong_action_receipt() -> None:
     with pytest.raises(session.SessionCapabilityError, match="carrier"):
         session.advance_output_child_bootstrap_under_lock(
@@ -2861,6 +3839,103 @@ def test_session_lease_token_is_nonforgeable_thread_bound_and_expires_on_exit(
 
     with pytest.raises(session.SessionCapabilityError, match="expired"):
         session.load_live_start_session_under_lock(session_lease=real_lease)
+
+
+def test_session_lease_registry_rejects_coherent_run_retarget(
+    tmp_path: Path,
+) -> None:
+    source_root, _source_cursor = _new_session(tmp_path / "source")
+    target_root, _target_cursor = _new_session(tmp_path / "target")
+    target_lock_path = (
+        target_root.parent.parent
+        / "locks"
+        / f"live-start-{target_root.name}.lock"
+    )
+
+    with _lease(source_root) as lease:
+        bearer = lease.lock_token._bearer
+        active_lock = bearer.session_lock
+        assert active_lock is not None
+
+        target_root_identity = path_identity(target_root)
+        target_lock_identity = path_identity(target_lock_path)
+        object.__setattr__(lease, "session_root", target_root)
+        object.__setattr__(
+            lease,
+            "session_root_identity",
+            target_root_identity,
+        )
+        object.__setattr__(lease, "session_lock_path", target_lock_path)
+        object.__setattr__(
+            lease,
+            "session_lock_identity",
+            target_lock_identity,
+        )
+        bearer.session_root = target_root
+        bearer.session_root_identity = target_root_identity
+        bearer.session_lock_path = target_lock_path
+        bearer.session_lock_identity = target_lock_identity
+        active_lock.path = target_lock_path
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="context_mismatch",
+        ):
+            session.load_live_start_session_under_lock(session_lease=lease)
+
+
+def test_session_lease_registry_rejects_coherent_thread_retarget(
+    tmp_path: Path,
+) -> None:
+    root, _cursor = _new_session(tmp_path)
+    errors: list[BaseException] = []
+
+    with _lease(root) as lease:
+        bearer = lease.lock_token._bearer
+        original_thread_id = bearer.thread_id
+
+        def cross_thread() -> None:
+            bearer.thread_id = __import__("threading").get_ident()
+            try:
+                session.load_live_start_session_under_lock(
+                    session_lease=lease
+                )
+            except BaseException as error:
+                errors.append(error)
+
+        worker = Thread(target=cross_thread)
+        worker.start()
+        worker.join()
+        bearer.thread_id = original_thread_id
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], session.SessionCapabilityError)
+    assert "wrong_thread" in str(errors[0])
+
+
+def test_session_lease_registry_rejects_unlocked_replacement_handle(
+    tmp_path: Path,
+) -> None:
+    root, _cursor = _new_session(tmp_path)
+
+    with _lease(root) as lease:
+        bearer = lease.lock_token._bearer
+        active_lock = bearer.session_lock
+        assert active_lock is not None
+        active_lock.__exit__(None, None, None)
+        replacement_handle = active_lock.path.open("r+b")
+        active_lock._handle = replacement_handle
+        try:
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="context_mismatch|lock_invalid",
+            ):
+                session.load_live_start_session_under_lock(
+                    session_lease=lease
+                )
+        finally:
+            active_lock._handle = None
+            replacement_handle.close()
 
 
 def test_direct_opaque_construction_cannot_authorize_physical_callback() -> None:
@@ -14173,24 +15248,8 @@ def _install_result_artifacts_under_lock(
     lease: session.LiveStartSessionLease,
     cursor: session.LiveStartSession,
 ) -> session.LiveStartSession:
-    payloads = {
-        "result/summary.json": b'{}\n',
-        "result/summary.md": b"Result\n",
-    }
-    bindings = dict(cursor.artifact_bindings)
-    for logical_path, payload in payloads.items():
-        path = root / logical_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(payload)
-        bindings[logical_path] = f"sha256:{sha256(payload).hexdigest()}"
-    value = cursor.to_value()
-    value.pop("content_sha256")
-    value["artifact_bindings"] = bindings
-    return _publish_session_fixture_under_lock(
-        lease=lease,
-        predecessor=cursor,
-        value=value,
-    )
+    del root, lease
+    return cursor
 
 
 def _terminal_retirement_with_stage(
@@ -14203,6 +15262,35 @@ def _terminal_retirement_with_stage(
     return session.seal_embedded_document(
         "terminal_retirement",
         current,
+    )
+
+
+def _terminal_release_current_facts_receipt(
+    *,
+    lease: session.LiveStartSessionLease,
+    cursor: session.LiveStartSession,
+) -> session.RuntimeObservationReceipt:
+    retirement = cursor.terminal_retirement
+    assert isinstance(retirement, Mapping)
+    attempt_id = session._session_apply_attempt_id(cursor)
+    authorization = session._authorize_runtime_observation_under_lock(
+        session_lease=lease,
+        expected_session=cursor,
+        observation_family="terminal_release",
+        apply_attempt_id=attempt_id,
+    )
+    return session._execute_runtime_observation(
+        observation_authorization=authorization,
+        observation_family="terminal_release",
+        read_only_observation=lambda: session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="terminal_release",
+            evidence={
+                "terminal_retirement_sha256": retirement[
+                    "content_sha256"
+                ]
+            },
+        ),
     )
 
 
@@ -14239,6 +15327,12 @@ def _advance_success_terminal_retirement_under_lock(
         session.authorize_terminal_retirement_under_lock(
             session_lease=lease,
             expected_retirement_session=retired,
+            runtime_observation_receipt=(
+                _terminal_release_current_facts_receipt(
+                    lease=lease,
+                    cursor=retired,
+                )
+            ),
         )
     )
     assert release_authorization._opaque.action == (
@@ -14276,6 +15370,12 @@ def _advance_failure_terminal_retirement_under_lock(
         session.authorize_terminal_retirement_under_lock(
             session_lease=lease,
             expected_retirement_session=retired,
+            runtime_observation_receipt=(
+                _terminal_release_current_facts_receipt(
+                    lease=lease,
+                    cursor=retired,
+                )
+            ),
         )
     )
     assert release_authorization._opaque.action == (
@@ -14288,6 +15388,47 @@ def _advance_failure_terminal_retirement_under_lock(
         terminal_authorization=release_authorization,
         physical_step_receipt=None,
     )
+
+
+def test_terminal_release_authorization_requires_current_facts_receipt(
+    tmp_path: Path,
+) -> None:
+    root, prepared = _prepare_terminal_cursor(
+        tmp_path / "terminal-release-current-facts",
+        success=False,
+    )
+    with _lease(root) as lease:
+        evidence_authorization = (
+            session.authorize_terminal_retirement_under_lock(
+                session_lease=lease,
+                expected_retirement_session=prepared,
+            )
+        )
+        retired = session.advance_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+            transition="evidence_retired",
+            terminal_authorization=evidence_authorization,
+            physical_step_receipt=None,
+        )
+        persisted_before = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_terminal_release_observation_missing$",
+        ):
+            session.authorize_terminal_retirement_under_lock(
+                session_lease=lease,
+                expected_retirement_session=retired,
+            )
+
+        persisted_after = session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+        assert persisted_after.canonical_json == persisted_before.canonical_json
+        assert persisted_after.content_sha256 == retired.content_sha256
 
 
 def _prepare_resolved_terminal_cursor(
@@ -16213,6 +17354,64 @@ def _apply_recovery_cursor_for_action(
             value=value,
         )
     return root, cursor, sealed_recovery
+
+
+def test_unused_nonterminal_authorization_discards_stale_cursor_slot(
+    tmp_path: Path,
+) -> None:
+    root, active, _recovery = _apply_recovery_cursor_for_action(
+        tmp_path,
+        action="observe_not_committed",
+        recovery_changes={},
+    )
+    with _lease(root) as lease:
+        authorization = (
+            session._authorize_nonterminal_apply_recovery_under_lock(
+                session_lease=lease,
+                expected_recovery_session=active,
+                expected_action="observe_not_committed",
+            )
+        )
+        successor_value = active.to_value()
+        successor_value.pop("content_sha256")
+        successor_recovery = session._thaw(active.apply_recovery)
+        successor_recovery.pop("content_sha256")
+        successor_recovery["action_index"] += 1
+        successor_value["apply_recovery"] = _seal_literal_document(
+            successor_recovery
+        )
+        stale_cursor = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=active,
+            value=successor_value,
+        )
+
+        assert (
+            session._discard_unused_nonterminal_apply_recovery_authorization(
+                authorization,
+                expected_action="observe_not_committed",
+            )
+            is True
+        )
+        assert (
+            session._discard_unused_nonterminal_apply_recovery_authorization(
+                authorization,
+                expected_action="observe_not_committed",
+            )
+            is False
+        )
+        fresh = session._authorize_nonterminal_apply_recovery_under_lock(
+            session_lease=lease,
+            expected_recovery_session=stale_cursor,
+            expected_action="observe_not_committed",
+        )
+        assert (
+            session._discard_unused_nonterminal_apply_recovery_authorization(
+                fresh,
+                expected_action="observe_not_committed",
+            )
+            is True
+        )
 
 
 def _apply_started_cursor_without_recovery(
@@ -23916,6 +25115,12 @@ def _prepare_runtime_admission_release_chain(
                 session.authorize_terminal_retirement_under_lock(
                     session_lease=lease,
                     expected_retirement_session=retired,
+                    runtime_observation_receipt=(
+                        _terminal_release_current_facts_receipt(
+                            lease=lease,
+                            cursor=retired,
+                        )
+                    ),
                 )
             )
             authorized = session.advance_terminal_retirement_under_lock(
@@ -25714,6 +26919,748 @@ def test_terminal_owner_retired_committed_cursor_stabilizes_without_replaying_ob
         assert stabilized.terminal_retirement[
             "terminal_resolution_evidence"
         ] == current_retirement["terminal_resolution_evidence"]
+
+
+def test_terminal_ownerless_committed_cursor_stabilizes_without_replaying_observation(
+    tmp_path: Path,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "terminal",
+        with_cleanup_inventory=False,
+    )
+    retirement = session._thaw(prepared.terminal_retirement)
+    retirement.pop("content_sha256")
+    resolution = session._thaw(
+        retirement["terminal_resolution_evidence"]
+    )
+    resolution.pop("content_sha256")
+    resolution.update(
+        {
+            "owner_retirement": None,
+            "external_file_action": None,
+            "cleanup_stage": None,
+            "resolved_physical_disposition": "COMMITTED",
+        }
+    )
+    retirement["terminal_resolution_evidence"] = session._thaw(
+        session._seal_terminal_resolution(resolution)
+    )
+    sealed_retirement = session.seal_embedded_document(
+        "terminal_retirement",
+        retirement,
+    )
+    with _lease(root) as lease:
+        value = prepared.to_value()
+        value.pop("content_sha256")
+        value["terminal_retirement"] = dict(sealed_retirement)
+        cursor = _publish_session_fixture_under_lock(
+            lease=lease,
+            predecessor=prepared,
+            value=value,
+        )
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=cursor,
+        )
+        assert authorization._opaque.action == "stabilized"
+        current_retirement = cursor.terminal_retirement
+        assert isinstance(current_retirement, Mapping)
+        current_resolution = session.TerminalResolutionEvidence(
+            current_retirement["terminal_resolution_evidence"]
+        )
+        stabilized = session.advance_terminal_resolution_under_lock(
+            session_lease=lease,
+            expected_resolution_session=cursor,
+            transition="stabilized",
+            resolved_evidence=current_resolution,
+            terminal_authorization=authorization,
+            physical_step_receipt=None,
+        )
+        assert stabilized.terminal_retirement is not None
+        assert stabilized.terminal_retirement["stage"] == (
+            "RECOVERY_STABILIZED"
+        )
+        assert stabilized.terminal_retirement[
+            "terminal_resolution_evidence"
+        ] == current_retirement["terminal_resolution_evidence"]
+
+
+def _terminal_ownerless_committed_observation_pair() -> tuple[
+    dict[str, object],
+    dict[str, object],
+]:
+    current = session._thaw(_terminal_resolution_fixture())
+    current.pop("content_sha256")
+    runtime_root = (Path.cwd() / "runtime").absolute()
+    attempt_path = runtime_root / ".hsconfig" / "attempt-retention" / (
+        "b" * 32 + ".json"
+    )
+    journal_path = runtime_root / ".hsconfig" / "transactions" / (
+        "b" * 32 + ".json"
+    )
+    owner_path = runtime_root / ".hsconfig" / "transactions" / (
+        "c" * 32 + ".json"
+    )
+    current.update(
+        {
+            "action_index": 23,
+            "predecessor_attempt_record_path": str(attempt_path),
+            "predecessor_attempt_record_identity": [1, 11, 0o100666],
+            "predecessor_attempt_record_sha256": "sha256:" + "1" * 64,
+            "successor_attempt_record_path": str(attempt_path),
+            "successor_attempt_record_identity": [1, 12, 0o100666],
+            "successor_attempt_record_sha256": "sha256:" + "2" * 64,
+            "predecessor_journal_path": str(journal_path),
+            "predecessor_journal_identity": [1, 21, 0o100666],
+            "predecessor_journal_sha256": "sha256:" + "4" * 64,
+            "successor_journal_path": str(journal_path),
+            "successor_journal_identity": [1, 22, 0o100666],
+            "successor_journal_sha256": "sha256:" + "5" * 64,
+            "predecessor_target_owner_journal_path": str(owner_path),
+            "predecessor_target_owner_journal_identity": [
+                1,
+                31,
+                0o100666,
+            ],
+            "predecessor_target_owner_journal_sha256": (
+                "sha256:" + "6" * 64
+            ),
+            "resolved_physical_disposition": "UNKNOWN_REQUIRES_RECOVERY",
+            "last_apply_receipt_sha256": "sha256:" + "7" * 64,
+            "runtime_state_sha256": "sha256:" + "8" * 64,
+            "deck_config_ini_sha256": "sha256:" + "9" * 64,
+        }
+    )
+    successor = session._thaw(current)
+    successor.update(
+        {
+            "action_index": 24,
+            "resolved_physical_disposition": "COMMITTED",
+            "runtime_match_status": "unknown",
+            "runtime_match_sha256": None,
+        }
+    )
+    return current, successor
+
+
+def test_terminal_ownerless_committed_observation_preserves_history_and_successors() -> None:
+    current, successor = _terminal_ownerless_committed_observation_pair()
+
+    session._validate_terminal_ownerless_observe_committed_successor(
+        predecessor=current,
+        successor=successor,
+        authorized_owner_action=None,
+    )
+
+
+def test_terminal_ownerless_physical_successor_cannot_reuse_action_index() -> None:
+    current, successor = _terminal_ownerless_committed_observation_pair()
+    successor["action_index"] = current["action_index"]
+
+    with pytest.raises(
+        session.SessionCapabilityError,
+        match="^live_start_terminal_owner_action_index_invalid$",
+    ):
+        session._validate_terminal_owner_successor(
+            predecessor=current,
+            successor=successor,
+            authorized_owner_action=None,
+        )
+
+
+def test_terminal_ownerless_physical_executor_rejects_unissued_successor_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "ownerless-unissued-successor",
+        with_cleanup_inventory=False,
+    )
+    callback_calls = 0
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        for carrier in (authorization, copy(authorization)):
+            with pytest.raises(
+                session.SessionCapabilityError,
+                match="^live_start_terminal_owner_capability_invalid$",
+            ):
+                session._register_terminal_owner_context(
+                    authorization=carrier,
+                    context={"owner_action": "forged"},
+                )
+
+        def caller_supplied() -> session.TerminalResolutionPhysicalPostcondition:
+            nonlocal callback_calls
+            callback_calls += 1
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": prepared.terminal_retirement},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_terminal_ownerless_issuer_missing$",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=caller_supplied,
+            )
+
+    assert callback_calls == 0
+
+
+def test_terminal_owner_context_registration_swap_before_consume_rejects_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "owner-context-registration-swap",
+        with_cleanup_inventory=False,
+    )
+    callback_calls = 0
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        retirement = prepared.terminal_retirement
+        assert isinstance(retirement, Mapping)
+
+        def issued_callback() -> session.TerminalResolutionPhysicalPostcondition:
+            nonlocal callback_calls
+            callback_calls += 1
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": retirement},
+            )
+
+        issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=authorization,
+            physical_action=issued_callback,
+            predecessor_resolution=retirement[
+                "terminal_resolution_evidence"
+            ],
+        )
+        real_require = session._require_opaque_carrier
+
+        def swap_registration_before_terminal_consume(
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            if args[0] is authorization and kwargs.get("consume") is True:
+                bearer = authorization._opaque
+                registration = session._OPAQUE_BEARER_REGISTRATIONS[id(bearer)]
+                session._OPAQUE_BEARER_REGISTRATIONS[id(bearer)] = replace(
+                    registration,
+                    registered_terminal_owner_context=session._freeze_mapping(
+                        {"owner_action": "forged"}
+                    ),
+                )
+            return real_require(*args, **kwargs)
+
+        monkeypatch.setattr(
+            session,
+            "_require_opaque_carrier",
+            swap_registration_before_terminal_consume,
+        )
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_physical_capability_forged$",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=issued_callback,
+                ownerless_successor_issuer=issuer,
+            )
+
+    assert callback_calls == 0
+
+
+def test_terminal_owner_context_registration_swap_before_executor_rejects_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "owner-context-preentry-registration-swap",
+        with_cleanup_inventory=False,
+    )
+    callback_calls = 0
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        bearer = authorization._opaque
+        registration = session._OPAQUE_BEARER_REGISTRATIONS[id(bearer)]
+        session._OPAQUE_BEARER_REGISTRATIONS[id(bearer)] = replace(
+            registration,
+            registered_terminal_owner_context=session._freeze_mapping(
+                {"owner_action": "forged"}
+            ),
+        )
+
+        def caller_supplied() -> session.TerminalResolutionPhysicalPostcondition:
+            nonlocal callback_calls
+            callback_calls += 1
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": prepared.terminal_retirement},
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_physical_capability_forged$",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=caller_supplied,
+            )
+
+    assert callback_calls == 0
+
+
+@pytest.mark.parametrize(
+    "tamper_kind",
+    ("callback", "physical_precondition", "registry_binding"),
+)
+def test_terminal_ownerless_physical_executor_rejects_tampered_issuer_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper_kind: str,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / f"ownerless-tampered-issuer-{tamper_kind}",
+        with_cleanup_inventory=False,
+    )
+    callback_calls: list[str] = []
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        retirement = prepared.terminal_retirement
+        assert retirement is not None
+        predecessor_resolution = retirement[
+            "terminal_resolution_evidence"
+        ]
+
+        def issued_callback() -> session.TerminalResolutionPhysicalPostcondition:
+            callback_calls.append("issued")
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": retirement},
+            )
+
+        def replacement_callback() -> session.TerminalResolutionPhysicalPostcondition:
+            callback_calls.append("replacement")
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": retirement},
+            )
+
+        issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=authorization,
+            physical_action=issued_callback,
+            predecessor_resolution=predecessor_resolution,
+        )
+        physical_action = issued_callback
+        if tamper_kind == "callback":
+            issuer._opaque.successor = replacement_callback
+            physical_action = replacement_callback
+        elif tamper_kind == "physical_precondition":
+            assert issuer._opaque.physical_precondition is not None
+            issuer._opaque.physical_precondition = dict(
+                issuer._opaque.physical_precondition
+            )
+        else:
+            assert tamper_kind == "registry_binding"
+            session._BOUND_TERMINAL_OWNERLESS_ISSUERS.pop(
+                id(issuer._opaque)
+            )
+
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_physical_capability_forged$",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=physical_action,
+                ownerless_successor_issuer=issuer,
+            )
+
+    assert callback_calls == []
+
+
+@pytest.mark.parametrize(
+    "registry_loss",
+    [
+        "issuer_binding",
+        "parent_binding",
+        "coherent_retarget",
+        "cross_parent_retarget",
+    ],
+)
+def test_terminal_ownerless_issuer_consume_race_releases_physical_slot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    registry_loss: str,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "ownerless-issuer-consume-race",
+        with_cleanup_inventory=False,
+    )
+    callback_calls: list[str] = []
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        retirement = prepared.terminal_retirement
+        assert retirement is not None
+
+        def issued_callback() -> session.TerminalResolutionPhysicalPostcondition:
+            callback_calls.append("issued")
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": retirement},
+            )
+
+        issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=authorization,
+            physical_action=issued_callback,
+            predecessor_resolution=retirement[
+                "terminal_resolution_evidence"
+            ],
+        )
+        replacement_calls: list[str] = []
+
+        def replacement_callback() -> (
+            session.TerminalResolutionPhysicalPostcondition
+        ):
+            replacement_calls.append("replacement")
+            return session.TerminalResolutionPhysicalPostcondition(
+                action="physical_recovery_advanced",
+                evidence={"terminal_retirement": retirement},
+            )
+
+        alternate_parent_bearer: session._OpaqueBearer | None = None
+        if registry_loss == "cross_parent_retarget":
+            alternate_parent_bearer = session._OpaqueBearer(
+                session_bearer=authorization._opaque.session_bearer,
+                family="terminal_retirement",
+                cursor_sha256=authorization._opaque.cursor_sha256,
+                action="physical_recovery_advanced",
+            )
+            session._mint_registered_opaque_carrier(
+                carrier_type=session.TerminalRetirementAuthorization,
+                bearer=alternate_parent_bearer,
+            )
+        real_require = session._require_opaque_carrier
+
+        def invalidate_issuer_after_terminal_consume(
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            bearer = real_require(*args, **kwargs)
+            if args[0] is authorization and kwargs.get("consume") is True:
+                if registry_loss == "issuer_binding":
+                    session._BOUND_TERMINAL_OWNERLESS_ISSUERS.pop(
+                        id(issuer._opaque)
+                    )
+                else:
+                    if registry_loss == "parent_binding":
+                        session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.pop(
+                            id(authorization._opaque)
+                        )
+                    elif registry_loss == "coherent_retarget":
+                        binding = session._BOUND_TERMINAL_OWNERLESS_ISSUERS[
+                            id(issuer._opaque)
+                        ]
+                        replacement_context = dict(
+                            binding.physical_precondition
+                        )
+                        issuer._opaque.successor = replacement_callback
+                        issuer._opaque.physical_precondition = (
+                            replacement_context
+                        )
+                        session._BOUND_TERMINAL_OWNERLESS_ISSUERS[
+                            id(issuer._opaque)
+                        ] = session._TerminalOwnerlessIssuerBinding(
+                            issuer_bearer=issuer._opaque,
+                            physical_action=replacement_callback,
+                            physical_precondition=replacement_context,
+                            parent_terminal_bearer=(
+                                binding.parent_terminal_bearer
+                            ),
+                            parent_registration=binding.parent_registration,
+                        )
+                    else:
+                        assert registry_loss == "cross_parent_retarget"
+                        assert alternate_parent_bearer is not None
+                        binding = session._BOUND_TERMINAL_OWNERLESS_ISSUERS[
+                            id(issuer._opaque)
+                        ]
+                        alternate_registration = (
+                            session._OPAQUE_BEARER_REGISTRATIONS[
+                                id(alternate_parent_bearer)
+                            ]
+                        )
+                        session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.pop(
+                            id(authorization._opaque)
+                        )
+                        session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT[
+                            id(alternate_parent_bearer)
+                        ] = issuer._opaque
+                        session._BOUND_TERMINAL_OWNERLESS_ISSUERS[
+                            id(issuer._opaque)
+                        ] = session._TerminalOwnerlessIssuerBinding(
+                            issuer_bearer=issuer._opaque,
+                            physical_action=binding.physical_action,
+                            physical_precondition=(
+                                binding.physical_precondition
+                            ),
+                            parent_terminal_bearer=alternate_parent_bearer,
+                            parent_registration=alternate_registration,
+                        )
+            return bearer
+
+        monkeypatch.setattr(
+            session,
+            "_require_opaque_carrier",
+            invalidate_issuer_after_terminal_consume,
+        )
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="^live_start_physical_capability_forged$",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=issued_callback,
+                ownerless_successor_issuer=issuer,
+            )
+        assert callback_calls == []
+        assert replacement_calls == []
+
+        fresh = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        assert fresh._opaque.active
+        assert fresh._opaque.cursor_sha256 == prepared.content_sha256
+        fresh_issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=fresh,
+            physical_action=issued_callback,
+            predecessor_resolution=retirement[
+                "terminal_resolution_evidence"
+            ],
+        )
+        assert (
+            session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT[
+                id(fresh._opaque)
+            ]
+            is fresh_issuer._opaque
+        )
+        assert all(
+            active_issuer is not issuer._opaque
+            for active_issuer in (
+                session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.values()
+            )
+        )
+
+    assert all(
+        active_issuer is not issuer._opaque
+        for active_issuer in (
+            session._ACTIVE_TERMINAL_OWNERLESS_ISSUER_BY_PARENT.values()
+        )
+    )
+
+
+def test_terminal_ownerless_issuer_is_unique_to_parent_and_failure_requires_fresh_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, prepared, _inventory = _prepare_resolved_terminal_cursor(
+        tmp_path / "ownerless-issuer-lineage",
+        with_cleanup_inventory=False,
+    )
+    callback_calls: list[str] = []
+
+    monkeypatch.setattr(
+        session,
+        "_terminal_action_for_retirement",
+        lambda *_args, **_kwargs: "physical_recovery_advanced",
+    )
+    with _lease(root) as lease:
+        authorization = session.authorize_terminal_retirement_under_lock(
+            session_lease=lease,
+            expected_retirement_session=prepared,
+        )
+        retirement = prepared.terminal_retirement
+        assert isinstance(retirement, Mapping)
+        predecessor = retirement["terminal_resolution_evidence"]
+
+        def failing_callback() -> (
+            session.TerminalResolutionPhysicalPostcondition
+        ):
+            callback_calls.append("first")
+            raise RuntimeError("simulated partial physical failure")
+
+        issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=authorization,
+            physical_action=failing_callback,
+            predecessor_resolution=predecessor,
+        )
+        with pytest.raises(
+            session.SessionCapabilityError,
+            match="ownerless_issuer_invalid",
+        ):
+            session._mint_terminal_ownerless_successor_issuer(
+                terminal_authorization=authorization,
+                physical_action=failing_callback,
+                predecessor_resolution=predecessor,
+            )
+
+        with pytest.raises(
+            RuntimeError,
+            match="simulated partial physical failure",
+        ):
+            session._execute_terminal_resolution_physical_step(
+                terminal_authorization=authorization,
+                action="physical_recovery_advanced",
+                physical_action=failing_callback,
+                ownerless_successor_issuer=issuer,
+            )
+        assert callback_calls == ["first"]
+
+        fresh_authorization = (
+            session.authorize_terminal_retirement_under_lock(
+                session_lease=lease,
+                expected_retirement_session=prepared,
+            )
+        )
+        fresh_issuer = session._mint_terminal_ownerless_successor_issuer(
+            terminal_authorization=fresh_authorization,
+            physical_action=failing_callback,
+            predecessor_resolution=predecessor,
+        )
+        assert fresh_issuer._opaque.active
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "predecessor_attempt_record_sha256",
+        "successor_attempt_record_identity",
+        "predecessor_journal_sha256",
+        "successor_journal_identity",
+        "predecessor_target_owner_journal_sha256",
+    ),
+)
+def test_terminal_ownerless_committed_observation_rejects_authority_rewrite(
+    field_name: str,
+) -> None:
+    current, successor = _terminal_ownerless_committed_observation_pair()
+    successor[field_name] = (
+        [9, 9, 0o100666]
+        if field_name.endswith("_identity")
+        else "sha256:" + "f" * 64
+    )
+
+    with pytest.raises(
+        session.SessionCapabilityError,
+        match=(
+            "^live_start_terminal_ownerless_observe_committed_"
+            "history_changed$"
+        ),
+    ):
+        session._validate_terminal_ownerless_observe_committed_successor(
+            predecessor=current,
+            successor=successor,
+            authorized_owner_action=None,
+        )
+
+
+def test_terminal_ownerless_committed_observation_rejects_generic_authority_promotion() -> None:
+    current, successor = _terminal_ownerless_committed_observation_pair()
+    for predecessor_prefix, successor_prefix in (
+        ("predecessor_attempt_record", "successor_attempt_record"),
+        ("predecessor_journal", "successor_journal"),
+    ):
+        for suffix in ("path", "identity", "sha256"):
+            successor[f"{predecessor_prefix}_{suffix}"] = current[
+                f"{successor_prefix}_{suffix}"
+            ]
+            successor[f"{successor_prefix}_{suffix}"] = None
+
+    with pytest.raises(
+        session.SessionCapabilityError,
+        match=(
+            "^live_start_terminal_ownerless_observe_committed_"
+            "history_changed$"
+        ),
+    ):
+        session._validate_terminal_ownerless_observe_committed_successor(
+            predecessor=current,
+            successor=successor,
+            authorized_owner_action=None,
+        )
+
+
+@pytest.mark.parametrize("runtime_match_status", ("matched", "mismatch"))
+def test_terminal_ownerless_committed_observation_rejects_match_proof_downgrade(
+    runtime_match_status: str,
+) -> None:
+    current, successor = _terminal_ownerless_committed_observation_pair()
+    current["runtime_match_status"] = runtime_match_status
+    current["runtime_match_sha256"] = "sha256:" + "a" * 64
+
+    with pytest.raises(
+        session.SessionCapabilityError,
+        match="^live_start_terminal_ownerless_observe_committed_invalid$",
+    ):
+        session._validate_terminal_ownerless_observe_committed_successor(
+            predecessor=current,
+            successor=successor,
+            authorized_owner_action=None,
+        )
 
 
 def test_release_authorized_is_final_session_stage_before_physical_unlink(

@@ -765,10 +765,20 @@ class ExclusiveFileLock:
         self.path_guard = path_guard
         self.create_if_missing = create_if_missing
         self._handle: BinaryIO | None = None
+        self._created_file = False
+
+    @property
+    def created_file(self) -> bool:
+        """Whether this active acquisition created the persistent lock file."""
+
+        if self._handle is None:
+            raise RuntimeError(f"Lock is not acquired: {self.path}")
+        return self._created_file
 
     def __enter__(self) -> ExclusiveFileLock:
         if self._handle is not None:
             raise RuntimeError(f"Lock is already acquired: {self.path}")
+        self._created_file = False
 
         parent = self.path.parent
         if self.path_guard is not None:
@@ -878,6 +888,7 @@ class ExclusiveFileLock:
                     if self.path_guard is not None:
                         self.path_guard.validate()
                     self._handle = handle
+                    self._created_file = before_identity is None
                     return self
         except BaseException as primary:
             if acquired:
@@ -895,6 +906,7 @@ class ExclusiveFileLock:
         if handle is None:
             return
         self._handle = None
+        self._created_file = False
         primary = exc if isinstance(exc, BaseException) else None
         release_error: BaseException | None = None
         try:

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import hsconfig.package_io as package_io
+import hsconfig.runtime_package_match as runtime_package_match
 from hsconfig.io import write_json
 from hsconfig.runtime_package_match import (
     RuntimePackageMismatchError,
@@ -671,6 +672,117 @@ def test_runtime_package_match_auto_resolution_binds_runtime_tree_digest(
 
     assert report["status"] == "mismatch"
     assert report["runtime_mapping_identity_valid"] is True
+    assert report["runtime_tree_identity_valid"] is False
+
+
+def test_runtime_package_match_does_not_mix_reverted_runtime_child_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient matching child cannot override the full runtime snapshot."""
+
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    logical = "shadowpriest"
+    package_files = {"GlobalValues.json": {"GameCardId": "GlobalValues"}}
+    runtime_files = {"GlobalValues.json": {"GameCardId": "WrongRuntime"}}
+    _write_deck(package, logical, package_files)
+    _write_manifest(package, "ShadowPriest")
+    _write_deck(runtime, logical, runtime_files)
+    (runtime / "CustomConfig" / "deck_config.ini").write_text(
+        f"ShadowPriest={logical}\n",
+        encoding="utf-8",
+    )
+    package_json = package / "CustomConfig" / logical / "GlobalValues.json"
+    runtime_json = runtime / "CustomConfig" / logical / "GlobalValues.json"
+    mismatching_raw = runtime_json.read_bytes()
+    matching_raw = package_json.read_bytes()
+    real_snapshot = runtime_package_match._snapshot_config_directory
+
+    def snapshot_transient_match(
+        custom_config: Path,
+        config_dir: str,
+    ) -> package_io.BoundedFilesystemPackageView | None:
+        if custom_config == runtime / "CustomConfig" and config_dir == logical:
+            runtime_json.write_bytes(matching_raw)
+            try:
+                return real_snapshot(custom_config, config_dir)
+            finally:
+                runtime_json.write_bytes(mismatching_raw)
+        return real_snapshot(custom_config, config_dir)
+
+    monkeypatch.setattr(
+        runtime_package_match,
+        "_snapshot_config_directory",
+        snapshot_transient_match,
+    )
+
+    report = build_runtime_package_match_report(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir=logical,
+    )
+
+    assert runtime_json.read_bytes() == mismatching_raw
+    assert report["status"] == "mismatch"
+    assert report["semantic_mismatches"] == [
+        {
+            "file": "GlobalValues.json",
+            "missing_keys_in_runtime": [],
+            "extra_keys_in_runtime": [],
+            "changed_common_keys": ["GameCardId"],
+        }
+    ]
+
+
+def test_runtime_package_match_revalidates_mapping_after_child_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mapping changed after the child check cannot remain matched."""
+
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    logical = "shadowpriest"
+    files = {"GlobalValues.json": {"GameCardId": "GlobalValues"}}
+    _write_deck(package, logical, files)
+    _write_manifest(package, "ShadowPriest")
+    _write_deck(runtime, logical, files)
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    deck_config.write_text(
+        f"ShadowPriest={logical}\n",
+        encoding="utf-8",
+    )
+    real_snapshot = runtime_package_match._snapshot_config_directory
+
+    def snapshot_then_change_mapping(
+        custom_config: Path,
+        config_dir: str,
+    ) -> package_io.BoundedFilesystemPackageView | None:
+        snapshot = real_snapshot(custom_config, config_dir)
+        if custom_config == runtime / "CustomConfig" and config_dir == logical:
+            deck_config.write_text(
+                "ShadowPriest=other-config\n",
+                encoding="utf-8",
+            )
+        return snapshot
+
+    monkeypatch.setattr(
+        runtime_package_match,
+        "_snapshot_config_directory",
+        snapshot_then_change_mapping,
+    )
+
+    report = build_runtime_package_match_report(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir=logical,
+    )
+
+    assert deck_config.read_text(encoding="utf-8") == (
+        "ShadowPriest=other-config\n"
+    )
+    assert report["status"] == "mismatch"
     assert report["runtime_tree_identity_valid"] is False
 
 

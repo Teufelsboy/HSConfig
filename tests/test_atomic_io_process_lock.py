@@ -1146,3 +1146,13 @@ def test_lock_propagates_disappearance_when_creation_is_disabled(
             lock_path,
             create_if_missing=False,
         ).__enter__()
+
+
+def test_exclusive_file_lock_reports_exact_file_creation(tmp_path: Path) -> None:
+    lock_path = tmp_path / "creation-evidence.lock"
+
+    with ExclusiveFileLock(lock_path) as created:
+        assert created.created_file is True
+
+    with ExclusiveFileLock(lock_path) as reopened:
+        assert reopened.created_file is False

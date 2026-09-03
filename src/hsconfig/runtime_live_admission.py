@@ -148,7 +148,7 @@ def runtime_live_attempt_admission_path(
     return root / "HSConfig" / RUNTIME_LIVE_ATTEMPT_ADMISSION_NAME
 
 
-def build_runtime_live_attempt_admission_bytes(
+def _project_runtime_live_attempt_admission_bytes(
     *,
     run_id: str,
     apply_attempt_id: str,
@@ -174,7 +174,7 @@ def build_runtime_live_attempt_admission_bytes(
     apply_invocation_sha256: str,
     retention_fence_path: Path,
 ) -> bytes:
-    """Build the exact immutable canonical runtime-admission document."""
+    """Project the exact canonical document without observing live paths."""
 
     identifiers = {
         "run_id": _require_run_id(run_id, "run_id"),
@@ -213,51 +213,49 @@ def build_runtime_live_attempt_admission_bytes(
 
     expected_state_root = runtime_live_attempt_admission_path().parent
     state_identity = _require_identity(state_root_identity, "state_root_identity")
-    _require_existing_directory_binding(
-        expected_state_root,
-        expected_identity=state_identity,
-        field="state_root",
-    )
+    identities = {
+        "session_root_identity": _require_identity(
+            session_root_identity,
+            "session_root_identity",
+        ),
+        "state_root_identity": state_identity,
+        "runtime_root_identity": _require_identity(
+            runtime_root_identity,
+            "runtime_root_identity",
+        ),
+        "output_base_root_identity": _require_identity(
+            output_base_root_identity,
+            "output_base_root_identity",
+        ),
+        "output_root_identity": _require_identity(
+            output_root_identity,
+            "output_root_identity",
+        ),
+        "output_operation_admission_identity": _require_identity(
+            output_operation_admission_identity,
+            "output_operation_admission_identity",
+        ),
+    }
     canonical_paths = {
-        "session_root": _require_existing_directory_binding(
-            session_root,
-            expected_identity=_require_identity(
-                session_root_identity,
-                "session_root_identity",
-            ),
-            field="session_root",
+        "session_root": _canonical_absolute_path(
+            str(Path(session_root)),
+            "session_root",
         ),
-        "runtime_root": _require_existing_directory_binding(
-            runtime_root,
-            expected_identity=_require_identity(
-                runtime_root_identity,
-                "runtime_root_identity",
-            ),
-            field="runtime_root",
+        "runtime_root": _canonical_absolute_path(
+            str(Path(runtime_root)),
+            "runtime_root",
         ),
-        "output_base_root": _require_existing_directory_binding(
-            output_base_root,
-            expected_identity=_require_identity(
-                output_base_root_identity,
-                "output_base_root_identity",
-            ),
-            field="output_base_root",
+        "output_base_root": _canonical_absolute_path(
+            str(Path(output_base_root)),
+            "output_base_root",
         ),
-        "output_root": _require_existing_directory_binding(
-            output_root,
-            expected_identity=_require_identity(
-                output_root_identity,
-                "output_root_identity",
-            ),
-            field="output_root",
+        "output_root": _canonical_absolute_path(
+            str(Path(output_root)),
+            "output_root",
         ),
-        "output_operation_admission_path": _require_existing_file_binding(
-            output_operation_admission_path,
-            expected_identity=_require_identity(
-                output_operation_admission_identity,
-                "output_operation_admission_identity",
-            ),
-            field="output_operation_admission_path",
+        "output_operation_admission_path": _canonical_absolute_path(
+            str(Path(output_operation_admission_path)),
+            "output_operation_admission_path",
         ),
     }
     if canonical_paths["output_root"].parent != canonical_paths[
@@ -282,29 +280,6 @@ def build_runtime_live_attempt_admission_bytes(
     if retention_path != expected_retention_path:
         raise ValueError("runtime_live_admission_retention_fence_path_invalid")
 
-    identities = {
-        "session_root_identity": _require_identity(
-            session_root_identity,
-            "session_root_identity",
-        ),
-        "state_root_identity": state_identity,
-        "runtime_root_identity": _require_identity(
-            runtime_root_identity,
-            "runtime_root_identity",
-        ),
-        "output_base_root_identity": _require_identity(
-            output_base_root_identity,
-            "output_base_root_identity",
-        ),
-        "output_root_identity": _require_identity(
-            output_root_identity,
-            "output_root_identity",
-        ),
-        "output_operation_admission_identity": _require_identity(
-            output_operation_admission_identity,
-            "output_operation_admission_identity",
-        ),
-    }
     unsigned: dict[str, Any] = {
         "schema_version": RUNTIME_LIVE_ATTEMPT_ADMISSION_SCHEMA_VERSION,
         "record_kind": RUNTIME_LIVE_ATTEMPT_ADMISSION_KIND,
@@ -322,6 +297,145 @@ def build_runtime_live_attempt_admission_bytes(
         or len(raw) > RUNTIME_LIVE_ATTEMPT_ADMISSION_MAX_BYTES
     ):
         raise ValueError("runtime_live_admission_document_invalid")
+    return raw
+
+
+def build_runtime_live_attempt_admission_bytes(
+    *,
+    run_id: str,
+    apply_attempt_id: str,
+    retention_owner_run_id: str,
+    session_root: Path,
+    session_root_identity: PathIdentity,
+    operator_profile_sha256: str,
+    state_root_identity: PathIdentity,
+    runtime_root: Path,
+    runtime_root_identity: PathIdentity,
+    output_base_root: Path,
+    output_base_root_identity: PathIdentity,
+    output_root: Path,
+    output_root_identity: PathIdentity,
+    output_operation_admission_path: Path,
+    output_operation_admission_identity: PathIdentity,
+    output_operation_admission_sha256: str,
+    output_child_binding_sha256: str,
+    publication_revision: str,
+    publication_content_root_sha256: str,
+    package_root_sha256: str,
+    pre_apply_runtime_snapshot_sha256: str,
+    apply_invocation_sha256: str,
+    retention_fence_path: Path,
+) -> bytes:
+    """Build the exact document after binding every required live path."""
+
+    paths = {
+        "session_root": Path(session_root),
+        "runtime_root": Path(runtime_root),
+        "output_base_root": Path(output_base_root),
+        "output_root": Path(output_root),
+        "output_operation_admission_path": Path(
+            output_operation_admission_path
+        ),
+        "retention_fence_path": Path(retention_fence_path),
+    }
+    identities = {
+        "session_root_identity": _require_identity(
+            session_root_identity,
+            "session_root_identity",
+        ),
+        "state_root_identity": _require_identity(
+            state_root_identity,
+            "state_root_identity",
+        ),
+        "runtime_root_identity": _require_identity(
+            runtime_root_identity,
+            "runtime_root_identity",
+        ),
+        "output_base_root_identity": _require_identity(
+            output_base_root_identity,
+            "output_base_root_identity",
+        ),
+        "output_root_identity": _require_identity(
+            output_root_identity,
+            "output_root_identity",
+        ),
+        "output_operation_admission_identity": _require_identity(
+            output_operation_admission_identity,
+            "output_operation_admission_identity",
+        ),
+    }
+    raw = _project_runtime_live_attempt_admission_bytes(
+        run_id=run_id,
+        apply_attempt_id=apply_attempt_id,
+        retention_owner_run_id=retention_owner_run_id,
+        session_root=paths["session_root"],
+        session_root_identity=identities["session_root_identity"],
+        operator_profile_sha256=operator_profile_sha256,
+        state_root_identity=identities["state_root_identity"],
+        runtime_root=paths["runtime_root"],
+        runtime_root_identity=identities["runtime_root_identity"],
+        output_base_root=paths["output_base_root"],
+        output_base_root_identity=identities["output_base_root_identity"],
+        output_root=paths["output_root"],
+        output_root_identity=identities["output_root_identity"],
+        output_operation_admission_path=paths[
+            "output_operation_admission_path"
+        ],
+        output_operation_admission_identity=(
+            identities["output_operation_admission_identity"]
+        ),
+        output_operation_admission_sha256=(
+            output_operation_admission_sha256
+        ),
+        output_child_binding_sha256=output_child_binding_sha256,
+        publication_revision=publication_revision,
+        publication_content_root_sha256=publication_content_root_sha256,
+        package_root_sha256=package_root_sha256,
+        pre_apply_runtime_snapshot_sha256=(
+            pre_apply_runtime_snapshot_sha256
+        ),
+        apply_invocation_sha256=apply_invocation_sha256,
+        retention_fence_path=paths["retention_fence_path"],
+    )
+    _require_existing_directory_binding(
+        runtime_live_attempt_admission_path().parent,
+        expected_identity=identities["state_root_identity"],
+        field="state_root",
+    )
+    for path, identity, field in (
+        (
+            paths["session_root"],
+            identities["session_root_identity"],
+            "session_root",
+        ),
+        (
+            paths["runtime_root"],
+            identities["runtime_root_identity"],
+            "runtime_root",
+        ),
+        (
+            paths["output_base_root"],
+            identities["output_base_root_identity"],
+            "output_base_root",
+        ),
+        (
+            paths["output_root"],
+            identities["output_root_identity"],
+            "output_root",
+        ),
+    ):
+        _require_existing_directory_binding(
+            path,
+            expected_identity=identity,
+            field=field,
+        )
+    _require_existing_file_binding(
+        paths["output_operation_admission_path"],
+        expected_identity=identities[
+            "output_operation_admission_identity"
+        ],
+        field="output_operation_admission_path",
+    )
     return raw
 
 

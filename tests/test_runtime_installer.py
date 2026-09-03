@@ -1697,8 +1697,25 @@ def test_old_success_accepts_exact_owner_retirement_tombstone_after_later_cleanu
     )
 
     assert recovered.status == "committed_receipt_pending"
+    assert recovered.receipt_path is None
     assert recovered.retained_attempt_record_path == retention_path
     assert recovered.target_owner_journal_path == old_path
+
+    successor_receipt = runtime_installer._receipt_path(
+        runtime_root,
+        runtime_installer._state_key("ShadowPriest"),
+    )
+    successor_receipt.parent.mkdir(parents=True, exist_ok=True)
+    successor_receipt.write_bytes(b'{"successor":"receipt"}\n')
+    recovered_with_successor_receipt = runtime_installer.recover_runtime_attempt(
+        runtime_root,
+        transaction_id=old_id,
+        expected_retention_owner_run_id=retention_owner,
+        expected_package_root_sha256="sha256:" + "a" * 64,
+        expected_deck_name="ShadowPriest",
+    )
+    assert recovered_with_successor_receipt.status == "committed_receipt_pending"
+    assert recovered_with_successor_receipt.receipt_path is None
 
     tombstone_path.write_bytes(b"{}\n")
     with pytest.raises(ValueError, match="owner_retirement.*(tombstone|fallback)"):
@@ -3592,8 +3609,10 @@ def test_apply_uses_full_runtime_subtree_digest_and_is_idempotent(
     assert plan.versioned_config_dir == expected_name
     assert plan.package_root_sha256 == package_digest
     assert first.status == "applied"
+    assert first.runtime_write_performed is True
     assert first.config_dir == expected_name
     assert repeated.status == "already_current"
+    assert repeated.runtime_write_performed is False
     target = runtime_root / "CustomConfig" / expected_name
     actual_files = {
         path.relative_to(target).as_posix(): path.read_bytes()
@@ -3627,6 +3646,41 @@ def test_apply_uses_full_runtime_subtree_digest_and_is_idempotent(
     assert payload["state_key"] == deck.state_key
     assert payload["source_manifest_sha256"] == published.content_root_sha256
     assert list((runtime_root / ".hsconfig" / "receipts").rglob("*.json")) == [receipt]
+
+
+def test_already_current_reports_recreated_apply_lock_as_runtime_write(
+    tmp_path: Path,
+) -> None:
+    published, runtime_root, _rendered = publish_fixture(tmp_path)
+    plan = plan_runtime_install(
+        published_output=published,
+        runtime_root=runtime_root,
+    )
+    installed = install_runtime_package(plan)
+    apply_lock = runtime_root / ".hsconfig" / "apply.lock"
+    assert installed.runtime_write_performed is True
+    assert apply_lock.read_bytes() == b""
+
+    apply_lock.unlink()
+    assert not apply_lock.exists()
+
+    repeated = install_runtime_package(plan)
+
+    assert repeated.status == "already_current"
+    assert repeated.runtime_write_performed is True
+    assert apply_lock.read_bytes() == b""
+
+
+def test_runtime_install_result_legacy_constructor_defaults_to_no_write() -> None:
+    result = runtime_installer.RuntimeInstallResult(
+        status="already_current",
+        config_dir="deck--sha256-" + ("a" * 64),
+        package_root_sha256="a" * 64,
+        previous_config_dir=None,
+        receipt_path=None,
+    )
+
+    assert result.runtime_write_performed is False
 
 
 def test_state_key_is_stable_and_path_component_boundaries_are_exact(
@@ -4458,6 +4512,406 @@ def _unit_journal(
     )
 
 
+def _ownerless_committed_projection_unit_context(
+    tmp_path: Path,
+) -> SimpleNamespace:
+    runtime_root = tmp_path / "runtime"
+    transactions = runtime_root / ".hsconfig" / "transactions"
+    attempt_retention = runtime_root / ".hsconfig" / "attempt-retention"
+    state_receipts = runtime_root / ".hsconfig" / "state-receipts"
+    transactions.mkdir(parents=True)
+    attempt_retention.mkdir()
+    state_receipts.mkdir()
+    attempt_id = "1" * 32
+    run_id = "2" * 32
+    journal_path = runtime_transaction_journal_path(runtime_root, attempt_id)
+    journal_identity = (11, 12, 13)
+    journal_sha256 = "sha256:" + "3" * 64
+    journal_size = 137
+    target_identity = (21, 22, 23)
+    journal = _unit_journal(
+        phase=RuntimeTransactionPhase.FINALIZED,
+        target_identity=target_identity,
+        owns_target=False,
+        transaction_id=attempt_id,
+    )
+    target_path = runtime_root / journal.target_path
+    owner_path = runtime_transaction_journal_path(runtime_root, "4" * 32)
+    owner_identity = (31, 32, 33)
+    owner_sha256 = "sha256:" + "5" * 64
+    attempt_path = runtime_installer._runtime_attempt_retention_path(
+        runtime_root,
+        attempt_id,
+    )
+    attempt_identity = (41, 42, 43)
+    attempt_raw = runtime_installer.build_runtime_attempt_retention_bytes(
+        runtime_root=runtime_root,
+        state="FINALIZED",
+        apply_attempt_id=attempt_id,
+        retention_owner_run_id=run_id,
+        journal_path=journal_path,
+        journal_identity=journal_identity,
+        journal_sha256=journal_sha256,
+        package_root_sha256="sha256:" + journal.package_root_sha256,
+        target_path=target_path,
+        target_identity=target_identity,
+        owns_target=False,
+        target_owner_journal_path=owner_path,
+        target_owner_journal_identity=owner_identity,
+        target_owner_journal_sha256=owner_sha256,
+        planned_journal_path=journal_path,
+        planned_journal_size=journal_size,
+        planned_journal_sha256=journal_sha256,
+        candidate_path=None,
+        candidate_parent_identity=None,
+        candidate_identity=None,
+    )
+    attempt_sha256 = "sha256:" + hashlib.sha256(attempt_raw).hexdigest()
+    resolution = {
+        field_name: None
+        for field_name in runtime_installer._APPLY_RECOVERY_FIELDS
+        if field_name != "content_sha256"
+    }
+    resolution.update(
+        {
+            "run_id": run_id,
+            "apply_attempt_id": attempt_id,
+            "action_index": 17,
+            "resolved_physical_disposition": "COMMITTED_RECOVERY_PENDING",
+            "successor_attempt_record_path": str(attempt_path),
+            "successor_attempt_record_identity": attempt_identity,
+            "successor_attempt_record_sha256": attempt_sha256,
+            "successor_journal_path": str(journal_path),
+            "successor_journal_identity": journal_identity,
+            "successor_journal_sha256": journal_sha256,
+            "predecessor_target_owner_journal_path": str(owner_path),
+            "predecessor_target_owner_journal_identity": owner_identity,
+            "predecessor_target_owner_journal_sha256": owner_sha256,
+            "deck_config_ini_sha256": "sha256:" + "7" * 64,
+            "runtime_state_sha256": "sha256:" + "8" * 64,
+            "last_apply_receipt_sha256": "sha256:" + "9" * 64,
+            "runtime_match_status": "not_run",
+        }
+    )
+    admission = SimpleNamespace(
+        run_id=run_id,
+        apply_attempt_id=attempt_id,
+        apply_invocation_sha256="sha256:" + "a" * 64,
+        admission_path=runtime_root / ".hsconfig" / "live-attempt.json",
+        admission_parent_identity=(51, 52, 53),
+        admission_identity=(61, 62, 63),
+        admission_sha256="sha256:" + "b" * 64,
+        runtime_root=runtime_root,
+        runtime_root_identity=path_identity(runtime_root),
+    )
+    return SimpleNamespace(
+        admission=admission,
+        resolution=resolution,
+        journal=journal,
+        journal_path=journal_path,
+        journal_size=journal_size,
+        transactions_identity=path_identity(transactions),
+        attempt_retention_identity=path_identity(attempt_retention),
+        state_receipts_identity=path_identity(state_receipts),
+        runtime_internal_identity=path_identity(runtime_root / ".hsconfig"),
+        attempt_path=attempt_path,
+        attempt_identity=attempt_identity,
+        attempt_raw=attempt_raw,
+        attempt_sha256=attempt_sha256,
+    )
+
+
+def _bind_ownerless_attempt_read(
+    monkeypatch: pytest.MonkeyPatch,
+    context: SimpleNamespace,
+) -> None:
+    parsed_attempt = runtime_installer._runtime_attempt_retention_from_raw(
+        context.attempt_raw,
+        runtime_root=context.admission.runtime_root,
+    )
+
+    def read_attempt(
+        path: Path,
+        *,
+        expected_parent_identity: tuple[int, int, int],
+        maximum_size: int,
+    ) -> tuple[bytes, tuple[int, int, int]]:
+        assert path == context.attempt_path
+        assert expected_parent_identity == context.attempt_retention_identity
+        assert maximum_size == runtime_installer.RUNTIME_ATTEMPT_RETENTION_MAX_BYTES
+        return context.attempt_raw, context.attempt_identity
+
+    def parse_attempt(
+        raw: bytes,
+        *,
+        runtime_root: Path,
+    ) -> Any:
+        assert raw == context.attempt_raw
+        assert runtime_root == context.admission.runtime_root
+        return parsed_attempt
+
+    monkeypatch.setattr(
+        runtime_installer,
+        "_read_exact_runtime_external_file",
+        read_attempt,
+    )
+    monkeypatch.setattr(
+        runtime_installer,
+        "_runtime_attempt_retention_from_raw",
+        parse_attempt,
+    )
+
+
+def _forbid_second_journal_stat(
+    monkeypatch: pytest.MonkeyPatch,
+    journal_path: Path,
+) -> None:
+    original = Path.stat
+
+    def guarded_stat(path: Path, *args: object, **kwargs: object) -> os.stat_result:
+        if path == journal_path:
+            raise AssertionError("journal was observed a second time")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", guarded_stat)
+
+
+def test_terminal_ownerless_committed_projection_uses_bound_journal_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _ownerless_committed_projection_unit_context(tmp_path)
+    _bind_ownerless_attempt_read(monkeypatch, context)
+    _forbid_second_journal_stat(monkeypatch, context.journal_path)
+
+    projection = runtime_installer._terminal_ownerless_committed_projection(
+        resolution=context.resolution,
+        runtime_admission=context.admission,
+        journal=context.journal,
+        journal_size=context.journal_size,
+        attempt_retention_parent_identity=(
+            context.attempt_retention_identity
+        ),
+    )
+
+    assert projection["expected_action"] == "observe_committed"
+    assert projection["successor_journal_path"] == str(context.journal_path)
+    assert projection["successor_attempt_record_path"] == str(
+        context.attempt_path
+    )
+
+
+def test_terminal_ownerless_finalize_attempt_projection_uses_bound_journal_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _ownerless_committed_projection_unit_context(tmp_path)
+    staging_path = context.attempt_path.with_name(
+        f"{context.attempt_path.name}.staged"
+    )
+    inner_temp_path = context.attempt_path.with_name(
+        f".{context.attempt_path.name}.staged.live-start-atomic.tmp"
+    )
+    context.resolution.update(
+        {
+            "allowed_attempt_record_successor_state": "FINALIZED",
+            "external_file_action": {
+                "action_index": context.resolution["action_index"],
+                "stage": "STAGING_BOUND",
+                "action_kind": "finalize_attempt_record",
+                "final_path": str(context.attempt_path),
+                "staging_path": str(staging_path),
+                "inner_temp_path": str(inner_temp_path),
+                "parent_identity": context.attempt_retention_identity,
+                "predecessor_state": "exact",
+                "predecessor_identity": context.attempt_identity,
+                "predecessor_sha256": context.attempt_sha256,
+                "planned_successor_size": len(context.attempt_raw),
+                "planned_successor_sha256": context.attempt_sha256,
+                "staging_identity": context.attempt_identity,
+                "staging_size": len(context.attempt_raw),
+                "staging_sha256": context.attempt_sha256,
+            },
+        }
+    )
+    _bind_ownerless_attempt_read(monkeypatch, context)
+    _forbid_second_journal_stat(monkeypatch, context.journal_path)
+
+    projection = runtime_installer._terminal_ownerless_suffix_projection(
+        resolution=context.resolution,
+        runtime_admission=context.admission,
+        journal=context.journal,
+        journal_size=context.journal_size,
+        attempt_retention_parent_identity=(
+            context.attempt_retention_identity
+        ),
+        runtime_internal_identity=context.runtime_internal_identity,
+        transactions_parent_identity=context.transactions_identity,
+        state_receipts_parent_identity=context.state_receipts_identity,
+        suffix_kind="attempt",
+        expected_action="finalize_attempt_record",
+    )
+
+    assert projection["expected_action"] == "finalize_attempt_record"
+    assert projection["successor_attempt_record_identity"] == (
+        context.attempt_identity
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "state"),
+    (
+        ("bind_candidate_fence", "CANDIDATE_BOUND"),
+        ("finalize_attempt_record", "FINALIZED"),
+    ),
+)
+def test_retention_commit_reentry_uses_observed_journal_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    state: str,
+) -> None:
+    digest = "a" * 64
+    attempt_id = "1" * 32
+    run_id = "2" * 32
+    journal_path = tmp_path / "transactions" / f"{attempt_id}.json"
+    journal_identity = (11, 12, 13)
+    journal_sha256 = "sha256:" + "3" * 64
+    journal_size = 139
+    record_path = tmp_path / "attempt-retention" / f"{attempt_id}.json"
+    staging_path = record_path.with_name(f"{record_path.name}.staged")
+    inner_temp_path = record_path.with_name(
+        f".{record_path.name}.staged.live-start-atomic.tmp"
+    )
+    record_identity = (21, 22, 23)
+    target_identity = (31, 32, 33)
+    owner_path = tmp_path / "transactions" / f"{'4' * 32}.json"
+    owner_identity = (41, 42, 43)
+    owner_sha256 = "sha256:" + "5" * 64
+    candidate_path = tmp_path / "staging" / attempt_id
+    candidate_parent_identity = (51, 52, 53)
+    candidate_identity = (61, 62, 63)
+    record = SimpleNamespace(
+        state=state,
+        apply_attempt_id=attempt_id,
+        retention_owner_run_id=run_id,
+        package_root_sha256="sha256:" + digest,
+        journal_path=journal_path,
+        journal_identity=journal_identity,
+        journal_sha256=journal_sha256,
+        planned_journal_path=journal_path,
+        planned_journal_size=journal_size,
+        planned_journal_sha256=journal_sha256,
+        target_path=(
+            tmp_path / "CustomConfig" / f"Deck--sha256-{digest}"
+            if state == "FINALIZED"
+            else None
+        ),
+        target_identity=(target_identity if state == "FINALIZED" else None),
+        owns_target=False,
+        target_owner_journal_path=owner_path,
+        target_owner_journal_identity=owner_identity,
+        target_owner_journal_sha256=owner_sha256,
+        candidate_path=(candidate_path if state == "CANDIDATE_BOUND" else None),
+        candidate_parent_identity=(
+            candidate_parent_identity if state == "CANDIDATE_BOUND" else None
+        ),
+        candidate_identity=(
+            candidate_identity if state == "CANDIDATE_BOUND" else None
+        ),
+    )
+    recovery = {
+        "run_id": run_id,
+        "apply_attempt_id": attempt_id,
+        "renamed_target_path": str(
+            tmp_path / "CustomConfig" / f"Deck--sha256-{digest}"
+        ),
+        "successor_renamed_target_identity": target_identity,
+        "install_route": "prior_owner",
+        "successor_journal_path": str(journal_path),
+        "successor_journal_identity": journal_identity,
+        "successor_journal_sha256": journal_sha256,
+        "predecessor_target_owner_journal_path": str(owner_path),
+        "predecessor_target_owner_journal_identity": owner_identity,
+        "predecessor_target_owner_journal_sha256": owner_sha256,
+        "candidate_path": str(candidate_path),
+        "candidate_parent_identity": candidate_parent_identity,
+        "successor_candidate_identity": candidate_identity,
+        "external_file_action": {
+            "stage": "STAGING_BOUND",
+            "action_kind": action,
+            "final_path": str(record_path),
+            "staging_path": str(staging_path),
+            "inner_temp_path": str(inner_temp_path),
+            "staging_identity": record_identity,
+            "staging_size": 17,
+            "staging_sha256": "sha256:" + "6" * 64,
+            "planned_successor_size": 17,
+            "planned_successor_sha256": "sha256:" + "6" * 64,
+        },
+    }
+    observation = SimpleNamespace(
+        retention=SimpleNamespace(
+            path=record_path,
+            identity=record_identity,
+            raw_sha256="sha256:" + "6" * 64,
+            record=record,
+        ),
+        transaction=SimpleNamespace(journal_size=journal_size),
+    )
+    _forbid_second_journal_stat(monkeypatch, journal_path)
+
+    assert runtime_installer._is_exact_retention_commit_action_before_cas(
+        recovery=recovery,
+        observation=observation,
+        action=action,
+    )
+
+
+@pytest.mark.parametrize("runtime_match_status", ("matched", "mismatch"))
+def test_ownerless_committed_projection_rejects_match_before_attempt_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_match_status: str,
+) -> None:
+    def forbidden_read(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("attempt record read before cursor preflight")
+
+    monkeypatch.setattr(
+        runtime_installer,
+        "_read_exact_runtime_external_file",
+        forbidden_read,
+    )
+    with pytest.raises(
+        ValueError,
+        match="^runtime_terminal_committed_cursor_invalid$",
+    ):
+        runtime_installer._terminal_ownerless_committed_projection(
+            resolution={
+                "runtime_match_status": runtime_match_status,
+                "runtime_match_sha256": "sha256:" + "c" * 64,
+            },
+            runtime_admission=SimpleNamespace(runtime_root=tmp_path),
+            journal=object(),
+            journal_size=1,
+            attempt_retention_parent_identity=(1, 2, 3),
+        )
+
+
+def test_ownerless_committed_cursor_preflight_precedes_journal_read() -> None:
+    source = inspect.getsource(
+        runtime_installer.recover_runtime_attempt_from_pair
+    )
+    terminal_source = source[source.index("def advance_terminal") :]
+    preflight_index = terminal_source.index(
+        "_require_terminal_ownerless_committed_cursor_preflight("
+    )
+    journal_read_index = terminal_source.index(
+        "journal_raw, journal_identity = _read_exact_runtime_external_file("
+    )
+    assert preflight_index < journal_read_index
+
+
 def test_install_locked_reuses_existing_owned_target(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5031,6 +5485,7 @@ def test_repeated_install_recreates_missing_receipt(
     repeated = install_runtime_package(plan)
 
     assert repeated.status == "already_current"
+    assert repeated.runtime_write_performed is True
     assert repeated.receipt_path is not None
     assert repeated.receipt_path.is_file()
 
@@ -6161,6 +6616,7 @@ def _assert_caller_owned_already_current_attempt_retains_noop_journal_until_ack(
     repeated = install_runtime_package(plan, transaction_id=transaction_id)
 
     assert repeated.status == "already_current"
+    assert repeated.runtime_write_performed is True
     journals = {
         row.transaction_id: row
         for row in load_runtime_transaction_journals(runtime_root)
@@ -6796,6 +7252,51 @@ def test_controller_pair_entry_creates_only_hsconfig_and_apply_lock_before_apply
             }
             assert (runtime_root / ".hsconfig" / "apply.lock").stat().st_size == 0
             assert not (runtime_root / ".hsconfig" / "transactions").exists()
+
+
+def test_runtime_apply_no_bootstrap_rejects_lock_replacement_before_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    metadata_root = runtime_root / ".hsconfig"
+    metadata_root.mkdir(parents=True)
+    apply_lock = metadata_root / "apply.lock"
+    apply_lock.write_bytes(b"")
+    original_identity = path_identity(apply_lock)
+    replacement = metadata_root / "replacement.lock"
+    replacement.write_bytes(b"")
+    replacement_identity = path_identity(replacement)
+    assert replacement_identity != original_identity
+    real_capture = runtime_installer.capture_plain_ancestor_guard
+    replaced = False
+
+    def replace_before_guard(path: Path) -> object:
+        nonlocal replaced
+        if not replaced and Path(path) == apply_lock:
+            apply_lock.unlink()
+            replacement.replace(apply_lock)
+            replaced = True
+        return real_capture(path)
+
+    monkeypatch.setattr(
+        runtime_installer,
+        "capture_plain_ancestor_guard",
+        replace_before_guard,
+    )
+
+    with pytest.raises(ValueError, match="^runtime_apply_lock_invalid$"):
+        with runtime_installer._lease_runtime_apply_after_gates(
+            runtime_root=runtime_root,
+            expected_root_identity=path_identity(runtime_root),
+            require_gates=lambda: None,
+            allow_bootstrap=False,
+        ):
+            pass
+
+    assert replaced is True
+    assert path_identity(apply_lock) == replacement_identity
+    assert apply_lock.read_bytes() == b""
 
 
 def test_controller_apply_pair_rejects_independently_acquired_or_mixed_leases(
@@ -9581,6 +10082,7 @@ def test_paired_recovery_rejects_evidence_or_authority_subclasses_before_observe
             )
     assert forbidden_calls == []
 
+
     class DishonestObservationReceipt(
         live_start_session.RuntimeObservationReceipt
     ):
@@ -9653,6 +10155,66 @@ def test_paired_recovery_rejects_evidence_or_authority_subclasses_before_observe
         }
         with pytest.raises(ValueError, match="family_nullability_invalid"):
             runtime_installer.RuntimeAttemptRecovery(**values)
+
+
+def test_recovery_pair_rejects_equal_distinct_runtime_admission_before_observer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.live_start_session as live_start_session
+
+    fixture = _controller_pair_post_handoff_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("LOCALAPPDATA", str(fixture.pipeline.local_app_data))
+    with _controller_pair_reentry_capabilities(fixture) as capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as pair:
+            copied_admission = replace(fixture.runtime_admission)
+            assert copied_admission == fixture.runtime_admission
+            assert copied_admission is not fixture.runtime_admission
+            authorization = (
+                live_start_session._authorize_runtime_observation_under_lock(
+                    session_lease=capabilities.session_lease,
+                    expected_session=capabilities.prepared_session,
+                    observation_family="nonterminal_apply",
+                    apply_attempt_id=fixture.runtime_admission.apply_attempt_id,
+                )
+            )
+            observer_calls: list[str] = []
+
+            def forbidden_observer(*args: Any, **kwargs: Any) -> Any:
+                del args, kwargs
+                observer_calls.append("runtime")
+                raise AssertionError("distinct-admission-reached-runtime-observer")
+
+            monkeypatch.setattr(
+                runtime_installer,
+                "_observe_exact_paired_runtime_attempt",
+                forbidden_observer,
+            )
+
+            with pytest.raises(
+                ValueError,
+                match="^runtime_attempt_recovery_pair_mismatch$",
+            ):
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=pair,
+                    transaction_id=fixture.runtime_admission.apply_attempt_id,
+                    expected_retention_owner_run_id=(
+                        fixture.runtime_admission.retention_owner_run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=capabilities.prepared_session.deck_name,
+                    runtime_admission=copied_admission,
+                    observation_family="nonterminal_apply",
+                    runtime_observation_authorization=authorization,
+                )
+            assert observer_calls == []
 
 
 @pytest.mark.parametrize(
@@ -13923,6 +14485,2973 @@ def test_prior_owned_target_crash_after_ini_before_journal_recovers_as_commit(
     assert resumed.recovery["last_apply_receipt_sha256"] is not None
 
 
+def test_terminal_ownerless_commit_ini_journal_core_advances_one_physical_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert hasattr(
+        runtime_installer,
+        "_commit_suffix_journal_successor_changes",
+    )
+    result = _exercise_prior_owner_route(
+        tmp_path,
+        monkeypatch,
+        max_actions=11,
+    )
+    recovery = result.recovery
+    external = recovery["external_file_action"]
+    assert recovery["expected_action"] == "commit_ini_journal"
+    assert isinstance(external, Mapping)
+    assert external["stage"] == "STAGING_BOUND"
+    assert external["action_kind"] == "commit_ini_journal"
+    layout = result.cursor.runtime_layout_bootstrap
+    assert isinstance(layout, Mapping)
+    layout_identities = (
+        runtime_installer._validated_complete_layout_successor_identities(
+            layout=layout,
+            runtime_root=result.fixture.runtime_admission.runtime_root,
+        )
+    )
+    runtime_internal_identity = path_identity(
+        result.fixture.runtime_admission.runtime_root / ".hsconfig"
+    )
+    session_path = result.fixture.pipeline.session_root / "session.json"
+    session_before = session_path.read_bytes()
+
+    changes = runtime_installer._commit_suffix_journal_successor_changes(
+        recovery,
+        action="commit_ini_journal",
+        transaction_id=result.fixture.runtime_admission.apply_attempt_id,
+        layout_identities=layout_identities,
+        runtime_internal_identity=runtime_internal_identity,
+        state_key=runtime_installer._state_key(result.plan.deck_name),
+    )
+
+    assert session_path.read_bytes() == session_before
+    assert changes["action_index"] == int(recovery["action_index"]) + 1
+    assert changes["expected_action"] == "materialize_file_action_staging"
+    assert changes["planned_journal_successor_phase"] == "STATE_COMMITTED"
+    successor_external = changes["external_file_action"]
+    assert isinstance(successor_external, Mapping)
+    assert successor_external["stage"] == "PLANNED"
+    assert successor_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert Path(str(successor_external["final_path"])) == (
+        result.fixture.runtime_admission.runtime_root
+        / ".hsconfig"
+        / "state.json"
+    )
+    journal_path = Path(str(changes["successor_journal_path"]))
+    journal_raw = journal_path.read_bytes()
+    journal = runtime_installer.parse_runtime_transaction_journal_bytes(
+        journal_raw,
+        expected_transaction_id=(
+            result.fixture.runtime_admission.apply_attempt_id
+        ),
+    )
+    assert journal.phase == RuntimeTransactionPhase.INI_COMMITTED
+    assert path_identity(journal_path) == tuple(
+        changes["successor_journal_identity"]
+    )
+    assert "sha256:" + hashlib.sha256(journal_raw).hexdigest() == changes[
+        "successor_journal_sha256"
+    ]
+
+
+def test_terminal_ownerless_prior_owner_commit_ini_reenters_after_write_before_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.live_start_session as live_start_session
+    from tests import test_live_start_session as session_tests
+
+    result = _exercise_prior_owner_route(
+        tmp_path,
+        monkeypatch,
+        max_actions=11,
+    )
+    fixture = result.fixture
+    source = result.cursor
+    source_recovery = source.apply_recovery
+    assert source_recovery is not None
+    source_external = source_recovery["external_file_action"]
+    assert source_recovery["install_route"] == "prior_owner"
+    assert source_recovery["expected_action"] == "commit_ini_journal"
+    assert source_recovery["stable_physical_disposition"] is None
+    assert source_recovery["owner_retirement"] is None
+    assert isinstance(source_external, Mapping)
+    assert source_external["stage"] == "STAGING_BOUND"
+    assert source_external["action_kind"] == "commit_ini_journal"
+    assert source_external["action_index"] == source_recovery["action_index"]
+    assert source_recovery["planned_journal_successor_phase"] == (
+        "INI_COMMITTED"
+    )
+
+    journal_path = Path(str(source_external["final_path"]))
+    staging_path = Path(str(source_external["staging_path"]))
+    inner_temp_path = Path(str(source_external["inner_temp_path"]))
+    journal_before = (path_identity(journal_path), journal_path.read_bytes())
+    staging_before = (path_identity(staging_path), staging_path.read_bytes())
+    assert not inner_temp_path.exists()
+    assert journal_path == Path(
+        str(source_recovery["successor_journal_path"])
+    )
+    assert tuple(source_external["predecessor_identity"]) == journal_before[0]
+    assert source_external["predecessor_sha256"] == (
+        "sha256:" + hashlib.sha256(journal_before[1]).hexdigest()
+    )
+    assert tuple(source_external["staging_identity"]) == staging_before[0]
+    assert source_external["planned_successor_size"] == len(
+        staging_before[1]
+    )
+    assert source_external["planned_successor_sha256"] == (
+        "sha256:" + hashlib.sha256(staging_before[1]).hexdigest()
+    )
+    assert source_external["planned_successor_sha256"] == source_recovery[
+        "planned_journal_successor_sha256"
+    ]
+    prepared_journal = (
+        runtime_installer.parse_runtime_transaction_journal_bytes(
+            journal_before[1],
+            expected_transaction_id=(
+                fixture.runtime_admission.apply_attempt_id
+            ),
+        )
+    )
+    committed_successor_journal = (
+        runtime_installer.parse_runtime_transaction_journal_bytes(
+            staging_before[1],
+            expected_transaction_id=(
+                fixture.runtime_admission.apply_attempt_id
+            ),
+        )
+    )
+    target_identity = tuple(
+        source_recovery["successor_renamed_target_identity"]
+    )
+    assert prepared_journal.phase == RuntimeTransactionPhase.PREPARED
+    assert prepared_journal.target_identity is None
+    assert prepared_journal.owns_target is False
+    assert committed_successor_journal.phase == (
+        RuntimeTransactionPhase.INI_COMMITTED
+    )
+    assert committed_successor_journal.target_identity == target_identity
+    assert committed_successor_journal.owns_target is False
+
+    monkeypatch.setenv(
+        "LOCALAPPDATA",
+        str(fixture.pipeline.local_app_data),
+    )
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=source,
+    ) as capabilities:
+        resolved_disposition = "UNKNOWN_REQUIRES_RECOVERY"
+        closed_value = runtime_installer._plain_json_value(
+            _expected_terminal_observation_successor(
+                source_recovery,
+                disposition=resolved_disposition,
+            )
+        )
+        assert isinstance(closed_value, dict)
+        closed_value.pop("content_sha256")
+        closed_value["recovery_stage"] = "CLOSED"
+        closed_recovery = session_tests._seal_literal_document(closed_value)
+        assert tuple(
+            closed_recovery["predecessor_renamed_target_identity"]
+        ) == target_identity
+        assert closed_recovery["successor_renamed_target_identity"] is None
+        closed_session_value = source.to_value()
+        closed_session_value.pop("content_sha256")
+        closed_session_value["apply_recovery"] = closed_recovery
+        closed = session_tests._publish_session_fixture_under_lock(
+            lease=capabilities.session_lease,
+            predecessor=source,
+            value=closed_session_value,
+        )
+        unique_cards = (
+            live_start_session._frozen_main_roster_count_under_lock(
+                session_lease=capabilities.session_lease,
+                session_value=closed,
+            )
+        )
+        intent = session_tests._result_intent(
+            cursor=closed,
+            success=False,
+            unique_cards=unique_cards,
+            configured_cards=unique_cards,
+            unconfigured_cards=0,
+            changes={
+                "terminal_status": "APPLIED_BUT_NOT_VERIFIED",
+                "raw_apply_status": None,
+                "error_code": "runtime_recovery_required",
+                "retained_safe_state": "ATTEMPT_EVIDENCE_RETAINED",
+            },
+        )
+        result_bound = live_start_session.bind_result_intent_under_lock(
+            session_lease=capabilities.session_lease,
+            expected_session=closed,
+            result_intent=intent,
+        )
+        result_bound = session_tests._install_result_artifacts_under_lock(
+            root=capabilities.session_lease.session_root,
+            lease=capabilities.session_lease,
+            cursor=result_bound,
+        )
+        terminal = live_start_session.record_terminal_status_under_lock(
+            session_lease=capabilities.session_lease,
+            expected_result_session=result_bound,
+        )
+        prepared_resolution = {
+            field_name: runtime_installer._plain_json_value(
+                closed_recovery.get(field_name)
+            )
+            for field_name in (
+                live_start_session._TERMINAL_RESOLUTION_FIELDS
+                - {"content_sha256"}
+            )
+        }
+        prepared_resolution.update(
+            {
+                "schema_version": 1,
+                "resolution_kind": (
+                    "live_start_terminal_resolution_evidence"
+                ),
+                "run_id": terminal.run_id,
+                "apply_attempt_id": (
+                    fixture.runtime_admission.apply_attempt_id
+                ),
+                "action_index": source_recovery["action_index"],
+                "external_file_action": (
+                    runtime_installer._plain_json_value(source_external)
+                ),
+                "allowed_journal_successor_phase": source_recovery[
+                    "planned_journal_successor_phase"
+                ],
+                "resolved_physical_disposition": resolved_disposition,
+            }
+        )
+        for field_name in (
+            "planned_journal_successor_path",
+            "planned_journal_successor_parent_identity",
+            "planned_journal_successor_phase",
+            "planned_journal_successor_size",
+            "planned_journal_successor_sha256",
+        ):
+            prepared_resolution[field_name] = (
+                runtime_installer._plain_json_value(
+                    source_recovery[field_name]
+                )
+            )
+        resolution_evidence = (
+            live_start_session.TerminalResolutionEvidence(
+                live_start_session._seal_terminal_resolution(
+                    prepared_resolution
+                )
+            )
+        )
+        terminal_intent = terminal.result_intent
+        assert isinstance(terminal_intent, Mapping)
+        retirement_fields = {
+            field_name: runtime_installer._plain_json_value(
+                terminal_intent.get(field_name)
+            )
+            for field_name in (
+                "runtime_admission_path",
+                "runtime_admission_parent_identity",
+                "runtime_admission_identity",
+                "runtime_admission_sha256",
+                "retained_attempt_record_path",
+                "retained_attempt_record_identity",
+                "retained_attempt_record_sha256",
+                "retained_journal_path",
+                "retained_journal_identity",
+                "retained_journal_sha256",
+                "retained_target_owner_journal_path",
+                "retained_target_owner_journal_identity",
+                "retained_target_owner_journal_sha256",
+                "retained_candidate_identity",
+            )
+        }
+        sealed_retirement = live_start_session.seal_embedded_document(
+            "terminal_retirement",
+            {
+                "schema_version": 1,
+                "retirement_kind": "live_start_terminal_retirement",
+                "run_id": terminal.run_id,
+                "apply_attempt_id": (
+                    fixture.runtime_admission.apply_attempt_id
+                ),
+                "operation": "release_resolved_terminal",
+                "stage": "RECOVERY_PREPARED",
+                "source_terminal_session_sha256": (
+                    terminal.content_sha256
+                ),
+                "result_intent_sha256": terminal_intent[
+                    "content_sha256"
+                ],
+                "terminal_resolution_evidence": (
+                    resolution_evidence.value
+                ),
+                **retirement_fields,
+            },
+        )
+        terminal_value = terminal.to_value()
+        terminal_value.pop("content_sha256")
+        terminal_value["closed_apply_recovery_commitment"] = None
+        terminal_value["terminal_retirement"] = (
+            runtime_installer._plain_json_value(sealed_retirement)
+        )
+        ownerless = session_tests._publish_session_fixture_under_lock(
+            lease=capabilities.session_lease,
+            predecessor=terminal,
+            value=terminal_value,
+        )
+
+    retirement = ownerless.terminal_retirement
+    assert isinstance(retirement, Mapping)
+    assert retirement["operation"] == "release_resolved_terminal"
+    assert retirement["stage"] == "RECOVERY_PREPARED"
+    resolution = retirement["terminal_resolution_evidence"]
+    assert isinstance(resolution, Mapping)
+    assert resolution["owner_retirement"] is None
+    assert resolution["external_file_action"] == source_external
+    assert resolution["resolved_physical_disposition"] == (
+        resolved_disposition
+    )
+    live_start_session.TerminalResolutionEvidence(resolution)
+
+    historical_result = runtime_installer._plain_json_value(
+        ownerless.result_intent
+    )
+    historical_outer_fields = {
+        field_name: runtime_installer._plain_json_value(
+            retirement[field_name]
+        )
+        for field_name in (
+            "source_terminal_session_sha256",
+            "result_intent_sha256",
+            "runtime_admission_path",
+            "runtime_admission_parent_identity",
+            "runtime_admission_identity",
+            "runtime_admission_sha256",
+            "retained_attempt_record_path",
+            "retained_attempt_record_identity",
+            "retained_attempt_record_sha256",
+            "retained_journal_path",
+            "retained_journal_identity",
+            "retained_journal_sha256",
+            "retained_target_owner_journal_path",
+            "retained_target_owner_journal_identity",
+            "retained_target_owner_journal_sha256",
+            "retained_candidate_identity",
+        )
+    }
+    historical_resolution_fields = {
+        field_name: runtime_installer._plain_json_value(
+            resolution[field_name]
+        )
+        for field_name in (
+            "schema_version",
+            "resolution_kind",
+            "run_id",
+            "apply_attempt_id",
+            "predecessor_attempt_record_path",
+            "predecessor_attempt_record_identity",
+            "predecessor_attempt_record_sha256",
+            "predecessor_journal_path",
+            "predecessor_journal_identity",
+            "predecessor_journal_sha256",
+            "predecessor_transaction_temp_path",
+            "predecessor_transaction_temp_parent_identity",
+            "predecessor_transaction_temp_identity",
+            "predecessor_transaction_temp_size",
+            "predecessor_transaction_temp_sha256",
+            "predecessor_transaction_temp_classification",
+            "predecessor_transaction_temp_origin",
+            "predecessor_target_owner_journal_path",
+            "predecessor_target_owner_journal_identity",
+            "predecessor_target_owner_journal_sha256",
+            "candidate_path",
+            "candidate_parent_identity",
+            "predecessor_candidate_identity",
+            "package_root_sha256",
+        )
+    }
+
+    physical_rows: list[str] = []
+    real_terminal_step = (
+        runtime_installer._execute_terminal_resolution_physical_step
+    )
+
+    def counted_terminal_step(**kwargs: Any) -> object:
+        physical_rows.append(str(kwargs["action"]))
+        return real_terminal_step(**kwargs)
+
+    monkeypatch.setattr(
+        runtime_installer,
+        "_execute_terminal_resolution_physical_step",
+        counted_terminal_step,
+    )
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=ownerless,
+    ) as capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as pair:
+            authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=capabilities.session_lease,
+                    expected_retirement_session=ownerless,
+                )
+            )
+            assert authorization._opaque.action == (
+                "physical_recovery_advanced"
+            )
+            session_path = (
+                capabilities.session_lease.session_root / "session.json"
+            )
+            session_before = (
+                path_identity(session_path),
+                session_path.read_bytes(),
+            )
+            physical = runtime_installer.recover_runtime_attempt_from_pair(
+                lease_pair=pair,
+                transaction_id=fixture.runtime_admission.apply_attempt_id,
+                expected_retention_owner_run_id=fixture.apply_started.run_id,
+                expected_package_root_sha256=(
+                    fixture.runtime_admission.package_root_sha256
+                ),
+                expected_deck_name=result.plan.deck_name,
+                runtime_admission=fixture.runtime_admission,
+                terminal_authorization=authorization,
+            )
+            assert physical_rows == ["physical_recovery_advanced"]
+            assert physical.runtime_observation_receipt is None
+            assert physical.apply_recovery_step_receipt is None
+            first_receipt = physical.terminal_resolution_step_receipt
+            assert type(first_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert first_receipt._opaque.active
+            assert session_before == (
+                path_identity(session_path),
+                session_path.read_bytes(),
+            )
+            persisted_before_cas = (
+                live_start_session.load_live_start_session_under_lock(
+                    session_lease=capabilities.session_lease
+                )
+            )
+            assert persisted_before_cas.canonical_json == (
+                ownerless.canonical_json
+            )
+            assert persisted_before_cas.session_identity == (
+                ownerless.session_identity
+            )
+            assert journal_path.read_bytes() == staging_before[1]
+            assert not staging_path.exists()
+            assert not inner_temp_path.exists()
+            committed_journal = (
+                runtime_installer.parse_runtime_transaction_journal_bytes(
+                    journal_path.read_bytes(),
+                    expected_transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                )
+            )
+            assert committed_journal.phase == (
+                RuntimeTransactionPhase.INI_COMMITTED
+            )
+            assert committed_journal.target_identity == target_identity
+            assert committed_journal.owns_target is False
+            committed_journal_triplet = (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+
+    assert not first_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=ownerless,
+    ) as replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(replay_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as replay_pair:
+            replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=replay_capabilities.session_lease,
+                    expected_retirement_session=ownerless,
+                )
+            )
+            replay_session_path = (
+                replay_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            replay_session_before = (
+                path_identity(replay_session_path),
+                replay_session_path.read_bytes(),
+            )
+            replayed = runtime_installer.recover_runtime_attempt_from_pair(
+                lease_pair=replay_pair,
+                transaction_id=fixture.runtime_admission.apply_attempt_id,
+                expected_retention_owner_run_id=fixture.apply_started.run_id,
+                expected_package_root_sha256=(
+                    fixture.runtime_admission.package_root_sha256
+                ),
+                expected_deck_name=result.plan.deck_name,
+                runtime_admission=fixture.runtime_admission,
+                terminal_authorization=replay_authorization,
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            assert replayed.runtime_observation_receipt is None
+            assert replayed.apply_recovery_step_receipt is None
+            replay_receipt = replayed.terminal_resolution_step_receipt
+            assert type(replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert replay_receipt._opaque.active
+            assert replay_session_before == (
+                path_identity(replay_session_path),
+                replay_session_path.read_bytes(),
+            )
+            assert committed_journal_triplet == (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            persisted_before_cas = (
+                live_start_session.load_live_start_session_under_lock(
+                    session_lease=replay_capabilities.session_lease
+                )
+            )
+            assert persisted_before_cas.canonical_json == (
+                ownerless.canonical_json
+            )
+            advanced = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=replay_capabilities.session_lease,
+                    expected_resolution_session=ownerless,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=replay_receipt,
+                )
+            )
+            assert not replay_receipt._opaque.active
+            assert (
+                path_identity(replay_session_path),
+                replay_session_path.read_bytes(),
+            ) == (advanced.session_identity, advanced.canonical_json)
+
+    next_retirement = advanced.terminal_retirement
+    assert isinstance(next_retirement, Mapping)
+    assert next_retirement["stage"] == "RECOVERY_PREPARED"
+    next_resolution = next_retirement["terminal_resolution_evidence"]
+    assert isinstance(next_resolution, Mapping)
+    assert next_resolution["action_index"] == int(
+        resolution["action_index"]
+    ) + 1
+    assert next_resolution["owner_retirement"] is None
+    assert next_resolution["resolved_physical_disposition"] == (
+        resolution["resolved_physical_disposition"]
+    )
+    assert next_resolution["planned_journal_successor_phase"] == (
+        "STATE_COMMITTED"
+    )
+    next_external = next_resolution["external_file_action"]
+    assert isinstance(next_external, Mapping)
+    assert next_external["stage"] == "PLANNED"
+    assert next_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert next_external["action_index"] == next_resolution["action_index"]
+    assert Path(str(next_external["final_path"])) == (
+        fixture.runtime_admission.runtime_root / ".hsconfig" / "state.json"
+    )
+    assert path_identity(journal_path) == tuple(
+        next_resolution["successor_journal_identity"]
+    )
+    assert "sha256:" + hashlib.sha256(
+        journal_path.read_bytes()
+    ).hexdigest() == next_resolution["successor_journal_sha256"]
+    assert runtime_installer._plain_json_value(
+        advanced.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            next_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            next_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    state_path = Path(str(next_external["final_path"]))
+    state_staging_path = Path(str(next_external["staging_path"]))
+    state_inner_temp_path = Path(str(next_external["inner_temp_path"]))
+    state_before = (
+        (path_identity(state_path), state_path.read_bytes())
+        if os.path.lexists(state_path)
+        else None
+    )
+    assert not os.path.lexists(state_staging_path)
+    assert not os.path.lexists(state_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=advanced,
+    ) as state_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(state_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_pair:
+            state_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=state_capabilities.session_lease,
+                    expected_retirement_session=advanced,
+                )
+            )
+            assert state_authorization._opaque.action == (
+                "physical_recovery_advanced"
+            )
+            state_session_path = (
+                state_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            state_session_before = (
+                path_identity(state_session_path),
+                state_session_path.read_bytes(),
+            )
+            state_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=state_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            state_receipt = (
+                state_physical.terminal_resolution_step_receipt
+            )
+            assert type(state_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert state_receipt._opaque.active
+            assert state_session_before == (
+                path_identity(state_session_path),
+                state_session_path.read_bytes(),
+            )
+            persisted_before_state_cas = (
+                live_start_session.load_live_start_session_under_lock(
+                    session_lease=state_capabilities.session_lease
+                )
+            )
+            assert persisted_before_state_cas.canonical_json == (
+                advanced.canonical_json
+            )
+            assert persisted_before_state_cas.session_identity == (
+                advanced.session_identity
+            )
+            assert (
+                (path_identity(state_path), state_path.read_bytes())
+                if os.path.lexists(state_path)
+                else None
+            ) == state_before
+            assert not os.path.lexists(state_inner_temp_path)
+            assert path_identity(state_staging_path) == tuple(
+                state_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"][
+                    "external_file_action"
+                ]["staging_identity"]
+            )
+            assert state_staging_path.read_bytes()
+            uncommitted_state_receipt = state_receipt
+
+    assert not uncommitted_state_receipt._opaque.active
+    assert os.path.lexists(state_staging_path)
+    assert not os.path.lexists(state_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=advanced,
+    ) as cleanup_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(cleanup_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as cleanup_pair:
+            cleanup_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=cleanup_capabilities.session_lease,
+                    expected_retirement_session=advanced,
+                )
+            )
+            assert cleanup_authorization._opaque.action == (
+                "physical_recovery_advanced"
+            )
+            cleanup_context = (
+                live_start_session._terminal_owner_context_for_authorization(
+                    cleanup_authorization
+                )
+            )
+            assert isinstance(cleanup_context, Mapping)
+            assert cleanup_context["ownerless"] is True
+            assert cleanup_context["owner_action"] == (
+                "retire_unbound_file_action_staging"
+            )
+            cleanup_session_path = (
+                cleanup_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            cleanup_session_before = (
+                path_identity(cleanup_session_path),
+                cleanup_session_path.read_bytes(),
+            )
+            cleanup_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=cleanup_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=cleanup_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            cleanup_receipt = (
+                cleanup_physical.terminal_resolution_step_receipt
+            )
+            assert type(cleanup_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert cleanup_receipt._opaque.active
+            assert cleanup_session_before == (
+                path_identity(cleanup_session_path),
+                cleanup_session_path.read_bytes(),
+            )
+            assert not os.path.lexists(state_staging_path)
+            assert not os.path.lexists(state_inner_temp_path)
+            state_cleaned = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=cleanup_capabilities.session_lease,
+                    expected_resolution_session=advanced,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=cleanup_receipt,
+                )
+            )
+            assert not cleanup_receipt._opaque.active
+            assert (
+                path_identity(cleanup_session_path),
+                cleanup_session_path.read_bytes(),
+            ) == (state_cleaned.session_identity, state_cleaned.canonical_json)
+
+    cleaned_retirement = state_cleaned.terminal_retirement
+    assert isinstance(cleaned_retirement, Mapping)
+    cleaned_resolution = cleaned_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(cleaned_resolution, Mapping)
+    assert cleaned_resolution["action_index"] == (
+        int(next_resolution["action_index"]) + 1
+    )
+    cleaned_external = cleaned_resolution["external_file_action"]
+    assert isinstance(cleaned_external, Mapping)
+    assert cleaned_external["stage"] == "PLANNED"
+    assert cleaned_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert cleaned_external["action_index"] == cleaned_resolution[
+        "action_index"
+    ]
+    assert runtime_installer._plain_json_value(
+        state_cleaned.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            cleaned_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            cleaned_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_cleaned,
+    ) as rematerialize_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(rematerialize_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as rematerialize_pair:
+            rematerialize_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=rematerialize_capabilities.session_lease,
+                    expected_retirement_session=state_cleaned,
+                )
+            )
+            assert (
+                live_start_session._terminal_owner_context_for_authorization(
+                    rematerialize_authorization
+                )
+                is None
+            )
+            rematerialized = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=rematerialize_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=rematerialize_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            rematerialize_receipt = (
+                rematerialized.terminal_resolution_step_receipt
+            )
+            assert type(rematerialize_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert path_identity(state_staging_path) == tuple(
+                rematerialize_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"][
+                    "external_file_action"
+                ]["staging_identity"]
+            )
+            state_staged = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=rematerialize_capabilities.session_lease,
+                    expected_resolution_session=state_cleaned,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=rematerialize_receipt,
+                )
+            )
+            assert not rematerialize_receipt._opaque.active
+
+    state_retirement = state_staged.terminal_retirement
+    assert isinstance(state_retirement, Mapping)
+    state_resolution = state_retirement["terminal_resolution_evidence"]
+    assert isinstance(state_resolution, Mapping)
+    assert state_resolution["action_index"] == (
+        int(cleaned_resolution["action_index"]) + 1
+    )
+    assert state_resolution["owner_retirement"] is None
+    assert state_resolution["resolved_physical_disposition"] == (
+        next_resolution["resolved_physical_disposition"]
+    )
+    assert state_resolution["planned_journal_successor_phase"] == (
+        "STATE_COMMITTED"
+    )
+    state_external = state_resolution["external_file_action"]
+    assert isinstance(state_external, Mapping)
+    assert state_external["stage"] == "STAGING_BOUND"
+    assert state_external["action_kind"] == "write_runtime_state"
+    assert state_external["action_index"] == state_resolution[
+        "action_index"
+    ]
+    assert tuple(state_external["staging_identity"]) == path_identity(
+        state_staging_path
+    )
+    assert state_external["staging_size"] == len(
+        state_staging_path.read_bytes()
+    )
+    assert state_external["staging_sha256"] == (
+        "sha256:"
+        + hashlib.sha256(state_staging_path.read_bytes()).hexdigest()
+    )
+    assert state_resolution["successor_journal_identity"] == (
+        next_resolution["successor_journal_identity"]
+    )
+    assert state_resolution["successor_journal_sha256"] == (
+        next_resolution["successor_journal_sha256"]
+    )
+    assert runtime_installer._plain_json_value(
+        state_staged.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            state_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            state_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_staged,
+    ) as state_write_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(state_write_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_write_pair:
+            state_write_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=state_write_capabilities.session_lease,
+                    expected_retirement_session=state_staged,
+                )
+            )
+            state_write_session_path = (
+                state_write_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            state_write_session_before = (
+                path_identity(state_write_session_path),
+                state_write_session_path.read_bytes(),
+            )
+            state_write_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_write_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=state_write_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            first_state_write_receipt = (
+                state_write_physical.terminal_resolution_step_receipt
+            )
+            assert type(first_state_write_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert first_state_write_receipt._opaque.active
+            assert state_write_session_before == (
+                path_identity(state_write_session_path),
+                state_write_session_path.read_bytes(),
+            )
+            assert not os.path.lexists(state_staging_path)
+            assert not os.path.lexists(state_inner_temp_path)
+            committed_state_triplet = (
+                path_identity(state_path),
+                state_path.read_bytes(),
+            )
+            assert len(committed_state_triplet[1]) == state_external[
+                "planned_successor_size"
+            ]
+            assert (
+                "sha256:"
+                + hashlib.sha256(committed_state_triplet[1]).hexdigest()
+            ) == state_external["planned_successor_sha256"]
+            persisted_before_state_write_cas = (
+                live_start_session.load_live_start_session_under_lock(
+                    session_lease=state_write_capabilities.session_lease
+                )
+            )
+            assert persisted_before_state_write_cas.canonical_json == (
+                state_staged.canonical_json
+            )
+
+    assert not first_state_write_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_staged,
+    ) as state_write_replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(state_write_replay_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_write_replay_pair:
+            state_write_replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        state_write_replay_capabilities.session_lease
+                    ),
+                    expected_retirement_session=state_staged,
+                )
+            )
+            replayed_state_write = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_write_replay_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        state_write_replay_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            state_write_replay_receipt = (
+                replayed_state_write.terminal_resolution_step_receipt
+            )
+            assert type(state_write_replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert committed_state_triplet == (
+                path_identity(state_path),
+                state_path.read_bytes(),
+            )
+            state_written = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        state_write_replay_capabilities.session_lease
+                    ),
+                    expected_resolution_session=state_staged,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=state_write_replay_receipt,
+                )
+            )
+            assert not state_write_replay_receipt._opaque.active
+
+    written_retirement = state_written.terminal_retirement
+    assert isinstance(written_retirement, Mapping)
+    written_resolution = written_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(written_resolution, Mapping)
+    assert written_resolution["action_index"] == (
+        int(state_resolution["action_index"]) + 1
+    )
+    assert written_resolution["runtime_state_sha256"] == (
+        state_external["planned_successor_sha256"]
+    )
+    assert written_resolution["owner_retirement"] is None
+    assert written_resolution["resolved_physical_disposition"] == (
+        state_resolution["resolved_physical_disposition"]
+    )
+    assert written_resolution["planned_journal_successor_phase"] == (
+        "STATE_COMMITTED"
+    )
+    written_external = written_resolution["external_file_action"]
+    assert isinstance(written_external, Mapping)
+    assert written_external["stage"] == "PLANNED"
+    assert written_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert written_external["action_index"] == written_resolution[
+        "action_index"
+    ]
+    assert Path(str(written_external["final_path"])) == journal_path
+    assert written_external["predecessor_identity"] == (
+        written_resolution["successor_journal_identity"]
+    )
+    assert written_external["predecessor_sha256"] == (
+        written_resolution["successor_journal_sha256"]
+    )
+    assert written_external["planned_successor_size"] == (
+        written_resolution["planned_journal_successor_size"]
+    )
+    assert written_external["planned_successor_sha256"] == (
+        written_resolution["planned_journal_successor_sha256"]
+    )
+    assert runtime_installer._plain_json_value(
+        state_written.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            written_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            written_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    state_journal_staging_path = Path(
+        str(written_external["staging_path"])
+    )
+    state_journal_inner_temp_path = Path(
+        str(written_external["inner_temp_path"])
+    )
+    journal_before_state_materialize = (
+        path_identity(journal_path),
+        journal_path.read_bytes(),
+    )
+    assert not os.path.lexists(state_journal_staging_path)
+    assert not os.path.lexists(state_journal_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_written,
+    ) as state_journal_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(state_journal_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_journal_pair:
+            state_journal_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=state_journal_capabilities.session_lease,
+                    expected_retirement_session=state_written,
+                )
+            )
+            state_journal_session_path = (
+                state_journal_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            state_journal_session_before = (
+                path_identity(state_journal_session_path),
+                state_journal_session_path.read_bytes(),
+            )
+            state_journal_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_journal_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=state_journal_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            state_journal_receipt = (
+                state_journal_physical.terminal_resolution_step_receipt
+            )
+            assert type(state_journal_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert state_journal_session_before == (
+                path_identity(state_journal_session_path),
+                state_journal_session_path.read_bytes(),
+            )
+            assert journal_before_state_materialize == (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            assert not os.path.lexists(state_journal_inner_temp_path)
+            assert path_identity(state_journal_staging_path) == tuple(
+                state_journal_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"][
+                    "external_file_action"
+                ]["staging_identity"]
+            )
+            state_journal_staged = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=state_journal_capabilities.session_lease,
+                    expected_resolution_session=state_written,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=state_journal_receipt,
+                )
+            )
+            assert not state_journal_receipt._opaque.active
+
+    state_journal_retirement = state_journal_staged.terminal_retirement
+    assert isinstance(state_journal_retirement, Mapping)
+    state_journal_resolution = state_journal_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(state_journal_resolution, Mapping)
+    assert state_journal_resolution["action_index"] == (
+        int(written_resolution["action_index"]) + 1
+    )
+    assert state_journal_resolution["runtime_state_sha256"] == (
+        written_resolution["runtime_state_sha256"]
+    )
+    assert state_journal_resolution["planned_journal_successor_phase"] == (
+        "STATE_COMMITTED"
+    )
+    state_journal_external = state_journal_resolution[
+        "external_file_action"
+    ]
+    assert isinstance(state_journal_external, Mapping)
+    assert state_journal_external["stage"] == "STAGING_BOUND"
+    assert state_journal_external["action_kind"] == (
+        "commit_state_journal"
+    )
+    assert state_journal_external["action_index"] == (
+        state_journal_resolution["action_index"]
+    )
+    assert tuple(state_journal_external["staging_identity"]) == (
+        path_identity(state_journal_staging_path)
+    )
+    assert state_journal_external["staging_size"] == (
+        state_journal_resolution["planned_journal_successor_size"]
+    )
+    assert state_journal_external["staging_sha256"] == (
+        state_journal_resolution["planned_journal_successor_sha256"]
+    )
+    assert state_journal_resolution["owner_retirement"] is None
+    assert state_journal_resolution["resolved_physical_disposition"] == (
+        written_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        state_journal_staged.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            state_journal_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            state_journal_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_journal_staged,
+    ) as state_journal_commit_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(state_journal_commit_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_journal_commit_pair:
+            state_journal_commit_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        state_journal_commit_capabilities.session_lease
+                    ),
+                    expected_retirement_session=state_journal_staged,
+                )
+            )
+            state_journal_commit_session_path = (
+                state_journal_commit_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            state_journal_commit_session_before = (
+                path_identity(state_journal_commit_session_path),
+                state_journal_commit_session_path.read_bytes(),
+            )
+            state_journal_commit_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_journal_commit_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        state_journal_commit_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            first_state_journal_commit_receipt = (
+                state_journal_commit_physical.terminal_resolution_step_receipt
+            )
+            assert type(first_state_journal_commit_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert state_journal_commit_session_before == (
+                path_identity(state_journal_commit_session_path),
+                state_journal_commit_session_path.read_bytes(),
+            )
+            assert not os.path.lexists(state_journal_staging_path)
+            assert not os.path.lexists(state_journal_inner_temp_path)
+            committed_state_journal_triplet = (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            committed_state_journal = (
+                runtime_installer.parse_runtime_transaction_journal_bytes(
+                    committed_state_journal_triplet[1],
+                    expected_transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                )
+            )
+            assert committed_state_journal.phase == (
+                RuntimeTransactionPhase.STATE_COMMITTED
+            )
+            assert committed_state_journal.target_identity == target_identity
+            assert committed_state_journal.owns_target is False
+
+    assert not first_state_journal_commit_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_journal_staged,
+    ) as state_journal_commit_replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(
+                    state_journal_commit_replay_capabilities
+                ),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as state_journal_commit_replay_pair:
+            state_journal_commit_replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        state_journal_commit_replay_capabilities.session_lease
+                    ),
+                    expected_retirement_session=state_journal_staged,
+                )
+            )
+            replayed_state_journal_commit = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=state_journal_commit_replay_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        state_journal_commit_replay_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            state_journal_commit_replay_receipt = (
+                replayed_state_journal_commit.terminal_resolution_step_receipt
+            )
+            assert type(state_journal_commit_replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert committed_state_journal_triplet == (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            state_journal_committed = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        state_journal_commit_replay_capabilities.session_lease
+                    ),
+                    expected_resolution_session=state_journal_staged,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=(
+                        state_journal_commit_replay_receipt
+                    ),
+                )
+            )
+            assert not state_journal_commit_replay_receipt._opaque.active
+
+    committed_journal_retirement = (
+        state_journal_committed.terminal_retirement
+    )
+    assert isinstance(committed_journal_retirement, Mapping)
+    committed_journal_resolution = committed_journal_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(committed_journal_resolution, Mapping)
+    assert committed_journal_resolution["action_index"] == (
+        int(state_journal_resolution["action_index"]) + 1
+    )
+    assert committed_journal_resolution[
+        "successor_journal_identity"
+    ] == committed_state_journal_triplet[0]
+    assert committed_journal_resolution["successor_journal_sha256"] == (
+        "sha256:"
+        + hashlib.sha256(committed_state_journal_triplet[1]).hexdigest()
+    )
+    assert committed_journal_resolution[
+        "planned_journal_successor_phase"
+    ] == "FINALIZED"
+    assert committed_journal_resolution[
+        "allowed_journal_successor_phase"
+    ] == "FINALIZED"
+    committed_journal_external = committed_journal_resolution[
+        "external_file_action"
+    ]
+    assert isinstance(committed_journal_external, Mapping)
+    assert committed_journal_external["stage"] == "PLANNED"
+    assert committed_journal_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert committed_journal_external["action_index"] == (
+        committed_journal_resolution["action_index"]
+    )
+    assert Path(str(committed_journal_external["final_path"])).name == (
+        "last_apply_receipt.json"
+    )
+    assert committed_journal_resolution["runtime_state_sha256"] == (
+        state_journal_resolution["runtime_state_sha256"]
+    )
+    assert committed_journal_resolution["owner_retirement"] is None
+    assert committed_journal_resolution[
+        "resolved_physical_disposition"
+    ] == state_journal_resolution["resolved_physical_disposition"]
+    assert runtime_installer._plain_json_value(
+        state_journal_committed.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            committed_journal_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            committed_journal_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    receipt_path = Path(str(committed_journal_external["final_path"]))
+    receipt_staging_path = Path(
+        str(committed_journal_external["staging_path"])
+    )
+    receipt_inner_temp_path = Path(
+        str(committed_journal_external["inner_temp_path"])
+    )
+    receipt_before = (
+        (path_identity(receipt_path), receipt_path.read_bytes())
+        if os.path.lexists(receipt_path)
+        else None
+    )
+    assert receipt_path.name == "last_apply_receipt.json"
+    assert not os.path.lexists(receipt_staging_path)
+    assert not os.path.lexists(receipt_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=state_journal_committed,
+    ) as receipt_materialize_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(receipt_materialize_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as receipt_materialize_pair:
+            receipt_materialize_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        receipt_materialize_capabilities.session_lease
+                    ),
+                    expected_retirement_session=state_journal_committed,
+                )
+            )
+            assert (
+                live_start_session._terminal_owner_context_for_authorization(
+                    receipt_materialize_authorization
+                )
+                is None
+            )
+            receipt_materialize_session_path = (
+                receipt_materialize_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            receipt_materialize_session_before = (
+                path_identity(receipt_materialize_session_path),
+                receipt_materialize_session_path.read_bytes(),
+            )
+            receipt_materialize_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=receipt_materialize_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        receipt_materialize_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            receipt_materialize_receipt = (
+                receipt_materialize_physical.terminal_resolution_step_receipt
+            )
+            assert type(receipt_materialize_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert receipt_materialize_session_before == (
+                path_identity(receipt_materialize_session_path),
+                receipt_materialize_session_path.read_bytes(),
+            )
+            assert (
+                (path_identity(receipt_path), receipt_path.read_bytes())
+                if os.path.lexists(receipt_path)
+                else None
+            ) == receipt_before
+            assert not os.path.lexists(receipt_inner_temp_path)
+            assert path_identity(receipt_staging_path) == tuple(
+                receipt_materialize_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"][
+                    "external_file_action"
+                ]["staging_identity"]
+            )
+            receipt_staged = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        receipt_materialize_capabilities.session_lease
+                    ),
+                    expected_resolution_session=state_journal_committed,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=receipt_materialize_receipt,
+                )
+            )
+            assert not receipt_materialize_receipt._opaque.active
+
+    receipt_retirement = receipt_staged.terminal_retirement
+    assert isinstance(receipt_retirement, Mapping)
+    receipt_resolution = receipt_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(receipt_resolution, Mapping)
+    assert receipt_resolution["action_index"] == (
+        int(committed_journal_resolution["action_index"]) + 1
+    )
+    assert receipt_resolution["runtime_state_sha256"] == (
+        committed_journal_resolution["runtime_state_sha256"]
+    )
+    assert receipt_resolution["last_apply_receipt_sha256"] is None
+    assert receipt_resolution["successor_journal_identity"] == (
+        committed_journal_resolution["successor_journal_identity"]
+    )
+    assert receipt_resolution["successor_journal_sha256"] == (
+        committed_journal_resolution["successor_journal_sha256"]
+    )
+    assert receipt_resolution["planned_journal_successor_phase"] == (
+        "FINALIZED"
+    )
+    receipt_external = receipt_resolution["external_file_action"]
+    assert isinstance(receipt_external, Mapping)
+    assert receipt_external["stage"] == "STAGING_BOUND"
+    assert receipt_external["action_kind"] == "write_last_apply_receipt"
+    assert receipt_external["action_index"] == receipt_resolution[
+        "action_index"
+    ]
+    assert Path(str(receipt_external["final_path"])) == receipt_path
+    assert tuple(receipt_external["staging_identity"]) == path_identity(
+        receipt_staging_path
+    )
+    assert receipt_external["staging_size"] == (
+        receipt_external["planned_successor_size"]
+    )
+    assert receipt_external["staging_sha256"] == (
+        receipt_external["planned_successor_sha256"]
+    )
+    assert receipt_resolution["owner_retirement"] is None
+    assert receipt_resolution["resolved_physical_disposition"] == (
+        committed_journal_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        receipt_staged.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            receipt_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            receipt_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=receipt_staged,
+    ) as receipt_write_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(receipt_write_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as receipt_write_pair:
+            receipt_write_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=receipt_write_capabilities.session_lease,
+                    expected_retirement_session=receipt_staged,
+                )
+            )
+            receipt_write_session_path = (
+                receipt_write_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            receipt_write_session_before = (
+                path_identity(receipt_write_session_path),
+                receipt_write_session_path.read_bytes(),
+            )
+            receipt_write_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=receipt_write_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=receipt_write_authorization,
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            first_receipt_write_receipt = (
+                receipt_write_physical.terminal_resolution_step_receipt
+            )
+            assert type(first_receipt_write_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert receipt_write_session_before == (
+                path_identity(receipt_write_session_path),
+                receipt_write_session_path.read_bytes(),
+            )
+            assert not os.path.lexists(receipt_staging_path)
+            assert not os.path.lexists(receipt_inner_temp_path)
+            committed_receipt_triplet = (
+                path_identity(receipt_path),
+                receipt_path.read_bytes(),
+            )
+            assert len(committed_receipt_triplet[1]) == (
+                receipt_external["planned_successor_size"]
+            )
+            assert (
+                "sha256:"
+                + hashlib.sha256(committed_receipt_triplet[1]).hexdigest()
+            ) == receipt_external["planned_successor_sha256"]
+
+    assert not first_receipt_write_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=receipt_staged,
+    ) as receipt_write_replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(receipt_write_replay_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as receipt_write_replay_pair:
+            receipt_write_replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        receipt_write_replay_capabilities.session_lease
+                    ),
+                    expected_retirement_session=receipt_staged,
+                )
+            )
+            replayed_receipt_write = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=receipt_write_replay_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        receipt_write_replay_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            receipt_write_replay_receipt = (
+                replayed_receipt_write.terminal_resolution_step_receipt
+            )
+            assert type(receipt_write_replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert committed_receipt_triplet == (
+                path_identity(receipt_path),
+                receipt_path.read_bytes(),
+            )
+            receipt_written = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        receipt_write_replay_capabilities.session_lease
+                    ),
+                    expected_resolution_session=receipt_staged,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=receipt_write_replay_receipt,
+                )
+            )
+            assert not receipt_write_replay_receipt._opaque.active
+
+    receipt_written_retirement = receipt_written.terminal_retirement
+    assert isinstance(receipt_written_retirement, Mapping)
+    receipt_written_resolution = receipt_written_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(receipt_written_resolution, Mapping)
+    assert receipt_written_resolution["action_index"] == (
+        int(receipt_resolution["action_index"]) + 1
+    )
+    assert receipt_written_resolution["last_apply_receipt_sha256"] == (
+        receipt_external["planned_successor_sha256"]
+    )
+    assert receipt_written_resolution["runtime_state_sha256"] == (
+        receipt_resolution["runtime_state_sha256"]
+    )
+    assert receipt_written_resolution["successor_journal_identity"] == (
+        receipt_resolution["successor_journal_identity"]
+    )
+    assert receipt_written_resolution["successor_journal_sha256"] == (
+        receipt_resolution["successor_journal_sha256"]
+    )
+    assert receipt_written_resolution["planned_journal_successor_phase"] == (
+        "FINALIZED"
+    )
+    receipt_written_external = receipt_written_resolution[
+        "external_file_action"
+    ]
+    assert isinstance(receipt_written_external, Mapping)
+    assert receipt_written_external["stage"] == "PLANNED"
+    assert receipt_written_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert receipt_written_external["action_index"] == (
+        receipt_written_resolution["action_index"]
+    )
+    assert Path(str(receipt_written_external["final_path"])) == journal_path
+    assert receipt_written_external["predecessor_identity"] == (
+        receipt_written_resolution["successor_journal_identity"]
+    )
+    assert receipt_written_external["predecessor_sha256"] == (
+        receipt_written_resolution["successor_journal_sha256"]
+    )
+    assert receipt_written_external["planned_successor_size"] == (
+        receipt_written_resolution["planned_journal_successor_size"]
+    )
+    assert receipt_written_external["planned_successor_sha256"] == (
+        receipt_written_resolution["planned_journal_successor_sha256"]
+    )
+    assert receipt_written_resolution["owner_retirement"] is None
+    assert receipt_written_resolution["resolved_physical_disposition"] == (
+        receipt_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        receipt_written.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            receipt_written_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            receipt_written_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    finalized_journal_staging_path = Path(
+        str(receipt_written_external["staging_path"])
+    )
+    finalized_journal_inner_temp_path = Path(
+        str(receipt_written_external["inner_temp_path"])
+    )
+    journal_before_final_materialize = (
+        path_identity(journal_path),
+        journal_path.read_bytes(),
+    )
+    assert not os.path.lexists(finalized_journal_staging_path)
+    assert not os.path.lexists(finalized_journal_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=receipt_written,
+    ) as final_journal_materialize_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_journal_materialize_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_journal_materialize_pair:
+            final_journal_materialize_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_journal_materialize_capabilities.session_lease
+                    ),
+                    expected_retirement_session=receipt_written,
+                )
+            )
+            final_journal_materialize_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_journal_materialize_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        final_journal_materialize_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            final_journal_materialize_receipt = (
+                final_journal_materialize_physical
+                .terminal_resolution_step_receipt
+            )
+            assert type(final_journal_materialize_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert journal_before_final_materialize == (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            assert not os.path.lexists(finalized_journal_inner_temp_path)
+            assert path_identity(finalized_journal_staging_path) == tuple(
+                final_journal_materialize_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"][
+                    "external_file_action"
+                ]["staging_identity"]
+            )
+            final_journal_staged = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        final_journal_materialize_capabilities.session_lease
+                    ),
+                    expected_resolution_session=receipt_written,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=(
+                        final_journal_materialize_receipt
+                    ),
+                )
+            )
+            assert not final_journal_materialize_receipt._opaque.active
+
+    final_journal_retirement = final_journal_staged.terminal_retirement
+    assert isinstance(final_journal_retirement, Mapping)
+    final_journal_resolution = final_journal_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(final_journal_resolution, Mapping)
+    assert final_journal_resolution["action_index"] == (
+        int(receipt_written_resolution["action_index"]) + 1
+    )
+    assert final_journal_resolution["last_apply_receipt_sha256"] == (
+        receipt_written_resolution["last_apply_receipt_sha256"]
+    )
+    assert final_journal_resolution["runtime_state_sha256"] == (
+        receipt_written_resolution["runtime_state_sha256"]
+    )
+    assert final_journal_resolution["successor_journal_identity"] == (
+        receipt_written_resolution["successor_journal_identity"]
+    )
+    assert final_journal_resolution["successor_journal_sha256"] == (
+        receipt_written_resolution["successor_journal_sha256"]
+    )
+    assert final_journal_resolution["planned_journal_successor_phase"] == (
+        "FINALIZED"
+    )
+    final_journal_external = final_journal_resolution[
+        "external_file_action"
+    ]
+    assert isinstance(final_journal_external, Mapping)
+    assert final_journal_external["stage"] == "STAGING_BOUND"
+    assert final_journal_external["action_kind"] == "finalize_journal"
+    assert final_journal_external["action_index"] == (
+        final_journal_resolution["action_index"]
+    )
+    assert Path(str(final_journal_external["final_path"])) == journal_path
+    assert tuple(final_journal_external["staging_identity"]) == (
+        path_identity(finalized_journal_staging_path)
+    )
+    assert final_journal_external["staging_size"] == (
+        final_journal_resolution["planned_journal_successor_size"]
+    )
+    assert final_journal_external["staging_sha256"] == (
+        final_journal_resolution["planned_journal_successor_sha256"]
+    )
+    assert final_journal_resolution["owner_retirement"] is None
+    assert final_journal_resolution["resolved_physical_disposition"] == (
+        receipt_written_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        final_journal_staged.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            final_journal_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            final_journal_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=final_journal_staged,
+    ) as final_journal_commit_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_journal_commit_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_journal_commit_pair:
+            final_journal_commit_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_journal_commit_capabilities.session_lease
+                    ),
+                    expected_retirement_session=final_journal_staged,
+                )
+            )
+            final_journal_commit_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_journal_commit_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        final_journal_commit_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            first_final_journal_commit_receipt = (
+                final_journal_commit_physical
+                .terminal_resolution_step_receipt
+            )
+            assert type(first_final_journal_commit_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert not os.path.lexists(finalized_journal_staging_path)
+            assert not os.path.lexists(finalized_journal_inner_temp_path)
+            finalized_journal_triplet = (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            finalized_journal = (
+                runtime_installer.parse_runtime_transaction_journal_bytes(
+                    finalized_journal_triplet[1],
+                    expected_transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                )
+            )
+            assert finalized_journal.phase == (
+                RuntimeTransactionPhase.FINALIZED
+            )
+            assert finalized_journal.target_identity == target_identity
+            assert finalized_journal.owns_target is False
+
+    assert not first_final_journal_commit_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=final_journal_staged,
+    ) as final_journal_commit_replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_journal_commit_replay_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_journal_commit_replay_pair:
+            final_journal_commit_replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_journal_commit_replay_capabilities.session_lease
+                    ),
+                    expected_retirement_session=final_journal_staged,
+                )
+            )
+            replayed_final_journal_commit = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_journal_commit_replay_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        final_journal_commit_replay_authorization
+                    ),
+                )
+            )
+            assert physical_rows == [
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+                "physical_recovery_advanced",
+            ]
+            final_journal_commit_replay_receipt = (
+                replayed_final_journal_commit
+                .terminal_resolution_step_receipt
+            )
+            assert type(final_journal_commit_replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert finalized_journal_triplet == (
+                path_identity(journal_path),
+                journal_path.read_bytes(),
+            )
+            journal_finalized = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        final_journal_commit_replay_capabilities.session_lease
+                    ),
+                    expected_resolution_session=final_journal_staged,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=(
+                        final_journal_commit_replay_receipt
+                    ),
+                )
+            )
+            assert not final_journal_commit_replay_receipt._opaque.active
+
+    journal_finalized_retirement = journal_finalized.terminal_retirement
+    assert isinstance(journal_finalized_retirement, Mapping)
+    journal_finalized_resolution = journal_finalized_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(journal_finalized_resolution, Mapping)
+    assert journal_finalized_resolution["action_index"] == (
+        int(final_journal_resolution["action_index"]) + 1
+    )
+    assert journal_finalized_resolution["successor_journal_identity"] == (
+        finalized_journal_triplet[0]
+    )
+    assert journal_finalized_resolution["successor_journal_sha256"] == (
+        "sha256:" + hashlib.sha256(finalized_journal_triplet[1]).hexdigest()
+    )
+    assert journal_finalized_resolution[
+        "allowed_journal_successor_phase"
+    ] is None
+    assert journal_finalized_resolution[
+        "allowed_attempt_record_successor_state"
+    ] == "FINALIZED"
+    for field_name in (
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+    ):
+        assert journal_finalized_resolution[field_name] is None
+    finalized_attempt_external = journal_finalized_resolution[
+        "external_file_action"
+    ]
+    assert isinstance(finalized_attempt_external, Mapping)
+    assert finalized_attempt_external["stage"] == "PLANNED"
+    assert finalized_attempt_external["action_kind"] == (
+        "materialize_file_action_staging"
+    )
+    assert finalized_attempt_external["action_index"] == (
+        journal_finalized_resolution["action_index"]
+    )
+    assert finalized_attempt_external["final_path"] == (
+        journal_finalized_resolution["predecessor_attempt_record_path"]
+    )
+    assert finalized_attempt_external["predecessor_identity"] == (
+        journal_finalized_resolution["predecessor_attempt_record_identity"]
+    )
+    assert finalized_attempt_external["predecessor_sha256"] == (
+        journal_finalized_resolution["predecessor_attempt_record_sha256"]
+    )
+    assert journal_finalized_resolution["owner_retirement"] is None
+    assert journal_finalized_resolution[
+        "successor_target_owner_journal_identity"
+    ] == final_journal_resolution[
+        "successor_target_owner_journal_identity"
+    ]
+    assert journal_finalized_resolution["resolved_physical_disposition"] == (
+        final_journal_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        journal_finalized.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            journal_finalized_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            journal_finalized_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    final_attempt_path = Path(str(finalized_attempt_external["final_path"]))
+    final_attempt_staging_path = Path(
+        str(finalized_attempt_external["staging_path"])
+    )
+    final_attempt_inner_temp_path = Path(
+        str(finalized_attempt_external["inner_temp_path"])
+    )
+    attempt_before_final_materialize = (
+        path_identity(final_attempt_path),
+        final_attempt_path.read_bytes(),
+    )
+    assert not os.path.lexists(final_attempt_staging_path)
+    assert not os.path.lexists(final_attempt_inner_temp_path)
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=journal_finalized,
+    ) as final_attempt_materialize_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_attempt_materialize_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_attempt_materialize_pair:
+            final_attempt_materialize_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_attempt_materialize_capabilities.session_lease
+                    ),
+                    expected_retirement_session=journal_finalized,
+                )
+            )
+            final_attempt_materialize_session_path = (
+                final_attempt_materialize_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            final_attempt_materialize_session_before = (
+                path_identity(final_attempt_materialize_session_path),
+                final_attempt_materialize_session_path.read_bytes(),
+            )
+            final_attempt_materialize_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_attempt_materialize_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        final_attempt_materialize_authorization
+                    ),
+                )
+            )
+            assert physical_rows == ["physical_recovery_advanced"] * 17
+            final_attempt_materialize_receipt = (
+                final_attempt_materialize_physical
+                .terminal_resolution_step_receipt
+            )
+            assert type(final_attempt_materialize_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert final_attempt_materialize_session_before == (
+                path_identity(final_attempt_materialize_session_path),
+                final_attempt_materialize_session_path.read_bytes(),
+            )
+            assert attempt_before_final_materialize == (
+                path_identity(final_attempt_path),
+                final_attempt_path.read_bytes(),
+            )
+            assert not os.path.lexists(final_attempt_inner_temp_path)
+            assert path_identity(final_attempt_staging_path) == tuple(
+                final_attempt_materialize_receipt._opaque.successor.evidence[
+                    "terminal_retirement"
+                ]["terminal_resolution_evidence"]["external_file_action"][
+                    "staging_identity"
+                ]
+            )
+            final_attempt_staged = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        final_attempt_materialize_capabilities.session_lease
+                    ),
+                    expected_resolution_session=journal_finalized,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=(
+                        final_attempt_materialize_receipt
+                    ),
+                )
+            )
+            assert not final_attempt_materialize_receipt._opaque.active
+
+    final_attempt_retirement = final_attempt_staged.terminal_retirement
+    assert isinstance(final_attempt_retirement, Mapping)
+    final_attempt_resolution = final_attempt_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(final_attempt_resolution, Mapping)
+    assert final_attempt_resolution["action_index"] == (
+        int(journal_finalized_resolution["action_index"]) + 1
+    )
+    assert final_attempt_resolution["successor_journal_identity"] == (
+        journal_finalized_resolution["successor_journal_identity"]
+    )
+    assert final_attempt_resolution["successor_journal_sha256"] == (
+        journal_finalized_resolution["successor_journal_sha256"]
+    )
+    for field_name in (
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+    ):
+        assert final_attempt_resolution[field_name] is None
+    assert final_attempt_resolution["allowed_journal_successor_phase"] is None
+    assert final_attempt_resolution[
+        "allowed_attempt_record_successor_state"
+    ] == "FINALIZED"
+    assert final_attempt_resolution["predecessor_attempt_record_path"] == (
+        journal_finalized_resolution["predecessor_attempt_record_path"]
+    )
+    assert final_attempt_resolution[
+        "predecessor_attempt_record_identity"
+    ] == journal_finalized_resolution["predecessor_attempt_record_identity"]
+    assert final_attempt_resolution[
+        "predecessor_attempt_record_sha256"
+    ] == journal_finalized_resolution["predecessor_attempt_record_sha256"]
+    assert final_attempt_resolution["successor_attempt_record_path"] is None
+    assert final_attempt_resolution["successor_attempt_record_identity"] is None
+    assert final_attempt_resolution["successor_attempt_record_sha256"] is None
+    final_attempt_external = final_attempt_resolution["external_file_action"]
+    assert isinstance(final_attempt_external, Mapping)
+    assert final_attempt_external["stage"] == "STAGING_BOUND"
+    assert final_attempt_external["action_kind"] == "finalize_attempt_record"
+    assert final_attempt_external["action_index"] == final_attempt_resolution[
+        "action_index"
+    ]
+    assert Path(str(final_attempt_external["final_path"])) == final_attempt_path
+    assert final_attempt_external["predecessor_identity"] == (
+        journal_finalized_resolution["predecessor_attempt_record_identity"]
+    )
+    assert final_attempt_external["predecessor_sha256"] == (
+        journal_finalized_resolution["predecessor_attempt_record_sha256"]
+    )
+    assert tuple(final_attempt_external["staging_identity"]) == path_identity(
+        final_attempt_staging_path
+    )
+    assert final_attempt_external["staging_size"] == (
+        final_attempt_external["planned_successor_size"]
+    )
+    assert final_attempt_external["staging_sha256"] == (
+        final_attempt_external["planned_successor_sha256"]
+    )
+    staged_final_attempt_record = (
+        runtime_installer._runtime_attempt_retention_from_raw(
+            final_attempt_staging_path.read_bytes(),
+            runtime_root=fixture.runtime_admission.runtime_root,
+        )
+    )
+    assert staged_final_attempt_record.state == "FINALIZED"
+    assert staged_final_attempt_record.owns_target is False
+    assert staged_final_attempt_record.target_identity == target_identity
+    assert staged_final_attempt_record.journal_path == journal_path
+    assert staged_final_attempt_record.journal_identity == (
+        finalized_journal_triplet[0]
+    )
+    assert staged_final_attempt_record.target_owner_journal_identity == tuple(
+        final_attempt_resolution["predecessor_target_owner_journal_identity"]
+    )
+    assert final_attempt_resolution["owner_retirement"] is None
+    assert final_attempt_resolution["resolved_physical_disposition"] == (
+        journal_finalized_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        final_attempt_staged.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            final_attempt_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            final_attempt_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=final_attempt_staged,
+    ) as final_attempt_commit_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_attempt_commit_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_attempt_commit_pair:
+            final_attempt_commit_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_attempt_commit_capabilities.session_lease
+                    ),
+                    expected_retirement_session=final_attempt_staged,
+                )
+            )
+            final_attempt_commit_session_path = (
+                final_attempt_commit_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            final_attempt_commit_session_before = (
+                path_identity(final_attempt_commit_session_path),
+                final_attempt_commit_session_path.read_bytes(),
+            )
+            final_attempt_commit_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_attempt_commit_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=final_attempt_commit_authorization,
+                )
+            )
+            assert physical_rows == ["physical_recovery_advanced"] * 18
+            first_final_attempt_commit_receipt = (
+                final_attempt_commit_physical.terminal_resolution_step_receipt
+            )
+            assert type(first_final_attempt_commit_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert final_attempt_commit_session_before == (
+                path_identity(final_attempt_commit_session_path),
+                final_attempt_commit_session_path.read_bytes(),
+            )
+            assert not os.path.lexists(final_attempt_staging_path)
+            assert not os.path.lexists(final_attempt_inner_temp_path)
+            finalized_attempt_triplet = (
+                path_identity(final_attempt_path),
+                final_attempt_path.read_bytes(),
+            )
+            finalized_attempt_record = (
+                runtime_installer._runtime_attempt_retention_from_raw(
+                    finalized_attempt_triplet[1],
+                    runtime_root=fixture.runtime_admission.runtime_root,
+                )
+            )
+            assert finalized_attempt_record.state == "FINALIZED"
+            assert finalized_attempt_record.owns_target is False
+            assert finalized_attempt_record.target_identity == target_identity
+            assert finalized_attempt_record.package_root_sha256 == (
+                "sha256:" + finalized_journal.package_root_sha256
+            )
+            assert finalized_attempt_record.package_root_sha256 != (
+                fixture.runtime_admission.package_root_sha256
+            )
+            assert finalized_attempt_record.journal_path == journal_path
+            assert finalized_attempt_record.journal_identity == (
+                finalized_journal_triplet[0]
+            )
+            assert finalized_attempt_record.target_owner_journal_path == Path(
+                str(
+                    final_attempt_resolution[
+                        "predecessor_target_owner_journal_path"
+                    ]
+                )
+            )
+            assert finalized_attempt_record.target_owner_journal_identity == (
+                tuple(
+                    final_attempt_resolution[
+                        "predecessor_target_owner_journal_identity"
+                    ]
+                )
+            )
+            assert finalized_attempt_record.target_owner_journal_sha256 == (
+                final_attempt_resolution[
+                    "predecessor_target_owner_journal_sha256"
+                ]
+            )
+
+    assert not first_final_attempt_commit_receipt._opaque.active
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=final_attempt_staged,
+    ) as final_attempt_commit_replay_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(final_attempt_commit_replay_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as final_attempt_commit_replay_pair:
+            final_attempt_commit_replay_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        final_attempt_commit_replay_capabilities.session_lease
+                    ),
+                    expected_retirement_session=final_attempt_staged,
+                )
+            )
+            replayed_final_attempt_commit = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=final_attempt_commit_replay_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=(
+                        final_attempt_commit_replay_authorization
+                    ),
+                )
+            )
+            assert physical_rows == ["physical_recovery_advanced"] * 19
+            final_attempt_commit_replay_receipt = (
+                replayed_final_attempt_commit.terminal_resolution_step_receipt
+            )
+            assert type(final_attempt_commit_replay_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert finalized_attempt_triplet == (
+                path_identity(final_attempt_path),
+                final_attempt_path.read_bytes(),
+            )
+            attempt_finalized = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        final_attempt_commit_replay_capabilities.session_lease
+                    ),
+                    expected_resolution_session=final_attempt_staged,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=(
+                        final_attempt_commit_replay_receipt
+                    ),
+                )
+            )
+            assert not final_attempt_commit_replay_receipt._opaque.active
+
+    attempt_finalized_retirement = attempt_finalized.terminal_retirement
+    assert isinstance(attempt_finalized_retirement, Mapping)
+    attempt_finalized_resolution = attempt_finalized_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(attempt_finalized_resolution, Mapping)
+    assert attempt_finalized_resolution["action_index"] == (
+        int(final_attempt_resolution["action_index"]) + 1
+    )
+    assert attempt_finalized_resolution["successor_attempt_record_path"] == (
+        str(final_attempt_path)
+    )
+    assert tuple(
+        attempt_finalized_resolution["successor_attempt_record_identity"]
+    ) == finalized_attempt_triplet[0]
+    assert attempt_finalized_resolution[
+        "successor_attempt_record_sha256"
+    ] == "sha256:" + hashlib.sha256(finalized_attempt_triplet[1]).hexdigest()
+    assert attempt_finalized_resolution["external_file_action"] is None
+    assert attempt_finalized_resolution[
+        "allowed_attempt_record_successor_state"
+    ] is None
+    assert attempt_finalized_resolution["allowed_journal_successor_phase"] is None
+    assert attempt_finalized_resolution["owner_retirement"] is None
+    assert attempt_finalized_resolution[
+        "successor_target_owner_journal_identity"
+    ] == final_attempt_resolution["successor_target_owner_journal_identity"]
+    assert attempt_finalized_resolution["resolved_physical_disposition"] == (
+        final_attempt_resolution["resolved_physical_disposition"]
+    )
+    assert runtime_installer._plain_json_value(
+        attempt_finalized.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            attempt_finalized_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            attempt_finalized_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    final_runtime_triplets = {
+        "attempt": (
+            path_identity(final_attempt_path),
+            final_attempt_path.read_bytes(),
+        ),
+        "journal": (path_identity(journal_path), journal_path.read_bytes()),
+        "owner": (
+            path_identity(
+                Path(
+                    str(
+                        attempt_finalized_resolution[
+                            "predecessor_target_owner_journal_path"
+                        ]
+                    )
+                )
+            ),
+            Path(
+                str(
+                    attempt_finalized_resolution[
+                        "predecessor_target_owner_journal_path"
+                    ]
+                )
+            ).read_bytes(),
+        ),
+    }
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=attempt_finalized,
+    ) as observe_committed_capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(observe_committed_capabilities),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as observe_committed_pair:
+            observe_committed_authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=(
+                        observe_committed_capabilities.session_lease
+                    ),
+                    expected_retirement_session=attempt_finalized,
+                )
+            )
+            observe_committed_session_path = (
+                observe_committed_capabilities.session_lease.session_root
+                / "session.json"
+            )
+            observe_committed_session_before = (
+                path_identity(observe_committed_session_path),
+                observe_committed_session_path.read_bytes(),
+            )
+            observe_committed_physical = (
+                runtime_installer.recover_runtime_attempt_from_pair(
+                    lease_pair=observe_committed_pair,
+                    transaction_id=(
+                        fixture.runtime_admission.apply_attempt_id
+                    ),
+                    expected_retention_owner_run_id=(
+                        fixture.apply_started.run_id
+                    ),
+                    expected_package_root_sha256=(
+                        fixture.runtime_admission.package_root_sha256
+                    ),
+                    expected_deck_name=result.plan.deck_name,
+                    runtime_admission=fixture.runtime_admission,
+                    terminal_authorization=observe_committed_authorization,
+                )
+            )
+            assert physical_rows == ["physical_recovery_advanced"] * 20
+            observe_committed_receipt = (
+                observe_committed_physical.terminal_resolution_step_receipt
+            )
+            assert type(observe_committed_receipt) is (
+                live_start_session.TerminalResolutionStepReceipt
+            )
+            assert observe_committed_session_before == (
+                path_identity(observe_committed_session_path),
+                observe_committed_session_path.read_bytes(),
+            )
+            assert final_runtime_triplets == {
+                "attempt": (
+                    path_identity(final_attempt_path),
+                    final_attempt_path.read_bytes(),
+                ),
+                "journal": (
+                    path_identity(journal_path),
+                    journal_path.read_bytes(),
+                ),
+                "owner": (
+                    path_identity(
+                        Path(
+                            str(
+                                attempt_finalized_resolution[
+                                    "predecessor_target_owner_journal_path"
+                                ]
+                            )
+                        )
+                    ),
+                    Path(
+                        str(
+                            attempt_finalized_resolution[
+                                "predecessor_target_owner_journal_path"
+                            ]
+                        )
+                    ).read_bytes(),
+                ),
+            }
+            committed = (
+                live_start_session.advance_terminal_resolution_under_lock(
+                    session_lease=(
+                        observe_committed_capabilities.session_lease
+                    ),
+                    expected_resolution_session=attempt_finalized,
+                    transition="physical_recovery_advanced",
+                    resolved_evidence=None,
+                    terminal_authorization=None,
+                    physical_step_receipt=observe_committed_receipt,
+                )
+            )
+            assert not observe_committed_receipt._opaque.active
+
+    committed_retirement = committed.terminal_retirement
+    assert isinstance(committed_retirement, Mapping)
+    committed_resolution = committed_retirement[
+        "terminal_resolution_evidence"
+    ]
+    assert isinstance(committed_resolution, Mapping)
+    assert committed_resolution["action_index"] == (
+        int(attempt_finalized_resolution["action_index"]) + 1
+    )
+    assert committed_resolution["resolved_physical_disposition"] == "COMMITTED"
+    assert committed_resolution["runtime_match_status"] == "unknown"
+    assert committed_resolution["runtime_match_sha256"] is None
+    for authority_prefix in (
+        "predecessor_attempt_record",
+        "successor_attempt_record",
+        "predecessor_journal",
+        "successor_journal",
+        "predecessor_target_owner_journal",
+        "successor_target_owner_journal",
+    ):
+        for suffix in ("path", "identity", "sha256"):
+            field_name = f"{authority_prefix}_{suffix}"
+            assert committed_resolution[field_name] == (
+                attempt_finalized_resolution[field_name]
+            )
+    assert committed_resolution["external_file_action"] is None
+    assert committed_resolution["owner_retirement"] is None
+    assert committed_resolution[
+        "allowed_attempt_record_successor_state"
+    ] is None
+    assert committed_resolution["allowed_journal_successor_phase"] is None
+    for field_name in (
+        "planned_journal_successor_path",
+        "planned_journal_successor_parent_identity",
+        "planned_journal_successor_phase",
+        "planned_journal_successor_size",
+        "planned_journal_successor_sha256",
+    ):
+        assert committed_resolution[field_name] is None
+    assert runtime_installer._plain_json_value(
+        committed.result_intent
+    ) == historical_result
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            committed_retirement[field_name]
+        )
+        for field_name in historical_outer_fields
+    } == historical_outer_fields
+    assert {
+        field_name: runtime_installer._plain_json_value(
+            committed_resolution[field_name]
+        )
+        for field_name in historical_resolution_fields
+    } == historical_resolution_fields
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=committed,
+    ) as stabilize_capabilities:
+        stabilize_authorization = (
+            live_start_session.authorize_terminal_retirement_under_lock(
+                session_lease=stabilize_capabilities.session_lease,
+                expected_retirement_session=committed,
+            )
+        )
+        assert stabilize_authorization._opaque.action == "stabilized"
+        stabilized = live_start_session.advance_terminal_resolution_under_lock(
+            session_lease=stabilize_capabilities.session_lease,
+            expected_resolution_session=committed,
+            transition="stabilized",
+            resolved_evidence=(
+                live_start_session.TerminalResolutionEvidence(
+                    committed_resolution
+                )
+            ),
+            terminal_authorization=stabilize_authorization,
+            physical_step_receipt=None,
+        )
+    stabilized_retirement = stabilized.terminal_retirement
+    assert isinstance(stabilized_retirement, Mapping)
+    assert stabilized_retirement["stage"] == "RECOVERY_STABILIZED"
+    assert stabilized_retirement["terminal_resolution_evidence"] == (
+        committed_resolution
+    )
+    assert runtime_installer._plain_json_value(
+        stabilized.result_intent
+    ) == historical_result
+    assert physical_rows == ["physical_recovery_advanced"] * 20
+
+
 @pytest.mark.parametrize(
     "substitute", ["target", "owner", "observation_target", "observation_owner"]
 )
@@ -14025,6 +17554,94 @@ def test_same_byte_fence_journal_or_owner_substitution_fails_closed(
             before_action=replace_bound_file,
             failure_probe=probe,
         )
+    assert _runtime_nonlock_surface_evidence(probe["runtime_root"]) == probe[
+        "runtime_before"
+    ]
+    assert probe["session_after"] == probe["session_before"]
+    assert probe["action_index_after"] == probe["action_index_before"]
+    assert probe["content_sha256_after"] == probe["content_sha256_before"]
+
+
+@pytest.mark.parametrize(
+    ("residue", "expected_error"),
+    (
+        ("candidate", "runtime_committed_manifest_changed"),
+        ("ini_staging", "runtime_committed_ini_changed"),
+        ("ini_inner_temp", "runtime_committed_ini_changed"),
+        ("state_staging", "runtime_committed_state_changed"),
+        ("state_inner_temp", "runtime_committed_state_changed"),
+        ("receipt_staging", "runtime_committed_receipt_changed"),
+        ("receipt_inner_temp", "runtime_committed_receipt_changed"),
+    ),
+)
+def test_prior_owner_observe_committed_rejects_unbound_reserved_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    residue: str,
+    expected_error: str,
+) -> None:
+    probe: dict[str, Any] = {}
+
+    def inject_residue(
+        action: str,
+        recovery: Mapping[str, Any],
+        _index: int,
+    ) -> None:
+        if action != "observe_committed":
+            return
+        runtime_root = Path(str(recovery["runtime_root"]))
+        journal_path = Path(str(recovery["successor_journal_path"]))
+        journal = runtime_installer.parse_runtime_transaction_journal_bytes(
+            journal_path.read_bytes(),
+            expected_transaction_id=str(recovery["apply_attempt_id"]),
+        )
+        finals = {
+            "ini": runtime_root / "CustomConfig" / "deck_config.ini",
+            "state": runtime_root / ".hsconfig" / "state.json",
+            "receipt": runtime_installer._receipt_path(
+                runtime_root,
+                journal.state_key,
+            ),
+        }
+        if residue == "candidate":
+            residue_path = (
+                runtime_root
+                / ".hsconfig"
+                / "staging"
+                / str(recovery["apply_attempt_id"])
+            )
+            residue_path.mkdir()
+        else:
+            family, residue_kind = residue.rsplit("_", 1)
+            if residue.endswith("inner_temp"):
+                family = residue.removesuffix("_inner_temp")
+                residue_kind = "inner_temp"
+            final_path = finals[family]
+            if residue_kind == "staging":
+                residue_path = final_path.with_name(
+                    f"{final_path.name}.staged"
+                )
+            else:
+                assert residue_kind == "inner_temp"
+                residue_path = final_path.with_name(
+                    f".{final_path.name}.staged.live-start-atomic.tmp"
+                )
+            residue_path.write_bytes(final_path.read_bytes())
+        probe["runtime_root"] = runtime_root
+        probe["residue_path"] = residue_path
+        probe["runtime_before"] = _runtime_nonlock_surface_evidence(
+            runtime_root
+        )
+
+    with pytest.raises(ValueError, match=f"^{expected_error}$"):
+        _exercise_prior_owner_route(
+            tmp_path,
+            monkeypatch,
+            before_action=inject_residue,
+            failure_probe=probe,
+        )
+
+    assert os.path.lexists(probe["residue_path"])
     assert _runtime_nonlock_surface_evidence(probe["runtime_root"]) == probe[
         "runtime_before"
     ]
@@ -18572,6 +22189,74 @@ def test_terminal_no_commit_inventory_deletes_only_bound_candidate_and_target_en
     assert prepared.inventory_path.exists()
 
 
+def test_terminal_no_commit_inventory_reloads_bound_sidecar_after_persisted_cursor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.live_start_session as live_start_session
+
+    prepared = _real_no_commit_cleanup_cursor(
+        tmp_path,
+        monkeypatch,
+        role="candidate",
+    )
+    monkeypatch.setenv(
+        "LOCALAPPDATA", str(prepared.fixture.pipeline.local_app_data)
+    )
+    cursor = prepared.cursor
+    with _controller_pair_reentry_capabilities(
+        prepared.fixture,
+        expected_session=cursor,
+    ) as capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(capabilities),
+                "runtime_admission": prepared.fixture.runtime_admission,
+            }
+        ) as pair:
+            authorization = (
+                live_start_session.authorize_terminal_retirement_under_lock(
+                    session_lease=capabilities.session_lease,
+                    expected_retirement_session=cursor,
+                )
+            )
+            step = runtime_installer.delete_runtime_no_commit_entry_from_pair(
+                lease_pair=pair,
+                terminal_authorization=authorization,
+                inventory=prepared.inventory,
+                expected_cursor=0,
+            )
+            cursor = live_start_session.advance_terminal_resolution_under_lock(
+                session_lease=capabilities.session_lease,
+                expected_resolution_session=cursor,
+                transition="cleanup_cursor_advanced",
+                resolved_evidence=None,
+                terminal_authorization=None,
+                physical_step_receipt=step.step_receipt,
+            )
+
+    with _controller_pair_reentry_capabilities(
+        prepared.fixture,
+        expected_session=cursor,
+    ) as capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(capabilities),
+                "runtime_admission": prepared.fixture.runtime_admission,
+            }
+        ) as pair:
+            reloaded = (
+                runtime_installer.load_bound_runtime_no_commit_inventory_from_pair(
+                    lease_pair=pair,
+                    session_lease=capabilities.session_lease,
+                    expected_resolution_session=cursor,
+                )
+            )
+            assert reloaded.value == prepared.inventory.value
+            assert reloaded.canonical_json == prepared.inventory.canonical_json
+            assert reloaded.sha256 == prepared.inventory.sha256
+
+
 def test_terminal_physical_helpers_return_receipt_and_reject_reused_authorization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -21549,6 +25234,58 @@ def test_terminal_inventory_reconstructs_only_exact_precommitted_bytes_after_pre
     ) == runtime_before
 
 
+def test_terminal_inventory_rejects_equal_distinct_runtime_admission_before_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _real_no_commit_cleanup_cursor(
+        tmp_path,
+        monkeypatch,
+        role="candidate",
+        stop_at_recovery_prepared=True,
+    )
+    copied_admission = replace(prepared.fixture.runtime_admission)
+    assert copied_admission == prepared.fixture.runtime_admission
+    assert copied_admission is not prepared.fixture.runtime_admission
+    monkeypatch.setenv(
+        "LOCALAPPDATA", str(prepared.fixture.pipeline.local_app_data)
+    )
+    with _controller_pair_reentry_capabilities(
+        prepared.fixture,
+        expected_session=prepared.cursor,
+    ) as capabilities:
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(capabilities),
+                "runtime_admission": prepared.fixture.runtime_admission,
+            }
+        ) as pair:
+            scan_calls: list[str] = []
+
+            def forbidden_scan(*args: Any, **kwargs: Any) -> Any:
+                del args, kwargs
+                scan_calls.append("runtime")
+                raise AssertionError("distinct-admission-reached-runtime-scan")
+
+            monkeypatch.setattr(
+                runtime_installer,
+                "_read_exact_runtime_external_file",
+                forbidden_scan,
+            )
+            with pytest.raises(
+                ValueError,
+                match="^runtime_terminal_cleanup_provenance_invalid$",
+            ):
+                runtime_installer.reconstruct_runtime_no_commit_inventory_from_pair(
+                    lease_pair=pair,
+                    transaction_id=(
+                        prepared.fixture.runtime_admission.apply_attempt_id
+                    ),
+                    runtime_admission=copied_admission,
+                )
+            assert scan_calls == []
+
+
 @pytest.mark.parametrize(
     "substitution", ("entry", "parent", "fence", "journal")
 )
@@ -22792,6 +26529,56 @@ def _retire_owning_success_ack_fence(
     )
 
 
+def _authorize_success_terminal_release_from_current_facts(
+    *,
+    fixture: SimpleNamespace,
+    capabilities: SimpleNamespace,
+    evidence_retired: object,
+):
+    import hsconfig.live_start_session as live_start_session
+
+    assert isinstance(evidence_retired, live_start_session.LiveStartSession)
+    retirement = evidence_retired.terminal_retirement
+    assert isinstance(retirement, Mapping)
+    attempt_id = fixture.runtime_admission.apply_attempt_id
+    observation_authorization = (
+        live_start_session._authorize_runtime_observation_under_lock(
+            session_lease=capabilities.session_lease,
+            expected_session=evidence_retired,
+            observation_family="terminal_release",
+            apply_attempt_id=attempt_id,
+        )
+    )
+
+    def observe() -> live_start_session.RuntimeObservationPostcondition:
+        runtime_installer.revalidate_success_terminal_evidence_retired_from_pair(
+            lease_pair=capabilities.lease_pair,
+            session_lease=capabilities.session_lease,
+            expected_retirement_session=evidence_retired,
+            runtime_admission=fixture.runtime_admission,
+        )
+        return live_start_session.RuntimeObservationPostcondition(
+            action=attempt_id,
+            observation_family="terminal_release",
+            evidence={
+                "terminal_retirement_sha256": retirement[
+                    "content_sha256"
+                ]
+            },
+        )
+
+    receipt = live_start_session._execute_runtime_observation(
+        observation_authorization=observation_authorization,
+        observation_family="terminal_release",
+        read_only_observation=observe,
+    )
+    return live_start_session.authorize_terminal_retirement_under_lock(
+        session_lease=capabilities.session_lease,
+        expected_retirement_session=evidence_retired,
+        runtime_observation_receipt=receipt,
+    )
+
+
 def test_owning_ack_deletes_only_fence_before_evidence_retired(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -23967,9 +27754,10 @@ def test_new_install_ack_preserves_owner_then_later_identical_install_is_already
             physical_step_receipt=first_step.step_receipt,
         )
         release_transition_authorization = (
-            live_start_session.authorize_terminal_retirement_under_lock(
-                session_lease=capabilities.session_lease,
-                expected_retirement_session=evidence_retired,
+            _authorize_success_terminal_release_from_current_facts(
+                fixture=first_fixture,
+                capabilities=capabilities,
+                evidence_retired=evidence_retired,
             )
         )
         release_authorized = live_start_session.advance_terminal_retirement_under_lock(
@@ -24270,9 +28058,10 @@ def test_new_install_ack_preserves_owner_then_later_install_cleans_stale_revisio
             physical_step_receipt=first_step.step_receipt,
         )
         release_transition_authorization = (
-            live_start_session.authorize_terminal_retirement_under_lock(
-                session_lease=capabilities.session_lease,
-                expected_retirement_session=evidence_retired,
+            _authorize_success_terminal_release_from_current_facts(
+                fixture=first_fixture,
+                capabilities=capabilities,
+                evidence_retired=evidence_retired,
             )
         )
         release_authorized = live_start_session.advance_terminal_retirement_under_lock(
@@ -24776,6 +28565,194 @@ def test_owning_success_ack_revalidates_current_match_and_nonpending_runtime_fac
             changed_path.write_bytes(original_raw)
             assert changed_path.read_bytes() == original_raw
             assert path_identity(changed_path) == original_identity
+
+
+def test_terminal_release_revalidates_target_after_current_facts_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A target reverted after its first check cannot authorize release."""
+
+    import hsconfig.live_start_session as live_start_session
+
+    prepared_context = _prepared_owning_success_ack_cursor(tmp_path, monkeypatch)
+    fixture = prepared_context.fixture
+    prepared = prepared_context.prepared
+    acknowledgement = prepared.attempt_acknowledgement
+    assert acknowledgement is not None
+    target_path = Path(str(acknowledgement["target_path"]))
+    target_json = next(target_path.rglob("*.json"))
+    matching_raw = target_json.read_bytes()
+    mismatching_raw = matching_raw + b"\nreverted-after-target-check\n"
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=prepared,
+    ) as capabilities:
+        retired = _retire_owning_success_ack_fence(
+            fixture=fixture,
+            capabilities=capabilities,
+            prepared=prepared,
+        )
+        evidence_retired = live_start_session.advance_terminal_retirement_under_lock(
+            session_lease=capabilities.session_lease,
+            expected_retirement_session=prepared,
+            transition="evidence_retired",
+            terminal_authorization=None,
+            physical_step_receipt=retired.step_receipt,
+        )
+        session_path = capabilities.session_lease.session_root / "session.json"
+        session_before = (path_identity(session_path), session_path.read_bytes())
+        real_verify = runtime_installer._verify_candidate_tree_prefix
+        first_target_check = True
+
+        def transient_first_target_match(**kwargs: object) -> None:
+            nonlocal first_target_check
+            if first_target_check and kwargs.get("root") == target_path:
+                first_target_check = False
+                target_json.write_bytes(matching_raw)
+                try:
+                    real_verify(**kwargs)
+                finally:
+                    target_json.write_bytes(mismatching_raw)
+                return
+            real_verify(**kwargs)
+
+        target_json.write_bytes(mismatching_raw)
+        monkeypatch.setattr(
+            runtime_installer,
+            "_verify_candidate_tree_prefix",
+            transient_first_target_match,
+        )
+
+        with runtime_installer.lease_controller_apply_pair(
+            **{
+                **_pair_arguments(
+                    capabilities,
+                    expected_session=evidence_retired,
+                ),
+                "runtime_admission": fixture.runtime_admission,
+            }
+        ) as pair:
+            capabilities.lease_pair = pair
+            with pytest.raises(
+                ValueError,
+                match="^runtime_terminal_release_current_facts_changed$",
+            ):
+                _authorize_success_terminal_release_from_current_facts(
+                    fixture=fixture,
+                    capabilities=capabilities,
+                    evidence_retired=evidence_retired,
+                )
+
+        assert first_target_check is False
+        assert target_json.read_bytes() == mismatching_raw
+        assert (path_identity(session_path), session_path.read_bytes()) == session_before
+        persisted = live_start_session.load_live_start_session_under_lock(
+            session_lease=capabilities.session_lease,
+        )
+        assert persisted.canonical_json == evidence_retired.canonical_json
+        assert persisted.session_identity == evidence_retired.session_identity
+
+
+def test_terminal_release_revalidates_admission_and_owner_after_runtime_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Owner drift after runtime parity cannot authorize terminal release."""
+
+    import hsconfig.live_start_session as live_start_session
+
+    prepared_context = _prepared_owning_success_ack_cursor(tmp_path, monkeypatch)
+    fixture = prepared_context.fixture
+    prepared = prepared_context.prepared
+    acknowledgement = prepared.attempt_acknowledgement
+    assert acknowledgement is not None
+    admission_path = fixture.runtime_admission.admission_path
+    owner_path = Path(str(acknowledgement["target_owner_journal_path"]))
+    admission_raw = admission_path.read_bytes()
+    owner_raw = owner_path.read_bytes()
+    owner_drift = owner_raw + b"\nowner-drift-after-runtime-parity\n"
+
+    with _controller_pair_reentry_capabilities(
+        fixture,
+        expected_session=prepared,
+    ) as capabilities:
+        retired = _retire_owning_success_ack_fence(
+            fixture=fixture,
+            capabilities=capabilities,
+            prepared=prepared,
+        )
+        evidence_retired = live_start_session.advance_terminal_retirement_under_lock(
+            session_lease=capabilities.session_lease,
+            expected_retirement_session=prepared,
+            transition="evidence_retired",
+            terminal_authorization=None,
+            physical_step_receipt=retired.step_receipt,
+        )
+        session_path = capabilities.session_lease.session_root / "session.json"
+        session_before = (path_identity(session_path), session_path.read_bytes())
+        real_parity = runtime_installer._require_current_success_runtime_parity_from_pair
+        real_read = runtime_installer._read_exact_runtime_external_file
+        read_counts = {admission_path: 0, owner_path: 0}
+
+        def trace_control_plane_reads(
+            path: Path,
+            **kwargs: object,
+        ) -> tuple[bytes, tuple[int, int, int]]:
+            result = real_read(path, **kwargs)
+            candidate = Path(path)
+            if candidate in read_counts:
+                read_counts[candidate] += 1
+            return result
+
+        def drift_owner_after_runtime_parity(**kwargs: object) -> None:
+            real_parity(**kwargs)
+            owner_path.write_bytes(owner_drift)
+
+        monkeypatch.setattr(
+            runtime_installer,
+            "_read_exact_runtime_external_file",
+            trace_control_plane_reads,
+        )
+        monkeypatch.setattr(
+            runtime_installer,
+            "_require_current_success_runtime_parity_from_pair",
+            drift_owner_after_runtime_parity,
+        )
+
+        try:
+            with runtime_installer.lease_controller_apply_pair(
+                **{
+                    **_pair_arguments(
+                        capabilities,
+                        expected_session=evidence_retired,
+                    ),
+                    "runtime_admission": fixture.runtime_admission,
+                }
+            ) as pair:
+                capabilities.lease_pair = pair
+                with pytest.raises(
+                    ValueError,
+                    match="^runtime_terminal_release_current_facts_changed$",
+                ):
+                    _authorize_success_terminal_release_from_current_facts(
+                        fixture=fixture,
+                        capabilities=capabilities,
+                        evidence_retired=evidence_retired,
+                    )
+        finally:
+            owner_path.write_bytes(owner_raw)
+
+        assert admission_path.read_bytes() == admission_raw
+        assert owner_path.read_bytes() == owner_raw
+        assert read_counts == {admission_path: 2, owner_path: 2}
+        assert (path_identity(session_path), session_path.read_bytes()) == session_before
+        persisted = live_start_session.load_live_start_session_under_lock(
+            session_lease=capabilities.session_lease,
+        )
+        assert persisted.canonical_json == evidence_retired.canonical_json
+        assert persisted.session_identity == evidence_retired.session_identity
 
 
 def test_failure_selection_matrix_is_exhaustive_for_new_target_and_prior_owner(

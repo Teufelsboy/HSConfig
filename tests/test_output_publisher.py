@@ -5067,6 +5067,691 @@ def test_neutral_lock_bootstrap_supports_first_legacy_runtime_writer_without_pro
     assert neutral["locks/output-operation.lock"][2] == b""
 
 
+@contextmanager
+def _task10_output_operation_release_context(
+    base: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Build one real persisted release cursor around the canonical record."""
+
+    from contextlib import ExitStack
+
+    from hsconfig import live_start_session
+    from hsconfig.operator_profile import (
+        enable_operator_profile,
+        operator_profile_path,
+    )
+    from hsconfig.output_operation_admission import (
+        build_output_operation_admission_bytes,
+        lease_output_operation_admission,
+        observe_output_operation_admission_under_lease,
+        output_operation_admission_path,
+        output_operation_admission_reserved_temp_path,
+        output_operation_admission_staging_path,
+        output_operation_state_root,
+    )
+    from tests.test_live_start_session import (
+        _lease,
+        _prepublication_output_cursor,
+    )
+
+    session_root, prepublication, output_base, bootstrap_lock = (
+        _prepublication_output_cursor(
+            base / "session-authority",
+            include_operation=False,
+        )
+    )
+    local_app_data = base / "operator-local-app-data"
+    runtime_root = base / "runtime"
+    local_app_data.mkdir(parents=True)
+    runtime_root.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    profile = enable_operator_profile(
+        runtime_root=runtime_root,
+        output_base_root=output_base,
+        expected_predecessor_sha256=None,
+    )
+    output_publisher._bootstrap_neutral_output_locks()
+    state_root = output_operation_state_root()
+    profile_path = operator_profile_path()
+    admission_path = output_operation_admission_path()
+
+    def build_record(
+        *,
+        run_id: str,
+        output_child_name: str = "Deck",
+    ) -> bytes:
+        return build_output_operation_admission_bytes(
+            run_id=run_id,
+            session_root=session_root,
+            session_root_identity=path_identity(session_root),
+            expected_session_sha256=prepublication.content_sha256,
+            operator_profile=profile,
+            operator_profile_path=profile_path,
+            operator_profile_parent_identity=path_identity(profile_path.parent),
+            operator_profile_identity=path_identity(profile_path),
+            state_root_identity=path_identity(state_root),
+            output_base_root=output_base,
+            output_base_root_identity=path_identity(output_base),
+            output_child_path=output_base / output_child_name,
+            output_child_predecessor_state="absent",
+            output_child_predecessor_identity=None,
+            output_bootstrap_lock_path=bootstrap_lock,
+            output_bootstrap_lock_identity=path_identity(bootstrap_lock),
+            output_claim_path=output_base / ".claim.json",
+        )
+
+    raw = build_record(run_id=prepublication.run_id)
+    raw_sha256 = "sha256:" + output_publisher.sha256(raw).hexdigest()
+    with ExitStack() as stack:
+        session_lease = stack.enter_context(_lease(session_root))
+        prepared = live_start_session.prepare_output_operation_admission_under_lock(
+            session_lease=session_lease,
+            expected_prepublication_session=prepublication,
+            admission_path=admission_path,
+            admission_staging_path=output_operation_admission_staging_path(),
+            admission_staging_inner_temp_path=(
+                output_operation_admission_reserved_temp_path()
+            ),
+            admission_parent_identity=path_identity(state_root),
+            planned_admission_size=len(raw),
+            planned_admission_sha256=raw_sha256,
+            output_base_path=output_base,
+            output_base_identity=path_identity(output_base),
+            output_child_path=output_base / "Deck",
+            predecessor_output_child_identity=None,
+            output_bootstrap_lock_path=bootstrap_lock,
+            output_bootstrap_lock_identity=path_identity(bootstrap_lock),
+        )
+        admission_path.write_bytes(raw)
+        materialize_authorization = (
+            live_start_session.authorize_output_operation_admission_under_lock(
+                session_lease=session_lease,
+                expected_operation_session=prepared,
+                action="materialize_output_operation_admission_staging",
+            )
+        )
+        identity = path_identity(admission_path)
+        materialize_receipt = (
+            live_start_session._execute_output_operation_admission_physical_step(
+                admission_authorization=materialize_authorization,
+                action="materialize_output_operation_admission_staging",
+                physical_action=lambda: (
+                    live_start_session.OutputOperationAdmissionPhysicalPostcondition(
+                        action="materialize_output_operation_admission_staging",
+                        evidence={
+                            "staging_identity": identity,
+                            "staging_size": len(raw),
+                            "staging_sha256": raw_sha256,
+                        },
+                    )
+                ),
+            )
+        )
+        staging_bound = (
+            live_start_session.advance_output_operation_admission_under_lock(
+                session_lease=session_lease,
+                expected_operation_session=prepared,
+                transition="staging_bound",
+                physical_step_receipt=materialize_receipt,
+            )
+        )
+        operation_lease = stack.enter_context(
+            lease_output_operation_admission()
+        )
+        expected = observe_output_operation_admission_under_lease(
+            operation_lease
+        )
+        assert expected is not None
+        assert expected.admission_sha256 != raw_sha256
+        commit_authorization = (
+            live_start_session.authorize_output_operation_admission_under_lock(
+                session_lease=session_lease,
+                expected_operation_session=staging_bound,
+                action="commit_bound_output_operation_admission",
+            )
+        )
+        binding = output_publisher._output_operation_binding(
+            expected,
+            raw_sha256=raw_sha256,
+        )
+        commit_receipt = (
+            live_start_session._execute_output_operation_admission_physical_step(
+                admission_authorization=commit_authorization,
+                action="commit_bound_output_operation_admission",
+                physical_action=lambda: (
+                    live_start_session.OutputOperationAdmissionPhysicalPostcondition(
+                        action="commit_bound_output_operation_admission",
+                        evidence={"binding": binding},
+                    )
+                ),
+            )
+        )
+        active = live_start_session.advance_output_operation_admission_under_lock(
+            session_lease=session_lease,
+            expected_operation_session=staging_bound,
+            transition="admission_active",
+            physical_step_receipt=commit_receipt,
+        )
+        release_value = dict(active.output_operation_admission_binding or {})
+        release_value.pop("content_sha256")
+        release_value.update(
+            {
+                "state": "TERMINAL_RELEASE_AUTHORIZED",
+                "release_handoff_kind": "terminal_no_runtime",
+            }
+        )
+        release_binding = live_start_session.seal_embedded_document(
+            "output_operation_admission_binding",
+            release_value,
+        )
+        release_cursor = (
+            live_start_session._transition_receipt_authorized_under_lock(
+                session_lease=session_lease,
+                expected_session=active,
+                event="same_phase_cas",
+                changes={
+                    "output_operation_admission_binding": release_binding
+                },
+            )
+        )
+
+        def mint_release_authorization():
+            return live_start_session._authorize_output_operation_admission_release_under_lock(
+                session_lease=session_lease,
+                expected_release_authorized_session=release_cursor,
+            )
+
+        yield SimpleNamespace(
+            session_lease=session_lease,
+            operation_lease=operation_lease,
+            release_cursor=release_cursor,
+            expected=expected,
+            admission_path=admission_path,
+            raw=raw,
+            raw_sha256=raw_sha256,
+            build_record=build_record,
+            mint=mint_release_authorization,
+        )
+
+
+def _replace_output_operation_record(
+    context: SimpleNamespace,
+    raw: bytes,
+) -> tuple[int, int, int]:
+    historical_identity = path_identity(context.admission_path)
+    context.admission_path.unlink()
+    context.admission_path.write_bytes(raw)
+    successor_identity = path_identity(context.admission_path)
+    assert successor_identity != historical_identity
+    return successor_identity
+
+
+def test_release_output_operation_admission_unlinks_exact_old_with_persisted_raw_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig.package_io import secure_unlink_verified
+
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        order: list[str] = []
+        unlink_sha256: list[str] = []
+        real_executor = output_publisher.live_session._execute_output_operation_release
+        real_require_operation_context = (
+            output_publisher._require_active_operation_context
+        )
+        real_load_session = (
+            output_publisher.live_session.load_live_start_session_under_lock
+        )
+        real_observer = (
+            output_publisher.observe_output_operation_admission_under_lease
+        )
+
+        def observed_executor(**kwargs: object):
+            order.append("executor")
+            return real_executor(**kwargs)  # type: ignore[arg-type]
+
+        def observed_operation_context(lease: object) -> None:
+            order.append("operation-context")
+            real_require_operation_context(lease)  # type: ignore[arg-type]
+
+        def observed_session_load(**kwargs: object):
+            order.append("session-load")
+            return real_load_session(**kwargs)  # type: ignore[arg-type]
+
+        def observed_admission(lease: object):
+            order.append("observer")
+            return real_observer(lease)  # type: ignore[arg-type]
+
+        def observed_unlink(path: Path, **kwargs: object) -> None:
+            order.append("unlink")
+            unlink_sha256.append(str(kwargs["expected_sha256"]))
+            secure_unlink_verified(path, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(
+            output_publisher.live_session,
+            "_execute_output_operation_release",
+            observed_executor,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "_require_active_operation_context",
+            observed_operation_context,
+        )
+        monkeypatch.setattr(
+            output_publisher.live_session,
+            "load_live_start_session_under_lock",
+            observed_session_load,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "observe_output_operation_admission_under_lease",
+            observed_admission,
+        )
+        monkeypatch.setattr(
+            output_publisher,
+            "secure_unlink_verified",
+            observed_unlink,
+        )
+        session_path = context.session_lease.session_root / "session.json"
+        session_before = (
+            path_identity(session_path),
+            session_path.read_bytes(),
+        )
+
+        disposition = (
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+        )
+
+        assert disposition == "old_unlinked"
+        assert not os.path.lexists(context.admission_path)
+        assert order == [
+            "executor",
+            "operation-context",
+            "session-load",
+            "observer",
+            "unlink",
+        ]
+        assert unlink_sha256 == [context.raw_sha256.removeprefix("sha256:")]
+        assert (
+            path_identity(session_path),
+            session_path.read_bytes(),
+        ) == session_before
+
+
+def test_release_output_operation_admission_accepts_already_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        context.admission_path.unlink()
+        assert (
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+            == "already_absent"
+        )
+        assert not os.path.lexists(context.admission_path)
+
+
+def test_release_output_operation_admission_preserves_valid_foreign_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        successor_raw = context.build_record(run_id="f" * 32)
+        successor_identity = _replace_output_operation_record(
+            context,
+            successor_raw,
+        )
+
+        assert (
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+            == "valid_foreign_successor"
+        )
+        assert (
+            path_identity(context.admission_path),
+            context.admission_path.read_bytes(),
+        ) == (successor_identity, successor_raw)
+
+
+def test_release_output_operation_admission_rejects_same_identity_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        identity = path_identity(context.admission_path)
+        context.admission_path.write_bytes(b"{}")
+        assert path_identity(context.admission_path) == identity
+
+        with pytest.raises(ValueError, match="output_operation_admission"):
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+        assert (
+            path_identity(context.admission_path),
+            context.admission_path.read_bytes(),
+        ) == (identity, b"{}")
+
+
+@pytest.mark.parametrize("successor_kind", ("malformed", "old-run"))
+def test_release_output_operation_admission_rejects_malformed_or_old_run_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    successor_kind: str,
+) -> None:
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        successor_raw = (
+            b"{}"
+            if successor_kind == "malformed"
+            else context.build_record(
+                run_id=context.expected.run_id,
+                output_child_name="OldRunSuccessor",
+            )
+        )
+        if successor_kind == "old-run":
+            assert successor_raw != context.raw
+        successor_identity = _replace_output_operation_record(
+            context,
+            successor_raw,
+        )
+
+        with pytest.raises(ValueError, match="admission|ambiguous"):
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+        assert (
+            path_identity(context.admission_path),
+            context.admission_path.read_bytes(),
+        ) == (successor_identity, successor_raw)
+
+
+def test_release_output_operation_admission_rejects_reused_forged_stale_or_cross_thread_bearer_before_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig import live_start_session
+    from tests.test_live_start_session import _publish_session_fixture_under_lock
+
+    observer_calls = 0
+    real_observer = output_publisher.observe_output_operation_admission_under_lease
+
+    def observed(lease: object):
+        nonlocal observer_calls
+        observer_calls += 1
+        return real_observer(lease)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        output_publisher,
+        "observe_output_operation_admission_under_lease",
+        observed,
+    )
+
+    with _task10_output_operation_release_context(
+        tmp_path / "reused",
+        monkeypatch,
+    ) as context:
+        authorization = context.mint()
+        assert (
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=authorization,
+            )
+            == "old_unlinked"
+        )
+        observer_calls = 0
+        with pytest.raises(live_start_session.SessionCapabilityError):
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=authorization,
+            )
+        assert observer_calls == 0
+
+    with _task10_output_operation_release_context(
+        tmp_path / "forged",
+        monkeypatch,
+    ) as context:
+        registered = context.mint()
+        unregistered_clone = object.__new__(type(registered))
+        object.__setattr__(
+            unregistered_clone,
+            "_opaque",
+            registered._opaque,
+        )
+        for forged in (object(), unregistered_clone):
+            observer_calls = 0
+            with pytest.raises(live_start_session.SessionCapabilityError):
+                output_publisher.release_output_operation_admission_under_lease(
+                    operation_lease=context.operation_lease,
+                    session_lease=context.session_lease,
+                    expected_release_authorized_session=context.release_cursor,
+                    expected=context.expected,
+                    release_authorization=forged,
+                )
+            assert observer_calls == 0
+
+    with _task10_output_operation_release_context(
+        tmp_path / "stale",
+        monkeypatch,
+    ) as context:
+        authorization = context.mint()
+        successor_value = context.release_cursor.to_value()
+        successor_value.pop("content_sha256")
+        successor_value["preview_requested"] = not context.release_cursor.preview_requested
+        _publish_session_fixture_under_lock(
+            lease=context.session_lease,
+            predecessor=context.release_cursor,
+            value=successor_value,
+        )
+        observer_calls = 0
+        with pytest.raises(
+            live_start_session.SessionCapabilityError,
+            match="stale",
+        ):
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=authorization,
+            )
+        assert observer_calls == 0
+
+    with _task10_output_operation_release_context(
+        tmp_path / "cross-thread",
+        monkeypatch,
+    ) as context:
+        authorization = context.mint()
+        errors: Queue[BaseException] = Queue()
+
+        def cross_thread() -> None:
+            try:
+                output_publisher.release_output_operation_admission_under_lease(
+                    operation_lease=context.operation_lease,
+                    session_lease=context.session_lease,
+                    expected_release_authorized_session=context.release_cursor,
+                    expected=context.expected,
+                    release_authorization=authorization,
+                )
+            except BaseException as error:
+                errors.put(error)
+
+        observer_calls = 0
+        worker = Thread(target=cross_thread)
+        worker.start()
+        worker.join(5)
+        assert not worker.is_alive()
+        error = errors.get_nowait()
+        assert isinstance(error, live_start_session.SessionCapabilityError)
+        assert observer_calls == 0
+
+
+def test_release_output_operation_admission_rejects_cross_session_bearer_before_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig import live_start_session
+
+    observer_calls = 0
+    real_observer = output_publisher.observe_output_operation_admission_under_lease
+
+    def observed(lease: object):
+        nonlocal observer_calls
+        observer_calls += 1
+        return real_observer(lease)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        output_publisher,
+        "observe_output_operation_admission_under_lease",
+        observed,
+    )
+    with _task10_output_operation_release_context(
+        tmp_path / "authorization-owner",
+        monkeypatch,
+    ) as owner:
+        foreign_authorization = owner.mint()
+        with _task10_output_operation_release_context(
+            tmp_path / "selected-context",
+            monkeypatch,
+        ) as selected:
+            before = (
+                path_identity(selected.admission_path),
+                selected.admission_path.read_bytes(),
+            )
+            with pytest.raises(live_start_session.SessionCapabilityError):
+                output_publisher.release_output_operation_admission_under_lease(
+                    operation_lease=selected.operation_lease,
+                    session_lease=selected.session_lease,
+                    expected_release_authorized_session=(
+                        selected.release_cursor
+                    ),
+                    expected=selected.expected,
+                    release_authorization=foreign_authorization,
+                )
+            assert observer_calls == 0
+            assert (
+                path_identity(selected.admission_path),
+                selected.admission_path.read_bytes(),
+            ) == before
+
+
+@pytest.mark.parametrize(
+    ("physical_state", "expected_retry"),
+    (
+        ("old", "already_absent"),
+        ("absent", "already_absent"),
+        ("foreign", "valid_foreign_successor"),
+    ),
+)
+def test_release_output_operation_admission_fault_hook_resumes_closed_physical_states(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    physical_state: str,
+    expected_retry: str,
+) -> None:
+    from hsconfig.live_start_faults import LiveStartFaultPoint
+
+    class ReleaseCrash(RuntimeError):
+        pass
+
+    with _task10_output_operation_release_context(
+        tmp_path,
+        monkeypatch,
+    ) as context:
+        successor: tuple[tuple[int, int, int], bytes] | None = None
+        if physical_state == "absent":
+            context.admission_path.unlink()
+        elif physical_state == "foreign":
+            successor_raw = context.build_record(run_id="f" * 32)
+            successor = (
+                _replace_output_operation_record(context, successor_raw),
+                successor_raw,
+            )
+
+        points: list[LiveStartFaultPoint] = []
+
+        def crash(point: LiveStartFaultPoint) -> None:
+            points.append(point)
+            raise ReleaseCrash
+
+        with pytest.raises(ReleaseCrash):
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+                fault_hook=crash,
+            )
+        assert points == [
+            LiveStartFaultPoint.AFTER_OUTPUT_OPERATION_ADMISSION_UNLINK
+        ]
+        if physical_state in {"old", "absent"}:
+            assert not os.path.lexists(context.admission_path)
+        else:
+            assert successor is not None
+            assert (
+                path_identity(context.admission_path),
+                context.admission_path.read_bytes(),
+            ) == successor
+
+        assert (
+            output_publisher.release_output_operation_admission_under_lease(
+                operation_lease=context.operation_lease,
+                session_lease=context.session_lease,
+                expected_release_authorized_session=context.release_cursor,
+                expected=context.expected,
+                release_authorization=context.mint(),
+            )
+            == expected_retry
+        )
+
+
 def test_live_preview_and_legacy_publishers_share_output_child_bootstrap_lock(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

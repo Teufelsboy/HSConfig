@@ -500,6 +500,7 @@ def test_package_input_lease_blocks_publisher_for_entire_consumer_lifetime(
     published_packages: list[Path] = []
 
     with lease_package_input(output_root) as lease:
+        current_output_module.revalidate_package_input_lease(lease)
         publisher = threading.Thread(
             target=lambda: (
                 published_packages.append(
@@ -546,6 +547,55 @@ def test_package_input_lease_preserves_direct_package_compatibility(
         assert lease.publication is None
         assert lease.content_root_sha256 is None
         assert lease.output_root is None
+
+
+def test_package_input_lease_binds_relative_candidate_before_cwd_can_change(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cwd_a = tmp_path / "cwd-a"
+    cwd_b = tmp_path / "cwd-b"
+    relative_parent = Path("relative")
+    output_a, package_a = _publish(cwd_a / relative_parent, rendered_runs[0])
+    output_b, _package_b = _publish(cwd_b / relative_parent, rendered_runs[1])
+    publication_a = current_output_module.parse_output_publication(
+        (output_a / "current.json").read_bytes()
+    )
+    publication_b = current_output_module.parse_output_publication(
+        (output_b / "current.json").read_bytes()
+    )
+    assert publication_a.content_root_sha256 != publication_b.content_root_sha256
+
+    real_capture = current_output_module.capture_plain_ancestor_guard
+    captured_paths: list[Path] = []
+
+    def capture_then_change_cwd(path: Path):
+        captured_paths.append(Path(path))
+        guard = real_capture(path)
+        os.chdir(cwd_b)
+        return guard
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(cwd_a)
+        monkeypatch.setattr(
+            current_output_module,
+            "capture_plain_ancestor_guard",
+            capture_then_change_cwd,
+        )
+
+        with current_output_module.lease_package_input(
+            relative_parent / output_a.name
+        ) as lease:
+            assert lease.output_root == output_a.absolute()
+            assert lease.package_root == package_a.absolute()
+            assert lease.publication == publication_a
+            assert lease.content_root_sha256 == publication_a.content_root_sha256
+    finally:
+        os.chdir(original_cwd)
+
+    assert captured_paths == [(output_a / ".publish.lock").absolute()]
 
 
 def test_package_input_lease_token_is_nonforgeable_thread_bound_and_expires(
@@ -681,6 +731,75 @@ def test_package_input_lease_token_retires_before_publish_lock_exit(
     assert len(exit_errors) == 1
     assert isinstance(exit_errors[0], ValueError)
     assert str(exit_errors[0]) == "package_input_lease_inactive"
+
+
+def test_published_package_lease_never_recreates_a_missing_publish_lock(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    lock_path = output_root / ".publish.lock"
+    lock_path.unlink()
+    lock_constructor_calls: list[tuple[object, ...]] = []
+
+    class UnexpectedLockConstruction:
+        def __init__(self, *args: object, **_kwargs: object) -> None:
+            lock_constructor_calls.append(args)
+            raise AssertionError("missing publish lock must not be recreated")
+
+    monkeypatch.setattr(
+        current_output_module,
+        "ExclusiveFileLock",
+        UnexpectedLockConstruction,
+    )
+
+    with pytest.raises(ValueError, match="^current_output_invalid$"):
+        with current_output_module.lease_package_input(output_root):
+            raise AssertionError("missing publish lock was accepted")
+
+    assert lock_constructor_calls == []
+    assert not lock_path.exists()
+
+
+def test_direct_package_lease_cannot_authorize_published_apply(
+    tmp_path: Path,
+) -> None:
+    revalidate = getattr(
+        current_output_module,
+        "revalidate_package_input_lease",
+        None,
+    )
+    assert callable(revalidate)
+    package_root = tmp_path / "direct-package"
+    package_root.mkdir()
+
+    with current_output_module.lease_package_input(package_root) as lease:
+        with pytest.raises(
+            ValueError,
+            match="^package_input_lease_published_required$",
+        ):
+            revalidate(lease)
+
+
+def test_package_input_lease_revalidation_rejects_same_byte_pointer_replacement(
+    tmp_path: Path,
+    rendered_runs: tuple[RenderedConfigureRun, RenderedConfigureRun],
+) -> None:
+    output_root, _package_root = _publish(tmp_path, rendered_runs[0])
+    pointer_path = output_root / "current.json"
+
+    with current_output_module.lease_package_input(output_root) as lease:
+        original = pointer_path.read_bytes()
+        replacement = output_root / "current.replacement"
+        replacement.write_bytes(original)
+        os.replace(replacement, pointer_path)
+
+        with pytest.raises(
+            ValueError,
+            match="^package_input_lease_publication_changed$",
+        ):
+            current_output_module.revalidate_package_input_lease(lease)
 
 
 def test_package_input_lease_rejects_existing_non_plain_candidate(

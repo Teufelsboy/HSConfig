@@ -53,6 +53,7 @@ from hsconfig.live_start_session import (
     OutputChildBootstrapStepReceipt,
     OutputOperationAdmissionAuthorization,
     OutputOperationAdmissionPhysicalPostcondition,
+    OutputOperationAdmissionReleaseAuthorization,
     OutputOperationAdmissionStepReceipt,
 )
 from hsconfig.operator_profile import OperatorProfileLease
@@ -79,6 +80,7 @@ from hsconfig.package_io import (
     secure_replace,
     secure_rmdir,
     secure_unlink,
+    secure_unlink_verified,
     status_is_reparse,
 )
 from hsconfig.output_operation_admission import (
@@ -1044,6 +1046,232 @@ def publish_output_operation_admission_under_lease(
         staging=staging_result,
         evidence=observed_evidence,
         step_receipt=receipt,
+    )
+
+
+def _output_operation_release_binding_matches_expected(
+    *,
+    binding: Mapping[str, Any],
+    expected: OutputOperationAdmissionEvidence,
+    operation_lease: OutputOperationAdmissionLease,
+) -> bool:
+    canonical_path = (
+        operation_lease.state_root
+        / output_admission.OUTPUT_OPERATION_ADMISSION_NAME
+    )
+    expected_fields: tuple[tuple[str, object], ...] = (
+        ("admission_path", str(expected.admission_path)),
+        (
+            "admission_parent_identity",
+            expected.admission_parent_identity,
+        ),
+        ("admission_identity", expected.admission_identity),
+        ("admission_size", expected.admission_size),
+        ("run_id", expected.run_id),
+        ("session_root", str(expected.session_root)),
+        ("session_root_identity", expected.session_root_identity),
+        (
+            "expected_session_sha256",
+            expected.expected_session_sha256,
+        ),
+        ("operator_profile_path", str(expected.operator_profile_path)),
+        (
+            "operator_profile_parent_identity",
+            expected.operator_profile_parent_identity,
+        ),
+        (
+            "operator_profile_identity",
+            expected.operator_profile_identity,
+        ),
+        (
+            "operator_profile_sha256",
+            expected.operator_profile_sha256,
+        ),
+        ("state_root_identity", expected.state_root_identity),
+        ("output_base_root", str(expected.output_base_root)),
+        (
+            "output_base_root_identity",
+            expected.output_base_root_identity,
+        ),
+        ("output_child_path", str(expected.output_child_path)),
+        (
+            "output_child_predecessor_state",
+            expected.output_child_predecessor_state,
+        ),
+        (
+            "output_child_predecessor_identity",
+            expected.output_child_predecessor_identity,
+        ),
+        (
+            "output_bootstrap_lock_path",
+            str(expected.output_bootstrap_lock_path),
+        ),
+        (
+            "output_bootstrap_lock_identity",
+            expected.output_bootstrap_lock_identity,
+        ),
+        ("output_claim_path", str(expected.output_claim_path)),
+    )
+    return (
+        expected.state == "ACTIVE"
+        and expected.admission_path == canonical_path
+        and expected.admission_parent_identity
+        == operation_lease.state_root_identity
+        and expected.state_root_identity
+        == operation_lease.state_root_identity
+        and all(binding.get(name) == value for name, value in expected_fields)
+    )
+
+
+def _same_output_operation_release_evidence(
+    *,
+    current: OutputOperationAdmissionEvidence,
+    expected: OutputOperationAdmissionEvidence,
+    persisted_raw_sha256: str,
+) -> bool:
+    return (
+        replace(
+            current,
+            admission_sha256=expected.admission_sha256,
+        )
+        == expected
+        and expected.admission_sha256
+        in {current.admission_sha256, persisted_raw_sha256}
+    )
+
+
+def _require_output_operation_release_session_context(
+    *,
+    release_authorization: OutputOperationAdmissionReleaseAuthorization,
+    session_lease: LiveStartSessionLease,
+) -> None:
+    try:
+        authorization_session_bearer = (
+            release_authorization._opaque.session_bearer
+        )
+        lease_session_bearer = session_lease.lock_token._bearer
+    except (AttributeError, TypeError) as error:
+        raise live_session.SessionCapabilityError(
+            "live_start_output_operation_release_context_changed"
+        ) from error
+    if authorization_session_bearer is not lease_session_bearer:
+        raise live_session.SessionCapabilityError(
+            "live_start_output_operation_release_context_changed"
+        )
+
+
+def release_output_operation_admission_under_lease(
+    *,
+    operation_lease: OutputOperationAdmissionLease,
+    session_lease: LiveStartSessionLease,
+    expected_release_authorized_session: LiveStartSession,
+    expected: OutputOperationAdmissionEvidence,
+    release_authorization: OutputOperationAdmissionReleaseAuthorization,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
+) -> OutputOperationAdmissionReleaseDisposition:
+    """Release only the exact historical record under the held capabilities."""
+
+    def release() -> OutputOperationAdmissionReleaseDisposition:
+        _require_output_operation_release_session_context(
+            release_authorization=release_authorization,
+            session_lease=session_lease,
+        )
+        _require_active_operation_context(operation_lease)
+        current_session = live_session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        if (
+            not isinstance(
+                expected_release_authorized_session,
+                LiveStartSession,
+            )
+            or current_session != expected_release_authorized_session
+            or current_session.canonical_json
+            != expected_release_authorized_session.canonical_json
+            or not isinstance(expected, OutputOperationAdmissionEvidence)
+        ):
+            raise live_session.SessionConflictError(
+                "live_start_output_operation_release_cursor_stale"
+            )
+        binding_value = current_session.output_operation_admission_binding
+        if not isinstance(binding_value, Mapping):
+            raise live_session.SessionConflictError(
+                "live_start_output_operation_release_binding_missing"
+            )
+        binding = live_session.validate_embedded_document(
+            "output_operation_admission_binding",
+            binding_value,
+        )
+        if binding.get("state") not in {
+            "RUNTIME_HANDOFF_RELEASE_AUTHORIZED",
+            "TERMINAL_RELEASE_AUTHORIZED",
+        } or not _output_operation_release_binding_matches_expected(
+            binding=binding,
+            expected=expected,
+            operation_lease=operation_lease,
+        ):
+            raise live_session.SessionConflictError(
+                "live_start_output_operation_release_binding_changed"
+            )
+        persisted_raw_sha256 = binding.get("admission_sha256")
+        if not _is_prefixed_sha256(persisted_raw_sha256):
+            raise live_session.SessionConflictError(
+                "live_start_output_operation_release_digest_invalid"
+            )
+
+        observed = observe_output_operation_admission_under_lease(
+            operation_lease
+        )
+        if observed is None:
+            disposition: OutputOperationAdmissionReleaseDisposition = (
+                "already_absent"
+            )
+        elif observed.admission_identity == expected.admission_identity:
+            if not _same_output_operation_release_evidence(
+                current=observed,
+                expected=expected,
+                persisted_raw_sha256=persisted_raw_sha256,
+            ):
+                raise ValueError(
+                    "live_start_output_operation_release_old_changed"
+                )
+            try:
+                secure_unlink_verified(
+                    expected.admission_path,
+                    expected_identity=expected.admission_identity,
+                    expected_parent_identity=(
+                        expected.admission_parent_identity
+                    ),
+                    expected_size=expected.admission_size,
+                    expected_sha256=persisted_raw_sha256.removeprefix(
+                        "sha256:"
+                    ),
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                raise ValueError(
+                    "live_start_output_operation_release_old_changed"
+                ) from error
+            disposition = "old_unlinked"
+        else:
+            if (
+                observed.run_id == expected.run_id
+                or observed.admission_sha256
+                == expected.admission_sha256
+            ):
+                raise ValueError(
+                    "live_start_output_operation_release_replaced_ambiguous"
+                )
+            disposition = "valid_foreign_successor"
+
+        invoke_live_start_fault(
+            fault_hook,
+            LiveStartFaultPoint.AFTER_OUTPUT_OPERATION_ADMISSION_UNLINK,
+        )
+        return disposition
+
+    return live_session._execute_output_operation_release(
+        release_authorization=release_authorization,
+        physical_action=release,
     )
 
 

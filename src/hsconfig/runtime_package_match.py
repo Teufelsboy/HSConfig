@@ -18,6 +18,10 @@ from hsconfig.package_io import (
     snapshot_bounded_filesystem_package,
     status_is_reparse,
 )
+from hsconfig.runtime_installer import (
+    ControllerApplyLeasePair,
+    _require_active_controller_apply_pair,
+)
 
 
 @dataclass(frozen=True)
@@ -148,6 +152,45 @@ def _snapshot_config_directory(
     return snapshot
 
 
+def _snapshot_subtree(
+    snapshot: BoundedFilesystemPackageView,
+    directory_name: str,
+) -> BoundedFilesystemPackageView | None:
+    """Project one immutable directory subtree from an aggregate snapshot."""
+
+    if directory_name not in snapshot.directory_names:
+        return None
+    prefix = f"{directory_name}/"
+    return BoundedFilesystemPackageView(
+        files={
+            name[len(prefix) :]: snapshot.read_bytes(name)
+            for name in snapshot.file_names()
+            if name.startswith(prefix)
+        },
+        directories=tuple(
+            name[len(prefix) :]
+            for name in snapshot.directory_names
+            if name.startswith(prefix)
+        ),
+    )
+
+
+def _snapshots_equal(
+    left: BoundedFilesystemPackageView | None,
+    right: BoundedFilesystemPackageView | None,
+) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (
+        left.directory_names == right.directory_names
+        and left.file_names() == right.file_names()
+        and all(
+            left.read_bytes(name) == right.read_bytes(name)
+            for name in left.file_names()
+        )
+    )
+
+
 def _json_files(
     snapshot: BoundedFilesystemPackageView | None,
 ) -> dict[str, Any]:
@@ -161,18 +204,13 @@ def _json_files(
     }
 
 
-def _deck_name_from_manifest(package_root: Path) -> str:
-    manifest_path = package_root / "reports" / "input_manifest.json"
-    if not manifest_path.is_file():
-        raise ValueError(
-            f"Runtime identity requires input manifest: {manifest_path}"
-        )
-    try:
-        manifest = read_json(manifest_path)
-    except (OSError, ValueError) as exc:
-        raise ValueError(
-            f"Runtime identity requires a valid input manifest: {manifest_path}"
-        ) from exc
+def _deck_name_from_manifest_document(
+    manifest: Any,
+    *,
+    manifest_path: Path,
+) -> str:
+    """Validate one already-read input-manifest document."""
+
     if not isinstance(manifest, dict):
         raise ValueError(
             f"Runtime identity input manifest must be a JSON object: {manifest_path}"
@@ -195,6 +233,49 @@ def _deck_name_from_manifest(package_root: Path) -> str:
             f"{deck_name!r}"
         )
     return deck_name
+
+
+def _deck_name_from_manifest(package_root: Path) -> str:
+    manifest_path = package_root / "reports" / "input_manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(
+            f"Runtime identity requires input manifest: {manifest_path}"
+        )
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"Runtime identity requires a valid input manifest: {manifest_path}"
+        ) from exc
+    return _deck_name_from_manifest_document(
+        manifest,
+        manifest_path=manifest_path,
+    )
+
+
+def _deck_name_from_package_snapshot(
+    package_root: Path,
+    package_snapshot: BoundedFilesystemPackageView,
+) -> str:
+    manifest_path = package_root / "reports" / "input_manifest.json"
+    try:
+        manifest_raw = package_snapshot.read_bytes(
+            "reports/input_manifest.json"
+        )
+    except FileNotFoundError as error:
+        raise ValueError(
+            f"Runtime identity requires input manifest: {manifest_path}"
+        ) from error
+    try:
+        manifest = decode_json_bytes(manifest_raw)
+    except ValueError as error:
+        raise ValueError(
+            f"Runtime identity requires a valid input manifest: {manifest_path}"
+        ) from error
+    return _deck_name_from_manifest_document(
+        manifest,
+        manifest_path=manifest_path,
+    )
 
 
 def _mapping_lines_for_deck_name(
@@ -340,6 +421,28 @@ def build_runtime_package_match_report(
     logical_config_dir: str | None = None,
     runtime_config_dir: str | None = None,
 ) -> dict[str, Any]:
+    """Compare one filesystem package snapshot with one runtime snapshot."""
+
+    package = Path(package_root)
+    return _build_runtime_package_match_report(
+        package_root=package,
+        runtime_root=Path(runtime_root),
+        config_dir=config_dir,
+        logical_config_dir=logical_config_dir,
+        runtime_config_dir=runtime_config_dir,
+        package_root_snapshot=_snapshot_custom_config(package),
+    )
+
+
+def _build_runtime_package_match_report(
+    *,
+    package_root: Path,
+    runtime_root: Path,
+    config_dir: str | None,
+    logical_config_dir: str | None,
+    runtime_config_dir: str | None,
+    package_root_snapshot: BoundedFilesystemPackageView | None,
+) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
     if config_dir is not None and (
@@ -349,7 +452,11 @@ def build_runtime_package_match_report(
     package_custom_config = package / "CustomConfig"
     runtime_custom_config = runtime / "CustomConfig"
     deck_config_ini = runtime_custom_config / "deck_config.ini"
-    package_snapshot = _snapshot_custom_config(package_custom_config)
+    package_snapshot = (
+        _snapshot_subtree(package_root_snapshot, "CustomConfig")
+        if package_root_snapshot is not None
+        else None
+    )
     if package_snapshot is None:
         raise ValueError(
             f"Expected package CustomConfig directory: {package_custom_config}"
@@ -376,8 +483,8 @@ def build_runtime_package_match_report(
             package_snapshot,
             logical_config_dir,
         )
-    package_config_snapshot = _snapshot_config_directory(
-        package_custom_config,
+    package_config_snapshot = _snapshot_subtree(
+        package_snapshot,
         resolved_logical_config_dir,
     )
     package_runtime_root_sha256 = (
@@ -392,7 +499,10 @@ def build_runtime_package_match_report(
         )
     else:
         if runtime_config_dir is None:
-            expected_deck_name = _deck_name_from_manifest(package)
+            expected_deck_name = _deck_name_from_package_snapshot(
+                package,
+                package_root_snapshot,
+            )
             expected_runtime_config_dir = (
                 f"{resolved_logical_config_dir}--sha256-"
                 f"{package_runtime_root_sha256}"
@@ -421,9 +531,24 @@ def build_runtime_package_match_report(
     if not auto_resolution:
         expected_runtime_config_dir = resolved_runtime_config_dir
     runtime_dir = runtime / "CustomConfig" / resolved_runtime_config_dir
-    runtime_config_snapshot = _snapshot_config_directory(
+    runtime_config_snapshot = (
+        _snapshot_subtree(
+            runtime_snapshot,
+            resolved_runtime_config_dir,
+        )
+        if runtime_snapshot is not None
+        else None
+    )
+    rebound_runtime_config_snapshot = _snapshot_config_directory(
         runtime_custom_config,
         resolved_runtime_config_dir,
+    )
+    runtime_snapshot_consistent = _snapshots_equal(
+        runtime_config_snapshot,
+        rebound_runtime_config_snapshot,
+    ) and _snapshots_equal(
+        runtime_snapshot,
+        _snapshot_custom_config(runtime_custom_config),
     )
     runtime_package_root_sha256 = (
         _runtime_package_root_sha256(runtime_config_snapshot)
@@ -431,11 +556,17 @@ def build_runtime_package_match_report(
         else None
     )
     runtime_tree_identity_valid = (
-        not auto_resolution
-        or runtime_package_root_sha256 == package_runtime_root_sha256
+        runtime_snapshot_consistent
+        and (
+            not auto_resolution
+            or runtime_package_root_sha256 == package_runtime_root_sha256
+        )
     )
     if expected_deck_name is None:
-        expected_deck_name = _deck_name_from_manifest(package)
+        expected_deck_name = _deck_name_from_package_snapshot(
+            package,
+            package_root_snapshot,
+        )
 
     package_files = _json_files(package_config_snapshot)
     runtime_files = _json_files(runtime_config_snapshot)
@@ -525,6 +656,34 @@ def build_runtime_package_match_report(
             "matched_lines": matched_lines,
         },
     }
+
+
+def build_runtime_package_match_report_from_pair(
+    *,
+    lease_pair: ControllerApplyLeasePair,
+    logical_config_dir: str | None = None,
+    runtime_config_dir: str | None = None,
+) -> dict[str, Any]:
+    """Compare package/runtime bytes while the controller pair stays held."""
+
+    _require_active_controller_apply_pair(lease_pair)
+    revision_snapshot = lease_pair.package_lease.snapshot
+    if revision_snapshot is None:
+        raise ValueError("runtime_package_match_package_snapshot_required")
+    package_root_snapshot = _snapshot_subtree(
+        revision_snapshot,
+        "04_package",
+    )
+    if package_root_snapshot is None:
+        raise ValueError("runtime_package_match_package_snapshot_invalid")
+    return _build_runtime_package_match_report(
+        package_root=lease_pair.package_lease.package_root,
+        runtime_root=lease_pair.runtime_lease.runtime_root,
+        config_dir=None,
+        logical_config_dir=logical_config_dir,
+        runtime_config_dir=runtime_config_dir,
+        package_root_snapshot=package_root_snapshot,
+    )
 
 
 def assert_runtime_matches_package(

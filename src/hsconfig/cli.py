@@ -114,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
         from hsconfig.commands.live_policy import run_live_policy_command
 
         return run_live_policy_command(args)
+    if args.command == "recover-apply":
+        from hsconfig.commands.recover_apply import run_recover_apply_command
+
+        return run_recover_apply_command(args)
     from hsconfig.commands.common import emit_result
 
     return emit_result(

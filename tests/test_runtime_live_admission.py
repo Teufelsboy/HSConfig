@@ -392,6 +392,49 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _admission_projection_arguments(raw: bytes) -> dict[str, object]:
+    document = json.loads(raw)
+    return {
+        "run_id": document["run_id"],
+        "apply_attempt_id": document["apply_attempt_id"],
+        "retention_owner_run_id": document["retention_owner_run_id"],
+        "session_root": Path(document["session_root"]),
+        "session_root_identity": tuple(document["session_root_identity"]),
+        "operator_profile_sha256": document["operator_profile_sha256"],
+        "state_root_identity": tuple(document["state_root_identity"]),
+        "runtime_root": Path(document["runtime_root"]),
+        "runtime_root_identity": tuple(document["runtime_root_identity"]),
+        "output_base_root": Path(document["output_base_root"]),
+        "output_base_root_identity": tuple(
+            document["output_base_root_identity"]
+        ),
+        "output_root": Path(document["output_root"]),
+        "output_root_identity": tuple(document["output_root_identity"]),
+        "output_operation_admission_path": Path(
+            document["output_operation_admission_path"]
+        ),
+        "output_operation_admission_identity": tuple(
+            document["output_operation_admission_identity"]
+        ),
+        "output_operation_admission_sha256": document[
+            "output_operation_admission_sha256"
+        ],
+        "output_child_binding_sha256": document[
+            "output_child_binding_sha256"
+        ],
+        "publication_revision": document["publication_revision"],
+        "publication_content_root_sha256": document[
+            "publication_content_root_sha256"
+        ],
+        "package_root_sha256": document["package_root_sha256"],
+        "pre_apply_runtime_snapshot_sha256": document[
+            "pre_apply_runtime_snapshot_sha256"
+        ],
+        "apply_invocation_sha256": document["apply_invocation_sha256"],
+        "retention_fence_path": Path(document["retention_fence_path"]),
+    }
+
+
 def _reseal(document: dict[str, object]) -> bytes:
     unsigned = dict(document)
     unsigned.pop("content_sha256", None)
@@ -410,6 +453,97 @@ def _write_and_load(
     loaded = load_runtime_live_attempt_admission()
     assert loaded is not None
     return loaded
+
+
+def test_runtime_live_admission_projection_matches_live_builder_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _final, raw = _build_admission(tmp_path, monkeypatch)
+
+    def forbidden_live_binding(*args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        raise AssertionError("projection-observed-live-filesystem")
+
+    monkeypatch.setattr(
+        runtime_live_admission,
+        "_require_existing_directory_binding",
+        forbidden_live_binding,
+    )
+    monkeypatch.setattr(
+        runtime_live_admission,
+        "_require_existing_file_binding",
+        forbidden_live_binding,
+    )
+
+    projected = (
+        runtime_live_admission._project_runtime_live_attempt_admission_bytes(
+            **_admission_projection_arguments(raw)
+        )
+    )
+
+    assert projected == raw
+
+
+def test_runtime_live_admission_projection_rejects_unbound_publication_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _final, raw = _build_admission(tmp_path, monkeypatch)
+    arguments = _admission_projection_arguments(raw)
+    arguments["publication_revision"] = "revisions/sha256-" + "a" * 64
+
+    with pytest.raises(
+        ValueError,
+        match="^runtime_live_admission_publication_binding_invalid$",
+    ):
+        runtime_live_admission._project_runtime_live_attempt_admission_bytes(
+            **arguments
+        )
+
+
+def test_runtime_live_admission_builder_normalizes_each_path_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _final, raw = _build_admission(tmp_path, monkeypatch)
+    arguments = _admission_projection_arguments(raw)
+    session_root = Path(arguments["session_root"])
+
+    class SingleUsePath:
+        def __init__(self, value: Path) -> None:
+            self.value = value
+            self.calls = 0
+
+        def __fspath__(self) -> str:
+            self.calls += 1
+            if self.calls != 1:
+                raise AssertionError("builder-reobserved-caller-path")
+            return os.fspath(self.value)
+
+    single_use_path = SingleUsePath(session_root)
+    arguments["session_root"] = single_use_path
+
+    rebuilt = build_runtime_live_attempt_admission_bytes(**arguments)
+
+    assert rebuilt == raw
+    assert single_use_path.calls == 1
+
+
+def test_runtime_live_admission_builder_still_requires_live_operation_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _final, raw = _build_admission(tmp_path, monkeypatch)
+    arguments = _admission_projection_arguments(raw)
+    operation_path = Path(arguments["output_operation_admission_path"])
+    operation_path.unlink()
+
+    with pytest.raises(
+        ValueError,
+        match="^runtime_live_admission_output_operation_admission_path_invalid$",
+    ):
+        build_runtime_live_attempt_admission_bytes(**arguments)
 
 
 def test_runtime_live_admission_has_closed_bounded_schema_fixed_path_and_absent_cas(
