@@ -179,6 +179,12 @@ def project_card_facts(deck: dict, full_cards: list[dict]) -> dict:
         }
         for field, aliases in _ALIASES.items():
             value = raw.get(field)
+            if field in {"classes", "races"}:
+                singular = "card_class" if field == "classes" else "race"
+                values = list(value or []) if field in present else []
+                if (aliases - {field}) & present and raw.get(singular):
+                    values.append(raw[singular])
+                value = sorted(set(values)) if values or field in present else None
             if _inapplicable(field, raw.get("type")) and not (aliases & present):
                 facts["inapplicable_fields"].append(field)
                 value = None

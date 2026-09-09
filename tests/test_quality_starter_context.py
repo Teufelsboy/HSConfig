@@ -7,6 +7,68 @@ from hsconfig.card_snapshot import build_card_snapshot
 from hsconfig.package_request import FrozenJsonDocument
 
 
+@pytest.mark.parametrize(
+    ("source", "unsourced", "classes", "races"),
+    [
+        ({"cardClass": "PRIEST", "race": "UNDEAD"}, {}, ["PRIEST"], ["UNDEAD"]),
+        ({"card_class": "PRIEST", "race": "UNDEAD"}, {}, ["PRIEST"], ["UNDEAD"]),
+        (
+            {
+                "cardClass": "PRIEST",
+                "classes": ["MAGE", "MAGE"],
+                "race": "UNDEAD",
+                "races": ["DEMON", "DEMON"],
+            },
+            {},
+            ["MAGE", "PRIEST"],
+            ["DEMON", "UNDEAD"],
+        ),
+        (
+            {
+                "classes": ["PRIEST", "MAGE", "PRIEST"],
+                "races": ["UNDEAD", "DEMON", "UNDEAD"],
+            },
+            {},
+            ["MAGE", "PRIEST"],
+            ["DEMON", "UNDEAD"],
+        ),
+        ({"classes": [], "races": []}, {}, [], []),
+        ({}, {}, None, None),
+        ({"classes": [], "races": []}, {"card_class": "MAGE", "race": "DEMON"}, [], []),
+    ],
+    ids=[
+        "source-singular",
+        "normalized-singular",
+        "mixed",
+        "plural-only",
+        "known-empty",
+        "missing",
+        "unsourced-singular",
+    ],
+)
+def test_class_and_race_facts_merge_only_sourced_values(
+    source, unsourced, classes, races
+):
+    from hsconfig.starter_card_facts import project_card_facts
+
+    snapshot = build_card_snapshot(
+        [{"id": "TEST_001", "dbfId": 1, "type": "MINION", "name": "Facts", **source}],
+        captured_at="2026-09-09T00:00:00Z",
+    )
+    full_cards = snapshot.to_value()["full_cards"]
+    full_cards[0].update(unsourced)
+    facts = project_card_facts(
+        {"cards": [{"card_id": "TEST_001", "count": 1}]},
+        full_cards,
+    )["card_metadata"]["TEST_001"]
+    assert facts["classes"] == classes
+    assert facts["races"] == races
+    assert ("classes" in facts["missing_fields"]) == (classes is None)
+    assert ("races" in facts["missing_fields"]) == (races is None)
+    assert "classes" not in facts["inapplicable_fields"]
+    assert "races" not in facts["inapplicable_fields"]
+
+
 def test_sideboard_identity_is_shared_but_membership_is_not_lost():
     from hsconfig.starter_card_facts import project_card_facts
 
