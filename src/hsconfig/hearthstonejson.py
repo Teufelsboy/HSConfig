@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from hsconfig.package_request import FrozenJsonDocument
 
 
 HEARTHSTONEJSON_LATEST_ENUS_CARDS_URL = (
@@ -42,8 +46,25 @@ def fetch_latest_collectible_cards(timeout: float = 10.0) -> list[dict[str, Any]
     with urlopen(request, timeout=timeout) as response:
         payload = json.load(response)
     if not isinstance(payload, list):
-        raise ValueError("HearthstoneJSON latest collectible cards response must be a list")
+        raise ValueError(
+            "HearthstoneJSON latest collectible cards response must be a list"
+        )
     return [normalize_card_row(row) for row in payload]
+
+
+def fetch_card_snapshot(timeout: float = 10.0) -> FrozenJsonDocument:
+    from hsconfig.card_snapshot import build_card_snapshot
+
+    request = Request(
+        HEARTHSTONEJSON_LATEST_ENUS_CARDS_URL,
+        headers={"User-Agent": USER_AGENT},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.load(response)
+    if not isinstance(payload, list):
+        raise ValueError("HearthstoneJSON latest cards response must be a list")
+    captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return build_card_snapshot(payload, captured_at=captured_at)
 
 
 def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:

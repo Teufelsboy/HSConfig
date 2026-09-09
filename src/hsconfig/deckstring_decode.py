@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from hearthstone import cardxml
 from hearthstone.deckstrings import FormatType, parse_deckstring
+
+if TYPE_CHECKING:
+    from hsconfig.package_request import FrozenJsonDocument
 
 
 TYPE_NAMES = {
@@ -36,13 +40,59 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
     normalized_deck_code += "=" * (-len(normalized_deck_code) % 4)
     parsed = _parse_deckstring(normalized_deck_code)
     cards_db, _ = cardxml.load_dbf()
+    return _decode_parsed_deck(
+        parsed,
+        resolve=lambda dbf_id, count: _card_row(cards_db, dbf_id, count),
+        code_length=len(deck_code),
+    )
+
+
+def decode_deck_code_from_snapshot(
+    deck_code: str,
+    snapshot: FrozenJsonDocument,
+) -> dict[str, Any]:
+    from hsconfig.card_snapshot import validated_card_snapshot
+
+    snapshot_value = validated_card_snapshot(snapshot)
+    full_cards = snapshot_value["full_cards"]
+    cards_by_id = {row["id"]: row for row in full_cards}
+    dbf_to_card_id = snapshot_value["dbf_to_card_id"]
+
+    def resolve(dbf_id: int, count: int) -> dict[str, Any]:
+        card_id = dbf_to_card_id.get(str(dbf_id))
+        source = cards_by_id.get(card_id) if card_id is not None else None
+        if source is None:
+            raise ValueError("card_snapshot_identity_missing")
+        return _snapshot_card_row(source, dbf_id, count)
+
+    normalized_deck_code = deck_code.strip()
+    normalized_deck_code += "=" * (-len(normalized_deck_code) % 4)
+    parsed = _parse_deckstring(normalized_deck_code)
+    return _decode_parsed_deck(
+        parsed,
+        resolve=resolve,
+        code_length=len(deck_code),
+    )
+
+
+def _decode_parsed_deck(
+    parsed: dict[str, Any],
+    *,
+    resolve: Callable[[int, int], dict[str, Any]],
+    code_length: int,
+) -> dict[str, Any]:
+    parsed_cards = [
+        (_positive_deck_integer(dbf_id), _positive_deck_integer(count))
+        for dbf_id, count in parsed["cards"]
+    ]
+    parsed_heroes = [_positive_deck_integer(dbf_id) for dbf_id in parsed["heroes"]]
 
     cards: list[dict[str, Any]] = []
     card_id_map: dict[str, dict[str, Any]] = {}
     unresolved: list[dict[str, Any]] = []
 
-    for dbf_id, count in sorted(parsed["cards"], key=lambda row: row[0]):
-        row = _card_row(cards_db, dbf_id, count)
+    for dbf_id, count in sorted(parsed_cards, key=lambda row: row[0]):
+        row = resolve(dbf_id, count)
         cards.append(row)
         card_id_map[str(dbf_id)] = {
             "dbf_id": dbf_id,
@@ -53,19 +103,13 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
         if row["metadata_status"] != "source_record":
             unresolved.append({"dbf_id": dbf_id, "count": count})
 
-    hero_dbf_id = parsed["heroes"][0] if parsed["heroes"] else None
-    hero = (
-        _card_row(cards_db, hero_dbf_id, 1)
-        if hero_dbf_id is not None
-        else None
-    )
+    hero_dbf_id = parsed_heroes[0] if parsed_heroes else None
+    hero = resolve(hero_dbf_id, 1) if hero_dbf_id is not None else None
     format_name = _format_name(parsed["format"])
     card_count_total = sum(card["count"] for card in cards)
-    sideboards = _sideboard_rows(cards_db, parsed.get("sideboards", []))
+    sideboards = _sideboard_rows(resolve, parsed.get("sideboards", []))
     sideboard_count = sum(
-        card["count"]
-        for sideboard in sideboards
-        for card in sideboard.get("cards", [])
+        card["count"] for sideboard in sideboards for card in sideboard.get("cards", [])
     )
     unresolved_identities = _unresolved_identity_rows(
         hero=hero,
@@ -74,7 +118,7 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
     )
     receipt = {
         "decoder": "hearthstone.deckstrings",
-        "deck_code_length": len(deck_code),
+        "deck_code_length": code_length,
         "format": format_name,
         "hero_dbf_id": hero_dbf_id,
         "hero_card_id": hero.get("card_id") if hero is not None else None,
@@ -84,7 +128,9 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
         "card_count_total": card_count_total,
         "unique_card_count": len(cards),
         "sideboard_count": sideboard_count,
-        "sideboard_unique_card_count": sum(len(sideboard.get("cards", [])) for sideboard in sideboards),
+        "sideboard_unique_card_count": sum(
+            len(sideboard.get("cards", [])) for sideboard in sideboards
+        ),
         "unresolved_card_count": len(unresolved),
         "unresolved_cards": unresolved,
         "unresolved_identity_count": len(unresolved_identities),
@@ -167,7 +213,29 @@ def _card_row(cards_db: dict[int, Any], dbf_id: int, count: int) -> dict[str, An
     return row
 
 
-def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str, Any]]:
+def _snapshot_card_row(
+    source: dict[str, Any],
+    dbf_id: int,
+    count: int,
+) -> dict[str, Any]:
+    return {
+        "card_id": source["id"],
+        "dbf_id": dbf_id,
+        "count": count,
+        "name": source["name"],
+        "cost": source["cost"],
+        "type": source["type"],
+        "card_class": source["card_class"],
+        "text": source["text"].replace("\n", " "),
+        "mechanics": sorted(set(source["mechanics"])),
+        "metadata_status": "source_record",
+    }
+
+
+def _sideboard_rows(
+    resolve: Callable[[int, int], dict[str, Any]],
+    sideboards: Any,
+) -> list[dict[str, Any]]:
     grouped: dict[int | None, list[tuple[int, int]]] = {}
     if not sideboards:
         return []
@@ -175,21 +243,38 @@ def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str,
     for sideboard in sideboards:
         if isinstance(sideboard, tuple) and len(sideboard) == 3:
             card_dbf_id, count, owner_dbf_id = sideboard
-            grouped.setdefault(int(owner_dbf_id), []).append((int(card_dbf_id), int(count)))
+            grouped.setdefault(_positive_deck_integer(owner_dbf_id), []).append(
+                (
+                    _positive_deck_integer(card_dbf_id),
+                    _positive_deck_integer(count),
+                )
+            )
             continue
         if isinstance(sideboard, tuple) and len(sideboard) >= 2:
-            owner_dbf_id = int(sideboard[0]) if sideboard[0] is not None else None
+            owner_dbf_id = (
+                _positive_deck_integer(sideboard[0])
+                if sideboard[0] is not None
+                else None
+            )
             cards_payload = sideboard[1] or []
             grouped.setdefault(owner_dbf_id, []).extend(
-                (int(dbf_id), int(count)) for dbf_id, count in cards_payload
+                (
+                    _positive_deck_integer(dbf_id),
+                    _positive_deck_integer(count),
+                )
+                for dbf_id, count in cards_payload
             )
             continue
         if isinstance(sideboard, dict):
             owner = sideboard.get("owner") or sideboard.get("owner_dbf_id")
-            owner_dbf_id = int(owner) if owner is not None else None
+            owner_dbf_id = _positive_deck_integer(owner) if owner is not None else None
             cards_payload = sideboard.get("cards", [])
             grouped.setdefault(owner_dbf_id, []).extend(
-                (int(dbf_id), int(count)) for dbf_id, count in cards_payload
+                (
+                    _positive_deck_integer(dbf_id),
+                    _positive_deck_integer(count),
+                )
+                for dbf_id, count in cards_payload
             )
             continue
         raise ValueError(f"Unsupported sideboard row shape: {sideboard!r}")
@@ -201,7 +286,7 @@ def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str,
     ):
         owner_card_id = None
         if owner_dbf_id is not None:
-            owner = _card_row(cards_db, owner_dbf_id, 1)
+            owner = resolve(owner_dbf_id, 1)
             owner_card_id = (
                 owner["card_id"]
                 if owner["metadata_status"] == "source_record"
@@ -218,8 +303,7 @@ def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str,
                     owner.get("metadata_status") if owner is not None else None
                 ),
                 "cards": [
-                    _card_row(cards_db, dbf_id, count)
-                    for dbf_id, count in sorted(cards_payload)
+                    resolve(dbf_id, count) for dbf_id, count in sorted(cards_payload)
                 ],
             }
         )
@@ -294,3 +378,9 @@ def _enum_name(value: Any) -> str | None:
         return TYPE_NAMES.get(int(value), str(value))
     except (TypeError, ValueError):
         return str(value)
+
+
+def _positive_deck_integer(value: Any) -> int:
+    if type(value) is not int or value <= 0:
+        raise ValueError("deckstring_identity_invalid")
+    return value
