@@ -1,5 +1,9 @@
 """Quality intake exercises real capture, closure, journal and package authority."""
 
+import time
+from hashlib import sha256
+from types import SimpleNamespace
+
 import pytest
 
 import hsconfig.live_start_controller as controller
@@ -129,6 +133,56 @@ def test_quality_missing_profile_stops_before_acquisition(tmp_path, monkeypatch)
     assert result.status == "PROFILE_REQUIRED"
     assert result.run_root is None
     assert not (local / "HSConfig" / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["snapshot_transport", "required_identity", "globalvalues_baseline"],
+)
+def test_default_prepare_converts_expected_quality_intake_failures(
+    quality_request, monkeypatch, tmp_path, failure
+):
+    snapshot = controller.fetch_card_snapshot()
+
+    if failure == "snapshot_transport":
+        def fetch_failed(**_kwargs):
+            raise OSError("snapshot transport unavailable")
+
+        monkeypatch.setattr(controller, "fetch_card_snapshot", fetch_failed)
+    elif failure == "required_identity":
+        from hsconfig.deckstring_decode import decode_deck_code_from_snapshot
+
+        value = snapshot.to_value()
+        decoded = decode_deck_code_from_snapshot(quality_request.deck_code, snapshot)
+        missing_dbf = str(decoded["hero_dbf_id"])
+        missing_card_id = value["dbf_to_card_id"].pop(missing_dbf)
+        value["full_cards"] = [
+            row for row in value["full_cards"] if row["id"] != missing_card_id
+        ]
+        value["collectible_cards"] = [
+            row for row in value["collectible_cards"] if row["id"] != missing_card_id
+        ]
+        value["dataset_sha256"] = "sha256:" + sha256(
+            FrozenJsonDocument.from_value(value["full_cards"]).canonical_json
+        ).hexdigest()
+        monkeypatch.setattr(
+            controller,
+            "fetch_card_snapshot",
+            lambda **_kwargs: FrozenJsonDocument.from_value(value),
+        )
+    else:
+        def baseline_failed(_runtime_root):
+            raise OSError("GlobalValues baseline unavailable")
+
+        monkeypatch.setattr(controller, "load_globalvalues_baseline", baseline_failed)
+
+    result = controller.prepare_live_start(quality_request)
+    summary = result.summary.to_value()
+    assert result.status == "FAILED_PRESERVED"
+    assert result.run_root is None
+    assert summary["error_code"] == "deck_or_input_invalid"
+    assert summary["retained_safe_state"] == "NO_SESSION_OR_RUNTIME_WRITE"
+    assert not (tmp_path / "local-app-data/HSConfig/runs").exists()
 
 
 def _empty_draft(root, discovery):
@@ -278,6 +332,122 @@ def test_research_fault_spends_attempt_and_keeps_deadline(
     assert research["attempts"][0]["state"] == (
         "interrupted" if point == "after_started_attempt_checkpoint" else "completed"
     )
+
+
+def test_collector_failure_detail_reaches_sealed_research_result(
+    quality_request, monkeypatch, tmp_path
+):
+    from functools import partial
+    from hsconfig.source_acquisition import collect_public_source_records
+    import hsconfig.source_acquisition as acquisition
+
+    monkeypatch.setattr(
+        acquisition,
+        "collect_public_source_records",
+        partial(
+            collect_public_source_records,
+            fetcher=lambda *_args: (503, "text/plain", b"unavailable"),
+            resolver=lambda _host: ["93.184.216.34"],
+        ),
+    )
+    discovery = controller.prepare_live_start(quality_request)
+    url = "https://example.test/unavailable-guide"
+    draft = tmp_path / "collector-failure.json"
+    draft.write_bytes(
+        FrozenJsonDocument.from_value(
+            {
+                "acquisition_request_sha256": discovery.acquisition_request_sha256,
+                "urls": [url],
+                "discovery_outcome": "completed",
+            }
+        ).canonical_json
+    )
+
+    prepared = controller.complete_live_start_research(
+        session_root=discovery.run_root, draft_path=draft
+    )
+    quality = FrozenJsonDocument.from_json_bytes(
+        (prepared.run_root / "inputs/quality.json").read_bytes()
+    ).to_value()
+    research = quality["research_result"]
+    assert research["discovery_outcome"] == "completed"
+    assert research["attempts"] == [
+        {
+            "url": url,
+            "state": "failed",
+            "record_sha256": None,
+            "error": "http_status_503",
+        }
+    ]
+    assert "acquisition_http_status_503" in research["limitations"]
+    assert "acquisition_page_acquisition_failed" not in research["limitations"]
+
+
+def test_expired_persisted_deadline_limits_remaining_url_without_late_fetch(
+    quality_request, monkeypatch, tmp_path
+):
+    from functools import partial
+    from hsconfig.source_acquisition import collect_public_source_records
+    import hsconfig.source_acquisition as acquisition
+
+    first_url = "https://example.test/first-guide"
+    second_url = "https://example.test/second-guide"
+    fetches = []
+
+    def fetch(url, _timeout):
+        fetches.append(url)
+        return (
+            200,
+            "text/html",
+            b"<article>Darkbishop Benedictus is essential to Shadow Priest.</article>",
+        )
+
+    monkeypatch.setattr(
+        acquisition,
+        "collect_public_source_records",
+        partial(
+            collect_public_source_records,
+            fetcher=fetch,
+            resolver=lambda _host: ["93.184.216.34"],
+        ),
+    )
+    discovery = controller.prepare_live_start(quality_request)
+    draft = tmp_path / "deadline-shortlist.json"
+    draft.write_bytes(
+        FrozenJsonDocument.from_value(
+            {
+                "acquisition_request_sha256": discovery.acquisition_request_sha256,
+                "urls": [first_url, second_url],
+                "discovery_outcome": "completed",
+            }
+        ).canonical_json
+    )
+    started = time.time()
+    clock = iter((started, started, started + 31.0))
+    monkeypatch.setattr(controller, "time", SimpleNamespace(time=lambda: next(clock)))
+
+    prepared = controller.complete_live_start_research(
+        session_root=discovery.run_root, draft_path=draft
+    )
+    progress = FrozenJsonDocument.from_json_bytes(
+        (prepared.run_root / "research/progress.json").read_bytes()
+    ).to_value()
+    quality = FrozenJsonDocument.from_json_bytes(
+        (prepared.run_root / "inputs/quality.json").read_bytes()
+    ).to_value()
+    research = quality["research_result"]
+    assert fetches == [first_url]
+    assert research["discovery_outcome"] == "completed"
+    assert [row["url"] for row in research["attempts"]] == [first_url]
+    assert "acquisition_research_budget_exhausted" in research["limitations"]
+    assert research["deadline_utc"] == progress["deadline_utc"] == started + 30.0
+
+    controller.resume_live_start(session_root=prepared.run_root)
+    assert fetches == [first_url]
+    sealed_after_resume = FrozenJsonDocument.from_json_bytes(
+        (prepared.run_root / "inputs/quality.json").read_bytes()
+    ).to_value()["research_result"]
+    assert sealed_after_resume["deadline_utc"] == started + 30.0
 
 
 @pytest.mark.parametrize(

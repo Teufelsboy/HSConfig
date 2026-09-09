@@ -317,11 +317,13 @@ def build_research_result(
     attempts: list[dict],
     deadline_utc: float | None,
     card_metadata: dict,
+    acquisition_budget_exhausted: bool = False,
 ) -> FrozenJsonDocument:
     if (
         discovery_outcome not in _OUTCOMES
         or type(attempts) is not list
         or len(attempts) > 3
+        or type(acquisition_budget_exhausted) is not bool
     ):
         raise ValueError("research_result_invalid")
     if deadline_utc is None and attempts:
@@ -381,6 +383,8 @@ def build_research_result(
         for row in attempts
         if row["state"] != "completed"
     )
+    if acquisition_budget_exhausted:
+        limitations.append("acquisition_research_budget_exhausted")
     return _seal(
         {
             "schema_version": 1,

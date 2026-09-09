@@ -5011,7 +5011,9 @@ def _quality_preparation(*, root):
     )
 
 
-def _finish_quality_inputs(*, session_lease, current, profile, state):
+def _finish_quality_inputs(
+    *, session_lease, current, profile, state, acquisition_budget_exhausted=False
+):
     from hsconfig.starter_card_facts import project_card_facts
     from hsconfig.live_start_research import (
         build_research_result,
@@ -5040,6 +5042,7 @@ def _finish_quality_inputs(*, session_lease, current, profile, state):
         attempts=progress["attempts"],
         deadline_utc=progress["deadline_utc"],
         card_metadata=facts["card_metadata"],
+        acquisition_budget_exhausted=acquisition_budget_exhausted,
     )
     quality = FrozenJsonDocument.from_value(
         {
@@ -5207,6 +5210,7 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                     ).canonical_json
                 },
             )
+        acquisition_budget_exhausted = False
         for url in urls:
             if url in {row["url"] for row in progress["attempts"]}:
                 continue
@@ -5216,6 +5220,7 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                 deadline_utc=progress["deadline_utc"], now_utc=time.time()
             )
             if timeout <= 0:
+                acquisition_budget_exhausted = True
                 break
             attempt = {
                 "url": url,
@@ -5260,7 +5265,20 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                     }
                 )
             else:
-                attempt.update({"state": "failed", "error": "page_acquisition_failed"})
+                report = acquired.get("source_acquisition_report", {})
+                failures = report.get("failures", []) if isinstance(report, dict) else []
+                error = next(
+                    (
+                        row["error"]
+                        for row in failures
+                        if isinstance(row, dict)
+                        and row.get("url") == url
+                        and isinstance(row.get("error"), str)
+                        and row["error"]
+                    ),
+                    "page_acquisition_failed",
+                )
+                attempt.update({"state": "failed", "error": error})
             progress["source_acquisition_reports"].append(
                 acquired.get("source_acquisition_report", {})
             )
@@ -5277,7 +5295,11 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
             _quality_fault("after_fetched_record_persistence")
         state = _load_quality_state(root=root, current=current, profile=profile)
         return _finish_quality_inputs(
-            session_lease=session_lease, current=current, profile=profile, state=state
+            session_lease=session_lease,
+            current=current,
+            profile=profile,
+            state=state,
+            acquisition_budget_exhausted=acquisition_budget_exhausted,
         )
 
 
@@ -5331,72 +5353,81 @@ def prepare_quality_live_start(
             deck_name=request.deck_name,
             error_code="operator_profile_required",
         )
-    with lease_operator_profile(expected_profile=profile):
-        snapshot = fetch_card_snapshot(timeout=10.0)
-        captured = validated_card_snapshot(snapshot)
-        decoded = decode_deck_code_from_snapshot(request.deck_code, snapshot)
-        payload = {
-            key: decoded[key]
-            for key in (
-                "cards",
-                "hero_dbf_id",
-                "format",
-                "sideboards",
-                "deckstring_decode_receipt",
-                "card_id_map",
+    try:
+        with lease_operator_profile(expected_profile=profile):
+            snapshot = fetch_card_snapshot(timeout=10.0)
+            captured = validated_card_snapshot(snapshot)
+            decoded = decode_deck_code_from_snapshot(request.deck_code, snapshot)
+            payload = {
+                key: decoded[key]
+                for key in (
+                    "cards",
+                    "hero_dbf_id",
+                    "format",
+                    "sideboards",
+                    "deckstring_decode_receipt",
+                    "card_id_map",
+                )
+            } | {"card_source": "deckstring"}
+            # Task2 has resolved these exact deckstring DBFs from this snapshot.
+            # The legacy verifier re-decodes with local cardxml and is not applicable.
+            payload["deck_input_verification"] = {
+                "status": "decoded_from_deck_code",
+                "runtime_apply_eligible": True,
+                "normalized_roster_sha256": "sha256:"
+                + stable_deck_fingerprint(normalize_roster(decoded["cards"])),
+            }
+            payload["deck_code"] = request.deck_code
+            identity = build_deck_identity(
+                deck_name=request.deck_name,
+                deck_code=request.deck_code,
+                cards=payload["cards"],
+                hero_dbf_id=payload["hero_dbf_id"],
+                format=payload["format"],
+                sideboards=payload["sideboards"],
             )
-        } | {"card_source": "deckstring"}
-        # Task2 has resolved these exact deckstring DBFs from this snapshot.
-        # The legacy verifier re-decodes with local cardxml and is not applicable.
-        payload["deck_input_verification"] = {
-            "status": "decoded_from_deck_code",
-            "runtime_apply_eligible": True,
-            "normalized_roster_sha256": "sha256:"
-            + stable_deck_fingerprint(normalize_roster(decoded["cards"])),
-        }
-        payload["deck_code"] = request.deck_code
-        identity = build_deck_identity(
+            deck = FrozenJsonDocument.from_value(
+                {"cards_payload": payload, "deck_identity": identity}
+            )
+            _validate_deck_and_card_closure(
+                deck.to_value(),
+                full_cards=captured["full_cards"],
+                collectible_cards=captured["collectible_cards"],
+            )
+            baseline_receipt = load_globalvalues_baseline(profile.runtime_root)
+            baseline = normalize_globalvalues_decision_baseline(
+                baseline_receipt["baseline"]
+            )
+            cards = FrozenJsonDocument.from_value(
+                {
+                    "full_cards": captured["full_cards"],
+                    "collectible_cards": captured["collectible_cards"],
+                    "globalvalues_baseline": baseline,
+                }
+            )
+            seed = FrozenJsonDocument.from_value(
+                {
+                    "schema_version": 1,
+                    "bound_date": date.today().isoformat(),
+                    "operator_bindings": _operator_bindings_from_values(
+                        operator_profile=profile,
+                        deck_output_binding=output,
+                        deck_name=request.deck_name,
+                    ),
+                    "baseline_receipt": baseline_receipt,
+                    "policy_profile": _policy_profile_value(),
+                    "card_snapshot_sha256": captured["dataset_sha256"],
+                    "card_snapshot_captured_at": captured["captured_at"],
+                    "card_snapshot_upstream_version": captured["upstream_version"],
+                }
+            )
+    except (SessionCapabilityError, SessionConflictError, _session.SessionValidationError):
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return _pre_session_result(
+            status="FAILED_PRESERVED",
             deck_name=request.deck_name,
-            deck_code=request.deck_code,
-            cards=payload["cards"],
-            hero_dbf_id=payload["hero_dbf_id"],
-            format=payload["format"],
-            sideboards=payload["sideboards"],
-        )
-        deck = FrozenJsonDocument.from_value(
-            {"cards_payload": payload, "deck_identity": identity}
-        )
-        _validate_deck_and_card_closure(
-            deck.to_value(),
-            full_cards=captured["full_cards"],
-            collectible_cards=captured["collectible_cards"],
-        )
-        baseline_receipt = load_globalvalues_baseline(profile.runtime_root)
-        baseline = normalize_globalvalues_decision_baseline(
-            baseline_receipt["baseline"]
-        )
-        cards = FrozenJsonDocument.from_value(
-            {
-                "full_cards": captured["full_cards"],
-                "collectible_cards": captured["collectible_cards"],
-                "globalvalues_baseline": baseline,
-            }
-        )
-        seed = FrozenJsonDocument.from_value(
-            {
-                "schema_version": 1,
-                "bound_date": date.today().isoformat(),
-                "operator_bindings": _operator_bindings_from_values(
-                    operator_profile=profile,
-                    deck_output_binding=output,
-                    deck_name=request.deck_name,
-                ),
-                "baseline_receipt": baseline_receipt,
-                "policy_profile": _policy_profile_value(),
-                "card_snapshot_sha256": captured["dataset_sha256"],
-                "card_snapshot_captured_at": captured["captured_at"],
-                "card_snapshot_upstream_version": captured["upstream_version"],
-            }
+            error_code="deck_or_input_invalid",
         )
     run_id = secrets.token_hex(16)
     root = Path(os.environ["LOCALAPPDATA"]) / "HSConfig" / "runs" / run_id
