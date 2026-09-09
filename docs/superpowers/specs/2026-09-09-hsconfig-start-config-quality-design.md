@@ -1,6 +1,6 @@
 # HSConfig start-config quality upgrade
 
-Status: target design approved in chat; written specification awaiting user review.
+Status: written specification approved by the user; implementation planning authorized.
 Date: 2026-09-09
 Audit baseline: `3f360924b9be94eb9656fc4e3079077e702b7817`.
 
