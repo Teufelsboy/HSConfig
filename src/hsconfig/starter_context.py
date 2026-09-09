@@ -53,6 +53,8 @@ from hsconfig.source_semantic_qualifiers import (
     normalize_semantic_qualifiers,
 )
 from hsconfig.starter_contract import (
+    QUALITY_STARTER_CONTEXT_FIELDS,
+    QUALITY_STARTER_SCHEMA_VERSION,
     LEGACY_STARTER_CONTEXT_FIELDS,
     LEGACY_STARTER_SCHEMA_VERSION,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
@@ -515,6 +517,76 @@ def build_single_candidate_starter_context(
     return validate_starter_context_document(document)
 
 
+def quality_main_card_rows(value: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Join main memberships to facts; direct links grant no new runtime owners."""
+    metadata = value["card_metadata"]
+    rows = []
+    for member in value["cards"]:
+        card_id = member["card_id"]
+        links = []
+        for relation in value["linked_entities"]:
+            if (
+                relation["source_card_id"] != card_id
+                or relation["status"] != "resolved"
+            ):
+                continue
+            target = metadata[relation["card_id"]]
+            links.append(
+                {
+                    "card_id": relation["card_id"],
+                    "link_kind": relation["link_kind"],
+                    "dbf_id": target["dbf_id"],
+                    "name": target["name"],
+                    "type": target["type"],
+                }
+            )
+        rows.append({**metadata[card_id], **member, "linked_entities": links})
+    return rows
+
+
+def build_quality_starter_context(inputs: FrozenCompilerInputs) -> StarterContext:
+    """Seal rich schema-3 context from a validated manifest-v2 carrier."""
+    from hsconfig.starter_card_facts import project_card_facts
+
+    frozen = _validated_frozen_compiler_inputs(inputs)
+    if frozen.quality_inputs is None:
+        raise ValueError("starter_context_quality_inputs_required")
+    deck = frozen.deck.to_value()["deck_identity"]
+    facts = project_card_facts(deck, frozen.full_cards.to_value())
+    cards = quality_main_card_rows(facts)
+    identity = _single_candidate_deck_identity(deck, cards=cards)
+    baseline = frozen.globalvalues_baseline.to_value()
+    _validate_globalvalues_baseline(baseline)
+    source_evidence, existing_claims = _single_candidate_source_projection(
+        frozen,
+        identity=identity,
+        cards=cards,
+    )
+    draft = {
+        "schema_version": QUALITY_STARTER_SCHEMA_VERSION,
+        "input_snapshot_manifest_sha256": frozen.manifest.document.content_sha256,
+        "deck_identity": identity,
+        **facts,
+        "research_evidence": frozen.quality_inputs.to_value()["research_result"],
+        "deck_shape": _deck_shape(cards),
+        "supported_runtime_contract": _runtime_contract(),
+        "globalvalues_baseline": {
+            "content_sha256": canonical_globalvalues_baseline_sha256(baseline),
+            "key_count": len(baseline),
+            "values": baseline,
+        },
+        "source_evidence": source_evidence,
+        "existing_claims": existing_claims,
+        "known_safety_boundaries": _known_safety_boundaries(cards),
+    }
+    document = seal_starter_document(
+        draft,
+        expected_fields=QUALITY_STARTER_CONTEXT_FIELDS,
+        schema_version=QUALITY_STARTER_SCHEMA_VERSION,
+    )
+    return validate_starter_context_document(document)
+
+
 def _validated_frozen_compiler_inputs(
     inputs: FrozenCompilerInputs,
 ) -> FrozenCompilerInputs:
@@ -534,14 +606,17 @@ def _validated_frozen_compiler_inputs(
             raise ValueError("cached manifest drift")
 
         documents: dict[str, FrozenJsonDocument] = {}
-        for name in (
+        names = (
             "deck",
             "full_cards",
             "collectible_cards",
             "source_acquisition",
             "source_documents",
             "globalvalues_baseline",
-        ):
+        )
+        if inputs.quality_inputs is not None:
+            names = (*names, "quality_inputs")
+        for name in names:
             cached_document = getattr(inputs, name)
             if type(cached_document) is not FrozenJsonDocument:
                 raise TypeError("frozen blob document required")
@@ -557,6 +632,7 @@ def _validated_frozen_compiler_inputs(
             source_acquisition=documents["source_acquisition"],
             source_documents=documents["source_documents"],
             globalvalues_baseline=documents["globalvalues_baseline"],
+            quality_inputs=documents.get("quality_inputs"),
         )
         _task2_inputs._require_manifest_blob_match(result)
         _task2_inputs._validate_loaded_compiler_binding(result)
@@ -1000,6 +1076,8 @@ def _validated_starter_context_document(
         expected_fields = LEGACY_STARTER_CONTEXT_FIELDS
     elif schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
         expected_fields = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+    elif schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        expected_fields = QUALITY_STARTER_CONTEXT_FIELDS
     else:
         raise ValueError("starter_context_document_invalid")
     if set(value) != expected_fields:
@@ -1019,7 +1097,25 @@ def _validated_starter_context_document(
         raise ValueError("starter_context_document_invalid")
     _enforce_starter_context_max_bytes(document.canonical_json)
 
-    cards = _validated_context_cards(value["cards"])
+    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        from hsconfig.starter_card_facts import validate_card_facts
+
+        validate_card_facts(
+            {
+                key: value[key]
+                for key in ("cards", "card_metadata", "sideboards", "linked_entities")
+            }
+        )
+        for card in value["card_metadata"].values():
+            for field in ("name", "text"):
+                if card[field] is not None:
+                    _validated_context_prose(card[field], allow_empty=field == "text")
+        _task2_inputs.validate_research_result(
+            value["research_evidence"], card_ids=set(value["card_metadata"])
+        )
+        cards = quality_main_card_rows(value)
+    else:
+        cards = _validated_context_cards(value["cards"])
     if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
         identity = _validated_context_identity(value["deck_identity"], cards=cards)
     else:
@@ -3025,7 +3121,9 @@ def _canonical_bytes(value: object) -> bytes:
 
 __all__ = (
     "StarterContext",
+    "build_quality_starter_context",
     "build_single_candidate_starter_context",
     "build_starter_context",
+    "quality_main_card_rows",
     "validate_starter_context_document",
 )

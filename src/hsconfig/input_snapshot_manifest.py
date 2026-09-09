@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
+import math
 import os
 from pathlib import Path
 import re
@@ -36,6 +37,8 @@ from hsconfig.starter_document import (
 
 
 INPUT_SNAPSHOT_SCHEMA_VERSION = 1
+QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION = 2
+QUALITY_INPUT_ENVELOPE_MAX_BYTES = 512 * 1024
 INPUT_SNAPSHOT_MAX_BYTES = 256 * 1024
 INPUT_BLOB_MAX_BYTES = 134_217_728
 INPUT_BLOB_MAX_RECORDS = 1_000_000
@@ -91,6 +94,11 @@ _BLOB_ORDER = (
     "source_documents",
     "globalvalues_baseline",
 )
+_QUALITY_BLOB_ORDER = (*_BLOB_ORDER, "quality_inputs")
+QUALITY_INPUT_FIELDS = frozenset({
+    "card_snapshot_sha256", "card_snapshot_captured_at",
+    "card_snapshot_upstream_version", "research_request_sha256", "research_result",
+})
 _DECK_INPUT_FIELDS = frozenset({"cards_payload", "deck_identity"})
 _CARDS_INPUT_ENVELOPE_FIELDS = frozenset(
     {"full_cards", "collectible_cards", "globalvalues_baseline"}
@@ -141,6 +149,7 @@ class FrozenCompilerInputs:
     source_acquisition: FrozenJsonDocument
     source_documents: FrozenJsonDocument
     globalvalues_baseline: FrozenJsonDocument
+    quality_inputs: FrozenJsonDocument | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,8 +172,9 @@ def freeze_compiler_inputs(
     compiler_contract_id: str,
     operator_profile: Any,
     deck_output_binding: Any,
+    quality_inputs: Any = None,
 ) -> FrozenCompilerInputs:
-    """Freeze six supplied projections without fetching or rereading inputs."""
+    """Freeze supplied projections, with an optional seventh quality blob."""
 
     if not isinstance(snapshot, PackageResolutionSnapshot):
         raise TypeError("input_snapshot_resolution_snapshot_invalid")
@@ -195,6 +205,13 @@ def freeze_compiler_inputs(
             "globalvalues_baseline",
         ),
     }
+    schema_version = INPUT_SNAPSHOT_SCHEMA_VERSION
+    if quality_inputs is not None:
+        documents["quality_inputs"] = _freeze_supplied_blob(quality_inputs, "quality_inputs")
+        validate_quality_inputs(documents["quality_inputs"],
+                                full_cards=documents["full_cards"].to_value(),
+                                collectible_cards=documents["collectible_cards"].to_value())
+        schema_version = QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION
     if documents["deck"].canonical_json != expected_deck.canonical_json:
         raise ValueError("input_snapshot_deck_projection_mismatch")
     expected_baseline = FrozenJsonDocument.from_value(
@@ -249,7 +266,7 @@ def freeze_compiler_inputs(
     )
     bindings = tuple(
         _binding_for_document(name, documents[name])
-        for name in _BLOB_ORDER
+        for name in (_QUALITY_BLOB_ORDER if quality_inputs is not None else _BLOB_ORDER)
     )
     _validate_envelope_sizes(documents)
     compiler_inputs = {
@@ -275,12 +292,12 @@ def freeze_compiler_inputs(
     )
     sealed = seal_starter_document(
         {
-            "schema_version": INPUT_SNAPSHOT_SCHEMA_VERSION,
+            "schema_version": schema_version,
             "compiler_inputs": compiler_inputs,
             "operator_bindings": operator_bindings,
         },
         expected_fields=INPUT_SNAPSHOT_FIELDS,
-        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+        schema_version=schema_version,
     )
     if len(sealed.canonical_json) > INPUT_SNAPSHOT_MAX_BYTES:
         raise ValueError("input_snapshot_manifest_size_invalid")
@@ -293,6 +310,7 @@ def freeze_compiler_inputs(
         source_acquisition=documents["source_acquisition"],
         source_documents=documents["source_documents"],
         globalvalues_baseline=documents["globalvalues_baseline"],
+        quality_inputs=documents.get("quality_inputs"),
     )
     _require_manifest_blob_match(result)
     return result
@@ -318,7 +336,7 @@ def validate_input_snapshot_manifest_document(
         raise ValueError("input_snapshot_manifest_fields_invalid")
     if (
         type(value["schema_version"]) is not int
-        or value["schema_version"] != INPUT_SNAPSHOT_SCHEMA_VERSION
+        or value["schema_version"] not in {INPUT_SNAPSHOT_SCHEMA_VERSION, QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION}
     ):
         raise ValueError("input_snapshot_manifest_schema_version_invalid")
     embedded_digest = _require_standard_digest(
@@ -330,7 +348,7 @@ def validate_input_snapshot_manifest_document(
     resealed = seal_starter_document(
         unsigned,
         expected_fields=INPUT_SNAPSHOT_FIELDS,
-        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+        schema_version=value["schema_version"],
     )
     if (
         embedded_digest != resealed.content_sha256
@@ -361,7 +379,12 @@ def validate_input_snapshot_manifest_document(
         compiler_value["compiler_contract_id"],
         "compiler_contract_id",
     )
-    blobs = _validate_blob_bindings(compiler_value["blobs"])
+    blobs = _validate_blob_bindings(compiler_value["blobs"], schema_version=value["schema_version"])
+    if value["schema_version"] == QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION and (
+        compiler_value["compiler_contract_id"] != "hsconfig-live-start-v2"
+        or compiler_value["runtime_grammar_version"] != "visionai-runtime-v1"
+    ):
+        raise ValueError("input_snapshot_quality_contract_invalid")
 
     operator_value = _require_mapping(
         value["operator_bindings"],
@@ -410,6 +433,12 @@ def _load_frozen_compiler_inputs(
         "input_snapshot_manifest",
     )
     manifest = validate_input_snapshot_manifest_document(manifest_document)
+    quality = None
+    if manifest.document.to_value()["schema_version"] == QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION:
+        quality = _canonical_physical_document(_read_input_file_once(
+            inputs / "quality.json", maximum_bytes=QUALITY_INPUT_ENVELOPE_MAX_BYTES,
+            expected_parent_identity=inputs_binding.identity,
+        ), "input_quality_envelope")
 
     deck_raw = _read_input_file_once(
         inputs / "deck.json",
@@ -474,6 +503,7 @@ def _load_frozen_compiler_inputs(
         globalvalues_baseline=FrozenJsonDocument.from_value(
             cards_value["globalvalues_baseline"]
         ),
+        quality_inputs=quality,
     )
     _require_manifest_blob_match(result)
     _validate_loaded_compiler_binding(result)
@@ -540,7 +570,8 @@ def _binding_for_document(
     document: FrozenJsonDocument,
 ) -> InputBlobBinding:
     size = len(document.canonical_json)
-    if size < 1 or size > INPUT_BLOB_MAX_BYTES:
+    maximum = QUALITY_INPUT_ENVELOPE_MAX_BYTES if name == "quality_inputs" else INPUT_BLOB_MAX_BYTES
+    if size < 1 or size > maximum:
         raise ValueError(f"input_snapshot_{name}_size_invalid")
     count = _record_count(name, document.to_value())
     if count < 0 or count > INPUT_BLOB_MAX_RECORDS:
@@ -553,11 +584,12 @@ def _binding_for_document(
     )
 
 
-def _validate_blob_bindings(value: Any) -> tuple[InputBlobBinding, ...]:
-    if not isinstance(value, list) or len(value) != len(_BLOB_ORDER):
+def _validate_blob_bindings(value: Any, *, schema_version: int = 1) -> tuple[InputBlobBinding, ...]:
+    order = _QUALITY_BLOB_ORDER if schema_version == 2 else _BLOB_ORDER
+    if not isinstance(value, list) or len(value) != len(order):
         raise ValueError("input_snapshot_blobs_invalid")
     bindings: list[InputBlobBinding] = []
-    for expected_name, row in zip(_BLOB_ORDER, value, strict=True):
+    for expected_name, row in zip(order, value, strict=True):
         mapping = _require_mapping(row, "input_snapshot_blob_invalid")
         if frozenset(mapping) != _BLOB_FIELDS:
             raise ValueError("input_snapshot_blob_fields_invalid")
@@ -569,13 +601,14 @@ def _validate_blob_bindings(value: Any) -> tuple[InputBlobBinding, ...]:
         if (
             type(size) is not int
             or size < 1
-            or size > INPUT_BLOB_MAX_BYTES
+            or size > (QUALITY_INPUT_ENVELOPE_MAX_BYTES if expected_name == "quality_inputs" else INPUT_BLOB_MAX_BYTES)
         ):
             raise ValueError("input_snapshot_blob_size_invalid")
         if (
             type(count) is not int
             or count < 0
             or count > INPUT_BLOB_MAX_RECORDS
+            or (expected_name == "quality_inputs" and count != 1)
         ):
             raise ValueError("input_snapshot_blob_record_count_invalid")
         bindings.append(
@@ -1289,7 +1322,223 @@ def _validate_operator_bindings(value: Mapping[str, Any]) -> None:
         raise ValueError("input_snapshot_deck_output_precondition_invalid")
 
 
+def validate_research_result(value: Any, *, card_ids: set[str] | None = None) -> dict:
+    """Admit sealed research as bounded context, never as source authority."""
+    from hsconfig.live_start_research import _public_url
+
+    fields = {
+        "schema_version",
+        "discovery_outcome",
+        "attempts",
+        "deadline_utc",
+        "observations",
+        "limitations",
+        "content_sha256",
+    }
+    if (
+        type(value) is not dict
+        or set(value) != fields
+        or type(value["schema_version"]) is not int
+        or value["schema_version"] != 1
+    ):
+        raise ValueError("input_snapshot_research_result_invalid")
+    unsigned = {key: item for key, item in value.items() if key != "content_sha256"}
+    if value["content_sha256"] != _digest(
+        FrozenJsonDocument.from_value(unsigned).canonical_json
+    ):
+        raise ValueError("input_snapshot_research_digest_invalid")
+    if value["discovery_outcome"] not in {
+        "completed",
+        "unavailable",
+        "budget_exhausted",
+    }:
+        raise ValueError("input_snapshot_research_outcome_invalid")
+    deadline = value["deadline_utc"]
+    if deadline is not None and (
+        type(deadline) not in {int, float} or not math.isfinite(deadline)
+    ):
+        raise ValueError("input_snapshot_research_deadline_invalid")
+    attempts = value["attempts"]
+    if (
+        type(attempts) is not list
+        or len(attempts) > 3
+        or (attempts and deadline is None)
+    ):
+        raise ValueError("input_snapshot_research_attempt_invalid")
+
+    def strings(items: Any) -> None:
+        if type(items) is not list or any(
+            type(item) is not str or not item for item in items
+        ):
+            raise ValueError("input_snapshot_research_strings_invalid")
+
+    def url(item: Any) -> None:
+        _public_url(item)
+
+    seen = set()
+    completed = set()
+    for attempt in attempts:
+        if type(attempt) is not dict or set(attempt) != {
+            "url",
+            "state",
+            "record_sha256",
+            "error",
+        }:
+            raise ValueError("input_snapshot_research_attempt_invalid")
+        url(attempt["url"])
+        if attempt["url"] in seen or attempt["state"] not in {
+            "started",
+            "completed",
+            "failed",
+            "interrupted",
+        }:
+            raise ValueError("input_snapshot_research_attempt_invalid")
+        seen.add(attempt["url"])
+        if attempt["state"] == "completed":
+            _require_standard_digest(attempt["record_sha256"], "research_record_sha256")
+            if attempt["error"] is not None:
+                raise ValueError("input_snapshot_research_attempt_invalid")
+            completed.add(attempt["url"])
+        elif attempt["record_sha256"] is not None or (
+            attempt["error"] is not None and type(attempt["error"]) is not str
+        ):
+            raise ValueError("input_snapshot_research_attempt_invalid")
+    strings(value["limitations"])
+    observations = value["observations"]
+    if type(observations) is not list or len(observations) > 12:
+        raise ValueError("input_snapshot_research_observations_invalid")
+    observation_fields = {
+        "observation_id",
+        "evidence_id",
+        "source_url",
+        "content_sha256",
+        "retrieved_at",
+        "source_updated_at",
+        "supporting_text",
+        "card_ids",
+        "applicability",
+        "limitations",
+        "conflicts",
+    }
+    ids = set()
+    for row in observations:
+        if type(row) is not dict or set(row) != observation_fields:
+            raise ValueError("input_snapshot_research_observation_invalid")
+        _require_standard_digest(row["observation_id"], "research_observation_id")
+        # Collector page hashes may be bare; retain their original representation.
+        _prefixed_bare_digest(row["content_sha256"], "research_content_sha256")
+        url(row["source_url"])
+        if row["source_url"] not in completed or row["observation_id"] in ids:
+            raise ValueError("input_snapshot_research_observation_invalid")
+        ids.add(row["observation_id"])
+        if (
+            type(row["evidence_id"]) is not str
+            or not row["evidence_id"]
+            or type(row["retrieved_at"]) is not str
+            or not row["retrieved_at"]
+            or (
+                row["source_updated_at"] is not None
+                and type(row["source_updated_at"]) is not str
+            )
+            or type(row["supporting_text"]) is not str
+            or not 1 <= len(row["supporting_text"]) <= 600
+            or row["applicability"] not in {"exact_list", "archetype_only", "card_only"}
+            or type(row["conflicts"]) is not list
+        ):
+            raise ValueError("input_snapshot_research_observation_invalid")
+        strings(row["card_ids"])
+        strings(row["limitations"])
+        if (
+            not row["card_ids"]
+            or len(set(row["card_ids"])) != len(row["card_ids"])
+            or (card_ids is not None and not set(row["card_ids"]) <= card_ids)
+            or "context_only_not_runtime_authority" not in row["limitations"]
+        ):
+            raise ValueError("input_snapshot_research_observation_invalid")
+        for conflict in row["conflicts"]:
+            if isinstance(conflict, str) and conflict:
+                continue
+            common = {"conflict_family", "claim_ids", "resolution"}
+            allowed = (
+                common | {"card_id"},
+                common | {"card_id", "values"},
+                common | {"sequence_key", "values"},
+            )
+            if type(conflict) is not dict or set(conflict) not in allowed:
+                raise ValueError("input_snapshot_research_conflict_invalid")
+            if conflict[
+                "resolution"
+            ] != "downgrade_to_report_visible_conflict" or conflict[
+                "conflict_family"
+            ] not in {
+                "mulligan",
+                "targeting",
+                "combo_timing",
+                "option_choice",
+                "role_vs_known_bad_pattern",
+            }:
+                raise ValueError("input_snapshot_research_conflict_invalid")
+            strings(conflict["claim_ids"])
+            if "values" in conflict:
+                strings(conflict["values"])
+            if "card_id" in conflict and (
+                type(conflict["card_id"]) is not str
+                or (card_ids is not None and conflict["card_id"] not in card_ids)
+            ):
+                raise ValueError("input_snapshot_research_conflict_invalid")
+            if "sequence_key" in conflict and type(conflict["sequence_key"]) is not str:
+                raise ValueError("input_snapshot_research_conflict_invalid")
+    return value
+
+
+def validate_quality_inputs(
+    document: FrozenJsonDocument, *, full_cards: list, collectible_cards: list
+) -> dict:
+    from hsconfig.card_snapshot import validated_card_snapshot
+
+    if (
+        type(document) is not FrozenJsonDocument
+        or len(document.canonical_json) > QUALITY_INPUT_ENVELOPE_MAX_BYTES
+    ):
+        raise ValueError("input_snapshot_quality_invalid")
+    value = document.to_value()
+    if type(value) is not dict or set(value) != QUALITY_INPUT_FIELDS:
+        raise ValueError("input_snapshot_quality_fields_invalid")
+    _require_standard_digest(value["card_snapshot_sha256"], "card_snapshot_sha256")
+    _require_standard_digest(
+        value["research_request_sha256"], "research_request_sha256"
+    )
+    if type(full_cards) is not list or any(type(row) is not dict for row in full_cards):
+        raise ValueError("input_snapshot_quality_cards_invalid")
+    validated_card_snapshot(
+        FrozenJsonDocument.from_value(
+            {
+                "full_cards": full_cards,
+                "collectible_cards": collectible_cards,
+                "dbf_to_card_id": {
+                    str(row["dbf_id"]): row["id"]
+                    for row in full_cards
+                    if row.get("dbf_id") is not None
+                },
+                "captured_at": value["card_snapshot_captured_at"],
+                "upstream_version": value["card_snapshot_upstream_version"],
+                "dataset_sha256": value["card_snapshot_sha256"],
+            }
+        )
+    )
+    validate_research_result(
+        value["research_result"], card_ids={row["id"] for row in full_cards}
+    )
+    return value
+
+
 def _validate_loaded_compiler_binding(result: FrozenCompilerInputs) -> None:
+    if result.quality_inputs is not None:
+        validate_quality_inputs(
+            result.quality_inputs,
+            full_cards=result.full_cards.to_value(),
+            collectible_cards=result.collectible_cards.to_value(),
+        )
     compiler = result.manifest.compiler_inputs.to_value()
     deck = _require_mapping(
         result.deck.to_value(),
@@ -1326,7 +1575,10 @@ def _validate_loaded_compiler_binding(result: FrozenCompilerInputs) -> None:
 
 def _require_manifest_blob_match(result: FrozenCompilerInputs) -> None:
     by_name = {binding.name: binding for binding in result.manifest.blobs}
-    for name in _BLOB_ORDER:
+    quality_version = result.manifest.document.to_value()["schema_version"] == 2
+    if quality_version != (result.quality_inputs is not None):
+        raise ValueError("input_snapshot_quality_binding_mismatch")
+    for name in (_QUALITY_BLOB_ORDER if quality_version else _BLOB_ORDER):
         document = getattr(result, name)
         expected = by_name[name]
         if (
@@ -1437,6 +1689,8 @@ def _canonical_physical_document(
 
 
 def _record_count(name: str, value: Any) -> int:
+    if name == "quality_inputs":
+        return 1
     if name == "deck":
         return 1
     if name in {"full_cards", "collectible_cards"}:
@@ -1576,9 +1830,14 @@ __all__ = (
     "INPUT_SNAPSHOT_SCHEMA_VERSION",
     "InputBlobBinding",
     "OPERATOR_BINDING_FIELDS",
+    "QUALITY_INPUT_FIELDS",
+    "QUALITY_INPUT_ENVELOPE_MAX_BYTES",
+    "QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION",
     "SOURCES_INPUT_ENVELOPE_MAX_BYTES",
     "ValidatedInputSnapshotManifest",
     "freeze_compiler_inputs",
     "load_frozen_compiler_inputs",
     "validate_input_snapshot_manifest_document",
+    "validate_quality_inputs",
+    "validate_research_result",
 )
