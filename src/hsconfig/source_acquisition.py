@@ -6,12 +6,17 @@ from html.parser import HTMLParser
 from http.client import HTTPSConnection
 from ipaddress import ip_address
 import re
+from queue import Empty, Queue
 from socket import create_connection, gaierror, getaddrinfo
+from threading import Thread
+from time import time
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from hsconfig.deck_identity import stable_deck_fingerprint
-from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.deckstring_decode import decode_deck_code, decode_deck_code_from_snapshot
+from hsconfig.card_snapshot import validated_card_snapshot
+from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.package_domain import PolicyProfile
 from hsconfig.source_acquisition_closure import (
@@ -56,6 +61,7 @@ class _VisibleTextParser(HTMLParser):
         self.primary_text_parts: list[str] = []
         self.fallback_text_parts: list[str] = []
         self.publication_values: list[str] = []
+        self.update_values: list[str] = []
         self._primary_depth = 0
         self._excluded_depth = 0
         self._in_title = False
@@ -75,6 +81,8 @@ class _VisibleTextParser(HTMLParser):
                 content = attributes.get("content", "").strip()
                 if content:
                     self.publication_values.append(content)
+                    if marker in {"article:modified_time", "datemodified"}:
+                        self.update_values.append(content)
         if normalized_tag == "time":
             value = attributes.get("datetime", "").strip()
             if value:
@@ -118,6 +126,7 @@ def extract_visible_text(html: str) -> dict[str, Any]:
         "title": " ".join(parser.title_parts).strip(),
         "text": primary or fallback,
         "publication_values": parser.publication_values,
+        "update_values": parser.update_values,
         "content_scope": "main_or_article" if primary else "visible_body_fallback",
     }
 
@@ -135,39 +144,67 @@ def collect_public_source_records(
     acquisition_mode: str = LIVE_HTTP,
     checked_dossier: bool = False,
     policy_profile: PolicyProfile | None = None,
+    deadline_utc: float | None = None,
+    card_snapshot: FrozenJsonDocument | None = None,
 ) -> dict[str, Any]:
+    if card_snapshot is not None:
+        validated_card_snapshot(card_snapshot)
     resolve = resolver or _default_resolver
     profile = policy_profile or load_policy_profile()
     records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     deduped_urls = _dedupe_urls(source_urls)
+    if deadline_utc is not None and len(deduped_urls) > 3:
+        raise ValueError("research_page_limit_exceeded")
     retrieved_at = _iso_datetime(current_date)
 
     for url in deduped_urls:
+        page_deadline = (min(deadline_utc, time() + min(10.0, timeout_seconds))
+                         if deadline_utc is not None else None)
         fetch_url = fetchable_source_url(url)
-        validation_error, validated_addresses = _public_source_url_validation(
-            fetch_url,
-            resolver=resolve,
-        )
+        try:
+            validation_error, validated_addresses = _bounded_stage(
+                lambda target=fetch_url: _public_source_url_validation(target, resolver=resolve),
+                deadline_utc=page_deadline,
+                timeout_seconds=timeout_seconds,
+            )
+        except TimeoutError:
+            failures.append({"url": url, "error": "research_budget_exhausted"})
+            continue
         if validation_error:
             failures.append({"url": url, "error": validation_error})
             continue
 
         try:
-            if fetcher is None:
-                status, content_type, body = _default_fetcher(
-                    fetch_url,
-                    timeout_seconds,
-                    validated_addresses=validated_addresses,
-                )
-            else:
-                status, content_type, body = fetcher(fetch_url, timeout_seconds)
+            remaining = _stage_timeout(page_deadline, timeout_seconds)
+            # Capture arguments: a timed-out daemon must never observe a later URL.
+            def fetch_page(target=fetch_url, addresses=validated_addresses,
+                           bound=remaining, deadline=page_deadline):
+                bound = _stage_timeout(deadline, bound)
+                if fetcher is None:
+                    return _default_fetcher(target, bound, validated_addresses=addresses)
+                return fetcher(target, bound)
+
+            status, content_type, body = _bounded_stage(
+                fetch_page, deadline_utc=page_deadline, timeout_seconds=remaining,
+            )
+            if len(body) > 400_000:
+                raise ValueError("source_body_too_large")
         except Exception as exc:
-            failures.append({"url": url, "error": type(exc).__name__})
+            error = str(exc) if str(exc) in {
+                "research_budget_exhausted", "source_body_too_large",
+            } else type(exc).__name__
+            failures.append({"url": url, "error": error})
             continue
 
         if 300 <= status < 400:
-            redirect_error = _redirect_validation_error(content_type, resolver=resolve)
+            try:
+                redirect_error = _bounded_stage(
+                    lambda header=content_type: _redirect_validation_error(header, resolver=resolve),
+                    deadline_utc=page_deadline, timeout_seconds=timeout_seconds,
+                )
+            except TimeoutError:
+                redirect_error = "research_budget_exhausted"
             failures.append({"url": url, "error": redirect_error or f"http_status_{status}"})
             continue
 
@@ -185,6 +222,7 @@ def collect_public_source_records(
             deck_identity,
             parsed["title"],
             parsed["text"],
+            card_snapshot=card_snapshot,
         )
         sanitized_text = _redact_deckstring_tokens(parsed["text"])
         source_family = _infer_source_family(url, parsed["text"])
@@ -222,6 +260,7 @@ def collect_public_source_records(
             "source_category": _source_category(source_family, visibility, lane_hint),
             "source_document_kind": _source_document_kind(source_family, visibility),
             "publication_year": publication_year,
+            "source_updated_at": _source_updated_at(parsed["update_values"]),
             "source_record_strength": strength,
             "source_strength": strength,
             "retrieved_at": retrieved_at,
@@ -348,6 +387,42 @@ def _report_first_missing_source_action(records: Sequence[Mapping[str, Any]]) ->
     return "none"
 
 
+def _stage_timeout(deadline_utc: float | None, timeout_seconds: float) -> float:
+    if deadline_utc is None:
+        return timeout_seconds
+    remaining = min(10.0, timeout_seconds, deadline_utc - time())
+    if remaining <= 0:
+        raise TimeoutError("research_budget_exhausted")
+    return remaining
+
+
+def _bounded_stage(operation: Callable[[], Any], *, deadline_utc: float | None,
+                   timeout_seconds: float) -> Any:
+    if deadline_utc is None:
+        return operation()
+    remaining = _stage_timeout(deadline_utc, timeout_seconds)
+    result: Queue = Queue(maxsize=1)
+
+    def run() -> None:
+        try:
+            _stage_timeout(deadline_utc, timeout_seconds)
+            result.put((True, operation()))
+        except BaseException as exc:
+            result.put((False, exc))
+
+    # DNS and third-party transport can ignore socket timeouts. Never join these
+    # workers on timeout. Their private queue cannot publish acquisition records.
+    Thread(target=run, daemon=True).start()
+    try:
+        succeeded, value = result.get(timeout=remaining)
+    except Empty as exc:
+        raise TimeoutError("research_budget_exhausted") from exc
+    _stage_timeout(deadline_utc, timeout_seconds)
+    if not succeeded:
+        raise value
+    return value
+
+
 def _default_fetcher(
     url: str,
     timeout_seconds: float,
@@ -375,14 +450,20 @@ class _ValidatedAddressHTTPSConnection(HTTPSConnection):
     ) -> None:
         super().__init__(hostname, port=port, timeout=timeout_seconds)
         self._validated_address = validated_address
+        self._request_deadline = time() + timeout_seconds
 
     def connect(self) -> None:
         sock = create_connection(
             (self._validated_address, self.port),
-            self.timeout,
+            _stage_timeout(self._request_deadline, self.timeout),
             self.source_address,
         )
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        try:
+            sock.settimeout(_stage_timeout(self._request_deadline, self.timeout))
+            self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        except BaseException:
+            sock.close()
+            raise
 
 
 def _fetch_with_validated_address(
@@ -405,7 +486,10 @@ def _fetch_with_validated_address(
         validated_address,
         timeout_seconds,
     )
+    request_deadline = time() + timeout_seconds
     try:
+        connection.connect()
+        connection.sock.settimeout(_stage_timeout(request_deadline, timeout_seconds))
         connection.request(
             "GET",
             path,
@@ -414,12 +498,24 @@ def _fetch_with_validated_address(
                 "User-Agent": "HSConfig/1.0 source acquisition",
             },
         )
+        connection.sock.settimeout(_stage_timeout(request_deadline, timeout_seconds))
         response = connection.getresponse()
         content_type = str(response.getheader("Content-Type", ""))
         location = str(response.getheader("Location", ""))
         if location:
             content_type = f"{content_type}; location={location}".strip("; ")
-        return int(response.status), content_type, response.read(400_000)
+        body = bytearray()
+        while len(body) <= 400_000:
+            remaining = _stage_timeout(request_deadline, timeout_seconds)
+            if connection.sock is not None:
+                connection.sock.settimeout(remaining)
+            chunk = response.read1(min(16_384, 400_001 - len(body)))
+            if not chunk:
+                break
+            body.extend(chunk)
+        if len(body) > 400_000:
+            raise ValueError("source_body_too_large")
+        return int(response.status), content_type, bytes(body)
     finally:
         connection.close()
 
@@ -437,12 +533,15 @@ def _matched_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
     return matches
 
 
-def _decoded_deckstring_candidates(text: str) -> dict[str, Any]:
+def _decoded_deckstring_candidates(
+    text: str, *, card_snapshot: FrozenJsonDocument | None = None,
+) -> dict[str, Any]:
     tokens = list(dict.fromkeys(DECKSTRING_TOKEN_RE.findall(text)))
     decoded_candidates: list[dict[str, Any]] = []
     for token in tokens:
         try:
-            decoded = decode_deck_code(token)
+            decoded = (decode_deck_code_from_snapshot(token, card_snapshot)
+                       if card_snapshot is not None else decode_deck_code(token))
         except Exception:
             continue
         fingerprint = stable_deck_fingerprint(
@@ -503,8 +602,10 @@ def _deck_match_evidence(
     deck_identity: Mapping[str, Any],
     title: str,
     text: str,
+    *,
+    card_snapshot: FrozenJsonDocument | None = None,
 ) -> tuple[dict[str, Any], str]:
-    candidate_evidence = _decoded_deckstring_candidates(text)
+    candidate_evidence = _decoded_deckstring_candidates(text, card_snapshot=card_snapshot)
     candidates = candidate_evidence["decoded_candidates"]
     matches = [
         candidate
@@ -669,6 +770,18 @@ def _publication_year_from_metadata(
     return None
 
 
+def _source_updated_at(values: Sequence[str]) -> str | None:
+    for value in values:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}(?:$|T)", value):
+            continue
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        return value
+    return None
+
+
 def _source_record_strength(
     *,
     source_family: str,
@@ -757,8 +870,14 @@ def _public_source_url_validation(
     *,
     resolver: HostResolver,
 ) -> tuple[str | None, tuple[str, ...]]:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname:
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return "non_public_https_url", ()
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+            or parsed.password is not None or (port is not None and not 0 < port < 65536)
+            or any(char.isspace() or ord(char) < 32 for char in url)):
         return "non_public_https_url", ()
     hostname = parsed.hostname.lower()
     if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
