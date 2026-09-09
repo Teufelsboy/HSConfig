@@ -9,6 +9,7 @@ from typing import Any
 
 LEGACY_STARTER_SCHEMA_VERSION = 1
 SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION = 2
+QUALITY_STARTER_SCHEMA_VERSION = 3
 STARTER_SCHEMA_VERSION = LEGACY_STARTER_SCHEMA_VERSION
 
 STARTER_CONTEXT_FILENAME = "starter_context.json"
@@ -28,6 +29,30 @@ STARTER_CANDIDATE_FILENAMES = (
     STARTER_CANDIDATE_2_FILENAME,
     STARTER_CANDIDATE_3_FILENAME,
 )
+
+
+def live_contract_for_versions(
+    *,
+    session: int,
+    manifest: int,
+    context: int,
+    candidate: int,
+    review: int,
+    compiler: str,
+) -> str:
+    versions = (session, manifest, context, candidate, review)
+    if any(type(value) is not int for value in versions) or type(compiler) is not str:
+        raise ValueError("live_start_contract_combination_invalid")
+    routes = {
+        (1, 1, 2, 2, 2, "hsconfig-live-start-v1"): "legacy_live",
+        (2, 2, 3, 3, 3, "hsconfig-live-start-v2"): "quality_live",
+    }
+    try:
+        return routes[(*versions, compiler)]
+    except KeyError:
+        raise ValueError("live_start_contract_combination_invalid") from None
+
+
 SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES = (
     "input_snapshot_manifest.json",
     "starter_context.json",
@@ -257,6 +282,7 @@ __all__ = (
     "LEGACY_STARTER_CANDIDATE_FIELDS",
     "LEGACY_STARTER_CONTEXT_FIELDS",
     "LEGACY_STARTER_SCHEMA_VERSION",
+    "QUALITY_STARTER_SCHEMA_VERSION",
     "REVIEW_CONFIDENCE",
     "REVIEW_STATUSES",
     "REVIEW_TARGETS",
@@ -299,6 +325,7 @@ __all__ = (
     "require_nonempty_string",
     "require_object_list",
     "require_string_list",
+    "live_contract_for_versions",
     "validate_candidate_revision",
     "validate_starter_sibling_name",
 )
