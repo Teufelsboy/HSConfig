@@ -13,7 +13,14 @@ Example successful response:
 
 ShadowPriest — card coverage: complete — review confidence: high — LIVE_AND_MATCHED
 
-Deck -> Config -> Validate -> Live -> Match
+Deck -> Snapshot -> Bounded research -> Candidate -> Independent review -> Live or Preview
+
+Illustrative limited-evidence preview:
+
+ShadowPriest — card coverage: complete — review confidence: limited — PREVIEW_READY
+
+The available guide evidence was insufficient, so assumptions and reduced
+confidence remain visible and no runtime files were written.
 
 The aim is the best practical evidence-based pre-run configuration, not measured gameplay optimality.
 
@@ -48,11 +55,14 @@ After setup, the normal prompt needs only the deck name and deck code.
 
 ## Normal operation
 
-The installed HSConfig skill creates a single candidate with one lead
-strategist, then uses one independent reviewer before validation, guarded
-live apply, and an exact runtime match. The lead considers alternatives
-internally; the operator does not choose between competing candidates.
-Technical validation and review share at most two revisions by the same lead.
+The installed HSConfig skill captures one consistent local data snapshot,
+performs bounded Codex discovery, and asks the controller to seal the resulting
+research and rich deck facts before candidate work begins. It creates one
+candidate with one lead strategist, then uses one independent reviewer whose
+approval is bound to that candidate's matching validation receipt. The lead
+considers alternatives internally; the operator does not choose between
+competing candidates. Technical validation and review share at most two
+revisions by the same lead.
 
 This installed optimized workflow is the only normal generation route. A
 valid enabled profile authorizes live operation for its bound runtime and
@@ -64,10 +74,11 @@ preview, returns `PROFILE_REQUIRED`; there is no silent preview fallback.
 Completion is `LIVE_AND_MATCHED`, or `ALREADY_LIVE` after verifying the same
 approved config is already active. Review confidence is `high|limited`;
 limited confidence and evidence gaps remain visible and do not mean gameplay
-quality was measured. `LLM_OPTIMIZED_START` binds the approved starter and
-compiler output, while `reports/operator_summary.json` remains the normal
-apply authority. Source gaps are informational on this optimized route,
-not a substitute authority.
+quality was measured. An empty research shortlist is valid; source limitations
+and assumptions stay explicit rather than being invented or hidden.
+`LLM_OPTIMIZED_START` binds the approved starter and compiler output, while
+`reports/operator_summary.json` remains the normal apply authority. Source
+gaps are informational on this optimized route, not a substitute authority.
 
 Use the same session's `resume` phase after interruption. Once an invocation
 receipt exists, or `APPLY_STARTED` is reached, resume is recovery-only: it

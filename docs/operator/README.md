@@ -15,7 +15,8 @@ inventory are never apply authority.
 
 - Give the installed HSConfig skill only the deck name and deck code. Its single candidate workflow is the only normal generation route.
 - A valid enabled profile binds the runtime and output roots and authorizes live operation there. Explicit preview overrides live; no per-run apply confirmation is needed for the enabled profile's scope.
-- Use one lead strategist to build the strongest practical evidence-based candidate and one independent reviewer to approve it or request targeted revision. Technical validation and review allow at most two shared revisions.
+- The skill captures one consistent local data snapshot, performs bounded Codex discovery, and seals the resulting context before candidate creation. No separate user research or provider setup is part of the normal route.
+- Use one lead strategist to build the strongest practical evidence-based candidate and one independent reviewer to approve the exact validated candidate or request targeted revision. Technical validation and review allow at most two shared revisions.
 - Expect the human deck name, complete card coverage, review confidence `high|limited`, and `LIVE_AND_MATCHED` or verified `ALREADY_LIVE`. Limited confidence stays visible; neither status proves gameplay improvement.
 - Use the same session's `resume` after interruption. An invocation receipt or `APPLY_STARTED` makes the rest recovery-only, not a new strategy/review/apply attempt.
 - Use raw `hsconfig configure` only for Conservative CLI Compatibility. Source and diagnostic commands remain explicit expert paths.
@@ -51,39 +52,60 @@ These are one-time setup or explicit policy changes, not per-deck questions.
 
 ### LLM-optimized start workflow
 
-Deck -> Config -> Validate -> Live -> Match
+Deck -> Snapshot -> Bounded research -> Candidate -> Independent review -> Live or Preview
 
 The installed Codex skill owns agent dispatch. HSConfig has no model client:
 it validates untrusted candidate and review documents, compiles the approved
 single candidate, and uses the existing guarded apply and runtime-match
 boundaries. There is no candidate tournament or reviewer selection.
-Legacy three-candidate critic and strategy-role instructions in referenced
-policies apply only to legacy compatibility; this normal schema-v2
-single-candidate approve-or-revise workflow takes precedence.
+The current normal route uses session/manifest v2, schema-3
+context/candidate/review documents, and compiler `hsconfig-live-start-v2`.
+The earlier session/manifest v1 plus schema-2 single-candidate workflow remains
+legacy compatibility, separate from the still older schema-1 three-candidate
+route documented below.
 
-The thin helper has exactly five phases:
+The thin helper has exactly six phases:
 
 1. `prepare` accepts only deck name, deck code, and optional explicit preview.
-   It reads the local operator profile, freezes compiler inputs, and returns
-   the session root and immutable strategist context. The same lead weighs
-   alternatives internally and covers every card, Mulligan, and GlobalValues;
-   uncertain evidence remains visible rather than invented.
-2. `validate-candidate` accepts only the session root and an external draft
+   It reads the local operator profile, freezes the request and compiler inputs,
+   captures one local data snapshot, and returns the session root plus a bounded
+   discovery request. Codex may make at most two search calls and inspect three
+   pages within 30 seconds total acquisition time and 10 seconds per request;
+   resume does not reset those limits.
+2. `complete-research` accepts only the session root and the Codex research
+   draft path. The controller validates the bounded acquisition receipt and
+   seals the schema-3 context from that research and the captured snapshot.
+   Main-deck, sideboard, and linked identity facts stay bound to the same
+   snapshot. An empty shortlist is valid, with its limitation kept visible.
+3. `validate-candidate` accepts only the session root and an external draft
    path. The controller seals and validates the draft. Technical findings go
-   back to the same lead and consume the shared two-revision budget.
-3. `validate-review` accepts only the session root and an external review
+   back to the same lead and consume the shared two-revision budget. The lead
+   covers every card, opening-hand-only Mulligan decisions, and all 38 profiled
+   GlobalValues keys; every changed value needs an explicit justification.
+4. `validate-review` accepts only the session root and an external review
    draft path. One independent reviewer sees only frozen context, the sealed
-   candidate, and its validation receipt, never the lead conversation. It
-   approves or requests a bounded revision; it cannot write runtime files,
-   replace the candidate, select a fallback, or dispatch another strategy.
-4. `finalize` accepts only the session root. With an approved review, it
+   candidate, and its full matching validation receipt, never the lead
+   conversation. It approves or requests a bounded revision; it cannot write
+   runtime files, replace the candidate, select a fallback, or dispatch another
+   strategy.
+5. `finalize` accepts only the session root. With an approved review, it
    compiles and validates the exact frozen request, then applies and matches
-   within the profile's authority. `LLM_OPTIMIZED_START` records provenance
-   and pre-run assurance, not measured gameplay optimality.
-5. `resume` accepts only the session root. It resumes durable work, reports
+   within the profile's authority, or produces an explicit preview without
+   runtime writes. `LLM_OPTIMIZED_START` records provenance and pre-run
+   assurance, not measured gameplay optimality.
+6. `resume` accepts only the session root. It resumes durable work, reports
    pending candidate/review findings when input is needed, or completes
    recovery without rerunning strategy/review after an invocation receipt.
    At or after `APPLY_STARTED`, it never blindly starts a second apply.
+
+For this quality route, every helper response keeps the controller's original
+payload under `controller_result` and adds a read-only `quality_route_summary`.
+The summary does not change the controller result, authority, or original exit
+semantics. Package authority `single_candidate_review_v2` consists of exactly
+five reports: `input_snapshot_manifest.json`, `starter_context.json`,
+`starter_config_candidate.json`, the full `candidate_validation_receipt.json`,
+and `starter_config_review.json`. The legacy `single_candidate_review_v1`
+four-report set is unchanged.
 
 A valid enabled profile permits live operation only at its bound roots.
 Explicit preview overrides live, including with a valid disabled profile,
@@ -99,7 +121,8 @@ review assessment, not a numeric gameplay score. This is a best practical
 pre-game start config, not evidence of in-client behavior or win-rate gain.
 `reports/operator_summary.json` remains the only normal apply authority;
 the controller recomputes authority before writing. Source gaps stay visible
-informational limitations rather than granting or replacing apply authority.
+as informational limitations, with assumptions explicit, rather than granting
+or replacing apply authority.
 
 ### Canonical local release gate
 
@@ -216,7 +239,8 @@ route.
 ### Legacy optimized CLI compatibility
 
 This legacy three-candidate contract remains available only for explicit
-compatibility use; it is not the installed skill's normal schema-v2 route.
+compatibility use; it is not the installed skill's normal schema-3 quality
+route.
 The legacy route works in one caller-owned external starter directory that
 must be initially absent. Its closed file set is:
 

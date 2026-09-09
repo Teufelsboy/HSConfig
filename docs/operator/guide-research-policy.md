@@ -1,8 +1,24 @@
 # Guide Research Policy
 
-HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig, then normalizes that research with `hsconfig research-deck`.
+HSConfig compiles structured source claims. On the normal installed-skill route,
+the user supplies only the deck name and deck code. `prepare` captures one
+consistent local data snapshot and returns a bounded discovery request; Codex
+then performs at most two search calls, inspects at most three pages, and uses
+at most 30 seconds total acquisition time with a 10-second per-request limit.
+`complete-research` validates the acquisition result and seals the schema-3
+context before the lead creates the single candidate. Resume does not reset the
+budget, and an empty shortlist remains valid with an explicit limitation.
+
+This flow introduces no separate user research command, source setup, or
+provider credential step. Source limitations, assumptions, and reduced review
+confidence remain visible. Richer context does not grant a new runtime surface,
+source authority, or write permission. For component and authority boundaries,
+see the [architecture overview](../architecture/overview.md).
 
 For the normal operator entry point, return to the [operator guide](README.md).
+
+The `hsconfig research-deck` examples below remain conservative expert source-
+normalization tools; they are not extra steps in the normal installed workflow.
 
 `source_readiness_preview` is a diagnostic-only projection of source candidate,
 autopilot, and package readiness. It does not replace `reports/operator_summary.json`,
