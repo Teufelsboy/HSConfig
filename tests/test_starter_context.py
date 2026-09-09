@@ -217,6 +217,83 @@ def test_schema_two_context_binds_frozen_snapshot_and_exact_cards(
     assert validate_starter_context_document(context.document) == context
 
 
+def test_schema_two_context_normalizes_source_card_line_breaks_before_sealing(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: ordinary CR/LF presentation breaks from the public card
+    # source reach the sealed context and are rejected as unsafe controls.
+    deck = single_candidate_inputs.deck.to_value()
+    card = next(
+        row
+        for row in deck["cards_payload"]["cards"]
+        if row["card_id"] == "BOT_020"
+    )
+    card["text"] = (
+        "[x]After you play a Pirate,\r\nsummon this minion\n"
+        "from your deck.\r<b>Charge</b>"
+    )
+    rebound = _replace_frozen_input_blob(
+        single_candidate_inputs,
+        "deck",
+        deck,
+    )
+
+    context = build_single_candidate_starter_context(rebound)
+    projected = next(
+        row
+        for row in context.document.to_value()["cards"]
+        if row["card_id"] == "BOT_020"
+    )
+
+    assert projected["text"] == (
+        "[x]After you play a Pirate, summon this minion "
+        "from your deck. <b>Charge</b>"
+    )
+
+
+@pytest.mark.parametrize("forbidden_control", ("\t", "\x00"))
+def test_schema_two_context_rejects_other_source_card_controls(
+    single_candidate_inputs: FrozenCompilerInputs,
+    forbidden_control: str,
+) -> None:
+    # Break caught: the source line-break exception broadens into arbitrary
+    # control-character normalization before sealing.
+    deck = single_candidate_inputs.deck.to_value()
+    card = next(
+        row
+        for row in deck["cards_payload"]["cards"]
+        if row["card_id"] == "BOT_020"
+    )
+    card["text"] = f"Before{forbidden_control}After"
+    rebound = _replace_frozen_input_blob(
+        single_candidate_inputs,
+        "deck",
+        deck,
+    )
+
+    with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+        build_single_candidate_starter_context(rebound)
+
+
+def test_starter_context_validator_rejects_resealed_card_text_line_break(
+    single_candidate_inputs: FrozenCompilerInputs,
+) -> None:
+    # Break caught: accepting CR/LF in an already projected document weakens
+    # the strict sealed-context boundary instead of fixing source projection.
+    context = build_single_candidate_starter_context(single_candidate_inputs)
+    value = context.document.to_value()
+    del value["content_sha256"]
+    value["cards"][0]["text"] = "Before\nAfter"
+    tampered = seal_starter_document(
+        value,
+        expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(ValueError, match="^starter_context_document_invalid$"):
+        validate_starter_context_document(tampered)
+
+
 def test_schema_two_context_closes_frozen_source_receipts_rows_and_claim_counts(
     single_candidate_inputs: FrozenCompilerInputs,
 ) -> None:

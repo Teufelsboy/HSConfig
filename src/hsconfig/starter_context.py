@@ -1853,7 +1853,12 @@ def _card_rows(preconfig: Mapping[str, Any]) -> list[dict[str, Any]]:
                     card.get("name"),
                     "starter_context_card_name_invalid",
                 ),
-                "text": str(card.get("text") or ""),
+                "text": (
+                    str(card.get("text") or "")
+                    .replace("\r\n", " ")
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                ),
                 "type": _nonempty_string(
                     card.get("type"),
                     "starter_context_card_type_invalid",
