@@ -770,8 +770,15 @@ def _single_candidate_source_projection(
         inputs.source_acquisition.to_value(),
         "single_candidate_source_acquisition",
     )
-    if set(acquisition) != {"guide_builder_receipt", "source_evidence_report"}:
+    expected_fields = {"guide_builder_receipt", "source_evidence_report"}
+    if inputs.manifest.document.to_value()["schema_version"] == 2:
+        expected_fields.add("policy_profile")
+    if set(acquisition) != expected_fields:
         raise ValueError("starter_context_source_evidence_invalid")
+    if inputs.manifest.document.to_value()["schema_version"] == 2:
+        from hsconfig.evidence_contract import policy_profile_from_mapping
+
+        policy_profile_from_mapping(acquisition["policy_profile"])
     receipt = _mapping(
         acquisition.get("guide_builder_receipt"),
         "single_candidate_guide_builder_receipt",

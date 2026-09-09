@@ -578,9 +578,9 @@ def _build_operator_summary_unfrozen(
         ),
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(
-            include_optimized_start=(
-                strategy_authority_mode == "llm_optimized_start"
-            )
+            include_optimized_start=(strategy_authority_mode == "llm_optimized_start"),
+            include_quality_start="reports/optimized_start/candidate_validation_receipt.json"
+            in {str(path).replace("\\", "/") for path in generated_files},
         ),
     }
     if deck_input_verification is not None:
@@ -815,9 +815,10 @@ def refresh_generated_file_accounting(
     )
     refreshed["report_ownership"] = build_report_ownership(
         include_optimized_start=(
-            operator_summary.get("strategy_authority_mode")
-            == "llm_optimized_start"
-        )
+            operator_summary.get("strategy_authority_mode") == "llm_optimized_start"
+        ),
+        include_quality_start="reports/optimized_start/candidate_validation_receipt.json"
+        in {str(path).replace("\\", "/") for path in generated_files},
     )
     return refreshed
 
@@ -1304,9 +1305,8 @@ def _technical_status(
         )
         derivation_verified = (
             package_derivation.get("optimized_start_authority_schema")
-            == "single_candidate_review_v1"
-            and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256)
-            is not None
+            in {"single_candidate_review_v1", "single_candidate_review_v2"}
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256) is not None
             and package_authority_context_verified(package_authority)
         )
         return (

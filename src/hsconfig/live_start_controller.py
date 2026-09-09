@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 from datetime import date
+import time
 import json
 import os
 import secrets
@@ -44,6 +45,7 @@ from hsconfig.globalvalues_decisions import (
     normalize_globalvalues_decision_baseline,
 )
 from hsconfig.hearthstonejson import (
+    fetch_card_snapshot,
     fetch_latest_cards,
     fetch_latest_collectible_cards,
 )
@@ -140,13 +142,18 @@ from hsconfig.starter_candidate import (
 )
 from hsconfig.starter_context import (
     StarterContext,
+    build_quality_starter_context,
     build_single_candidate_starter_context,
     validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
+    QUALITY_STARTER_CONTEXT_FIELDS,
+    QUALITY_STARTER_CANDIDATE_FIELDS,
+    QUALITY_STARTER_REVIEW_FIELDS,
+    QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+    live_contract_for_versions,
     SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_MAX_BYTES,
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_REVIEW_FIELDS,
@@ -4084,11 +4091,14 @@ def _load_bound_starter_context(
     *,
     session_root: Path,
 ) -> StarterContext:
+    version = _persisted_live_document_version(session_root)
     document = load_starter_document(
         session_root / "starter/starter_context.json",
         maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
-        expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        expected_fields=QUALITY_STARTER_CONTEXT_FIELDS
+        if version == 3
+        else SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+        schema_version=version,
     )
     return validate_starter_context_document(document)
 
@@ -4098,13 +4108,78 @@ def _load_bound_candidate(
     session_root: Path,
     context: StarterContext,
 ) -> ValidatedStarterCandidate:
+    version = context.document.to_value()["schema_version"]
     document = load_starter_document(
         session_root / "starter/starter_config_candidate.json",
         maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
-        expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
-        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        expected_fields=QUALITY_STARTER_CANDIDATE_FIELDS
+        if version == 3
+        else SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+        schema_version=version,
     )
     return validate_starter_candidate(document, context=context)
+
+
+def _persisted_live_document_version(root: Path) -> int:
+    from hsconfig.input_snapshot_manifest import (
+        validate_input_snapshot_manifest_document,
+    )
+
+    raw = _read_plain_bytes(
+        root / "session.json", maximum_size=_session.LIVE_START_SESSION_MAX_BYTES
+    )
+    current = _session._load_session_bytes(raw, session_identity=None)
+    manifest_raw = _read_plain_bytes(
+        root / "inputs/input_snapshot_manifest.json", maximum_size=256 * 1024
+    )
+    if _sha256_bytes(manifest_raw) != current.artifact_bindings.get(
+        "inputs/input_snapshot_manifest.json"
+    ):
+        raise SessionConflictError("live_start_manifest_physical_binding_changed")
+    manifest = validate_input_snapshot_manifest_document(
+        FrozenJsonDocument.from_json_bytes(manifest_raw)
+    )
+    version = 3 if current.schema_version == 2 else 2
+    live_contract_for_versions(
+        session=current.schema_version,
+        manifest=manifest.document.to_value()["schema_version"],
+        context=version,
+        candidate=version,
+        review=version,
+        compiler=manifest.compiler_inputs.to_value()["compiler_contract_id"],
+    )
+    if manifest.document.content_sha256 != current.input_snapshot_manifest_sha256:
+        raise SessionConflictError("live_start_manifest_binding_changed")
+    return version
+
+
+def _load_quality_candidate_receipt(
+    *, root: Path, current: LiveStartSession | None = None
+):
+    if current is None:
+        current = _session._load_session_bytes(
+            _read_plain_bytes(
+                root / "session.json",
+                maximum_size=_session.LIVE_START_SESSION_MAX_BYTES,
+            ),
+            session_identity=None,
+        )
+    if current.schema_version != 2:
+        return None
+    logical = "receipts/candidate_validation.json"
+    raw = _read_plain_bytes(root / logical, maximum_size=512 * 1024)
+    if _sha256_bytes(raw) != current.artifact_bindings.get(logical):
+        raise SessionConflictError(
+            "live_start_quality_receipt_physical_binding_changed"
+        )
+    document = FrozenJsonDocument.from_json_bytes(raw)
+    _session.validate_validation_receipt(
+        receipt_kind="candidate_validation",
+        value=document.to_value(),
+        run_id=current.run_id,
+        candidate_revision=current.candidate_revision,
+    )
+    return document
 
 
 def _load_bound_revision_review(
@@ -4124,7 +4199,40 @@ def _load_bound_revision_review(
         content_sha256=value.get("content_sha256"),
     )
     candidate = _load_bound_candidate(session_root=session_root, context=context)
-    review = validate_starter_review(document, context=context, candidate=candidate)
+    receipt = None
+    if current.schema_version == 2:
+        if (
+            current.phase is not LiveStartPhase.CANDIDATE_DRAFTED
+            or current.pending_transition is not None
+            or current.terminal_status is not None
+            or current.revisions_used != current.candidate_revision
+            or value.get("review_status") != "revision_requested"
+        ):
+            raise SessionConflictError(
+                "live_start_quality_revision_receipt_cursor_invalid"
+            )
+        source_root = session_root.parent.parent / "contexts" / current.run_id
+        source = source_root / (
+            f"install_candidate_validation-r{current.candidate_revision}-"
+            f"u{current.candidate_revision - 1}-0-candidate_validation.json"
+        )
+        with hold_plain_directory(source_root.parent) as contexts_guard:
+            with hold_plain_directory(source_root) as source_guard:
+                raw_receipt = _read_plain_bytes(source, maximum_size=256 * 1024)
+                contexts_guard.validate()
+                source_guard.validate()
+        receipt = FrozenJsonDocument.from_value(
+            _session._decode_canonical_json(raw_receipt)
+        )
+        _session.validate_validation_receipt(
+            receipt_kind="candidate_validation",
+            value=receipt.to_value(),
+            run_id=current.run_id,
+            candidate_revision=current.candidate_revision,
+        )
+    review = validate_starter_review(
+        document, context=context, candidate=candidate, validation_receipt=receipt
+    )
     if (review.review_status != "revision_requested"
         or review.candidate_revision != current.candidate_revision):
         raise SessionConflictError("live_start_revision_review_cursor_invalid")
@@ -4309,7 +4417,815 @@ def _sealed_diagnostic(value: Mapping[str, Any]) -> FrozenJsonDocument:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class LiveStartDiscovery:
+    run_root: Path
+    acquisition_request_path: Path
+    acquisition_request_sha256: str
+
+
+def _quality_fault(_point: str) -> None:
+    """Deterministic crash-injection seam; never an authority or write bypass."""
+
+
+def _quality_checkpoint(*, session_lease, current, changes):
+    def fault(point):
+        if changes.get("phase") == "INPUT_FROZEN" and point == "temp_flushed":
+            _quality_fault("during_input_frozen_transition")
+
+    return _session._transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=current,
+        event="quality_transition",
+        changes=changes,
+        fault_hook=fault,
+    )
+
+
+def _quality_materialize(*, session_root, current, row):
+    target = session_root / row["logical_path"]
+    source = Path(row["source_path"])
+    parent = _require_or_create_plain_child(session_root, target.parent.name)
+    maximum = _session.QUALITY_FILE_LIMITS[row["logical_path"]]
+    if path_lexists(target):
+        raw = _read_plain_bytes(target, maximum_size=maximum)
+        if len(raw) == row["size"] and _sha256_bytes(raw) == row["sha256"]:
+            return
+        if _sha256_bytes(raw) != current.artifact_bindings.get(row["logical_path"]):
+            raise SessionConflictError("live_start_quality_target_changed")
+        predecessor_identity, predecessor_sha256 = (
+            path_identity(target),
+            _sha256_bytes(raw),
+        )
+    else:
+        if row["logical_path"] in current.artifact_bindings:
+            raise SessionConflictError("live_start_quality_predecessor_missing")
+        predecessor_identity = predecessor_sha256 = None
+    payload = _read_plain_bytes(source, maximum_size=maximum)
+    if (
+        path_identity(source) != tuple(row["source_identity"])
+        or path_identity(source.parent) != tuple(row["source_parent_identity"])
+        or len(payload) != row["size"]
+        or _sha256_bytes(payload) != row["sha256"]
+    ):
+        raise SessionConflictError("live_start_quality_staging_changed")
+    if source.parent == target.parent:
+        from hsconfig.atomic_io import _flush_parent_directory
+
+        secure_replace(
+            source,
+            target,
+            expected_source_identity=tuple(row["source_identity"]),
+            expected_source_parent_identity=path_identity(parent),
+            expected_target_parent_identity=path_identity(parent),
+            expected_target_identity=predecessor_identity,
+            expected_target_absent=predecessor_identity is None,
+        )
+        _flush_parent_directory(parent)
+    else:
+        reserved = target.with_name(f".{target.name}.live-start-atomic.tmp")
+        if path_lexists(reserved):
+            secure_unlink(
+                reserved,
+                expected_identity=path_identity(reserved),
+                expected_parent_identity=path_identity(parent),
+                missing_ok=False,
+            )
+        atomic_write_reserved_bytes(
+            path=target,
+            payload=payload,
+            expected_parent_identity=path_identity(parent),
+            expected_predecessor_identity=predecessor_identity,
+            expected_predecessor_sha256=predecessor_sha256,
+            maximum_size=maximum,
+        )
+    if _read_plain_bytes(target, maximum_size=maximum) != payload:
+        raise SessionConflictError("live_start_quality_install_readback_failed")
+
+
+def _continue_quality_documents(*, session_lease, current):
+    pending = current.pending_transition
+    if pending is None or pending.get("operation") not in _session._QUALITY_OPERATIONS:
+        return current
+    root = session_lease.session_root
+    if pending["stage"] == "PREPARED":
+        value = _session._thaw(pending)
+        value["stage"] = "PRIMARY_APPLIED"
+        current = _quality_checkpoint(
+            session_lease=session_lease,
+            current=current,
+            changes={"pending_transition": _session._seal_pending(value)},
+        )
+    rows = _session._quality_pending_rows(session=current, root=root)
+    while current.pending_transition["next_action_index"] < len(rows):
+        index = current.pending_transition["next_action_index"]
+        row = rows[index]
+        _quality_materialize(session_root=root, current=current, row=row)
+        point = {
+            "inputs/quality_seed.json": "after_seed_install",
+            "research/request.json": "after_request_install",
+        }.get(row["logical_path"])
+        if point:
+            _quality_fault(point)
+        value = _session._thaw(current.pending_transition)
+        value["next_action_index"] += 1
+        current = _quality_checkpoint(
+            session_lease=session_lease,
+            current=current,
+            changes={"pending_transition": _session._seal_pending(value)},
+        )
+    _session._validate_starter_document_postconditions(
+        session_lease=session_lease, session=current, complete=True
+    )
+    changes = {
+        "pending_transition": None,
+        "artifact_bindings": dict(
+            current.pending_transition["successor_artifact_bindings"]
+        ),
+    }
+    if current.pending_transition["operation"] == "quality_freeze":
+        frozen = _load_frozen_compiler_inputs(root, rebind_operator=False)
+        _quality_fault("after_final_input_installation")
+        changes.update(
+            {
+                "phase": "INPUT_FROZEN",
+                "input_snapshot_manifest_sha256": frozen.manifest.document.content_sha256,
+            }
+        )
+    return _quality_checkpoint(
+        session_lease=session_lease, current=current, changes=changes
+    )
+
+
+def _install_quality_documents(*, session_lease, current, operation, documents):
+    root = session_lease.session_root
+    actions = []
+    for logical, payload in sorted(documents.items()):
+        source = _write_external_authority_source(
+            session_root=root,
+            name=f"{operation}-{_sha256_bytes(payload)[7:]}-{Path(logical).name}",
+            payload=payload,
+        )
+        actions.append(
+            _session._quality_action(logical=logical, source=source, payload=payload)
+        )
+    pending = _session._empty_pending_transition(
+        session=current, operation=operation, external_file_action=None
+    )
+    successor = dict(current.artifact_bindings)
+    successor.update({row["logical_path"]: row["sha256"] for row in actions})
+    pending.update(
+        {
+            "actions": actions,
+            "successor_artifact_bindings": successor,
+            "target_phase": "INPUT_FROZEN"
+            if operation == "quality_freeze"
+            else "DISCOVERY_REQUIRED",
+        }
+    )
+    current = _quality_checkpoint(
+        session_lease=session_lease,
+        current=current,
+        changes={"pending_transition": _session._seal_pending(pending)},
+    )
+    return _continue_quality_documents(session_lease=session_lease, current=current)
+
+
+def _load_quality_state(*, root, current, profile):
+    from hsconfig.card_snapshot import validated_card_snapshot
+    from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
+    from hsconfig.live_start_research import (
+        build_research_request,
+        build_research_result,
+        validate_research_draft,
+    )
+
+    def read(logical):
+        raw = _read_plain_bytes(
+            root / logical, maximum_size=_session.QUALITY_FILE_LIMITS[logical]
+        )
+        if _sha256_bytes(raw) != current.artifact_bindings[logical]:
+            raise SessionConflictError("live_start_quality_input_changed")
+        doc = FrozenJsonDocument.from_json_bytes(raw)
+        if doc.canonical_json != raw:
+            raise SessionConflictError("live_start_quality_input_noncanonical")
+        return doc.to_value()
+
+    seed, deck, cards = (
+        read(path)
+        for path in (
+            "inputs/quality_seed.json",
+            "inputs/deck.json",
+            "inputs/cards.json",
+        )
+    )
+    expected_seed = {
+        "schema_version",
+        "bound_date",
+        "operator_bindings",
+        "baseline_receipt",
+        "policy_profile",
+        "card_snapshot_sha256",
+        "card_snapshot_captured_at",
+        "card_snapshot_upstream_version",
+    }
+    if (
+        set(seed) != expected_seed
+        or type(seed["schema_version"]) is not int
+        or seed["schema_version"] != 1
+    ):
+        raise SessionConflictError("live_start_quality_seed_invalid")
+    output = derive_deck_output_binding(profile, current.deck_name)
+    if seed["operator_bindings"] != _operator_bindings_from_values(
+        operator_profile=profile,
+        deck_output_binding=output,
+        deck_name=current.deck_name,
+    ):
+        raise SessionConflictError("live_start_quality_profile_changed")
+    snapshot = FrozenJsonDocument.from_value(
+        {
+            "full_cards": cards["full_cards"],
+            "collectible_cards": cards["collectible_cards"],
+            "dbf_to_card_id": {
+                str(row["dbf_id"]): row["id"]
+                for row in cards["full_cards"]
+                if row.get("dbf_id") is not None
+            },
+            "captured_at": seed["card_snapshot_captured_at"],
+            "upstream_version": seed["card_snapshot_upstream_version"],
+            "dataset_sha256": seed["card_snapshot_sha256"],
+        }
+    )
+    snapshot_value = validated_card_snapshot(snapshot)
+    if (
+        snapshot_value["dataset_sha256"] != seed["card_snapshot_sha256"]
+        or snapshot_value["collectible_cards"] != cards["collectible_cards"]
+    ):
+        raise SessionConflictError("live_start_quality_snapshot_changed")
+    _validate_deck_and_card_closure(
+        deck,
+        full_cards=cards["full_cards"],
+        collectible_cards=cards["collectible_cards"],
+    )
+    request = read("research/request.json")
+    rebuilt = build_research_request(
+        run_id=current.run_id,
+        deck_identity=deck["deck_identity"],
+        captured_input_sha256=current.research_binding["seed_sha256"],
+        queries=tuple(request.get("queries", [])),
+    )
+    if (
+        request != rebuilt.to_value()
+        or request["content_sha256"] != current.research_binding["request_sha256"]
+    ):
+        raise SessionConflictError("live_start_quality_request_changed")
+    progress = read("research/progress.json")
+    if (
+        set(progress)
+        != {
+            "schema_version",
+            "request_sha256",
+            "search_slots",
+            "draft",
+            "deadline_utc",
+            "attempts",
+            "source_records",
+            "source_acquisition_reports",
+        }
+        or type(progress["schema_version"]) is not int
+        or progress["schema_version"] != 1
+        or progress["request_sha256"] != request["content_sha256"]
+        or progress["search_slots"]
+        != [
+            {"query": query, "state": "reserved_unknown"}
+            for query in request["queries"]
+        ]
+    ):
+        raise SessionConflictError("live_start_quality_progress_invalid")
+    if progress["draft"] is not None:
+        urls, _ = validate_research_draft(
+            progress["draft"], request_sha256=request["content_sha256"]
+        )
+        if any(attempt.get("url") not in urls for attempt in progress["attempts"]):
+            raise SessionConflictError("live_start_quality_unadmitted_attempt")
+    elif (
+        any(
+            progress[key]
+            for key in ("attempts", "source_records", "source_acquisition_reports")
+        )
+        or progress["deadline_utc"] is not None
+    ):
+        raise SessionConflictError("live_start_quality_attempt_before_draft")
+    build_research_result(
+        acquired={"source_records": progress["source_records"]},
+        discovery_outcome=(progress["draft"] or {}).get(
+            "discovery_outcome", "unavailable"
+        ),
+        attempts=progress["attempts"],
+        deadline_utc=progress["deadline_utc"],
+        card_metadata={},
+    )
+    return seed, deck, cards, snapshot, request, progress, output
+
+
+def _quality_preparation(*, root):
+    frozen = _load_frozen_compiler_inputs(root, rebind_operator=False)
+    context = build_quality_starter_context(frozen)
+    path = _materialize_starter_context(
+        local_app_data_root=root.parent.parent.parent,
+        run_id=root.name,
+        payload=context.document.canonical_json,
+    )
+    value = context.document.to_value()
+    return LiveStartPreparation(
+        run_root=root,
+        starter_context_path=path,
+        candidate_revision=1,
+        visible_limitations=tuple(value["research_evidence"]["limitations"]),
+    )
+
+
+def _finish_quality_inputs(*, session_lease, current, profile, state):
+    from hsconfig.starter_card_facts import project_card_facts
+    from hsconfig.live_start_research import (
+        build_research_result,
+        compile_research_sources,
+    )
+    from hsconfig.internal_source_authority import split_source_documents_handoff
+
+    seed, deck, cards, snapshot, request, progress, output = state
+    acquired = {
+        "source_records": progress["source_records"],
+        "source_acquisition_report": {
+            "reports": progress["source_acquisition_reports"],
+            "search_slots": progress["search_slots"],
+        },
+    }
+    compiled, handoff = compile_research_sources(
+        acquired=acquired,
+        deck_identity=deck["deck_identity"],
+        current_date=seed["bound_date"],
+    )
+    _research_handoff, handoff = split_source_documents_handoff(handoff)
+    facts = project_card_facts(deck["deck_identity"], cards["full_cards"])
+    research = build_research_result(
+        acquired=compiled.to_value(),
+        discovery_outcome=progress["draft"]["discovery_outcome"],
+        attempts=progress["attempts"],
+        deadline_utc=progress["deadline_utc"],
+        card_metadata=facts["card_metadata"],
+    )
+    quality = FrozenJsonDocument.from_value(
+        {
+            key: seed[key]
+            for key in (
+                "card_snapshot_sha256",
+                "card_snapshot_captured_at",
+                "card_snapshot_upstream_version",
+            )
+        }
+        | {
+            "research_request_sha256": request["content_sha256"],
+            "research_result": research.to_value(),
+        }
+    )
+    arguments = argparse.Namespace(
+        command="prepare",
+        deck_name=current.deck_name,
+        deck_code=deck["cards_payload"]["deck_code"],
+        out=str(output.output_root),
+        runtime_root=str(profile.runtime_root),
+        guide_sources_json=None,
+        source_documents_json=None,
+        auto_research_fallback=False,
+        json=True,
+        cards_json=None,
+        claims_json=None,
+        plan_reports_dir=None,
+        allow_placeholder=False,
+        current_date=seed["bound_date"],
+        collectible_cards_json=None,
+        full_cards_json=None,
+        skip_semantic_fetch=False,
+        source_evidence_json=None,
+    )
+    preconfig = build_preconfig_context(
+        arguments,
+        current_date=date.fromisoformat(seed["bound_date"]),
+        source_authority_handoff=handoff,
+        source_authority_consumer="prepare",
+        load_cards_fn=lambda *_args, **_kwargs: deepcopy(deck["cards_payload"]),
+        fetch_latest_cards_fn=lambda **_: deepcopy(cards["full_cards"]),
+        fetch_latest_collectible_cards_fn=lambda **_: deepcopy(
+            cards["collectible_cards"]
+        ),
+    )
+    preconfig.update(
+        {
+            "policy_profile": seed["policy_profile"],
+            "globalvalues_baseline": cards["globalvalues_baseline"],
+            "globalvalues_baseline_receipt": seed["baseline_receipt"],
+        }
+    )
+    frozen = freeze_compiler_inputs(
+        snapshot=PackageResolutionSnapshot.from_preconfig(preconfig),
+        deck=deck,
+        full_cards=cards["full_cards"],
+        collectible_cards=cards["collectible_cards"],
+        source_acquisition={
+            "guide_builder_receipt": preconfig["guide_builder_receipt"],
+            "source_evidence_report": preconfig["source_evidence_report"],
+            "policy_profile": seed["policy_profile"],
+        },
+        source_documents={"guide_sources": preconfig["guide_sources_generated"]},
+        globalvalues_baseline=cards["globalvalues_baseline"],
+        bound_date=seed["bound_date"],
+        runtime_grammar_version=_RUNTIME_GRAMMAR_VERSION,
+        compiler_contract_id="hsconfig-live-start-v2",
+        operator_profile=profile,
+        deck_output_binding=output,
+        quality_inputs=quality,
+    )
+    sources = FrozenJsonDocument.from_value(
+        {
+            "source_acquisition": frozen.source_acquisition.to_value(),
+            "source_documents": frozen.source_documents.to_value(),
+        }
+    )
+    _install_quality_documents(
+        session_lease=session_lease,
+        current=current,
+        operation="quality_freeze",
+        documents={
+            "inputs/quality.json": quality.canonical_json,
+            "inputs/sources.json": sources.canonical_json,
+            "inputs/input_snapshot_manifest.json": frozen.manifest.document.canonical_json,
+        },
+    )
+    return _quality_preparation(root=session_lease.session_root)
+
+
+def _quality_research_under_lock(*, session_lease, current, draft_path=None):
+    from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
+    from hsconfig.live_start_research import validate_research_draft, research_timeout
+    from hsconfig.source_acquisition import collect_public_source_records
+
+    root = session_lease.session_root
+    if (
+        current.schema_version != 2
+        or current.phase is not LiveStartPhase.DISCOVERY_REQUIRED
+    ):
+        raise SessionConflictError("live_start_quality_discovery_required")
+    profile = load_operator_profile()
+    with lease_operator_profile(expected_profile=profile):
+        # Seed identity remains authoritative even when the final input CAS
+        # interrupted after physically installing its successor documents.
+        if "inputs/quality_seed.json" in current.artifact_bindings:
+            seed_raw = _read_plain_bytes(
+                root / "inputs/quality_seed.json", maximum_size=128 * 1024
+            )
+            if _sha256_bytes(seed_raw) != current.research_binding["seed_sha256"]:
+                raise SessionConflictError("live_start_quality_seed_changed")
+            seed = FrozenJsonDocument.from_json_bytes(seed_raw).to_value()
+            output = derive_deck_output_binding(profile, current.deck_name)
+            if seed["operator_bindings"] != _operator_bindings_from_values(
+                operator_profile=profile,
+                deck_output_binding=output,
+                deck_name=current.deck_name,
+            ):
+                raise SessionConflictError("live_start_quality_profile_changed")
+        current = _continue_quality_documents(
+            session_lease=session_lease, current=current
+        )
+        if current.phase is LiveStartPhase.INPUT_FROZEN:
+            return _quality_preparation(root=root)
+        state = _load_quality_state(root=root, current=current, profile=profile)
+        seed, deck, cards, snapshot, request, progress, output = state
+        if draft_path is not None:
+            draft = _load_unsigned_draft(draft_path, maximum_size=32 * 1024)
+            validate_research_draft(draft, request_sha256=request["content_sha256"])
+            if progress["draft"] is not None and progress["draft"] != draft:
+                raise SessionConflictError("live_start_quality_draft_already_admitted")
+            if progress["draft"] is None:
+                progress["draft"] = draft
+                current = _install_quality_documents(
+                    session_lease=session_lease,
+                    current=current,
+                    operation="quality_progress",
+                    documents={
+                        "research/progress.json": FrozenJsonDocument.from_value(
+                            progress
+                        ).canonical_json
+                    },
+                )
+        if progress["draft"] is None:
+            return LiveStartDiscovery(
+                root, root / "research/request.json", request["content_sha256"]
+            )
+        urls, _ = validate_research_draft(
+            progress["draft"], request_sha256=request["content_sha256"]
+        )
+        interrupted = False
+        for attempt in progress["attempts"]:
+            if attempt["state"] == "started":
+                attempt.update({"state": "interrupted", "error": "interrupted"})
+                interrupted = True
+        if interrupted:
+            current = _install_quality_documents(
+                session_lease=session_lease,
+                current=current,
+                operation="quality_progress",
+                documents={
+                    "research/progress.json": FrozenJsonDocument.from_value(
+                        progress
+                    ).canonical_json
+                },
+            )
+        for url in urls:
+            if url in {row["url"] for row in progress["attempts"]}:
+                continue
+            if progress["deadline_utc"] is None:
+                progress["deadline_utc"] = time.time() + 30.0
+            timeout = research_timeout(
+                deadline_utc=progress["deadline_utc"], now_utc=time.time()
+            )
+            if timeout <= 0:
+                break
+            attempt = {
+                "url": url,
+                "state": "started",
+                "record_sha256": None,
+                "error": None,
+            }
+            progress["attempts"].append(attempt)
+            current = _install_quality_documents(
+                session_lease=session_lease,
+                current=current,
+                operation="quality_progress",
+                documents={
+                    "research/progress.json": FrozenJsonDocument.from_value(
+                        progress
+                    ).canonical_json
+                },
+            )
+            _quality_fault("after_started_attempt_checkpoint")
+            acquired = collect_public_source_records(
+                deck_name=current.deck_name,
+                deck_identity=deck["deck_identity"],
+                source_urls=[url],
+                current_date=seed["bound_date"],
+                timeout_seconds=timeout,
+                deadline_utc=progress["deadline_utc"],
+                card_snapshot=snapshot,
+            )
+            records = acquired["source_records"]
+            if records:
+                if len(records) != 1 or records[0]["source_url"] != url:
+                    raise SessionConflictError(
+                        "live_start_quality_collector_scope_invalid"
+                    )
+                progress["source_records"].append(records[0])
+                attempt.update(
+                    {
+                        "state": "completed",
+                        "record_sha256": _sha256_bytes(
+                            FrozenJsonDocument.from_value(records[0]).canonical_json
+                        ),
+                    }
+                )
+            else:
+                attempt.update({"state": "failed", "error": "page_acquisition_failed"})
+            progress["source_acquisition_reports"].append(
+                acquired.get("source_acquisition_report", {})
+            )
+            current = _install_quality_documents(
+                session_lease=session_lease,
+                current=current,
+                operation="quality_progress",
+                documents={
+                    "research/progress.json": FrozenJsonDocument.from_value(
+                        progress
+                    ).canonical_json
+                },
+            )
+            _quality_fault("after_fetched_record_persistence")
+        state = _load_quality_state(root=root, current=current, profile=profile)
+        return _finish_quality_inputs(
+            session_lease=session_lease, current=current, profile=profile, state=state
+        )
+
+
+def complete_live_start_research(
+    *, session_root: Path, draft_path: Path
+) -> LiveStartPreparation | LiveStartResult:
+    """Admit one bounded shortlist, journal acquisition, and freeze exact inputs."""
+    with _session.lease_live_start_session(Path(session_root)) as lease:
+        current = _session.load_live_start_session_under_lock(session_lease=lease)
+        return _quality_research_under_lock(
+            session_lease=lease, current=current, draft_path=draft_path
+        )
+
+
+def _resume_quality_discovery(
+    *, current: LiveStartSession, session_root: Path
+) -> LiveStartDiscovery | LiveStartPreparation | LiveStartResult:
+    with _session.lease_live_start_session(session_root) as lease:
+        observed = _session.load_live_start_session_under_lock(session_lease=lease)
+        if observed.content_sha256 != current.content_sha256:
+            raise SessionConflictError("live_start_quality_resume_changed")
+        return _quality_research_under_lock(session_lease=lease, current=observed)
+
+
+def prepare_quality_live_start(
+    request: LiveStartRequest,
+) -> LiveStartDiscovery | LiveStartResult:
+    from hsconfig.card_snapshot import validated_card_snapshot
+    from hsconfig.deckstring_decode import decode_deck_code_from_snapshot
+    from hsconfig.deck_identity import normalize_roster, stable_deck_fingerprint
+    from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
+    from hsconfig.live_start_research import build_research_request
+
+    try:
+        _validate_live_start_request(request)
+    except (TypeError, ValueError):
+        return _pre_session_result(
+            status="FAILED_PRESERVED",
+            deck_name=getattr(request, "deck_name", None),
+            error_code="deck_or_input_invalid",
+        )
+    try:
+        profile = load_operator_profile()
+        revalidate_operator_profile(profile)
+        if not profile.live_by_default and not request.preview_requested:
+            raise ValueError("operator_profile_live_disabled")
+        output = derive_deck_output_binding(profile, request.deck_name)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return _pre_session_result(
+            status="PROFILE_REQUIRED",
+            deck_name=request.deck_name,
+            error_code="operator_profile_required",
+        )
+    with lease_operator_profile(expected_profile=profile):
+        snapshot = fetch_card_snapshot(timeout=10.0)
+        captured = validated_card_snapshot(snapshot)
+        decoded = decode_deck_code_from_snapshot(request.deck_code, snapshot)
+        payload = {
+            key: decoded[key]
+            for key in (
+                "cards",
+                "hero_dbf_id",
+                "format",
+                "sideboards",
+                "deckstring_decode_receipt",
+                "card_id_map",
+            )
+        } | {"card_source": "deckstring"}
+        # Task2 has resolved these exact deckstring DBFs from this snapshot.
+        # The legacy verifier re-decodes with local cardxml and is not applicable.
+        payload["deck_input_verification"] = {
+            "status": "decoded_from_deck_code",
+            "runtime_apply_eligible": True,
+            "normalized_roster_sha256": "sha256:"
+            + stable_deck_fingerprint(normalize_roster(decoded["cards"])),
+        }
+        payload["deck_code"] = request.deck_code
+        identity = build_deck_identity(
+            deck_name=request.deck_name,
+            deck_code=request.deck_code,
+            cards=payload["cards"],
+            hero_dbf_id=payload["hero_dbf_id"],
+            format=payload["format"],
+            sideboards=payload["sideboards"],
+        )
+        deck = FrozenJsonDocument.from_value(
+            {"cards_payload": payload, "deck_identity": identity}
+        )
+        _validate_deck_and_card_closure(
+            deck.to_value(),
+            full_cards=captured["full_cards"],
+            collectible_cards=captured["collectible_cards"],
+        )
+        baseline_receipt = load_globalvalues_baseline(profile.runtime_root)
+        baseline = normalize_globalvalues_decision_baseline(
+            baseline_receipt["baseline"]
+        )
+        cards = FrozenJsonDocument.from_value(
+            {
+                "full_cards": captured["full_cards"],
+                "collectible_cards": captured["collectible_cards"],
+                "globalvalues_baseline": baseline,
+            }
+        )
+        seed = FrozenJsonDocument.from_value(
+            {
+                "schema_version": 1,
+                "bound_date": date.today().isoformat(),
+                "operator_bindings": _operator_bindings_from_values(
+                    operator_profile=profile,
+                    deck_output_binding=output,
+                    deck_name=request.deck_name,
+                ),
+                "baseline_receipt": baseline_receipt,
+                "policy_profile": _policy_profile_value(),
+                "card_snapshot_sha256": captured["dataset_sha256"],
+                "card_snapshot_captured_at": captured["captured_at"],
+                "card_snapshot_upstream_version": captured["upstream_version"],
+            }
+        )
+    run_id = secrets.token_hex(16)
+    root = Path(os.environ["LOCALAPPDATA"]) / "HSConfig" / "runs" / run_id
+    hero = next(
+        row
+        for row in captured["full_cards"]
+        if row["id"] == captured["dbf_to_card_id"][str(payload["hero_dbf_id"])]
+    )
+    query_identity = {
+        **identity,
+        "class": hero.get("card_class", ""),
+        "cards": [
+            {
+                **card,
+                "name": next(
+                    (
+                        row.get("name", "")
+                        for row in captured["full_cards"]
+                        if row["id"] == card["card_id"]
+                    ),
+                    "",
+                ),
+            }
+            for card in identity["cards"]
+        ],
+    }
+    queries = tuple(
+        build_research_request(
+            run_id=run_id,
+            deck_identity=query_identity,
+            captured_input_sha256=_sha256_bytes(seed.canonical_json),
+            queries=(),
+        ).to_value()["queries"]
+    )
+    research = build_research_request(
+        run_id=run_id,
+        deck_identity=identity,
+        captured_input_sha256=_sha256_bytes(seed.canonical_json),
+        queries=queries,
+    )
+    progress = FrozenJsonDocument.from_value(
+        {
+            "schema_version": 1,
+            "request_sha256": research.to_value()["content_sha256"],
+            "search_slots": [
+                {"query": query, "state": "reserved_unknown"} for query in queries
+            ],
+            "draft": None,
+            "deadline_utc": None,
+            "attempts": [],
+            "source_records": [],
+            "source_acquisition_reports": [],
+        }
+    )
+    _session.create_live_start_session(
+        session_root=root,
+        repository_root=Path(__file__).resolve().parents[2],
+        runtime_root=profile.runtime_root,
+        output_base_root=profile.output_base_root,
+        output_deck_root=output.output_root,
+        installed_skill_root=Path.home() / ".codex" / "skills" / "hsconfig",
+        deck_name=request.deck_name,
+        deck_code_sha256="sha256:" + sha256(request.deck_code.encode()).hexdigest(),
+        preview_requested=request.preview_requested,
+        _quality_documents={
+            "inputs/deck.json": deck.canonical_json,
+            "inputs/cards.json": cards.canonical_json,
+            "inputs/quality_seed.json": seed.canonical_json,
+            "research/request.json": research.canonical_json,
+            "research/progress.json": progress.canonical_json,
+        },
+        _research_binding={
+            "request_sha256": research.to_value()["content_sha256"],
+            "seed_sha256": _sha256_bytes(seed.canonical_json),
+            "deck_sha256": _sha256_bytes(deck.canonical_json),
+            "cards_sha256": _sha256_bytes(cards.canonical_json),
+        },
+        _fault_hook=_quality_fault,
+    )
+    with _session.lease_live_start_session(root) as lease:
+        current = _session.load_live_start_session_under_lock(session_lease=lease)
+        with lease_operator_profile(expected_profile=profile):
+            _continue_quality_documents(session_lease=lease, current=current)
+    return LiveStartDiscovery(
+        root, root / "research/request.json", research.to_value()["content_sha256"]
+    )
+
+
 def prepare_live_start(
+    request: LiveStartRequest,
+) -> LiveStartPreparation | LiveStartResult:
+    return _prepare_legacy_live_start(request)
+
+
+def _prepare_legacy_live_start(
     request: LiveStartRequest,
 ) -> LiveStartPreparation | LiveStartResult:
     """Freeze one fresh run and expose only its schema-2 strategy context."""
@@ -4451,7 +5367,12 @@ def validate_live_start_candidate(
         else:
             raise SessionConflictError("live_start_candidate_cursor_invalid")
         frozen = load_frozen_compiler_inputs(session_lease.session_root)
-        context = build_single_candidate_starter_context(frozen)
+        version = _persisted_live_document_version(session_lease.session_root)
+        context = (
+            build_quality_starter_context(frozen)
+            if version == 3
+            else build_single_candidate_starter_context(frozen)
+        )
         draft = _load_unsigned_draft(
             Path(draft_path),
             maximum_size=STARTER_CANDIDATE_MAX_BYTES,
@@ -4459,8 +5380,10 @@ def validate_live_start_candidate(
         try:
             candidate_document = seal_starter_document(
                 draft,
-                expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
-                schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+                expected_fields=QUALITY_STARTER_CANDIDATE_FIELDS
+                if version == 3
+                else SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+                schema_version=version,
             )
         except (TypeError, ValueError):
             return _terminalize_preapply_failure_under_lock(
@@ -4540,16 +5463,45 @@ def _validate_installed_candidate_under_lock(
             candidate=None, error_code="revision_budget_exhausted",
         )
         return _session.load_live_start_session_under_lock(session_lease=session_lease), result.summary
-    receipt = _session.seal_validation_receipt(
-        receipt_kind="candidate_validation",
-        unsigned_value={
-            "run_id": current.run_id,
-            "candidate_revision": current.candidate_revision,
-            "starter_context_sha256": current.artifact_bindings["starter/starter_context.json"],
-            "candidate_sha256": current.artifact_bindings["starter/starter_config_candidate.json"],
-            "status": "valid", "findings": [],
-        },
-    )
+    if current.schema_version == 2:
+        from hsconfig.starter_review import build_candidate_review_facts
+
+        candidate = _load_bound_candidate(
+            session_root=session_lease.session_root, context=context
+        )
+        receipt = seal_starter_document(
+            {
+                "schema_version": 2,
+                "receipt_kind": "candidate_validation",
+                "run_id": current.run_id,
+                "candidate_revision": current.candidate_revision,
+                "starter_context_sha256": context.document.content_sha256,
+                "candidate_sha256": candidate.document.content_sha256,
+                "status": "valid",
+                "findings": [],
+                "review_facts": build_candidate_review_facts(
+                    context=context, candidate=candidate
+                ).to_value(),
+            },
+            expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+            schema_version=2,
+        ).to_value()
+    else:
+        receipt = _session.seal_validation_receipt(
+            receipt_kind="candidate_validation",
+            unsigned_value={
+                "run_id": current.run_id,
+                "candidate_revision": current.candidate_revision,
+                "starter_context_sha256": current.artifact_bindings[
+                    "starter/starter_context.json"
+                ],
+                "candidate_sha256": current.artifact_bindings[
+                    "starter/starter_config_candidate.json"
+                ],
+                "status": "valid",
+                "findings": [],
+            },
+        )
     current = _install_session_documents(
         session_lease=session_lease, current=current,
         operation="install_candidate_validation", final_event="candidate_valid",
@@ -4759,15 +5711,21 @@ def validate_live_start_review(
             maximum_size=STARTER_REVIEW_MAX_BYTES,
         )
         try:
+            version = context.document.to_value()["schema_version"]
             review_document = seal_starter_document(
                 draft,
-                expected_fields=STARTER_REVIEW_FIELDS,
-                schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+                expected_fields=QUALITY_STARTER_REVIEW_FIELDS
+                if version == 3
+                else STARTER_REVIEW_FIELDS,
+                schema_version=version,
             )
             review = validate_starter_review(
                 review_document,
                 context=context,
                 candidate=candidate,
+                validation_receipt=_load_quality_candidate_receipt(
+                    root=session_lease.session_root, current=current
+                ),
             )
         except (TypeError, ValueError):
             return _terminalize_preapply_failure_under_lock(
@@ -4841,15 +5799,25 @@ def _load_frozen_approval(
 ) -> ValidatedSingleStarterApproval:
     context = _load_bound_starter_context(session_root=session_root)
     candidate = _load_bound_candidate(session_root=session_root, context=context)
+    version = context.document.to_value()["schema_version"]
     document = load_starter_document(
         session_root / "starter/starter_config_review.json",
         maximum_bytes=STARTER_REVIEW_MAX_BYTES,
-        expected_fields=STARTER_REVIEW_FIELDS,
-        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        expected_fields=QUALITY_STARTER_REVIEW_FIELDS
+        if version == 3
+        else STARTER_REVIEW_FIELDS,
+        schema_version=version,
     )
-    review = validate_starter_review(document, context=context, candidate=candidate)
+    receipt = _load_quality_candidate_receipt(root=session_root)
+    review = validate_starter_review(
+        document, context=context, candidate=candidate, validation_receipt=receipt
+    )
     return ValidatedSingleStarterApproval(
-        snapshot=frozen.manifest, context=context, candidate=candidate, review=review
+        snapshot=frozen.manifest,
+        context=context,
+        candidate=candidate,
+        review=review,
+        validation_receipt=receipt,
     )
 
 
@@ -5070,7 +6038,11 @@ def _resume_starter_intake_under_lock(
         LiveStartPhase.CANDIDATE_VALIDATED,
     }:
         return current, None
-    context = build_single_candidate_starter_context(frozen)
+    context = (
+        build_quality_starter_context(frozen)
+        if current.schema_version == 2
+        else build_single_candidate_starter_context(frozen)
+    )
     if (current.phase is LiveStartPhase.CANDIDATE_DRAFTED
         and current.pending_transition is None
         and current.revisions_used == current.candidate_revision):
@@ -5129,6 +6101,7 @@ def _continue_live_start_under_lock(
         frozen = _load_frozen_compiler_inputs(root, rebind_operator=False)
         operator = frozen.manifest.operator_bindings.to_value()
         compiler = frozen.manifest.compiler_inputs.to_value()
+        _persisted_live_document_version(root)
         if (
             profile.content_sha256 != operator["operator_profile_sha256"]
             or profile.runtime_root != Path(operator["runtime_root"])
@@ -5142,7 +6115,9 @@ def _continue_live_start_under_lock(
             expected_deck_code_sha256=compiler["deck_code_sha256"],
             expected_input_snapshot_manifest_sha256=frozen.manifest.document.content_sha256,
             expected_runtime_grammar_version=_RUNTIME_GRAMMAR_VERSION,
-            expected_compiler_contract_id=_COMPILER_CONTRACT_ID,
+            expected_compiler_contract_id="hsconfig-live-start-v2"
+            if current.schema_version == 2
+            else _COMPILER_CONTRACT_ID,
         )
         if not profile.live_by_default and not current.preview_requested:
             raise SessionConflictError("live_start_operator_profile_live_disabled")
@@ -5283,13 +6258,21 @@ def _finalize_live_start(
 ) -> LiveStartResult | FrozenJsonDocument:
     with _session.lease_live_start_session(Path(session_root)) as session_lease:
         current = _session.load_live_start_session_under_lock(session_lease=session_lease)
+        if current.phase is LiveStartPhase.DISCOVERY_REQUIRED:
+            if not resume_intake:
+                raise SessionConflictError("live_start_quality_discovery_required")
+            return _quality_research_under_lock(
+                session_lease=session_lease, current=current
+            )
         return _continue_live_start_under_lock(
             session_lease=session_lease, current=current,
             fault_hook=fault_hook, resume_intake=resume_intake,
         )
 
 
-def resume_live_start(*, session_root: Path) -> LiveStartResult | FrozenJsonDocument:
+def resume_live_start(
+    *, session_root: Path
+) -> LiveStartResult | FrozenJsonDocument | LiveStartDiscovery | LiveStartPreparation:
     """Resume only the explicitly named run; an admitted apply is recovery-only."""
 
     return _finalize_live_start(
@@ -5298,6 +6281,7 @@ def resume_live_start(*, session_root: Path) -> LiveStartResult | FrozenJsonDocu
 
 
 __all__ = (
+    "LiveStartDiscovery",
     "LiveStartPreparation",
     "LiveStartRequest",
     "LiveStartResult",
@@ -5305,6 +6289,8 @@ __all__ = (
     "build_frozen_live_configure_run",
     "lease_validated_prepublication",
     "prepare_live_start",
+    "prepare_quality_live_start",
+    "complete_live_start_research",
     "validate_live_start_candidate",
     "validate_live_start_review",
     "finalize_live_start",

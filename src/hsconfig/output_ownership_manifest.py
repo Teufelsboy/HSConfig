@@ -26,7 +26,11 @@ def build_output_ownership_manifest(
 ) -> dict[str, Any]:
     report_rows = {
         row["file"]: dict(row)
-        for row in build_report_ownership(include_optimized_start=True)
+        for row in build_report_ownership(
+            include_optimized_start=True,
+            include_quality_start="reports/optimized_start/candidate_validation_receipt.json"
+            in {str(path).replace("\\", "/") for path in generated_files},
+        )
     }
     accepted_behavior_rows, owner_collisions = (
         partition_runtime_entity_owner_rows(

@@ -36,6 +36,10 @@ def quality_frozen_inputs(tmp_path, monkeypatch):
     projections["full_cards"] = snapshot["full_cards"]
     projections["collectible_cards"] = snapshot["collectible_cards"]
     preconfig = request.snapshot.general_preconfig.to_value()
+    projections["source_acquisition"] = {
+        **projections["source_acquisition"],
+        "policy_profile": preconfig["policy_profile"],
+    }
     metadata = hydrate_card_metadata(
         cards=analysis_cards_from_deck_identity(preconfig["deck_identity"]),
         source_records={row["id"]: row for row in snapshot["full_cards"]},

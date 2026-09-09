@@ -58,9 +58,13 @@ from hsconfig.strict_run_validation import verify_configure_run_package
 from hsconfig.starter_candidate import validate_starter_candidate
 from hsconfig.starter_context import validate_starter_context_document
 from hsconfig.starter_contract import (
+    QUALITY_STARTER_CONTEXT_FIELDS,
+    QUALITY_STARTER_CANDIDATE_FIELDS,
+    QUALITY_STARTER_REVIEW_FIELDS,
+    QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+    live_contract_for_versions,
     SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_FILENAMES,
     STARTER_CANDIDATE_FIELDS,
     STARTER_CANDIDATE_MAX_BYTES,
@@ -363,7 +367,7 @@ def validated_optimized_start_authority_from_view(
     schema = optimized_start_authority_schema_from_manifest(manifest)
     if schema == "legacy_five_doc":
         return _legacy_optimized_start_authority_from_view(package)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return _single_candidate_review_authority_from_view(package)
     raise ValueError("optimized_start_authority_not_enabled")
 
@@ -425,23 +429,40 @@ def _single_candidate_review_authority_from_view(
     package: PackageView,
 ) -> ValidatedSingleStarterApproval:
     root = "reports/optimized_start"
+    schema = optimized_start_authority_schema_from_manifest(
+        package.read_json("reports/input_manifest.json")
+    )
+    if schema not in {"single_candidate_review_v1", "single_candidate_review_v2"}:
+        raise ValueError("optimized_start_authority_schema_invalid")
+    quality = schema == "single_candidate_review_v2"
+    version = 3 if quality else 2
     snapshot_document = _starter_document_from_view(
         package,
         f"{root}/input_snapshot_manifest.json",
         maximum_bytes=INPUT_SNAPSHOT_MAX_BYTES,
         expected_fields=INPUT_SNAPSHOT_FIELDS,
-        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+        schema_version=2 if quality else INPUT_SNAPSHOT_SCHEMA_VERSION,
     )
     snapshot = validate_input_snapshot_manifest_document(
         snapshot_document.document
+    )
+    live_contract_for_versions(
+        session=2 if quality else 1,
+        manifest=snapshot.document.to_value()["schema_version"],
+        context=version,
+        candidate=version,
+        review=version,
+        compiler=snapshot.compiler_inputs.to_value()["compiler_contract_id"],
     )
     context = validate_starter_context_document(
         _starter_document_from_view(
             package,
             f"{root}/{STARTER_CONTEXT_FILENAME}",
             maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
-            expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_CONTEXT_FIELDS
+            if quality
+            else SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+            schema_version=version,
         )
     )
     candidate = validate_starter_candidate(
@@ -449,21 +470,37 @@ def _single_candidate_review_authority_from_view(
             package,
             f"{root}/starter_config_candidate.json",
             maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
-            expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_CANDIDATE_FIELDS
+            if quality
+            else SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+            schema_version=version,
         ),
         context=context,
+    )
+    receipt = (
+        _starter_document_from_view(
+            package,
+            f"{root}/candidate_validation_receipt.json",
+            maximum_bytes=512 * 1024,
+            expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+            schema_version=2,
+        ).document
+        if quality
+        else None
     )
     review = validate_starter_review(
         _starter_document_from_view(
             package,
             f"{root}/starter_config_review.json",
             maximum_bytes=STARTER_REVIEW_MAX_BYTES,
-            expected_fields=STARTER_REVIEW_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_REVIEW_FIELDS
+            if quality
+            else STARTER_REVIEW_FIELDS,
+            schema_version=version,
         ),
         context=context,
         candidate=candidate,
+        validation_receipt=receipt,
     )
     if not (
         context.document.to_value()["input_snapshot_manifest_sha256"]
@@ -482,6 +519,7 @@ def _single_candidate_review_authority_from_view(
         context=context,
         candidate=candidate,
         review=review,
+        validation_receipt=receipt,
     )
 
 

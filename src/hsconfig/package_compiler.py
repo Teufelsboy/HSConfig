@@ -187,6 +187,7 @@ _COMPILER_PROJECTION_PATHS = frozenset(
         "reports/optimized_start/input_snapshot_manifest.json",
         "reports/optimized_start/starter_config_candidate.json",
         "reports/optimized_start/starter_config_review.json",
+        "reports/optimized_start/candidate_validation_receipt.json",
     }
 )
 PRE_AUTHORITY_OWNER_BY_PATH = MappingProxyType({
@@ -220,6 +221,7 @@ _OPTIONAL_JSON_PROJECTION_PATHS = frozenset(
         "reports/optimized_start/input_snapshot_manifest.json",
         "reports/optimized_start/starter_config_candidate.json",
         "reports/optimized_start/starter_config_review.json",
+        "reports/optimized_start/candidate_validation_receipt.json",
     }
 )
 _ALLOWED_JSON_PROJECTION_PATHS = frozenset(
@@ -337,7 +339,7 @@ def compile_package_decisions(
         return _compile_conservative_package_decisions(request)
     if schema == "legacy_five_doc":
         return _compile_legacy_optimized_package_decisions(request)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return _compile_single_candidate_review_package_decisions(request)
     raise ValueError("optimized_start_authority_schema_invalid")
 
@@ -1230,7 +1232,11 @@ def compile_package(
         optimized_lowering,
         SingleCandidateStartLowering,
     )
-    if single_candidate_lowering:
+    legacy_single_candidate_lowering = (
+        single_candidate_lowering
+        and request.optimized_start_authority_schema == "single_candidate_review_v1"
+    )
+    if legacy_single_candidate_lowering:
         policy = None
         policy_mapping = None
     else:
@@ -1305,13 +1311,15 @@ def compile_package(
         if isinstance(row, dict)
         and isinstance(row.get("evidence_authority"), dict)
     }
-    if single_candidate_lowering:
+    if legacy_single_candidate_lowering:
         acquisition_report = _single_candidate_acquisition_report(
             decisions.deck_fingerprint
         )
     else:
-        acquisition_closure = _acquisition_closure(
-            request.acquisition_closure_input.to_value()
+        acquisition_closure = (
+            None
+            if single_candidate_lowering
+            else _acquisition_closure(request.acquisition_closure_input.to_value())
         )
         acquisition_report = build_source_acquisition_closure_report(
             deck_fingerprint=decisions.deck_fingerprint,
@@ -1405,11 +1413,12 @@ def compile_package(
     )
     if request.invocation.configuration_mode == "LLM_OPTIMIZED_START":
         manifest["configuration_mode"] = "LLM_OPTIMIZED_START"
-    if request.optimized_start_authority_schema == (
-        "single_candidate_review_v1"
-    ):
+    if request.optimized_start_authority_schema in {
+        "single_candidate_review_v1",
+        "single_candidate_review_v2",
+    }:
         manifest["optimized_start_authority_schema"] = (
-            "single_candidate_review_v1"
+            request.optimized_start_authority_schema
         )
     json_projections = _all_json_projections(
         state=state,

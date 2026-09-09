@@ -22,6 +22,7 @@ _ORDERED_OPTIMIZED_START_REPORT_PATHS = tuple(
 def build_report_ownership(
     *,
     include_optimized_start: bool = False,
+    include_quality_start: bool = False,
 ) -> list[dict[str, Any]]:
     rows = [
         _report_row(
@@ -207,7 +208,14 @@ def build_report_ownership(
                     "does not replace operator_summary.json"
                 ),
             )
-            for path in _ORDERED_OPTIMIZED_START_REPORT_PATHS
+            for path in (
+                *_ORDERED_OPTIMIZED_START_REPORT_PATHS,
+                *(
+                    ("reports/optimized_start/candidate_validation_receipt.json",)
+                    if include_quality_start
+                    else ()
+                ),
+            )
         )
     return rows
 

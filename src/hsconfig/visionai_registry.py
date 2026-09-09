@@ -81,6 +81,7 @@ ALL_OPTIMIZED_START_REPORT_PATHS = frozenset(
     (
         *LEGACY_OPTIMIZED_START_REPORT_PATHS,
         *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+        "reports/optimized_start/candidate_validation_receipt.json",
     )
 )
 _ORDERED_OPTIMIZED_START_REPORT_PATHS = tuple(
@@ -88,6 +89,7 @@ _ORDERED_OPTIMIZED_START_REPORT_PATHS = tuple(
         (
             *LEGACY_OPTIMIZED_START_REPORT_PATHS,
             *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+            "reports/optimized_start/candidate_validation_receipt.json",
         )
     )
 )
@@ -632,6 +634,11 @@ def optimized_start_report_paths_for_manifest(
         return LEGACY_OPTIMIZED_START_REPORT_PATHS
     if schema == "single_candidate_review_v1":
         return SINGLE_CANDIDATE_REVIEW_REPORT_PATHS
+    if schema == "single_candidate_review_v2":
+        return (
+            *SINGLE_CANDIDATE_REVIEW_REPORT_PATHS,
+            "reports/optimized_start/candidate_validation_receipt.json",
+        )
     raise ValueError("optimized_start_authority_schema_invalid")
 
 

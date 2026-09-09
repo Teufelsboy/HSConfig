@@ -1157,17 +1157,15 @@ def _optimized_start_configure_summary(
             summary = {
                 "optimized_start": {
                     "optimized_start_authority_schema": (
-                        "single_candidate_review_v1"
+                        "single_candidate_review_v2"
+                        if authority.validation_receipt is not None
+                        else "single_candidate_review_v1"
                     ),
                     "input_snapshot_manifest_sha256": (
                         authority.snapshot.document.content_sha256
                     ),
-                    "candidate_sha256": (
-                        authority.candidate.document.content_sha256
-                    ),
-                    "candidate_revision": (
-                        authority.candidate.candidate_revision
-                    ),
+                    "candidate_sha256": (authority.candidate.document.content_sha256),
+                    "candidate_revision": (authority.candidate.candidate_revision),
                     "review_sha256": authority.review.document.content_sha256,
                     "review_status": authority.review.review_status,
                     "confidence": authority.review.confidence,

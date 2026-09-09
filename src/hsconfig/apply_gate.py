@@ -393,7 +393,7 @@ def _package_derivation_reasons(
     single_candidate_review = (
         strategy_authority_mode == "llm_optimized_start"
         and optimized_start_authority_schema
-        == "single_candidate_review_v1"
+        in {"single_candidate_review_v1", "single_candidate_review_v2"}
     )
     if not receipt_path.is_file():
         return (
@@ -464,7 +464,7 @@ def _package_derivation_reasons(
         expected_schema_version = (
             SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
             if optimized_start_authority_schema
-            == "single_candidate_review_v1"
+            in {"single_candidate_review_v1", "single_candidate_review_v2"}
             else OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
         )
     else:

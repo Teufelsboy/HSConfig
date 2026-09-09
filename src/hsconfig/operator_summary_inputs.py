@@ -397,7 +397,7 @@ def _authority_from_raw_inputs(
             technical_valid = (
                 strict_report_valid
                 and derivation.get("optimized_start_authority_schema")
-                == "single_candidate_review_v1"
+                in {"single_candidate_review_v1", "single_candidate_review_v2"}
                 and _sha256_value_valid(receipt_sha256)
                 and package_authority_context_verified(authority)
             )
@@ -782,7 +782,10 @@ def _replay_package_authority(
         isinstance(verification, Mapping)
         and verification.get("runtime_apply_eligible") is True
     )
-    if optimized_start_authority_schema == "single_candidate_review_v1":
+    if optimized_start_authority_schema in {
+        "single_candidate_review_v1",
+        "single_candidate_review_v2",
+    }:
         package_derivation = optimized_start_derivation_digests_from_view(
             package
         )
@@ -813,9 +816,7 @@ def _replay_package_authority(
         ),
         "source_apply_eligible": source_apply_eligible,
         "source_apply_eligibility_reasons": (
-            []
-            if source_apply_eligible
-            else ["diagnostic_source_not_apply_eligible"]
+            [] if source_apply_eligible else ["diagnostic_source_not_apply_eligible"]
         ),
         "derivation_receipt_verified": receipt_verified,
         "strategy_authority_mode": strategy_authority_mode,
@@ -826,7 +827,7 @@ def _replay_package_authority(
             == (
                 SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
                 if optimized_start_authority_schema
-                == "single_candidate_review_v1"
+                in {"single_candidate_review_v1", "single_candidate_review_v2"}
                 else OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
             )
         ),

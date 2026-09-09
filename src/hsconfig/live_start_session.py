@@ -166,6 +166,7 @@ def _no_creation_fault(_point: str) -> None:
 
 
 class LiveStartPhase(StrEnum):
+    DISCOVERY_REQUIRED = "DISCOVERY_REQUIRED"
     INPUT_FROZEN = "INPUT_FROZEN"
     CANDIDATE_DRAFTED = "CANDIDATE_DRAFTED"
     CANDIDATE_VALIDATED = "CANDIDATE_VALIDATED"
@@ -257,6 +258,34 @@ RUN_LOGICAL_FILES = frozenset(
     }
 )
 RUN_LOGICAL_DIRECTORIES = frozenset({"inputs", "starter", "receipts", "result"})
+
+QUALITY_SEED_PATHS = frozenset(
+    {
+        "inputs/deck.json",
+        "inputs/cards.json",
+        "inputs/quality_seed.json",
+        "research/request.json",
+        "research/progress.json",
+    }
+)
+QUALITY_INPUT_PATHS = (
+    QUALITY_SEED_PATHS
+    | frozenset(LIVE_START_FROZEN_INPUT_FILES)
+    | {"inputs/quality.json"}
+)
+QUALITY_FILE_LIMITS = MappingProxyType(
+    {
+        **LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES,
+        "inputs/quality_seed.json": 128 * 1024,
+        "research/request.json": 32 * 1024,
+        "research/progress.json": 2 * 1024 * 1024,
+        "inputs/quality.json": 512 * 1024,
+    }
+)
+_QUALITY_SESSION_FIELDS = _SESSION_FIELDS | {"research_binding"}
+_QUALITY_OPERATIONS = frozenset(
+    {"quality_bootstrap", "quality_progress", "quality_freeze"}
+)
 
 _FROZEN_INPUT_ARTIFACTS = frozenset(LIVE_START_FROZEN_INPUT_FILES)
 _PHASE_MANDATORY_ARTIFACTS = MappingProxyType(
@@ -553,7 +582,7 @@ class LiveStartSession:
     phase: LiveStartPhase
     candidate_revision: int
     revisions_used: int
-    input_snapshot_manifest_sha256: str
+    input_snapshot_manifest_sha256: str | None
     artifact_bindings: Mapping[str, str]
     pending_transition: Mapping[str, Any] | None
     prepublication_work_binding: Mapping[str, Any] | None
@@ -572,6 +601,7 @@ class LiveStartSession:
     content_sha256: str
     canonical_json: bytes = field(repr=False)
     session_identity: PathIdentity | None = field(repr=False, compare=False)
+    research_binding: Mapping[str, Any] | None = None
 
     def to_value(self) -> dict[str, Any]:
         return _decode_canonical_json(self.canonical_json)
@@ -833,6 +863,7 @@ def _validate_frozen_compiler_inputs(
             source_acquisition=value.source_acquisition,
             source_documents=value.source_documents,
             globalvalues_baseline=value.globalvalues_baseline,
+            quality_inputs=value.quality_inputs,
         )
         _task2_inputs._require_manifest_blob_match(validated)
         _task2_inputs._validate_loaded_compiler_binding(validated)
@@ -1028,6 +1059,318 @@ def _resolve_local_app_data_root(
     )
 
 
+def _validate_quality_research_binding(value: Mapping[str, Any]) -> None:
+    binding = value.get("research_binding")
+    fields = {"request_sha256", "seed_sha256", "deck_sha256", "cards_sha256"}
+    if not isinstance(binding, dict) or set(binding) != fields:
+        raise SessionValidationError("live_start_research_binding_invalid")
+    for name in fields:
+        _require_sha256(binding[name], name)
+    expected = {
+        "inputs/deck.json": binding["deck_sha256"],
+        "inputs/cards.json": binding["cards_sha256"],
+        "inputs/quality_seed.json": binding["seed_sha256"],
+    }
+    for path, digest in expected.items():
+        if (
+            path in value["artifact_bindings"]
+            and value["artifact_bindings"][path] != digest
+        ):
+            raise SessionValidationError("live_start_research_input_binding_changed")
+
+
+def _validate_quality_discovery_matrix(value: Mapping[str, Any]) -> None:
+    if (
+        value.get("schema_version") != 2
+        or value.get("candidate_revision") != 1
+        or value.get("revisions_used") != 0
+    ):
+        raise SessionValidationError("live_start_discovery_version_or_revision_invalid")
+    for name in _SESSION_FIELDS - {
+        "schema_version",
+        "run_id",
+        "deck_name",
+        "deck_code_sha256",
+        "preview_requested",
+        "phase",
+        "candidate_revision",
+        "revisions_used",
+        "artifact_bindings",
+        "pending_transition",
+        "content_sha256",
+    }:
+        if value.get(name) is not None:
+            raise SessionValidationError("live_start_discovery_authority_forbidden")
+    paths = frozenset(value["artifact_bindings"])
+    pending = value.get("pending_transition")
+    if paths != QUALITY_SEED_PATHS and not (
+        not paths
+        and isinstance(pending, Mapping)
+        and pending.get("operation") == "quality_bootstrap"
+    ):
+        raise SessionValidationError("live_start_discovery_artifacts_invalid")
+    if pending is not None and pending.get("operation") not in _QUALITY_OPERATIONS:
+        raise SessionValidationError("live_start_discovery_operation_invalid")
+
+
+def _quality_pending_rows(
+    *, session: LiveStartSession, root: Path
+) -> tuple[Mapping[str, Any], ...]:
+    pending = session.pending_transition
+    if (
+        session.schema_version != 2
+        or session.phase is not LiveStartPhase.DISCOVERY_REQUIRED
+    ):
+        raise SessionValidationError("live_start_quality_pending_version_invalid")
+    operation = pending["operation"]
+    paths = {
+        "quality_bootstrap": QUALITY_SEED_PATHS,
+        "quality_progress": frozenset({"research/progress.json"}),
+        "quality_freeze": frozenset(
+            {
+                "inputs/quality.json",
+                "inputs/sources.json",
+                "inputs/input_snapshot_manifest.json",
+            }
+        ),
+    }[operation]
+    rows = pending.get("actions")
+    target = "INPUT_FROZEN" if operation == "quality_freeze" else "DISCOVERY_REQUIRED"
+    if (
+        not isinstance(rows, (list, tuple))
+        or len(rows) != len(paths)
+        or pending.get("stage") not in {"PREPARED", "PRIMARY_APPLIED"}
+        or pending.get("external_file_action") is not None
+        or pending.get("source_phase") != "DISCOVERY_REQUIRED"
+        or pending.get("target_phase") != target
+        or pending.get("run_id") != session.run_id
+        or any(
+            pending.get(key) != expected
+            for key, expected in {
+                "source_candidate_revision": 1,
+                "target_candidate_revision": 1,
+                "source_revisions_used": 0,
+                "target_revisions_used": 0,
+            }.items()
+        )
+        or type(pending.get("next_action_index")) is not int
+        or not 0 <= pending["next_action_index"] <= len(rows)
+    ):
+        raise SessionValidationError("live_start_quality_pending_invalid")
+    successor = dict(session.artifact_bindings)
+    for row, logical in zip(rows, sorted(paths), strict=True):
+        fields = {
+            "action",
+            "logical_path",
+            "size",
+            "sha256",
+            "source_path",
+            "source_identity",
+            "source_parent_identity",
+        }
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != fields
+            or row["action"] != "install"
+            or row["logical_path"] != logical
+            or type(row["size"]) is not int
+            or not 1 <= row["size"] <= QUALITY_FILE_LIMITS[logical]
+        ):
+            raise SessionValidationError("live_start_quality_action_invalid")
+        _require_sha256(row["sha256"], "quality_action_sha256")
+        _require_identity(row["source_identity"], "quality_source_identity")
+        _require_identity(
+            row["source_parent_identity"], "quality_source_parent_identity"
+        )
+        if operation == "quality_bootstrap" and logical in {
+            "inputs/deck.json",
+            "inputs/cards.json",
+        }:
+            target_path = root / logical
+            source = target_path.with_name(f".{target_path.name}.live-start-atomic.tmp")
+        else:
+            source = (
+                root.parent.parent
+                / "contexts"
+                / session.run_id
+                / (f"{operation}-{row['sha256'][7:]}-{Path(logical).name}")
+            )
+        if row["source_path"] != str(source):
+            raise SessionValidationError("live_start_quality_source_path_invalid")
+        successor[logical] = row["sha256"]
+    if successor != pending.get("successor_artifact_bindings"):
+        raise SessionValidationError("live_start_quality_successor_bindings_invalid")
+    return tuple(rows)
+
+
+def _quality_session_successor(*, session, changes, transition_authority):
+    if (
+        transition_authority is not _INTERNAL_TRANSITION_AUTHORITY
+        or session.schema_version != 2
+        or session.phase is not LiveStartPhase.DISCOVERY_REQUIRED
+        or set(changes)
+        - {
+            "pending_transition",
+            "artifact_bindings",
+            "input_snapshot_manifest_sha256",
+            "phase",
+        }
+    ):
+        raise SessionCapabilityError("live_start_quality_transition_authority_invalid")
+    value = session.to_value()
+    value.pop("content_sha256")
+    old = session.pending_transition
+    new = changes.get("pending_transition")
+    if old is None:
+        if (
+            set(changes) != {"pending_transition"}
+            or not isinstance(new, Mapping)
+            or new.get("expected_session_sha256") != session.content_sha256
+        ):
+            raise SessionConflictError("live_start_quality_predecessor_invalid")
+    elif new is None:
+        if old["stage"] != "PRIMARY_APPLIED" or old["next_action_index"] != len(
+            old["actions"]
+        ):
+            raise SessionConflictError("live_start_quality_actions_incomplete")
+        if changes.get("artifact_bindings") != old["successor_artifact_bindings"]:
+            raise SessionConflictError("live_start_quality_final_bindings_invalid")
+        if old["operation"] == "quality_freeze":
+            if set(changes) != {
+                "pending_transition", "artifact_bindings", "phase",
+                "input_snapshot_manifest_sha256",
+            }:
+                raise SessionConflictError("live_start_quality_freeze_fields_invalid")
+            _require_sha256(
+                changes.get("input_snapshot_manifest_sha256"),
+                "input_snapshot_manifest_sha256",
+            )
+            if changes.get("phase") != "INPUT_FROZEN":
+                raise SessionConflictError("live_start_quality_freeze_binding_invalid")
+        elif set(changes) != {"pending_transition", "artifact_bindings"}:
+            raise SessionConflictError("live_start_quality_premature_freeze")
+    else:
+        if set(changes) != {"pending_transition"}:
+            raise SessionConflictError("live_start_quality_checkpoint_fields_invalid")
+        old_value, new_value = _thaw(old), _thaw(new)
+        for key in {"content_sha256", "stage", "next_action_index"}:
+            old_value.pop(key, None)
+            new_value.pop(key, None)
+        if old_value != new_value or not (
+            old["stage"] == "PREPARED"
+            and new["stage"] == "PRIMARY_APPLIED"
+            and new["next_action_index"] == 0
+            or old["stage"] == new["stage"] == "PRIMARY_APPLIED"
+            and new["next_action_index"] == old["next_action_index"] + 1
+        ):
+            raise SessionConflictError("live_start_quality_checkpoint_invalid")
+    value.update(changes)
+    return value
+
+
+def _quality_action(*, logical: str, source: Path, payload: bytes) -> dict[str, Any]:
+    return {
+        "action": "install",
+        "logical_path": logical,
+        "source_path": str(source),
+        "source_identity": list(path_identity(source)),
+        "source_parent_identity": list(path_identity(source.parent)),
+        "size": len(payload),
+        "sha256": _bytes_sha256(payload),
+    }
+
+
+def _create_quality_bootstrap_cursor(
+    *,
+    root,
+    root_identity,
+    documents,
+    research_binding,
+    deck_name,
+    deck_code_sha256,
+    preview_requested,
+    fault_hook,
+):
+    if set(documents) != QUALITY_SEED_PATHS:
+        raise SessionValidationError("live_start_quality_bootstrap_inputs_invalid")
+    contexts = root.parent.parent / "contexts"
+    _require_or_create_plain_directory(contexts)
+    context_root = contexts / root.name
+    _require_or_create_plain_directory(context_root)
+    actions = []
+    for logical in sorted(documents):
+        payload = documents[logical]
+        if logical in {"inputs/deck.json", "inputs/cards.json"}:
+            target = root / logical
+            source = target.with_name(f".{target.name}.live-start-atomic.tmp")
+        else:
+            source = (
+                context_root
+                / f"quality_bootstrap-{_bytes_sha256(payload)[7:]}-{Path(logical).name}"
+            )
+        atomic_write_reserved_bytes(
+            path=source,
+            payload=payload,
+            expected_parent_identity=path_identity(source.parent),
+            expected_predecessor_identity=None,
+            expected_predecessor_sha256=None,
+            maximum_size=QUALITY_FILE_LIMITS[logical],
+        )
+        actions.append(_quality_action(logical=logical, source=source, payload=payload))
+    value = {name: None for name in _QUALITY_SESSION_FIELDS - {"content_sha256"}}
+    value.update(
+        {
+            "schema_version": 2,
+            "run_id": root.name,
+            "deck_name": deck_name,
+            "deck_code_sha256": deck_code_sha256,
+            "preview_requested": preview_requested,
+            "phase": "DISCOVERY_REQUIRED",
+            "candidate_revision": 1,
+            "revisions_used": 0,
+            "artifact_bindings": {},
+            "research_binding": _thaw(research_binding),
+        }
+    )
+    pending = {name: None for name in _PENDING_TRANSITION_FIELDS}
+    pending.update(
+        {
+            "schema_version": 1,
+            "transition_kind": LIVE_START_PENDING_TRANSITION_KIND,
+            "run_id": root.name,
+            "operation": "quality_bootstrap",
+            "stage": "PREPARED",
+            "expected_session_sha256": _self_digest(value),
+            "source_phase": "DISCOVERY_REQUIRED",
+            "target_phase": "DISCOVERY_REQUIRED",
+            "source_candidate_revision": 1,
+            "target_candidate_revision": 1,
+            "source_revisions_used": 0,
+            "target_revisions_used": 0,
+            "actions": actions,
+            "next_action_index": 0,
+            "successor_artifact_bindings": {
+                row["logical_path"]: row["sha256"] for row in actions
+            },
+        }
+    )
+    value["pending_transition"] = _seal_pending(pending)
+    sealed = _seal_session_value(value, session_identity=None)
+    _quality_pending_rows(session=sealed, root=root)
+    fault_hook("before_quality_bootstrap_cursor")
+    published = atomic_write_reserved_bytes(
+        path=root / "session.json",
+        payload=sealed.canonical_json,
+        expected_parent_identity=root_identity,
+        expected_predecessor_identity=None,
+        expected_predecessor_sha256=None,
+        maximum_size=LIVE_START_SESSION_MAX_BYTES,
+    )
+    return _load_session_bytes(
+        sealed.canonical_json, session_identity=published.identity
+    )
+
+
 def create_live_start_session(
     *,
     session_root: Path,
@@ -1044,6 +1387,8 @@ def create_live_start_session(
     input_snapshot_manifest_sha256: str | None = None,
     frozen_input_bytes: Mapping[str, bytes] | None = None,
     _fault_hook: Callable[[str], None] = _no_creation_fault,
+    _quality_documents: Mapping[str, bytes] | None = None,
+    _research_binding: Mapping[str, Any] | None = None,
 ) -> LiveStartSession:
     """Create one run, its external persistent lock, and initial cursor."""
 
@@ -1081,7 +1426,9 @@ def create_live_start_session(
     _require_deck_name(deck_name)
     _require_sha256(deck_code_sha256, "deck_code_sha256")
     frozen_inputs, derived_manifest_sha256 = (
-        _validate_frozen_compiler_inputs(
+        ({}, None)
+        if _quality_documents is not None
+        else _validate_frozen_compiler_inputs(
             frozen_compiler_inputs,  # type: ignore[arg-type]
             deck_name=deck_name,
             deck_code_sha256=deck_code_sha256,
@@ -1163,6 +1510,17 @@ def create_live_start_session(
             expected_parent_identity=root_identity,
         )
         _validate_existing_creation_authority_roots_no_ads(inputs_root)
+        if _quality_documents is not None:
+            return _create_quality_bootstrap_cursor(
+                root=root,
+                root_identity=root_identity,
+                documents=_quality_documents,
+                research_binding=_research_binding,
+                deck_name=deck_name,
+                deck_code_sha256=deck_code_sha256,
+                preview_requested=preview_requested,
+                fault_hook=_fault_hook,
+            )
         input_bindings: dict[str, str] = {}
         for logical in LIVE_START_FROZEN_INPUT_FILES:
             payload = frozen_inputs[logical]
@@ -1372,6 +1730,7 @@ def _update_session_under_lock(
     expected_session: LiveStartSession,
     update: LiveStartSessionUpdate,
     transition_authority: object | None,
+    fault_hook: Callable[[str], None] | None = None,
 ) -> LiveStartSession:
     _require_session_lease(session_lease)
     if not isinstance(expected_session, LiveStartSession):
@@ -1399,6 +1758,7 @@ def _update_session_under_lock(
         session_lease=session_lease,
         current=current,
         successor=successor,
+        fault_hook=fault_hook,
     )
 
 
@@ -1421,6 +1781,7 @@ def _publish_session_successor_under_lock(
     session_lease: LiveStartSessionLease,
     current: LiveStartSession,
     successor: LiveStartSession,
+    fault_hook: Callable[[str], None] | None = None,
 ) -> LiveStartSession:
     try:
         published = atomic_write_reserved_bytes(
@@ -1430,6 +1791,7 @@ def _publish_session_successor_under_lock(
             expected_predecessor_identity=current.session_identity,
             expected_predecessor_sha256=_bytes_sha256(current.canonical_json),
             maximum_size=LIVE_START_SESSION_MAX_BYTES,
+            **({"fault_hook": fault_hook} if fault_hook is not None else {}),
         )
     except AtomicWriteConflictError as error:
         raise SessionConflictError("live_start_session_cas_conflict") from error
@@ -1459,12 +1821,14 @@ def _transition_receipt_authorized_under_lock(
     expected_session: LiveStartSession,
     event: str,
     changes: Mapping[str, Any] | None = None,
+    fault_hook: Callable[[str], None] | None = None,
 ) -> LiveStartSession:
     return _update_session_under_lock(
         session_lease=session_lease,
         expected_session=expected_session,
         update=LiveStartSessionUpdate(event=event, changes=changes or {}),
         transition_authority=_INTERNAL_TRANSITION_AUTHORITY,
+        fault_hook=fault_hook,
     )
 
 
@@ -1592,7 +1956,10 @@ def _validate_bound_artifacts_under_lock(
             raise SessionConflictError(
                 "live_start_resume_artifact_missing"
             )
-        maximum_size = LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES.get(
+        maximum_size = (
+            QUALITY_FILE_LIMITS if session.schema_version == 2
+            else LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES
+        ).get(
             logical_path,
             64 * 1024 * 1024,
         )
@@ -1734,6 +2101,8 @@ def _require_starter_document_pending_rows(
     session: LiveStartSession, *, root: Path
 ) -> tuple[Mapping[str, Any], ...]:
     pending = session.pending_transition
+    if isinstance(pending, Mapping) and pending.get("operation") in _QUALITY_OPERATIONS:
+        return _quality_pending_rows(session=session, root=root)
     if not isinstance(pending, Mapping) or pending.get("operation") not in {
         "install_candidate", "install_candidate_validation", "install_review_validation"
     }:
@@ -1784,7 +2153,10 @@ def _validate_starter_document_postconditions(
                 raise SessionConflictError("live_start_successor_document_missing")
             raw, _identity = _read_bound_file(
                 target, expected_parent_identity=path_identity(target.parent),
-                maximum_size=LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES.get(
+                maximum_size=(
+                    QUALITY_FILE_LIMITS if session.schema_version == 2
+                    else LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES
+                ).get(
                     logical, 64 * 1024 * 1024
                 ),
             )
@@ -1833,6 +2205,12 @@ def _apply_session_update(
     value.pop("content_sha256")
     event = update.event
     changes = _thaw(update.changes)
+    if event == "quality_transition":
+        return _quality_session_successor(
+            session=session,
+            changes=changes,
+            transition_authority=transition_authority,
+        )
     _validate_update_authority(
         session=session,
         event=event,
@@ -2606,7 +2984,12 @@ def _seal_session_value(
     if not isinstance(unsigned, dict):
         raise SessionValidationError("live_start_session_not_object")
     unsigned.pop("content_sha256", None)
-    if set(unsigned) != _SESSION_FIELDS - {"content_sha256"}:
+    fields = (
+        _QUALITY_SESSION_FIELDS
+        if unsigned.get("schema_version") == 2
+        else _SESSION_FIELDS
+    )
+    if set(unsigned) != fields - {"content_sha256"}:
         raise SessionValidationError("live_start_session_fields_invalid")
     content_sha256 = _self_digest(unsigned)
     sealed = {**unsigned, "content_sha256": content_sha256}
@@ -2624,22 +3007,28 @@ def _load_session_bytes(
     value = _decode_json_document(raw)
     if _canonical_json(value) != raw:
         raise SessionValidationError("live_start_session_not_canonical")
-    if set(value) != _SESSION_FIELDS:
+    schema_version = value.get("schema_version")
+    fields = _QUALITY_SESSION_FIELDS if schema_version == 2 else _SESSION_FIELDS
+    if set(value) != fields:
         raise SessionValidationError("live_start_session_fields_invalid")
     content_sha256 = value.get("content_sha256")
     unsigned = dict(value)
     unsigned.pop("content_sha256")
     if content_sha256 != _self_digest(unsigned):
         raise SessionValidationError("live_start_session_content_sha256_invalid")
-    if value.get("schema_version") != LIVE_START_SESSION_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version not in {1, 2}:
         raise SessionValidationError("live_start_session_schema_invalid")
     _require_run_id(value.get("run_id"))
     _require_deck_name(value.get("deck_name"))
     _require_sha256(value.get("deck_code_sha256"), "deck_code_sha256")
-    _require_sha256(
-        value.get("input_snapshot_manifest_sha256"),
-        "input_snapshot_manifest_sha256",
-    )
+    discovery = schema_version == 2 and value.get("phase") == "DISCOVERY_REQUIRED"
+    if not discovery:
+        _require_sha256(
+            value.get("input_snapshot_manifest_sha256"),
+            "input_snapshot_manifest_sha256",
+        )
+    elif value.get("input_snapshot_manifest_sha256") is not None:
+        raise SessionValidationError("live_start_discovery_manifest_forbidden")
     if type(value.get("preview_requested")) is not bool:
         raise SessionValidationError("live_start_preview_requested_invalid")
     try:
@@ -2654,7 +3043,15 @@ def _load_session_bytes(
     )
     if candidate_revision > revisions_used + 1:
         raise SessionValidationError("live_start_candidate_revision_state_invalid")
-    artifact_bindings = _validate_artifact_bindings(value.get("artifact_bindings"))
+    if schema_version == 1 and phase is LiveStartPhase.DISCOVERY_REQUIRED:
+        raise SessionValidationError("live_start_session_phase_invalid")
+    artifact_bindings = _validate_artifact_bindings(
+        value.get("artifact_bindings"),
+        quality=schema_version == 2,
+        discovery=discovery,
+    )
+    if schema_version == 2:
+        _validate_quality_research_binding(value)
     _validate_session_nested_documents(value=value, phase=phase)
     _validate_phase_artifact_bindings(
         value=value,
@@ -2672,7 +3069,7 @@ def _load_session_bytes(
         # PROFILE_REQUIRED is pre-session only.
         raise SessionValidationError("live_start_terminal_status_invalid")
     return LiveStartSession(
-        schema_version=LIVE_START_SESSION_SCHEMA_VERSION,
+        schema_version=schema_version,
         run_id=value["run_id"],
         deck_name=value["deck_name"],
         deck_code_sha256=value["deck_code_sha256"],
@@ -2680,10 +3077,9 @@ def _load_session_bytes(
         phase=phase,
         candidate_revision=candidate_revision,
         revisions_used=revisions_used,
-        input_snapshot_manifest_sha256=value[
-            "input_snapshot_manifest_sha256"
-        ],
+        input_snapshot_manifest_sha256=value["input_snapshot_manifest_sha256"],
         artifact_bindings=artifact_bindings,
+        research_binding=_freeze_optional_mapping(value.get("research_binding")),
         pending_transition=_freeze_optional_mapping(value["pending_transition"]),
         prepublication_work_binding=_freeze_optional_mapping(
             value["prepublication_work_binding"]
@@ -3455,6 +3851,9 @@ _EXTERNAL_DOCUMENT_SPECS = MappingProxyType(
 
 PENDING_TRANSITION_OPERATIONS = frozenset(
     {
+        "quality_bootstrap",
+        "quality_progress",
+        "quality_freeze",
         "install_candidate",
         "install_candidate_validation",
         "install_review",
@@ -3579,6 +3978,22 @@ def _validate_session_nested_documents(
     value: Mapping[str, Any],
     phase: LiveStartPhase,
 ) -> None:
+    pending = value.get("pending_transition")
+    if (
+        isinstance(pending, Mapping)
+        and pending.get("operation") in _QUALITY_OPERATIONS
+        and value.get("schema_version") != 2
+    ):
+        raise SessionValidationError("live_start_quality_operation_version_invalid")
+    if (
+        isinstance(pending, Mapping)
+        and pending.get("successor_artifact_bindings") is not None
+    ):
+        _validate_artifact_bindings(
+            pending["successor_artifact_bindings"],
+            quality=value.get("schema_version") == 2,
+            discovery=phase is LiveStartPhase.DISCOVERY_REQUIRED,
+        )
     for name in (
         "pending_transition",
         "output_operation_admission_binding",
@@ -4268,7 +4683,12 @@ def _validate_phase_artifact_bindings(
     phase: LiveStartPhase,
     artifact_bindings: Mapping[str, str],
 ) -> None:
+    if phase is LiveStartPhase.DISCOVERY_REQUIRED:
+        _validate_quality_discovery_matrix(value)
+        return
     mandatory = _PHASE_MANDATORY_ARTIFACTS[phase]
+    if value.get("schema_version") == 2:
+        mandatory = mandatory | QUALITY_INPUT_PATHS
     result_paths = frozenset(
         {"result/summary.json", "result/summary.md"}
     )
@@ -4899,15 +5319,20 @@ def _validate_apply_invocation_pending_matrix(
         raise SessionValidationError(
             "live_start_apply_invocation_actions_invalid"
         )
+    quality = "inputs/quality.json" in value.get("successor_artifact_bindings", {})
     successor_bindings = _validate_artifact_bindings(
-        value.get("successor_artifact_bindings")
+        value.get("successor_artifact_bindings"),
+        quality=quality,
     )
     invocation_receipt_sha256 = successor_bindings.get(
         "receipts/apply_invocation.json"
     )
     if (
         frozenset(successor_bindings)
-        != _PHASE_MANDATORY_ARTIFACTS[LiveStartPhase.APPLY_STARTED]
+        != (
+            _PHASE_MANDATORY_ARTIFACTS[LiveStartPhase.APPLY_STARTED]
+            | (QUALITY_INPUT_PATHS if quality else frozenset())
+        )
         or invocation_receipt_sha256 is None
     ):
         raise SessionValidationError(
@@ -5246,7 +5671,8 @@ def _validate_review_revision_pending_matrix(
             "live_start_review_revision_cursor_invalid"
         )
     successor_bindings = _validate_artifact_bindings(
-        value.get("successor_artifact_bindings")
+        value.get("successor_artifact_bindings"),
+        quality="inputs/quality.json" in value.get("successor_artifact_bindings", {}),
     )
     review_logical = "starter/starter_config_review.json"
     review_sha256 = successor_bindings.get(review_logical)
@@ -11693,17 +12119,20 @@ def _require_safe_relative_path(value: Any, name: str) -> str:
     return value
 
 
-def _validate_artifact_bindings(value: Any) -> Mapping[str, str]:
-    if not isinstance(value, dict) or len(value) > len(RUN_LOGICAL_FILES):
+def _validate_artifact_bindings(
+    value: Any, *, quality: bool = False, discovery: bool = False
+) -> Mapping[str, str]:
+    allowed = RUN_LOGICAL_FILES | QUALITY_INPUT_PATHS if quality else RUN_LOGICAL_FILES
+    if not isinstance(value, dict) or len(value) > len(allowed):
         raise SessionValidationError("live_start_artifact_bindings_invalid")
     result: dict[str, str] = {}
     for logical, digest in value.items():
-        if logical not in RUN_LOGICAL_FILES or logical == "session.json":
+        if logical not in allowed or logical == "session.json":
             raise SessionValidationError("live_start_artifact_path_invalid")
         _require_sha256(digest, "artifact_sha256")
         result[logical] = digest
     manifest_digest = result.get("inputs/input_snapshot_manifest.json")
-    if manifest_digest is None:
+    if manifest_digest is None and not discovery:
         raise SessionValidationError("live_start_snapshot_binding_missing")
     return MappingProxyType(dict(sorted(result.items())))
 
@@ -11760,14 +12189,35 @@ def validate_validation_receipt(
     candidate_revision: int | None = None,
 ) -> Mapping[str, Any]:
     normalized = _normalize_json(value)
-    if not isinstance(normalized, dict) or set(normalized) != _RECEIPT_FIELDS[receipt_kind]:
+    quality = (
+        isinstance(normalized, dict)
+        and receipt_kind == "candidate_validation"
+        and normalized.get("schema_version") == 2
+    )
+    from hsconfig.starter_contract import QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS
+
+    fields = (
+        QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS
+        if quality
+        else _RECEIPT_FIELDS[receipt_kind]
+    )
+    if not isinstance(normalized, dict) or set(normalized) != fields:
         raise SessionValidationError("live_start_validation_receipt_fields_invalid")
-    if normalized.get("schema_version") != 1 or normalized.get("receipt_kind") != receipt_kind:
+    if (
+        type(normalized.get("schema_version")) is not int
+        or normalized.get("schema_version") != (2 if quality else 1)
+        or normalized.get("receipt_kind") != receipt_kind
+    ):
         raise SessionValidationError("live_start_validation_receipt_kind_invalid")
     claimed = normalized["content_sha256"]
     unsigned = dict(normalized)
     unsigned.pop("content_sha256")
-    if claimed != _self_digest(unsigned):
+    digest = (
+        _bytes_sha256(FrozenJsonDocument.from_value(unsigned).canonical_json)
+        if quality
+        else _self_digest(unsigned)
+    )
+    if claimed != digest:
         raise SessionValidationError("live_start_validation_receipt_digest_invalid")
     _require_run_id(normalized.get("run_id"))
     revision = _bounded_integer(normalized.get("candidate_revision"), 1, 3, "candidate_revision")
@@ -11911,6 +12361,7 @@ def _validate_completed_phase_receipts(
         )
         _require_completed_receipt_binding(
             session=session,
+            session_root=session_lease.session_root,
             receipt_kind=kind,
             receipt=receipt,
             receipt_bytes_sha256=_bytes_sha256(raw),
@@ -11925,6 +12376,7 @@ def _require_completed_receipt_binding(
     receipt: Mapping[str, Any],
     receipt_bytes_sha256: str,
     receipt_logical_path: str,
+    session_root: Path | None = None,
 ) -> None:
     bindings = session.artifact_bindings
     expected: dict[str, Any] = {
@@ -11935,6 +12387,56 @@ def _require_completed_receipt_binding(
             "starter/starter_config_candidate.json"
         ),
     }
+    if receipt_kind == "candidate_validation":
+        if receipt["schema_version"] != (2 if session.schema_version == 2 else 1):
+            raise SessionConflictError("live_start_candidate_receipt_version_mismatch")
+        if session.schema_version == 2:
+            if session_root is None:
+                raise SessionConflictError(
+                    "live_start_candidate_receipt_run_root_missing"
+                )
+            from hsconfig.starter_context import validate_starter_context_document
+            from hsconfig.starter_candidate import validate_starter_candidate
+            from hsconfig.starter_document import StarterDocument
+            from hsconfig.starter_review import build_candidate_review_facts
+
+            documents = []
+            for logical in (
+                "starter/starter_context.json",
+                "starter/starter_config_candidate.json",
+            ):
+                target = session_root / logical
+                raw, _ = _read_bound_file(
+                    target,
+                    expected_parent_identity=path_identity(target.parent),
+                    maximum_size=512 * 1024,
+                )
+                if _bytes_sha256(raw) != bindings[logical]:
+                    raise SessionConflictError(
+                        "live_start_candidate_receipt_artifact_changed"
+                    )
+                frozen = FrozenJsonDocument.from_json_bytes(raw)
+                documents.append(
+                    StarterDocument(
+                        document=frozen,
+                        content_sha256=frozen.to_value()["content_sha256"],
+                    )
+                )
+            context = validate_starter_context_document(documents[0])
+            candidate = validate_starter_candidate(documents[1], context=context)
+            expected.update(
+                {
+                    "starter_context_sha256": context.document.content_sha256,
+                    "candidate_sha256": candidate.document.content_sha256,
+                }
+            )
+            if (
+                _thaw(receipt["review_facts"])
+                != build_candidate_review_facts(
+                    context=context, candidate=candidate
+                ).to_value()
+            ):
+                raise SessionConflictError("live_start_candidate_review_facts_changed")
     if receipt_kind in {"review_validation", "package_validation"}:
         expected["review_sha256"] = bindings.get(
             "starter/starter_config_review.json"
@@ -12104,6 +12606,9 @@ def _allowed_logical_run_files(
 ) -> set[str]:
     allowed = {"session.json", *session.artifact_bindings.keys()}
     pending = session.pending_transition
+    if isinstance(pending, Mapping) and pending.get("operation") in _QUALITY_OPERATIONS:
+        rows = _quality_pending_rows(session=session, root=root)
+        allowed.update(row["logical_path"] for row in rows)
     receipt_write_pending = (
         isinstance(pending, Mapping)
         and pending.get("operation")
@@ -12153,14 +12658,16 @@ def _pending_apply_invocation_receipt_is_layout_bound(
         and pending.get("next_action_index") == 1
         and isinstance(successor_bindings, Mapping)
         and frozenset(successor_bindings)
-        == _PHASE_MANDATORY_ARTIFACTS[LiveStartPhase.APPLY_STARTED]
+        in {
+            _PHASE_MANDATORY_ARTIFACTS[LiveStartPhase.APPLY_STARTED],
+            _PHASE_MANDATORY_ARTIFACTS[LiveStartPhase.APPLY_STARTED]
+            | QUALITY_INPUT_PATHS,
+        }
         and isinstance(
             successor_bindings.get("receipts/apply_invocation.json"),
             str,
         )
-        and _SHA256.fullmatch(
-            successor_bindings["receipts/apply_invocation.json"]
-        )
+        and _SHA256.fullmatch(successor_bindings["receipts/apply_invocation.json"])
         is not None
     )
 
@@ -12231,6 +12738,12 @@ def _allowed_reserved_run_paths(
     allowed: set[str] = set()
     rows = _require_starter_document_pending_rows(session, root=root)
     pending = session.pending_transition
+    if rows and pending.get("operation") == "quality_bootstrap":
+        allowed.update(
+            Path(row["source_path"]).relative_to(root).as_posix()
+            for row in rows
+            if row["logical_path"] in {"inputs/deck.json", "inputs/cards.json"}
+        )
     if rows and pending["stage"] == "PRIMARY_APPLIED":
         cursor = pending["next_action_index"]
         if cursor < len(rows) and rows[cursor]["action"] == "install":
@@ -17470,6 +17983,7 @@ def prepare_candidate_review_revision_under_lock(
     )
     _require_completed_receipt_binding(
         session=current,
+        session_root=session_lease.session_root,
         receipt_kind="candidate_validation",
         receipt=validation_receipt,
         receipt_bytes_sha256=validation_sha256,

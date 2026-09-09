@@ -764,7 +764,12 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         if self.starter_selection is not None:
             return "legacy_five_doc"
         if self.starter_approval is not None:
-            return "single_candidate_review_v1"
+            return (
+                "single_candidate_review_v2"
+                if self.starter_approval.snapshot.document.to_value()["schema_version"]
+                == 2
+                else "single_candidate_review_v1"
+            )
         return None
 
     @property
@@ -833,7 +838,14 @@ class FrozenApprovedLiveConfigureRequest(_ImmutableAuthorityNode):
 
     @property
     def optimized_start_authority_schema(self) -> OptimizedStartAuthoritySchema:
-        return "single_candidate_review_v1"
+        return (
+            "single_candidate_review_v2"
+            if self.frozen_compiler_inputs.manifest.document.to_value()[
+                "schema_version"
+            ]
+            == 2
+            else "single_candidate_review_v1"
+        )
 
 
 def _durable_authority_values_match(left: object, right: object) -> bool:
@@ -889,6 +901,7 @@ def _validate_single_candidate_request_authority(
     from hsconfig.starter_context import (
         StarterContext,
         build_single_candidate_starter_context,
+        build_quality_starter_context,
         validate_starter_context_document,
     )
     from hsconfig.starter_document import StarterDocument
@@ -966,7 +979,26 @@ def _validate_single_candidate_request_authority(
         ):
             raise ValueError("snapshot authority mismatch")
 
-        rebuilt_context = build_single_candidate_starter_context(frozen)
+        from hsconfig.starter_contract import live_contract_for_versions
+
+        quality = frozen_snapshot.document.to_value()["schema_version"] == 2
+        live_contract_for_versions(
+            session=2 if quality else 1,
+            manifest=frozen_snapshot.document.to_value()["schema_version"],
+            context=approval.context.document.to_value()["schema_version"],
+            candidate=approval.candidate.document.to_value()["schema_version"],
+            review=approval.review.document.to_value()["schema_version"],
+            compiler=frozen_snapshot.compiler_inputs.to_value()["compiler_contract_id"],
+        )
+        if quality != (type(approval.validation_receipt) is FrozenJsonDocument):
+            raise ValueError("quality receipt authority mismatch")
+        if not quality and approval.validation_receipt is not None:
+            raise ValueError("legacy receipt authority forbidden")
+        rebuilt_context = (
+            build_quality_starter_context(frozen)
+            if quality
+            else build_single_candidate_starter_context(frozen)
+        )
         approval_context = validate_starter_context_document(
             approval.context.document
         )
@@ -993,6 +1025,7 @@ def _validate_single_candidate_request_authority(
             approval.review.document,
             context=rebuilt_context,
             candidate=candidate,
+            validation_receipt=approval.validation_receipt,
         )
         if not _durable_authority_values_match(review, approval.review):
             raise ValueError("review cache drift")
@@ -1008,6 +1041,7 @@ def _validate_single_candidate_request_authority(
             context=rebuilt_context,
             candidate=candidate,
             review=review,
+            validation_receipt=approval.validation_receipt,
         )
         if not _durable_authority_values_match(rebuilt, approval):
             raise ValueError("approval cache drift")

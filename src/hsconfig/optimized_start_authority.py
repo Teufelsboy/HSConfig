@@ -34,9 +34,13 @@ from hsconfig.starter_context import (
     validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
+    QUALITY_STARTER_CONTEXT_FIELDS,
+    QUALITY_STARTER_CANDIDATE_FIELDS,
+    QUALITY_STARTER_REVIEW_FIELDS,
+    QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+    live_contract_for_versions,
     SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_MAX_BYTES,
     STARTER_CONTEXT_FIELDS,
     STARTER_CONTEXT_MAX_BYTES,
@@ -50,6 +54,7 @@ from hsconfig.starter_decision import (
     load_validated_starter_selection,
 )
 from hsconfig.starter_document import load_starter_document
+from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.starter_review import (
     ValidatedStarterReview,
     validate_starter_review,
@@ -65,6 +70,7 @@ class ValidatedSingleStarterApproval:
     context: StarterContext
     candidate: ValidatedStarterCandidate
     review: ValidatedStarterReview
+    validation_receipt: FrozenJsonDocument | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +103,10 @@ def load_optimized_start_authority(
     report_set_binding = _require_exact_report_set(root, expected_paths)
     if schema == "legacy_five_doc":
         authority = _load_legacy_authority(root)
-    elif schema == "single_candidate_review_v1":
-        authority = _load_single_candidate_approval(root)
+    elif schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
+        authority = _load_single_candidate_approval(
+            root, quality=schema == "single_candidate_review_v2"
+        )
     else:
         raise ValueError("optimized_start_authority_schema_invalid")
     _require_exact_report_set(
@@ -188,42 +196,70 @@ def _load_legacy_authority(root: Path) -> ValidatedStarterSelection:
 
 def _load_single_candidate_approval(
     root: Path,
+    *,
+    quality: bool = False,
 ) -> ValidatedSingleStarterApproval:
+    version = 3 if quality else 2
     snapshot_document = load_starter_document(
         root / "input_snapshot_manifest.json",
         maximum_bytes=INPUT_SNAPSHOT_MAX_BYTES,
         expected_fields=INPUT_SNAPSHOT_FIELDS,
-        schema_version=INPUT_SNAPSHOT_SCHEMA_VERSION,
+        schema_version=2 if quality else INPUT_SNAPSHOT_SCHEMA_VERSION,
     )
     snapshot = validate_input_snapshot_manifest_document(
         snapshot_document.document
+    )
+    live_contract_for_versions(
+        session=2 if quality else 1,
+        manifest=snapshot.document.to_value()["schema_version"],
+        context=version,
+        candidate=version,
+        review=version,
+        compiler=snapshot.compiler_inputs.to_value()["compiler_contract_id"],
     )
     context = validate_starter_context_document(
         load_starter_document(
             root / "starter_context.json",
             maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
-            expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_CONTEXT_FIELDS
+            if quality
+            else SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+            schema_version=version,
         )
     )
     candidate = validate_starter_candidate(
         load_starter_document(
             root / "starter_config_candidate.json",
             maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
-            expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_CANDIDATE_FIELDS
+            if quality
+            else SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+            schema_version=version,
         ),
         context=context,
+    )
+    receipt = (
+        load_starter_document(
+            root / "candidate_validation_receipt.json",
+            maximum_bytes=512 * 1024,
+            expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+            schema_version=2,
+        ).document
+        if quality
+        else None
     )
     review = validate_starter_review(
         load_starter_document(
             root / "starter_config_review.json",
             maximum_bytes=STARTER_REVIEW_MAX_BYTES,
-            expected_fields=STARTER_REVIEW_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=QUALITY_STARTER_REVIEW_FIELDS
+            if quality
+            else STARTER_REVIEW_FIELDS,
+            schema_version=version,
         ),
         context=context,
         candidate=candidate,
+        validation_receipt=receipt,
     )
 
     context_value = context.document.to_value()
@@ -253,6 +289,7 @@ def _load_single_candidate_approval(
         context=context,
         candidate=candidate,
         review=review,
+        validation_receipt=receipt,
     )
 
 

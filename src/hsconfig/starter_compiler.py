@@ -214,6 +214,19 @@ def lower_single_candidate_start(
             strict=True,
         )
     )
+    if approval.validation_receipt is not None:
+        from hsconfig.starter_document import StarterDocument
+
+        receipt = approval.validation_receipt
+        optimized_projections += (
+            (
+                "reports/optimized_start/candidate_validation_receipt.json",
+                StarterDocument(
+                    document=receipt,
+                    content_sha256=receipt.to_value()["content_sha256"],
+                ),
+            ),
+        )
     compiler_state = FrozenJsonDocument.from_value(
         _single_candidate_compiler_state(
             request=request,
@@ -487,15 +500,11 @@ def _single_candidate_compiler_state(
             "key_count": baseline["key_count"],
             "path": None,
             "sha256": baseline["content_sha256"],
-            "snapshot_date": frozen.manifest.compiler_inputs.to_value()[
-                "bound_date"
-            ],
+            "snapshot_date": frozen.manifest.compiler_inputs.to_value()["bound_date"],
             "snapshot_status": "frozen_input_snapshot",
             "source": "input_snapshot_manifest",
         },
-        "guide_builder_receipt": context["source_evidence"][
-            "guide_builder_receipt"
-        ],
+        "guide_builder_receipt": context["source_evidence"]["guide_builder_receipt"],
         "guide_claim_bundle": guide_claim_bundle,
         "guide_sources_generated": guide_sources,
         "identity_gap_report": {
@@ -526,12 +535,12 @@ def _single_candidate_compiler_state(
             "starting_hero_power_id": None,
         },
         "initial_lifecycle_rows": [],
-        "mechanic_drift_report": build_mechanic_drift_report(
-            cards_payload["cards"]
-        ),
+        "mechanic_drift_report": build_mechanic_drift_report(cards_payload["cards"]),
         "mulligan_plan": mulligan_plan,
         "plan_input_diagnostics": None,
-        "policy_profile": {
+        "policy_profile": frozen.source_acquisition.to_value()["policy_profile"]
+        if frozen.manifest.document.to_value()["schema_version"] == 2
+        else {
             "authority": "not_frozen",
             "runtime_authorized": False,
         },

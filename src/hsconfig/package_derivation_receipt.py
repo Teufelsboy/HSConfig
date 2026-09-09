@@ -109,7 +109,7 @@ def derivation_schema_version_supported(value: Any) -> bool:
 def _receipt_schema_for(package: PackageView) -> int:
     manifest = package.read_json("reports/input_manifest.json")
     schema = optimized_start_authority_schema_from_manifest(manifest)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
     if schema == "legacy_five_doc":
         return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
@@ -119,7 +119,7 @@ def _receipt_schema_for(package: PackageView) -> int:
 def _receipt_schema_for_path(package: Path) -> int:
     manifest = read_json(package / "reports" / "input_manifest.json")
     schema = optimized_start_authority_schema_from_manifest(manifest)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return SINGLE_CANDIDATE_REVIEW_DERIVATION_RECEIPT_SCHEMA_VERSION
     if schema == "legacy_five_doc":
         return OPTIMIZED_DERIVATION_RECEIPT_SCHEMA_VERSION
@@ -390,7 +390,7 @@ def optimized_start_derivation_digests(
         raise ValueError("optimized_start_derivation_invalid") from error
     if schema == "legacy_five_doc":
         return legacy_optimized_start_derivation_digests(package)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return single_candidate_review_derivation(package)
     raise ValueError("optimized_start_derivation_invalid")
 
@@ -407,7 +407,7 @@ def optimized_start_derivation_digests_from_view(
         raise ValueError("optimized_start_derivation_invalid") from error
     if schema == "legacy_five_doc":
         return legacy_optimized_start_derivation_digests_from_view(package)
-    if schema == "single_candidate_review_v1":
+    if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
         return single_candidate_review_derivation_from_view(package)
     raise ValueError("optimized_start_derivation_invalid")
 
@@ -416,10 +416,10 @@ def _single_candidate_review_projection(
     authority: ValidatedSingleStarterApproval,
 ) -> dict[str, Any]:
     projection = {
-        "optimized_start_authority_schema": "single_candidate_review_v1",
-        "input_snapshot_manifest_sha256": (
-            authority.snapshot.document.content_sha256
-        ),
+        "optimized_start_authority_schema": "single_candidate_review_v2"
+        if authority.validation_receipt is not None
+        else "single_candidate_review_v1",
+        "input_snapshot_manifest_sha256": (authority.snapshot.document.content_sha256),
         "candidate_sha256": authority.candidate.document.content_sha256,
         "candidate_revision": authority.candidate.candidate_revision,
         "review_sha256": authority.review.document.content_sha256,
@@ -449,6 +449,8 @@ def _optimized_authority_document_bytes(
             authority.candidate.document,
             authority.review.document,
         )
+        if authority.validation_receipt is not None:
+            documents += (authority.validation_receipt,)
     else:
         raise TypeError("optimized_start_authority_invalid")
     if len(paths) != len(documents):

@@ -10,6 +10,7 @@ ConfigurationMode = Literal["CONSERVATIVE", "LLM_OPTIMIZED_START"]
 OptimizedStartAuthoritySchema = Literal[
     "legacy_five_doc",
     "single_candidate_review_v1",
+    "single_candidate_review_v2",
 ]
 CONSERVATIVE: ConfigurationMode = "CONSERVATIVE"
 LLM_OPTIMIZED_START: ConfigurationMode = "LLM_OPTIMIZED_START"
@@ -43,11 +44,12 @@ def optimized_start_authority_schema_from_manifest(
         return None
     if not present:
         return "legacy_five_doc"
-    if manifest["optimized_start_authority_schema"] != (
-        SINGLE_CANDIDATE_REVIEW_V1
-    ):
+    if manifest["optimized_start_authority_schema"] not in {
+        SINGLE_CANDIDATE_REVIEW_V1,
+        "single_candidate_review_v2",
+    }:
         raise ValueError("optimized_start_authority_schema_invalid")
-    return SINGLE_CANDIDATE_REVIEW_V1
+    return manifest["optimized_start_authority_schema"]
 
 
 __all__ = (
