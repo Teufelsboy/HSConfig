@@ -1681,12 +1681,39 @@ def load_live_start_session(
         return load_live_start_session_under_lock(session_lease=lease)
 
 
+def load_live_start_session_snapshot(
+    session_root: Path,
+    *,
+    local_app_data_root: Path | None = None,
+) -> LiveStartSession:
+    """Load a validated session without reconciling reserved state."""
+
+    with lease_live_start_session(
+        session_root,
+        local_app_data_root=local_app_data_root,
+    ) as lease:
+        reserved_temp = lease.session_root / ".session.json.live-start-atomic.tmp"
+        if os.path.lexists(reserved_temp):
+            raise SessionConflictError("live_start_session_reserved_temp_pending")
+        return _load_validated_live_start_session_under_lock(session_lease=lease)
+
+
 def load_live_start_session_under_lock(
     *,
     session_lease: LiveStartSessionLease,
 ) -> LiveStartSession:
     _require_session_lease(session_lease)
     _reconcile_session_temp_under_lock(session_lease=session_lease)
+    return _load_validated_live_start_session_under_lock(
+        session_lease=session_lease
+    )
+
+
+def _load_validated_live_start_session_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+) -> LiveStartSession:
+    _require_session_lease(session_lease)
     path = session_lease.session_root / "session.json"
     raw, identity = _read_bound_file(
         path,

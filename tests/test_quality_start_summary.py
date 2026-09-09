@@ -8,8 +8,16 @@ from types import SimpleNamespace
 import pytest
 
 import hsconfig.live_start_controller as controller
-from hsconfig.live_start_session import LiveStartPhase
+import hsconfig.live_start_session as live_session
+from hsconfig.live_start_session import LiveStartPhase, load_live_start_session
 from hsconfig.package_request import FrozenJsonDocument
+import tests.test_live_start_session as session_fixtures
+from tests.test_quality_live_start_controller import quality_request as _quality_request
+
+
+@pytest.fixture
+def persisted_quality_request(tmp_path, monkeypatch):
+    return _quality_request.__wrapped__(tmp_path, monkeypatch)
 
 
 def _progress(root):
@@ -156,7 +164,9 @@ def test_quality_summary_has_one_closed_action_and_honest_budgets(
         canonical_json=b"{}",
     )
     monkeypatch.setattr(
-        controller._session, "load_live_start_session", lambda _root: current
+        controller._session,
+        "load_live_start_session_snapshot",
+        lambda _root: current,
     )
 
     summary = controller.quality_start_summary(run_root=tmp_path).to_value()
@@ -199,7 +209,9 @@ def test_quality_summary_preserves_schema_one_terminal_summary(tmp_path, monkeyp
     result_path.write_bytes(summary.canonical_json)
     current = SimpleNamespace(schema_version=1, terminal_status="PREVIEW_READY")
     monkeypatch.setattr(
-        controller._session, "load_live_start_session", lambda _root: current
+        controller._session,
+        "load_live_start_session_snapshot",
+        lambda _root: current,
     )
 
     projected = controller.quality_start_summary(run_root=tmp_path)
@@ -216,8 +228,74 @@ def test_quality_summary_rejects_changed_progress_bytes(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        controller._session, "load_live_start_session", lambda _root: current
+        controller._session,
+        "load_live_start_session_snapshot",
+        lambda _root: current,
     )
 
     with pytest.raises(RuntimeError, match="progress_binding_changed"):
         controller.quality_start_summary(run_root=tmp_path)
+
+
+def test_quality_summary_preserves_valid_reserved_session_temp(
+    persisted_quality_request,
+):
+    discovery = controller.prepare_quality_live_start(persisted_quality_request)
+    session_path = discovery.run_root / "session.json"
+    reserved_temp = discovery.run_root / ".session.json.live-start-atomic.tmp"
+    reserved_temp.write_bytes(session_path.read_bytes())
+    before = {
+        path.relative_to(discovery.run_root): path.read_bytes()
+        for path in discovery.run_root.rglob("*")
+        if path.is_file()
+    }
+
+    with pytest.raises(RuntimeError, match="reserved_temp_pending"):
+        controller.quality_start_summary(run_root=discovery.run_root)
+
+    after = {
+        path.relative_to(discovery.run_root): path.read_bytes()
+        for path in discovery.run_root.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+    reconciled = load_live_start_session(discovery.run_root)
+    assert reconciled.run_id == discovery.run_root.name
+    assert not reserved_temp.exists()
+    assert session_path.read_bytes() == before[
+        session_path.relative_to(discovery.run_root)
+    ]
+
+
+def test_terminal_not_committed_retained_recovery_routes_to_resume(tmp_path):
+    root, closed, _acknowledgement = session_fixtures._closed_result_cursor(
+        tmp_path,
+        success=False,
+    )
+    intent = session_fixtures._result_intent(cursor=closed, success=False)
+    with session_fixtures._lease(root) as lease:
+        result_bound = live_session.bind_result_intent_under_lock(
+            session_lease=lease,
+            expected_session=closed,
+            result_intent=intent,
+        )
+        terminal = live_session.record_terminal_status_under_lock(
+            session_lease=lease,
+            expected_result_session=result_bound,
+        )
+        persisted = live_session.load_live_start_session_under_lock(
+            session_lease=lease
+        )
+
+    assert persisted.canonical_json == terminal.canonical_json
+    assert persisted.schema_version == 1
+    assert persisted.terminal_status == "FAILED_PRESERVED"
+    assert persisted.result_intent["physical_disposition"] == "NOT_COMMITTED"
+    assert persisted.apply_recovery is None
+    assert persisted.closed_apply_recovery_commitment is not None
+    assert controller._quality_summary_route(persisted) == (
+        "result/summary.json",
+        "resume_existing_recovery",
+    )
+    assert controller._quality_summary_runtime_write_state(persisted) == "no"

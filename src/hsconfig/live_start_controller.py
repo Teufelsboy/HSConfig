@@ -4560,6 +4560,23 @@ def _quality_summary_route(current: LiveStartSession) -> tuple[str, str]:
         return "result/summary.json", "inspect_preserved_preview"
     if current.terminal_status == "APPLIED_BUT_NOT_VERIFIED":
         return "result/summary.json", "resume_existing_recovery"
+    intent = current.result_intent
+    if current.terminal_status is not None and (
+        current.apply_invocation_sha256 is not None
+        or current.runtime_admission_binding is not None
+        or current.apply_recovery is not None
+        or getattr(current, "closed_apply_recovery_commitment", None) is not None
+        or (
+            isinstance(intent, Mapping)
+            and intent.get("physical_disposition")
+            in {
+                "NOT_COMMITTED",
+                "COMMITTED_RECOVERY_PENDING",
+                "UNKNOWN_REQUIRES_RECOVERY",
+            }
+        )
+    ):
+        return "result/summary.json", "resume_existing_recovery"
     if current.terminal_status is not None:
         return "result/summary.json", "inspect_preserved_review_finding"
     pending = current.pending_transition
@@ -4599,7 +4616,7 @@ def quality_start_summary(*, run_root: Path) -> FrozenJsonDocument:
     """Project one read-only next action from a validated persisted session."""
 
     root = Path(run_root)
-    current = _session.load_live_start_session(root)
+    current = _session.load_live_start_session_snapshot(root)
     if current.schema_version == 1:
         if current.terminal_status is not None:
             raw = _read_plain_bytes(
