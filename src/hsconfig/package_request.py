@@ -780,6 +780,62 @@ class ResolvedPackageRequest(_ImmutableAuthorityNode):
         return self.mulligan_gap_input
 
 
+@dataclass(frozen=True, init=False)
+class FrozenApprovedLiveConfigureRequest(_ImmutableAuthorityNode):
+    """Compile authority for one approved live start, with no legacy snapshot."""
+
+    frozen_compiler_inputs: FrozenCompilerInputs
+    starter_approval: ValidatedSingleStarterApproval
+
+    def __post_init__(self) -> None:
+        _validate_single_candidate_request_authority(
+            approval=self.starter_approval,
+            frozen_compiler_inputs=self.frozen_compiler_inputs,
+        )
+        deck = self.frozen_compiler_inputs.deck.to_value()
+        raw_code = deck["cards_payload"].get("deck_code")
+        if not _nonempty_string(raw_code):
+            raise ValueError("frozen_approved_live_request_deck_code_required")
+        digest = sha256(raw_code.encode("utf-8")).hexdigest()
+        compiler = self.frozen_compiler_inputs.manifest.compiler_inputs.to_value()
+        if (
+            digest != deck["deck_identity"]["deck_code_hash"]
+            or f"sha256:{digest}" != compiler["deck_code_sha256"]
+        ):
+            raise ValueError("frozen_approved_live_request_deck_code_mismatch")
+
+    @classmethod
+    def from_values(
+        cls,
+        *,
+        frozen_compiler_inputs: FrozenCompilerInputs,
+        starter_approval: ValidatedSingleStarterApproval,
+    ) -> FrozenApprovedLiveConfigureRequest:
+        return cls(
+            frozen_compiler_inputs=frozen_compiler_inputs,
+            starter_approval=starter_approval,
+        )
+
+    @property
+    def invocation(self) -> PackageInvocation:
+        frozen = self.frozen_compiler_inputs
+        return PackageInvocation(
+            deck_code=frozen.deck.to_value()["cards_payload"]["deck_code"],
+            runtime_root=frozen.manifest.operator_bindings.to_value()["runtime_root"],
+            cards_json=None,
+            claims_json=None,
+            guide_sources_json=None,
+            plan_reports_dir=None,
+            target_config_mode="preview",
+            include_disposition_diagnostics=False,
+            configuration_mode="LLM_OPTIMIZED_START",
+        )
+
+    @property
+    def optimized_start_authority_schema(self) -> OptimizedStartAuthoritySchema:
+        return "single_candidate_review_v1"
+
+
 def _durable_authority_values_match(left: object, right: object) -> bool:
     if type(left) is not type(right):
         return False

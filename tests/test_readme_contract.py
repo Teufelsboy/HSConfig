@@ -16,8 +16,8 @@ from tests.helpers.markdown_contract import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT_DESCRIPTION = (
-    "HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages "
-    "from a Hearthstone deck name and deck code."
+    "HSConfig turns a Hearthstone deck name and deck code into a validated, "
+    "live-matched HearthRanger VisionAI `CustomConfig` through the installed Codex skill."
 )
 REQUIRED_HEADINGS = (
     "## License and visibility",
@@ -37,7 +37,7 @@ EXPECTED_LINKS = (
 )
 CONSERVATIVE_CONFIGURE_COMMAND = (
     'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
-    '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json'
+    '--runtime-root "<HearthRangerRoot>" --out "<OutputBaseRoot>/<DeckName>" --json'
 )
 PRESERVED_ANCHORS = (
     "This installed optimized workflow is the only normal generation route.",
@@ -246,6 +246,26 @@ def _readme_contract_errors(root: Path) -> list[str]:
 
 def test_readme_presents_the_product_contract_in_required_order() -> None:
     assert _readme_contract_errors(ROOT) == []
+
+
+def test_readme_leads_with_deck_name_code_to_live_matched_config() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    introduction = text.split("## License and visibility", 1)[0]
+    assert "deck name and deck code" in introduction
+    assert "validated, live-matched" in introduction
+    assert "Deck -> Config -> Validate -> Live -> Match" in introduction
+    assert "best practical evidence-based pre-run configuration" in introduction
+    assert "not measured gameplay optimality" in introduction
+
+
+def test_readme_has_one_copyable_normal_prompt_and_compact_success() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    introduction = text.split("## License and visibility", 1)[0]
+    prompts = re.findall(r"```text\n(.*?)\n```", introduction, flags=re.DOTALL)
+    assert prompts == ["Deck name: ShadowPriest\nDeck code: <DeckCode>"]
+    assert "ShadowPriest — card coverage: complete — review confidence: high — LIVE_AND_MATCHED" in introduction
+    assert "sha256" not in introduction.casefold()
+    assert "revisions/" not in introduction
 
 
 def test_readme_contract_rejects_swapped_sections(tmp_path: Path) -> None:

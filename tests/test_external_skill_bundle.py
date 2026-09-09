@@ -27,7 +27,7 @@ from hsconfig.external_skill_bundle import (
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCE = ROOT / "src/hsconfig/resources/codex_skill_bundle.json"
 EXPECTED_AGGREGATE_SHA256 = (
-    "02ab4c3f57a6e2f787ea8c230f9ffe1e13354d9e8e02826ef15bcbd1c333102e"
+    "5a3bb29a895e06080a8ccff786789fe9d3de691cd76cad3167ed2d474b10d682"
 )
 
 
@@ -158,6 +158,22 @@ def test_embedded_bundle_is_exact_closed_nine_file_contract() -> None:
     assert "installed-" + "skill sync" not in files["SKILL.md"].decode("utf-8")
     assert "--skill-" + "install-root" not in files["SKILL.md"].decode("utf-8")
     assert all(b"\r" not in content for content in files.values())
+    preserved = {
+        "references/card-behavior-policy.md": (
+            "c2457ac64a2601c9b27fa55aae344bf8f8e2132d4a93aa9bf8795f0b963be5b0"
+        ),
+        "references/globalvalues-policy.md": (
+            "383d6da6bd90e6c160aa9843b55ae91d816a7eeb66a8fa8e99e0b390603ed0df"
+        ),
+        "references/guide-research-policy.md": (
+            "7b8e838d8da370f5b5f32502db6aec367e190fe0b91d95944926ea7b6f0a5343"
+        ),
+        "references/visionai-surfaces.md": (
+            "ed5c5b3f497188598f86a01ddde8cf9372644706bc0bf7cf12c1ab50adddace0"
+        ),
+    }
+    for path, digest in preserved.items():
+        assert hashlib.sha256(files[path]).hexdigest() == digest
 
 
 def test_embedded_workflow_routes_source_gaps_through_live_configure_receipt() -> None:

@@ -382,6 +382,16 @@ def validate_input_snapshot_manifest_document(
 def load_frozen_compiler_inputs(run_root: Path) -> FrozenCompilerInputs:
     """Load and physically rebind one external run's frozen input set."""
 
+    return _load_frozen_compiler_inputs(run_root, rebind_operator=True)
+
+
+def _load_frozen_compiler_inputs(
+    run_root: Path,
+    *,
+    rebind_operator: bool,
+) -> FrozenCompilerInputs:
+    """Read frozen bytes; the leased controller may own operator rebinding."""
+
     root_binding = _rebind_plain_directory(Path(run_root), "run_root")
     root = root_binding.path
     inputs_binding = _rebind_plain_directory(
@@ -467,7 +477,8 @@ def load_frozen_compiler_inputs(run_root: Path) -> FrozenCompilerInputs:
     )
     _require_manifest_blob_match(result)
     _validate_loaded_compiler_binding(result)
-    _rebind_operator_bindings(result)
+    if rebind_operator:
+        _rebind_operator_bindings(result)
     _require_same_directory_binding(root_binding, "run_root")
     _require_same_directory_binding(inputs_binding, "inputs_root")
     return result
@@ -628,6 +639,18 @@ def _validate_deck_and_card_closure(
         deck_identity.get("deck_code_hash"),
         "deck_code_sha256",
     )
+    if "deck_code" in cards_payload:
+        raw_code = cards_payload["deck_code"]
+        if (
+            not isinstance(raw_code, str)
+            or not raw_code
+            or raw_code != raw_code.strip()
+        ):
+            raise ValueError("input_snapshot_raw_deck_code_invalid")
+        if sha256(raw_code.encode("utf-8")).hexdigest() != (
+            deck_identity["deck_code_hash"]
+        ):
+            raise ValueError("input_snapshot_raw_deck_code_binding_mismatch")
     fingerprint = _prefixed_bare_digest(
         deck_identity.get("deck_fingerprint"),
         "roster_fingerprint",

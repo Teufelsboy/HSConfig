@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
+import argparse
+from copy import deepcopy
+from datetime import date
 import json
+import os
+import secrets
 import stat
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from hearthstone.deckstrings import parse_deckstring
 
 from hsconfig import live_start_session as _session
 from hsconfig import output_publisher as _publisher
+from hsconfig import published_apply as _published_apply
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.atomic_io import (
     AtomicWriteConflictError,
+    ExclusiveFileLock,
     atomic_commit_bound_staging_no_replace,
     atomic_materialize_staging_bytes,
     atomic_write_reserved_bytes,
@@ -26,6 +35,24 @@ from hsconfig.configure_run_model import (
     RenderedConfigureRun,
     create_configure_run_model,
     render_configure_run_model,
+)
+from hsconfig.evidence_contract import load_policy_profile
+from hsconfig.deck_identity import build_deck_identity
+from hsconfig.input_loading import load_cards
+from hsconfig.globalvalues_baseline import load_globalvalues_baseline
+from hsconfig.globalvalues_decisions import (
+    normalize_globalvalues_decision_baseline,
+)
+from hsconfig.hearthstonejson import (
+    fetch_latest_cards,
+    fetch_latest_collectible_cards,
+)
+from hsconfig.input_snapshot_manifest import (
+    FrozenCompilerInputs,
+    _validate_deck_and_card_closure,
+    _load_frozen_compiler_inputs,
+    freeze_compiler_inputs,
+    load_frozen_compiler_inputs,
 )
 from hsconfig.live_start_faults import (
     LiveStartFaultHook,
@@ -41,15 +68,23 @@ from hsconfig.live_start_session import (
     SessionConflictError,
 )
 from hsconfig.operator_profile import (
+    DeckOutputBinding,
+    OperatorProfile,
     OperatorProfileLease,
+    derive_deck_output_binding,
+    load_operator_profile,
+    lease_operator_profile,
+    revalidate_operator_profile,
     revalidate_operator_profile_lease,
 )
 from hsconfig.operator_summary import build_operator_summary_from_inputs
 from hsconfig.operator_summary_inputs import load_operator_summary_inputs
+from hsconfig.optimized_start_authority import ValidatedSingleStarterApproval
 from hsconfig.output_operation_admission import (
     OutputOperationAdmissionEvidence,
     OutputOperationAdmissionLease,
     build_output_operation_admission_bytes,
+    lease_output_operation_admission,
     observe_output_operation_admission_under_lease,
     output_operation_admission_path,
     output_operation_admission_reserved_temp_path,
@@ -78,6 +113,7 @@ from hsconfig.package_io import (
     read_file_no_follow,
     require_no_alternate_data_streams,
     require_plain_directory,
+    secure_create_directory,
     secure_replace,
     secure_rmdir_verified,
     secure_unlink,
@@ -85,17 +121,73 @@ from hsconfig.package_io import (
     snapshot_bounded_filesystem_package,
     status_is_reparse,
 )
-from hsconfig.package_request import FrozenJsonDocument, ResolvedPackageRequest
+from hsconfig.package_request import (
+    FrozenJsonDocument,
+    FrozenApprovedLiveConfigureRequest,
+    PackageResolutionSnapshot,
+    ResolvedPackageRequest,
+)
+from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.runtime_apply import plan_apply_package
 from hsconfig.strict_package_validation import (
     strict_validation_passed,
     validate_complete_configure_run_from_view,
 )
+from hsconfig.starter_candidate import (
+    STARTER_CANDIDATE_FINDING_CODES,
+    ValidatedStarterCandidate,
+    validate_starter_candidate,
+)
+from hsconfig.starter_context import (
+    StarterContext,
+    build_single_candidate_starter_context,
+    validate_starter_context_document,
+)
+from hsconfig.starter_contract import (
+    SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+    SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+    SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    STARTER_CANDIDATE_MAX_BYTES,
+    STARTER_CONTEXT_MAX_BYTES,
+    STARTER_REVIEW_FIELDS,
+    STARTER_REVIEW_MAX_BYTES,
+)
+from hsconfig.starter_document import (
+    StarterDocument,
+    load_starter_document,
+    seal_starter_document,
+)
+from hsconfig.starter_review import ValidatedStarterReview, validate_starter_review
 
 
 _PACKAGE_RECEIPT_LOGICAL = "receipts/package_validation.json"
 _PREPUBLICATION_RECEIPT_LOGICAL = "receipts/prepublication_apply_check.json"
 _MAX_RECEIPT_BYTES = 256 * 1024
+_RUNTIME_GRAMMAR_VERSION = "visionai-runtime-v1"
+_COMPILER_CONTRACT_ID = "hsconfig-live-start-v1"
+_PRE_SESSION_SUMMARY_KIND = "live_start_pre_session_result"
+
+
+@dataclass(frozen=True, slots=True)
+class LiveStartRequest:
+    deck_name: str
+    deck_code: str
+    preview_requested: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LiveStartResult:
+    status: _session.LiveStartTerminalStatus
+    run_root: Path | None
+    summary: FrozenJsonDocument
+
+
+@dataclass(frozen=True, slots=True)
+class LiveStartPreparation:
+    run_root: Path
+    starter_context_path: Path
+    candidate_revision: Literal[1, 2, 3]
+    visible_limitations: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,11 +209,11 @@ def _emit_pipeline_event(
 
 
 def build_frozen_live_configure_run(
-    *, request: ResolvedPackageRequest
+    *, request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest
 ) -> ConfigureRunModel:
     """Compile one run solely from the request's sealed frozen authority."""
 
-    if not isinstance(request, ResolvedPackageRequest):
+    if not isinstance(request, (ResolvedPackageRequest, FrozenApprovedLiveConfigureRequest)):
         raise TypeError("resolved_package_request_required")
     frozen = request.frozen_compiler_inputs
     approval = request.starter_approval
@@ -503,7 +595,8 @@ def _materialize_work_run(
                         },
                     )
                     pending = current.pending_transition
-                    assert isinstance(pending, Mapping)
+                    if not isinstance(pending, Mapping):
+                        raise SessionConflictError("live_start_materialization_pending_missing")
                 work_binding = _rebuild_prepublication_work_binding(
                     rendered=rendered,
                     work_parent=work_parent,
@@ -774,17 +867,17 @@ def _plan_and_install_prepublication_receipt(
     current: LiveStartSession,
     fault_hook: LiveStartFaultHook,
 ) -> tuple[LiveStartSession, FrozenJsonDocument]:
-    planned = plan_apply_package(
-        package_root=package_root,
-        runtime_root=runtime_root,
-    )
-    planned["created_at_utc"] = f"{bound_date}T00:00:00+00:00"
-    planned["diagnostic_only"] = True
-    planned["package_root"] = str(package_root.resolve())
-    planned["package_root_sha256"] = package_root_sha256
-    document = FrozenJsonDocument.from_value(planned)
-    _emit_pipeline_event("fake_apply_planned")
     if current.phase is LiveStartPhase.PACKAGE_VALIDATED:
+        planned = plan_apply_package(
+            package_root=package_root,
+            runtime_root=runtime_root,
+        )
+        planned["created_at_utc"] = f"{bound_date}T00:00:00+00:00"
+        planned["diagnostic_only"] = True
+        planned["package_root"] = str(package_root.resolve())
+        planned["package_root_sha256"] = package_root_sha256
+        document = FrozenJsonDocument.from_value(planned)
+        _emit_pipeline_event("fake_apply_planned")
         current = _install_receipt_transition(
             session_lease=session_lease,
             current=current,
@@ -800,10 +893,18 @@ def _plan_and_install_prepublication_receipt(
             committed_event="prepublication_check_passed_cas",
         )
     else:
-        _require_exact_receipt(
-            session_lease.session_root / _PREPUBLICATION_RECEIPT_LOGICAL,
-            document.canonical_json,
+        # A committed diagnostic is historical, not current Runtime authority.
+        receipt_path = session_lease.session_root / _PREPUBLICATION_RECEIPT_LOGICAL
+        raw = read_file_no_follow(
+            receipt_path,
+            expected_status=plain_file_status(receipt_path),
+            maximum_size=_MAX_RECEIPT_BYTES,
         )
+        if _sha256_bytes(raw) != current.artifact_bindings.get(
+            _PREPUBLICATION_RECEIPT_LOGICAL
+        ):
+            raise ValueError("live_start_receipt_bytes_changed")
+        document = FrozenJsonDocument(canonical_json=raw)
     return current, document
 
 
@@ -1411,7 +1512,9 @@ def authorize_output_operation_terminal_release_from_context(
     bound = load_bound_output_operation_admission(current)
     binding = current.output_operation_admission_binding
     if (
-        observed != expected
+        observed is None
+        or replace(observed, admission_sha256=expected.admission_sha256) != expected
+        or _publisher._admission_raw_sha256(observed) != expected.admission_sha256
         or bound != expected
         or not isinstance(binding, Mapping)
         or binding.get("state") != "TERMINAL_RELEASE_AUTHORIZED"
@@ -1532,6 +1635,72 @@ def _require_publication_resume_authority(
     return current, output_base, output_child, evidence
 
 
+def _require_exact_current_publication(
+    *, current: LiveStartSession, output_guard: PlainDirectoryMutationGuard,
+) -> None:
+    """Read back the exact session-owned publication; never repair its pointer."""
+    publication = current.publication_binding
+    child = current.output_child_binding
+    operation = current.output_operation_admission_binding
+    if not all(isinstance(item, Mapping) for item in (publication, child, operation)):
+        raise SessionConflictError("live_start_publication_binding_missing")
+    output_guard.validate()
+    if (
+        publication["output_child_path"] != str(output_guard.path)
+        or tuple(publication["output_child_identity"]) != output_guard.identity
+        or child["output_child_path"] != str(output_guard.path)
+        or tuple(child["output_child_identity"]) != output_guard.identity
+        or operation["state"] != "ACTIVE"
+    ):
+        raise SessionConflictError("live_start_publication_binding_changed")
+    try:
+        pointer, _view = _publisher._resolve_current_publication_without_ads(output_guard.path)
+    except (OSError, ValueError) as error:
+        raise SessionConflictError("live_start_publication_current_changed") from error
+    if (
+        pointer.revision != publication["revision"]
+        or "sha256:" + pointer.content_root_sha256 != publication["content_root_sha256"]
+    ):
+        raise SessionConflictError("live_start_publication_current_changed")
+    _publisher.validate_finalized_publication_authority(output_guard.path, pointer)
+    owners = _publisher._load_valid_transactions(output_guard.path)
+    if len(owners) != 1:
+        raise SessionConflictError("live_start_publication_owner_changed")
+    receipt = owners[0][1].live_start_commit_receipt
+    if receipt is None:
+        raise SessionConflictError("live_start_publication_receipt_binding_changed")
+    predecessor = current.to_value()
+    active_child = _session._thaw(child)
+    active_child.pop("content_sha256")
+    active_child.update(
+        claim_state="ACTIVE", claim_identity=receipt.claim_identity,
+        claim_sha256=receipt.claim_sha256,
+    )
+    active_child = _session.seal_embedded_document("output_child_binding", active_child)
+    predecessor.update(
+        phase=LiveStartPhase.PREPUBLICATION_CHECK_PASSED.value,
+        pending_transition=None, publication_binding=None,
+        result_intent=None, output_child_binding=active_child,
+    )
+    predecessor["prepublication_work_binding"].pop("cleanup_completion", None)
+    predecessor_sha256 = _session._seal_session_value(
+        predecessor, session_identity=None,
+    ).content_sha256
+    if (
+        receipt.expected_session_sha256 != predecessor_sha256
+        or receipt.operation_admission_identity != tuple(operation["admission_identity"])
+        or receipt.operation_admission_sha256 != operation["admission_sha256"]
+        or receipt.output_child_identity != output_guard.identity
+        or receipt.pointer_predecessor_identity != publication["prior_current_identity"]
+        or child["content_sha256"] != publication["output_child_binding_sha256"]
+    ):
+        raise SessionConflictError("live_start_publication_receipt_binding_changed")
+    _publisher._require_current_pointer_receipt_exact(
+        output_guard.path, receipt, _publisher.output_publication_bytes(pointer),
+    )
+    output_guard.validate()
+
+
 def _resume_publication_committed(
     *,
     run_model: ConfigureRunModel,
@@ -1553,7 +1722,8 @@ def _resume_publication_committed(
         )
     )
     child = current.output_child_binding
-    assert isinstance(child, Mapping)
+    if not isinstance(child, Mapping):
+        raise SessionConflictError("live_start_output_child_binding_missing")
     with ExitStack() as stack:
         bootstrap_lease = None
         if child.get("claim_state") != "RETIRED":
@@ -1608,6 +1778,12 @@ def _resume_publication_committed(
             != operation_evidence
         ):
             raise ValueError("live_start_output_operation_binding_changed")
+        with ExclusiveFileLock(
+            output_child / ".publish.lock",
+            expected_parent_identity=output_guard.identity,
+            path_guard=output_guard,
+        ):
+            _require_exact_current_publication(current=current, output_guard=output_guard)
         current = _continue_prepublication_cleanup(
             current=current,
             session_lease=session_lease,
@@ -1632,9 +1808,14 @@ def _install_output_operation_admission(
     fault_hook: LiveStartFaultHook,
 ) -> tuple[LiveStartSession, OutputOperationAdmissionEvidence]:
     pending = current.pending_transition
+    if (
+        current.output_operation_admission_binding is None
+        and pending is None
+        and observe_output_operation_admission_under_lease(operation_lease) is not None
+    ):
+        raise ValueError("live_start_output_operation_already_present")
+    _publisher._require_runtime_live_admission_allows_output_mutation(output_child)
     if current.output_operation_admission_binding is None and pending is None:
-        if observe_output_operation_admission_under_lease(operation_lease) is not None:
-            raise ValueError("live_start_output_operation_already_present")
         profile = profile_lease.profile
         planned = build_output_operation_admission_bytes(
             run_id=current.run_id,
@@ -2473,14 +2654,21 @@ def _continue_prepublication_cleanup(
     fault_hook: LiveStartFaultHook,
 ) -> LiveStartSession:
     pending = current.pending_transition
+    work = current.prepublication_work_binding
+    completion = work.get("cleanup_completion") if isinstance(work, Mapping) else None
     cleanup_parent, observed_cleanup_parent_identity = _cleanup_parent(
         session_lease,
         operation_lease=operation_lease,
-        create_if_missing=pending is None,
+        create_if_missing=pending is None and completion is None,
     )
     if pending is None:
         work_binding = current.prepublication_work_binding
-        cleanup_parent_identity = observed_cleanup_parent_identity
+        cleanup_parent_identity = (
+            tuple(completion["cleanup_parent_identity"])
+            if isinstance(completion, Mapping) else observed_cleanup_parent_identity
+        )
+        if isinstance(completion, Mapping) and completion["cleanup_parent_path"] != str(cleanup_parent):
+            raise ValueError("live_start_cleanup_parent_identity_changed")
     elif isinstance(pending, Mapping) and pending.get("operation") == (
         "cleanup_prepublication"
     ):
@@ -2521,10 +2709,34 @@ def _continue_prepublication_cleanup_under_guards(
     quarantine_preflight_complete = False
     if pending is None:
         work = current.prepublication_work_binding
-        assert isinstance(work, Mapping)
+        if not isinstance(work, Mapping):
+            raise SessionConflictError("live_start_prepublication_work_binding_missing")
+        work_root = Path(str(work["work_root"]))
+        if current.phase is LiveStartPhase.PUBLICATION_COMMITTED and "cleanup_completion" in work:
+            _session._validate_prepublication_work_binding(work)
+            completion = work["cleanup_completion"]
+            if (
+                completion["cleanup_parent_path"] != str(cleanup_parent)
+                or tuple(completion["cleanup_parent_identity"]) != cleanup_parent_identity
+            ):
+                raise ValueError("live_start_cleanup_parent_identity_changed")
+            inventory_path = cleanup_parent / f"live-start-{current.run_id}.inventory.json"
+            staging_path = inventory_path.with_name(inventory_path.name + ".staged")
+            completed_surfaces = (
+                inventory_path,
+                staging_path,
+                staging_path.with_name("." + staging_path.name + ".live-start-atomic.tmp"),
+                cleanup_parent / f"live-start-{current.run_id}.quarantine",
+            )
+            cleanup_parent_guard.validate()
+            work_parent_guard.validate()
+            _require_cleanup_work_root_absent(work_parent_guard=work_parent_guard, work_root=work_root)
+            if any(path_lexists(path) for path in completed_surfaces):
+                raise ValueError("live_start_cleanup_foreign_residue_present")
+            return current
         _require_cleanup_work_root_present(
             work_parent_guard=work_parent_guard,
-            work_root=Path(str(work["work_root"])),
+            work_root=work_root,
             expected_identity=tuple(work["work_root_identity"]),
         )
         raw, inventory = _build_cleanup_inventory(
@@ -2562,7 +2774,8 @@ def _continue_prepublication_cleanup_under_guards(
             commit_mode="create_no_replace",
         )
         work = current.prepublication_work_binding
-        assert isinstance(work, Mapping)
+        if not isinstance(work, Mapping):
+            raise SessionConflictError("live_start_prepublication_work_binding_missing")
         prepared = _session._empty_pending_transition(
             session=current,
             operation="cleanup_prepublication",
@@ -2883,7 +3096,8 @@ def _continue_prepublication_cleanup_under_guards(
         inventory = None
     first_cleanup_action = True
     while int(pending["cleanup_cursor"]) < int(pending["cleanup_entry_count"]):
-        assert inventory is not None
+        if inventory is None:
+            raise SessionConflictError("live_start_cleanup_inventory_missing")
         cleanup_parent_guard.validate()
         work_parent_guard.validate()
         _require_cleanup_work_root_absent(
@@ -2960,7 +3174,8 @@ def _continue_prepublication_cleanup_under_guards(
             cursor=cursor + 1,
         )
         pending = current.pending_transition
-        assert isinstance(pending, Mapping)
+        if not isinstance(pending, Mapping):
+            raise SessionConflictError("live_start_cleanup_pending_missing")
         first_cleanup_action = False
 
     staging_path = inventory_path.with_name(inventory_path.name + ".staged")
@@ -3035,7 +3250,12 @@ def _continue_prepublication_cleanup_under_guards(
         session_lease=session_lease,
         expected_session=current,
         event="same_phase_cas",
-        changes={"pending_transition": None},
+        changes={
+            "pending_transition": None,
+            "prepublication_work_binding": _session._completed_prepublication_work_binding(
+                current.prepublication_work_binding, pending,
+            ),
+        },
     )
     _emit_pipeline_event("prepublication_cleanup_complete_cas")
     return current
@@ -3208,9 +3428,1886 @@ def _drive_live_start_pipeline(
         )
 
 
+def _safe_live_start_deck_name(value: object) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 128
+        or value != value.strip()
+        or any(ord(character) < 0x20 for character in value)
+    ):
+        return None
+    return value
+
+
+class _LiveStartCaptureFailure(RuntimeError):
+    """A late acquisition failure with an already validated immutable roster."""
+
+    def __init__(self, deck: FrozenJsonDocument) -> None:
+        super().__init__("live_start_input_acquisition_failed")
+        self.deck = deck
+
+
+def _pre_session_result(
+    *,
+    status: Literal["PROFILE_REQUIRED", "FAILED_PRESERVED"],
+    deck_name: str | None,
+    error_code: str,
+    validated_deck: FrozenJsonDocument | None = None,
+) -> LiveStartResult:
+    if status not in {"PROFILE_REQUIRED", "FAILED_PRESERVED"}:
+        raise ValueError("live_start_pre_session_status_invalid")
+    if (
+        not isinstance(error_code, str)
+        or _session._SAFE_TOKEN.fullmatch(error_code) is None
+    ):
+        raise ValueError("live_start_pre_session_error_code_invalid")
+    safe_name = _safe_live_start_deck_name(deck_name)
+    unique = None
+    if validated_deck is not None:
+        if (
+            status != "FAILED_PRESERVED" or safe_name is None
+            or not isinstance(validated_deck, FrozenJsonDocument)
+        ):
+            raise ValueError("live_start_pre_session_roster_invalid")
+        deck = validated_deck.to_value()
+        if deck["deck_identity"]["deck_name"] != safe_name:
+            raise ValueError("live_start_pre_session_roster_name_mismatch")
+        unique = len(deck["deck_identity"]["cards"])
+        if unique < 1:
+            raise ValueError("live_start_pre_session_roster_invalid")
+    unsigned = {
+        "schema_version": 1,
+        "summary_kind": _PRE_SESSION_SUMMARY_KIND,
+        "status": status,
+        "run_root": None,
+        "deck_name": safe_name,
+        "candidate_revision": None,
+        "unique_main_deck_cards": unique,
+        "configured_cards": None,
+        "deliberately_unconfigured_cards": None,
+        "review_confidence": None,
+        "visible_limitations": [],
+        "error_code": error_code,
+        "retained_safe_state": "NO_SESSION_OR_RUNTIME_WRITE",
+    }
+    canonical = FrozenJsonDocument.from_value(unsigned).canonical_json
+    summary = FrozenJsonDocument.from_value(
+        {
+            **unsigned,
+            "content_sha256": "sha256:" + sha256(canonical).hexdigest(),
+        }
+    )
+    if len(summary.canonical_json) > 16 * 1024:
+        raise ValueError("live_start_pre_session_summary_too_large")
+    return LiveStartResult(status=status, run_root=None, summary=summary)
+
+
+def _validate_live_start_request(request: LiveStartRequest) -> None:
+    if not isinstance(request, LiveStartRequest):
+        raise TypeError("live_start_request_required")
+    if _safe_live_start_deck_name(request.deck_name) is None:
+        raise ValueError("live_start_deck_name_invalid")
+    if (
+        not isinstance(request.deck_code, str)
+        or not request.deck_code
+        or request.deck_code != request.deck_code.strip()
+        or len(request.deck_code) > 16 * 1024
+    ):
+        raise ValueError("live_start_deck_code_invalid")
+    if type(request.preview_requested) is not bool:
+        raise ValueError("live_start_preview_requested_invalid")
+    normalized = request.deck_code + "=" * (-len(request.deck_code) % 4)
+    try:
+        parsed = parse_deckstring(normalized)
+    except Exception as error:
+        raise ValueError("live_start_deck_code_invalid") from error
+    cards = getattr(parsed, "cards", parsed[0] if isinstance(parsed, tuple) else None)
+    if not cards:
+        raise ValueError("live_start_deck_code_invalid")
+
+
+def _policy_profile_value() -> dict[str, Any]:
+    policy = load_policy_profile()
+    return {
+        "policy_id": policy.policy_id,
+        "version": policy.version,
+        "effective_date": policy.effective_date,
+        "content_sha256": policy.content_sha256,
+        "rules": json.loads(policy.rules_canonical_json),
+    }
+
+
+def _capture_live_start_inputs(
+    request: LiveStartRequest,
+    profile: OperatorProfile,
+    deck_output_binding: DeckOutputBinding,
+) -> FrozenCompilerInputs:
+    """Capture every mutable preparation input once, then seal it."""
+
+    cards_payload = load_cards(
+        None, deck_name=request.deck_name, deck_code=request.deck_code,
+        allow_placeholder=False,
+    )
+    cards_payload["deck_code"] = request.deck_code
+    deck_identity = build_deck_identity(
+        deck_name=request.deck_name, deck_code=request.deck_code,
+        cards=cards_payload["cards"],
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
+    )
+    deck = FrozenJsonDocument.from_value(
+        {"cards_payload": cards_payload, "deck_identity": deck_identity}
+    )
+    full_cards = FrozenJsonDocument.from_value(
+        fetch_latest_cards(timeout=10.0)
+    )
+    collectible_cards = FrozenJsonDocument.from_value(
+        fetch_latest_collectible_cards(timeout=10.0)
+    )
+    _validate_deck_and_card_closure(
+        deck.to_value(), full_cards=full_cards.to_value(),
+        collectible_cards=collectible_cards.to_value(),
+    )
+    bound_date = date.today()
+    arguments = argparse.Namespace(
+        command="prepare",
+        deck_name=request.deck_name,
+        deck_code=request.deck_code,
+        out=str(deck_output_binding.output_root),
+        runtime_root=str(profile.runtime_root),
+        guide_sources_json=None,
+        source_documents_json=None,
+        auto_research_fallback=False,
+        json=True,
+        cards_json=None,
+        claims_json=None,
+        plan_reports_dir=None,
+        allow_placeholder=False,
+        current_date=bound_date.isoformat(),
+        collectible_cards_json=None,
+        full_cards_json=None,
+        skip_semantic_fetch=False,
+        source_evidence_json=None,
+    )
+    try:
+        return _capture_live_start_source_inputs(
+            request=request, profile=profile, deck_output_binding=deck_output_binding,
+            deck=deck, full_cards=full_cards, collectible_cards=collectible_cards,
+            bound_date=bound_date, arguments=arguments,
+        )
+    except (SessionCapabilityError, SessionConflictError, _session.SessionValidationError):
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError):
+        raise _LiveStartCaptureFailure(deck) from None
+
+
+def _capture_live_start_source_inputs(
+    *, request: LiveStartRequest, profile: OperatorProfile,
+    deck_output_binding: DeckOutputBinding, deck: FrozenJsonDocument,
+    full_cards: FrozenJsonDocument, collectible_cards: FrozenJsonDocument,
+    bound_date: date, arguments: argparse.Namespace,
+) -> FrozenCompilerInputs:
+    preconfig = build_preconfig_context(
+        arguments,
+        current_date=bound_date,
+        source_authority_consumer="prepare",
+        load_cards_fn=lambda *_args, **_kwargs: deck.to_value()["cards_payload"],
+        fetch_latest_cards_fn=lambda timeout=10.0: deepcopy(
+            full_cards.to_value()
+        ),
+        fetch_latest_collectible_cards_fn=lambda timeout=10.0: deepcopy(
+            collectible_cards.to_value()
+        ),
+    )
+    baseline_receipt = load_globalvalues_baseline(profile.runtime_root)
+    baseline = normalize_globalvalues_decision_baseline(
+        baseline_receipt["baseline"]
+    )
+    preconfig = {
+        **preconfig,
+        "cards_payload": {**preconfig["cards_payload"], "deck_code": request.deck_code},
+        "policy_profile": _policy_profile_value(),
+        "globalvalues_baseline": baseline,
+        "globalvalues_baseline_receipt": baseline_receipt,
+    }
+    snapshot = PackageResolutionSnapshot.from_preconfig(preconfig)
+    return freeze_compiler_inputs(
+        snapshot=snapshot,
+        deck={
+            "cards_payload": preconfig["cards_payload"],
+            "deck_identity": preconfig["deck_identity"],
+        },
+        full_cards=full_cards,
+        collectible_cards=collectible_cards,
+        source_acquisition={
+            "guide_builder_receipt": preconfig["guide_builder_receipt"],
+            "source_evidence_report": preconfig["source_evidence_report"],
+        },
+        source_documents={
+            "guide_sources": preconfig["guide_sources_generated"]
+        },
+        globalvalues_baseline=baseline,
+        bound_date=bound_date.isoformat(),
+        runtime_grammar_version=_RUNTIME_GRAMMAR_VERSION,
+        compiler_contract_id=_COMPILER_CONTRACT_ID,
+        operator_profile=profile,
+        deck_output_binding=deck_output_binding,
+    )
+
+
+def _require_or_create_plain_child(parent: Path, name: str) -> Path:
+    child = parent / name
+    parent_identity = path_identity(parent)
+    try:
+        status = child.lstat()
+    except FileNotFoundError:
+        identity = secure_create_directory(
+            child,
+            expected_parent_identity=parent_identity,
+        )
+        status = child.lstat()
+        if path_identity_from_status(status) != identity:
+            raise SessionConflictError("live_start_context_directory_changed")
+    if (
+        not stat.S_ISDIR(status.st_mode)
+        or status_is_reparse(status)
+        or path_identity(parent) != parent_identity
+    ):
+        raise SessionConflictError("live_start_context_directory_invalid")
+    require_plain_directory(child)
+    return child
+
+
+def _materialize_starter_context(
+    *,
+    local_app_data_root: Path,
+    run_id: str,
+    payload: bytes,
+) -> Path:
+    state_root = local_app_data_root / "HSConfig"
+    require_plain_directory(state_root)
+    contexts_root = _require_or_create_plain_child(state_root, "contexts")
+    context_root = _require_or_create_plain_child(contexts_root, run_id)
+    path = context_root / "starter_context.json"
+    if path_lexists(path):
+        if _read_plain_bytes(path, maximum_size=STARTER_CONTEXT_MAX_BYTES) != payload:
+            raise SessionConflictError("live_start_external_context_changed")
+        return path
+    atomic_write_reserved_bytes(
+        path=path,
+        payload=payload,
+        expected_parent_identity=path_identity(context_root),
+        expected_predecessor_identity=None,
+        expected_predecessor_sha256=None,
+        maximum_size=2 * 1024 * 1024,
+    )
+    return path
+
+
+def _starter_context_limitations(context_value: Mapping[str, Any]) -> tuple[str, ...]:
+    source_evidence = context_value.get("source_evidence")
+    summary = (
+        source_evidence.get("guide_sources_summary")
+        if isinstance(source_evidence, Mapping)
+        else None
+    )
+    source_depth = (
+        summary.get("source_depth_status")
+        if isinstance(summary, Mapping)
+        else None
+    )
+    if source_depth == "source_backed":
+        return ()
+    return ("Guide depth is limited; static card semantics remain visible.",)
+
+
+def _read_plain_bytes(path: Path, *, maximum_size: int) -> bytes:
+    status = plain_file_status(path)
+    raw = read_file_no_follow(
+        path,
+        expected_status=status,
+        maximum_size=maximum_size,
+    )
+    if len(raw) != status.st_size:
+        raise SessionConflictError("live_start_external_document_changed")
+    return raw
+
+
+def _write_external_authority_source(
+    *,
+    session_root: Path,
+    name: str,
+    payload: bytes,
+) -> Path:
+    state_root = session_root.parent.parent
+    contexts_root = _require_or_create_plain_child(state_root, "contexts")
+    context_root = _require_or_create_plain_child(
+        contexts_root,
+        session_root.name,
+    )
+    path = context_root / name
+    if path_lexists(path):
+        if _read_plain_bytes(path, maximum_size=max(1, len(payload))) != payload:
+            raise SessionConflictError("live_start_external_authority_changed")
+        return path
+    atomic_write_reserved_bytes(
+        path=path,
+        payload=payload,
+        expected_parent_identity=path_identity(context_root),
+        expected_predecessor_identity=None,
+        expected_predecessor_sha256=None,
+        maximum_size=max(1, len(payload)),
+    )
+    return path
+
+
+def _load_unsigned_draft(path: Path, *, maximum_size: int) -> dict[str, Any]:
+    raw = _read_plain_bytes(Path(path), maximum_size=maximum_size)
+    document = FrozenJsonDocument.from_json_bytes(raw)
+    value = document.to_value()
+    if not isinstance(value, dict):
+        raise ValueError("live_start_draft_not_object")
+    return value
+
+
+def _ensure_session_artifact_parent(
+    *,
+    session_root: Path,
+    logical_path: str,
+) -> Path:
+    parts = logical_path.split("/")
+    if len(parts) != 2 or parts[0] not in {"starter", "receipts"}:
+        raise SessionConflictError("live_start_document_path_invalid")
+    return _require_or_create_plain_child(session_root, parts[0])
+
+
+def _materialize_pending_document(
+    *,
+    session_root: Path,
+    current: LiveStartSession,
+    row: Mapping[str, Any],
+) -> None:
+    actions = _session._require_starter_document_pending_rows(current, root=session_root)
+    pending = current.pending_transition
+    if (
+        not actions or pending["stage"] != "PRIMARY_APPLIED"
+        or pending["next_action_index"] >= len(actions)
+        or actions[pending["next_action_index"]] != row
+    ):
+        raise SessionConflictError("live_start_document_action_invalid")
+    logical_path = str(row["logical_path"])
+    target = session_root / logical_path
+    source = Path(str(row["source_path"]))
+    require_plain_directory(source.parent)
+    source_status = plain_file_status(source)
+    if (
+        path_identity_from_status(source_status) != tuple(row["source_identity"])
+        or path_identity(source.parent) != tuple(row["source_parent_identity"])
+    ):
+        raise SessionConflictError("live_start_pending_source_changed")
+    expected_size = int(row["size"])
+    expected_sha256 = str(row["sha256"])
+    payload = read_file_no_follow(
+        source, expected_status=source_status, maximum_size=max(1, expected_size)
+    )
+    if len(payload) != expected_size or _sha256_bytes(payload) != expected_sha256:
+        raise SessionConflictError("live_start_pending_source_changed")
+    parent = _ensure_session_artifact_parent(
+        session_root=session_root,
+        logical_path=logical_path,
+    )
+    parent_identity = path_identity(parent)
+    reserved = target.with_name(f".{target.name}.live-start-atomic.tmp")
+    if path_lexists(reserved):
+        reserved_status = plain_file_status(reserved)
+        if reserved_status.st_size > 2 * 1024 * 1024:
+            raise SessionConflictError("live_start_document_reserved_temp_size_invalid")
+        secure_unlink(
+            reserved, expected_identity=path_identity_from_status(reserved_status),
+            expected_parent_identity=parent_identity, missing_ok=False,
+        )
+    def recheck_source() -> None:
+        require_plain_directory(source.parent)
+        if (
+            path_identity(source.parent) != tuple(row["source_parent_identity"])
+            or path_identity(source) != tuple(row["source_identity"])
+            or read_file_no_follow(
+                source, expected_status=source_status, maximum_size=max(1, expected_size)
+            ) != payload
+        ):
+            raise SessionConflictError("live_start_pending_source_changed")
+
+    write_maximum_size = max(1, expected_size)
+    if path_lexists(target):
+        status = plain_file_status(target)
+        if status.st_size > 2 * 1024 * 1024:
+            raise SessionConflictError("live_start_pending_target_size_invalid")
+        write_maximum_size = max(write_maximum_size, status.st_size)
+        existing = read_file_no_follow(
+            target,
+            expected_status=status,
+            maximum_size=write_maximum_size,
+        )
+        existing_sha256 = _sha256_bytes(existing)
+        if existing_sha256 == expected_sha256 and existing == payload:
+            recheck_source()
+            return
+        predecessor_sha256 = current.artifact_bindings.get(logical_path)
+        if predecessor_sha256 != existing_sha256:
+            raise SessionConflictError("live_start_pending_target_changed")
+        predecessor_identity = path_identity_from_status(status)
+    else:
+        if logical_path in current.artifact_bindings:
+            raise SessionConflictError("live_start_pending_predecessor_missing")
+        predecessor_identity = None
+        predecessor_sha256 = None
+    recheck_source()
+    atomic_write_reserved_bytes(
+        path=target,
+        payload=payload,
+        expected_parent_identity=parent_identity,
+        expected_predecessor_identity=predecessor_identity,
+        expected_predecessor_sha256=predecessor_sha256,
+        maximum_size=write_maximum_size,
+    )
+
+
+def _retire_pending_document(
+    *,
+    session_root: Path,
+    row: Mapping[str, Any],
+    successor_bindings: Mapping[str, Any],
+) -> None:
+    logical_path = str(row["logical_path"])
+    target = session_root / logical_path
+    if path_lexists(target):
+        status = plain_file_status(target)
+        parent_identity = path_identity(target.parent)
+        raw = read_file_no_follow(
+            target, expected_status=status, maximum_size=int(row["size"])
+        )
+        if len(raw) != row["size"] or _sha256_bytes(raw) != row["sha256"]:
+            raise SessionConflictError("live_start_retired_document_changed")
+        secure_unlink(
+            target,
+            expected_identity=path_identity_from_status(status),
+            expected_parent_identity=parent_identity,
+            missing_ok=False,
+        )
+    if not path_lexists(target.parent):
+        return
+    parent_identity = path_identity(target.parent)
+    if not any(
+        logical.startswith(f"{target.parent.name}/")
+        for logical in successor_bindings
+    ):
+        try:
+            next(target.parent.iterdir())
+        except StopIteration:
+            secure_rmdir_verified(
+                target.parent,
+                expected_identity=parent_identity,
+                expected_parent_identity=path_identity(session_root),
+            )
+
+
+def _continue_pending_document_install(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    final_event: str,
+) -> LiveStartSession:
+    pending = current.pending_transition
+    if not isinstance(pending, Mapping):
+        raise SessionConflictError("live_start_document_pending_missing")
+    _session._require_session_lease(session_lease)
+    if not _session._require_starter_document_pending_rows(
+        current, root=session_lease.session_root
+    ):
+        raise SessionConflictError("live_start_document_actions_invalid")
+    if pending["stage"] == "PREPARED":
+        pending_value = _session._thaw(pending)
+        pending_value.pop("content_sha256", None)
+        pending_value["stage"] = "PRIMARY_APPLIED"
+        current = _session._transition_receipt_authorized_under_lock(
+            session_lease=session_lease,
+            expected_session=current,
+            event="same_phase_cas",
+            changes={
+                "pending_transition": _session._seal_pending(pending_value)
+            },
+        )
+        pending = current.pending_transition
+        if not isinstance(pending, Mapping):
+            raise SessionConflictError("live_start_document_pending_missing")
+    if pending["stage"] != "PRIMARY_APPLIED":
+        raise SessionConflictError("live_start_document_pending_stage_invalid")
+    actions = pending["actions"]
+    if not _session._starter_document_pending_rows(current):
+        raise SessionConflictError("live_start_document_actions_invalid")
+    _session._validate_starter_document_postconditions(
+        session_lease=session_lease, session=current
+    )
+    action_index = int(pending["next_action_index"])
+    while action_index < len(actions):
+        row = actions[action_index]
+        if not isinstance(row, Mapping):
+            raise SessionConflictError("live_start_document_action_invalid")
+        if row.get("action") == "install":
+            _materialize_pending_document(
+                session_root=session_lease.session_root,
+                current=current,
+                row=row,
+            )
+        elif row.get("action") == "retire":
+            _retire_pending_document(
+                session_root=session_lease.session_root,
+                row=row,
+                successor_bindings=pending["successor_artifact_bindings"],
+            )
+        else:
+            raise SessionConflictError("live_start_document_action_invalid")
+        pending_value = _session._thaw(pending)
+        pending_value.pop("content_sha256", None)
+        action_index += 1
+        pending_value["next_action_index"] = action_index
+        current = _session._transition_receipt_authorized_under_lock(
+            session_lease=session_lease,
+            expected_session=current,
+            event="same_phase_cas",
+            changes={
+                "pending_transition": _session._seal_pending(pending_value)
+            },
+        )
+        pending = current.pending_transition
+        if not isinstance(pending, Mapping):
+            raise SessionConflictError("live_start_document_pending_missing")
+    _session._validate_starter_document_postconditions(
+        session_lease=session_lease, session=current, complete=True
+    )
+    return _session._transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=current,
+        event=final_event,
+        changes={
+            "artifact_bindings": pending["successor_artifact_bindings"],
+            "pending_transition": None,
+        },
+    )
+
+
+def _install_session_documents(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    operation: str,
+    final_event: str,
+    documents: Mapping[str, bytes],
+) -> LiveStartSession:
+    successor_bindings = dict(current.artifact_bindings)
+    retire_rows: list[dict[str, Any]] = []
+    if final_event == "replacement_draft":
+        for logical_path in _session._DOWNSTREAM_REVISION_ARTIFACTS:
+            digest = successor_bindings.pop(logical_path, None)
+            path = session_lease.session_root / logical_path
+            if digest is not None and path_lexists(path):
+                raw = _read_plain_bytes(path, maximum_size=64 * 1024 * 1024)
+                retire_rows.append(
+                    {
+                        "action": "retire",
+                        "logical_path": logical_path,
+                        "size": len(raw),
+                        "sha256": digest,
+                    }
+                )
+    install_rows: list[dict[str, Any]] = []
+    for index, (logical_path, payload) in enumerate(sorted(documents.items())):
+        digest = _sha256_bytes(payload)
+        source_path = _write_external_authority_source(
+            session_root=session_lease.session_root,
+            name=(
+                f"{operation}-r{current.candidate_revision}-"
+                f"u{current.revisions_used}-{index}-{Path(logical_path).name}"
+            ),
+            payload=payload,
+        )
+        successor_bindings[logical_path] = digest
+        install_rows.append(
+            {
+                "action": "install",
+                "logical_path": logical_path,
+                "source_path": str(source_path),
+                "source_identity": list(path_identity(source_path)),
+                "source_parent_identity": list(path_identity(source_path.parent)),
+                "size": len(payload),
+                "sha256": digest,
+            }
+        )
+    pending = _session._empty_pending_transition(
+        session=current,
+        operation=operation,
+        external_file_action=None,
+    )
+    target_phase = {
+        "initial_draft": LiveStartPhase.CANDIDATE_DRAFTED,
+        "replacement_draft": LiveStartPhase.CANDIDATE_DRAFTED,
+        "candidate_valid": LiveStartPhase.CANDIDATE_VALIDATED,
+        "review_approved": LiveStartPhase.REVIEW_APPROVED,
+    }[final_event]
+    pending.update(
+        {
+            "target_phase": target_phase.value,
+            "target_candidate_revision": (
+                current.candidate_revision + 1
+                if final_event == "replacement_draft"
+                else current.candidate_revision
+            ),
+            "successor_artifact_bindings": successor_bindings,
+            "actions": [*install_rows, *retire_rows],
+        }
+    )
+    prepared = _session._transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=current,
+        event="same_phase_cas",
+        changes={"pending_transition": _session._seal_pending(pending)},
+    )
+    return _continue_pending_document_install(
+        session_lease=session_lease,
+        current=prepared,
+        final_event=final_event,
+    )
+
+
+def _load_bound_starter_context(
+    *,
+    session_root: Path,
+) -> StarterContext:
+    document = load_starter_document(
+        session_root / "starter/starter_context.json",
+        maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+        expected_fields=SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    return validate_starter_context_document(document)
+
+
+def _load_bound_candidate(
+    *,
+    session_root: Path,
+    context: StarterContext,
+) -> ValidatedStarterCandidate:
+    document = load_starter_document(
+        session_root / "starter/starter_config_candidate.json",
+        maximum_bytes=STARTER_CANDIDATE_MAX_BYTES,
+        expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    return validate_starter_candidate(document, context=context)
+
+
+def _load_bound_revision_review(
+    *, session_root: Path, current: LiveStartSession, context: StarterContext,
+) -> ValidatedStarterReview:
+    logical_path = "starter/starter_config_review.json"
+    raw = _read_plain_bytes(
+        session_root / logical_path, maximum_size=STARTER_REVIEW_MAX_BYTES + 1,
+    )
+    if _sha256_bytes(raw) != current.artifact_bindings[logical_path]:
+        raise SessionConflictError("live_start_revision_review_bytes_changed")
+    # Requested reviews retain Session-canonical bytes (including one LF).
+    # Preserve their claimed self-digest; validation must never repair it.
+    value = _session._decode_canonical_json(raw)
+    document = StarterDocument(
+        document=FrozenJsonDocument.from_value(value),
+        content_sha256=value.get("content_sha256"),
+    )
+    candidate = _load_bound_candidate(session_root=session_root, context=context)
+    review = validate_starter_review(document, context=context, candidate=candidate)
+    if (review.review_status != "revision_requested"
+        or review.candidate_revision != current.candidate_revision):
+        raise SessionConflictError("live_start_revision_review_cursor_invalid")
+    return review
+
+
+def _review_revision_diagnostic(
+    *, current: LiveStartSession, review: ValidatedStarterReview,
+) -> FrozenJsonDocument:
+    requests = [row.to_value() for row in review.revision_requests]
+    return _sealed_diagnostic({
+        "schema_version": 1,
+        "diagnostic_kind": "live_start_review_validation",
+        "status": "revision_required",
+        "candidate_revision": current.candidate_revision,
+        "next_candidate_revision": current.candidate_revision + 1,
+        "revisions_used": current.revisions_used,
+        "findings": [row["code"] for row in requests],
+        "revision_requests": requests,
+    })
+
+
+def _candidate_counts(
+    *,
+    context: StarterContext | None,
+    candidate: ValidatedStarterCandidate | None,
+    frozen: FrozenCompilerInputs | None = None,
+) -> tuple[int, int | None, int | None]:
+    if context is None:
+        if candidate is not None or frozen is None:
+            raise SessionConflictError("live_start_failure_count_authority_missing")
+        return len(frozen.deck.to_value()["deck_identity"]["cards"]), None, None
+    cards = context.document.to_value()["cards"]
+    unique_cards = len(cards)
+    if candidate is None:
+        return unique_cards, None, None
+    dispositions = candidate.document.to_value()["card_dispositions"]
+    configured = sum(
+        row["disposition"] == "configured" for row in dispositions
+    )
+    return unique_cards, configured, unique_cards - configured
+
+
+def _failure_result_intent(
+    *,
+    current: LiveStartSession,
+    context: StarterContext | None,
+    candidate: ValidatedStarterCandidate | None,
+    error_code: str,
+    frozen: FrozenCompilerInputs | None = None,
+) -> Mapping[str, Any]:
+    unique, configured, unconfigured = _candidate_counts(
+        context=context,
+        candidate=candidate,
+        frozen=frozen,
+    )
+    publication = current.publication_binding
+    if isinstance(publication, Mapping):
+        publication_revision = publication["revision"]
+        publication_sha256 = publication["content_root_sha256"]
+        retained_safe_state = "PUBLICATION_RETAINED_RUNTIME_UNCHANGED"
+    else:
+        publication_revision = None
+        publication_sha256 = None
+        retained_safe_state = "NO_PUBLICATION_OR_RUNTIME_WRITE"
+    return _session.seal_embedded_document(
+        "result_intent",
+        {
+            "schema_version": 1,
+            "intent_kind": _session.LIVE_START_RESULT_INTENT_KIND,
+            "run_id": current.run_id,
+            "terminal_status": "FAILED_PRESERVED",
+            "deck_name": current.deck_name,
+            "candidate_revision": current.candidate_revision,
+            "unique_main_deck_cards": unique,
+            "configured_cards": configured,
+            "deliberately_unconfigured_cards": unconfigured,
+            "review_confidence": None,
+            "visible_limitations": list(
+                _starter_context_limitations(context.document.to_value())
+                if context is not None else ()
+            ),
+            "apply_attempt_id": None,
+            "publication_revision": publication_revision,
+            "publication_content_root_sha256": publication_sha256,
+            "raw_apply_status": None,
+            "physical_disposition": None,
+            "runtime_match_status": "not_run",
+            "runtime_match_sha256": None,
+            "package_root_sha256": None,
+            "last_apply_receipt_sha256": None,
+            "runtime_state_sha256": None,
+            "deck_config_ini_sha256": None,
+            "retained_attempt_record_path": None,
+            "retained_attempt_record_identity": None,
+            "retained_attempt_record_sha256": None,
+            "retained_journal_path": None,
+            "retained_journal_identity": None,
+            "retained_journal_sha256": None,
+            "retained_target_owner_journal_path": None,
+            "retained_target_owner_journal_identity": None,
+            "retained_target_owner_journal_sha256": None,
+            "retained_candidate_identity": None,
+            "runtime_admission_path": None,
+            "runtime_admission_parent_identity": None,
+            "runtime_admission_identity": None,
+            "runtime_admission_sha256": None,
+            "error_code": error_code,
+            "retained_safe_state": retained_safe_state,
+        },
+    )
+
+
+def _load_terminal_result(
+    *,
+    session_root: Path,
+    terminal: LiveStartSession,
+) -> LiveStartResult:
+    if terminal.terminal_status is None:
+        raise SessionConflictError("live_start_terminal_result_missing")
+    raw = _read_plain_bytes(
+        session_root / "result/summary.json",
+        maximum_size=_session.LIVE_START_RESULT_SUMMARY_MAX_BYTES,
+    )
+    summary = FrozenJsonDocument.from_json_bytes(raw)
+    return LiveStartResult(
+        status=terminal.terminal_status,  # type: ignore[arg-type]
+        run_root=session_root,
+        summary=summary,
+    )
+
+
+def _terminalize_preapply_failure_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    context: StarterContext | None,
+    candidate: ValidatedStarterCandidate | None,
+    error_code: str,
+) -> LiveStartResult:
+    frozen = None
+    if context is None:
+        if candidate is not None:
+            raise SessionConflictError("live_start_failure_count_authority_missing")
+        current_on_disk = _session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        if current_on_disk != current:
+            raise SessionConflictError("live_start_failure_session_changed")
+        frozen = load_frozen_compiler_inputs(session_lease.session_root)
+    intent = _failure_result_intent(
+        current=current,
+        context=context,
+        candidate=candidate,
+        error_code=error_code,
+        frozen=frozen,
+    )
+    intent_cursor = _session._transition_receipt_authorized_under_lock(
+        session_lease=session_lease,
+        expected_session=current,
+        event="same_phase_cas",
+        changes={"result_intent": intent},
+    )
+    terminal = _session.complete_live_start_under_lock(
+        session_lease=session_lease,
+        expected_result_session=intent_cursor,
+    )
+    return _load_terminal_result(
+        session_root=session_lease.session_root,
+        terminal=terminal,
+    )
+
+
+def _sealed_diagnostic(value: Mapping[str, Any]) -> FrozenJsonDocument:
+    unsigned = dict(value)
+    canonical = FrozenJsonDocument.from_value(unsigned).canonical_json
+    return FrozenJsonDocument.from_value(
+        {
+            **unsigned,
+            "content_sha256": "sha256:" + sha256(canonical).hexdigest(),
+        }
+    )
+
+
+def prepare_live_start(
+    request: LiveStartRequest,
+) -> LiveStartPreparation | LiveStartResult:
+    """Freeze one fresh run and expose only its schema-2 strategy context."""
+
+    try:
+        _validate_live_start_request(request)
+    except (TypeError, ValueError):
+        deck_name = request.deck_name if isinstance(request, LiveStartRequest) else None
+        return _pre_session_result(
+            status="FAILED_PRESERVED",
+            deck_name=deck_name,
+            error_code="deck_or_input_invalid",
+        )
+    try:
+        profile = load_operator_profile()
+        revalidate_operator_profile(profile)
+        if not profile.live_by_default and not request.preview_requested:
+            raise ValueError("operator_profile_live_disabled")
+        deck_output_binding = derive_deck_output_binding(
+            profile,
+            request.deck_name,
+        )
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return _pre_session_result(
+            status="PROFILE_REQUIRED",
+            deck_name=request.deck_name,
+            error_code="operator_profile_required",
+        )
+    try:
+        frozen = _capture_live_start_inputs(
+            request,
+            profile,
+            deck_output_binding,
+        )
+    except (SessionCapabilityError, SessionConflictError, _session.SessionValidationError):
+        raise
+    except _LiveStartCaptureFailure as error:
+        return _pre_session_result(
+            status="FAILED_PRESERVED", deck_name=request.deck_name,
+            error_code="deck_or_input_invalid", validated_deck=error.deck,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return _pre_session_result(
+            status="FAILED_PRESERVED",
+            deck_name=request.deck_name,
+            error_code="deck_or_input_invalid",
+        )
+
+    local_app_data_value = os.environ.get("LOCALAPPDATA")
+    if not local_app_data_value:
+        return _pre_session_result(
+            status="FAILED_PRESERVED",
+            deck_name=request.deck_name,
+            error_code="deck_or_input_invalid",
+        )
+    local_app_data_root = Path(local_app_data_value)
+    run_id = secrets.token_hex(16)
+    run_root = local_app_data_root / "HSConfig" / "runs" / run_id
+    deck_code_sha256 = "sha256:" + sha256(
+        request.deck_code.encode("utf-8")
+    ).hexdigest()
+    created = None
+    try:
+        created = _session.create_live_start_session(
+            session_root=run_root,
+            local_app_data_root=local_app_data_root,
+            repository_root=Path(__file__).resolve().parents[2],
+            runtime_root=profile.runtime_root,
+            output_base_root=profile.output_base_root,
+            output_deck_root=deck_output_binding.output_root,
+            installed_skill_root=Path.home() / ".codex" / "skills" / "hsconfig",
+            deck_name=request.deck_name,
+            deck_code_sha256=deck_code_sha256,
+            preview_requested=request.preview_requested,
+            frozen_compiler_inputs=frozen,
+        )
+        context = build_single_candidate_starter_context(frozen)
+        context_path = _materialize_starter_context(
+            local_app_data_root=local_app_data_root,
+            run_id=created.run_id,
+            payload=context.document.canonical_json,
+        )
+    except (SessionCapabilityError, SessionConflictError, _session.SessionValidationError):
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError):
+        if created is not None:
+            with _session.lease_live_start_session(run_root) as session_lease:
+                current = _session.load_live_start_session_under_lock(
+                    session_lease=session_lease
+                )
+                return _terminalize_preapply_failure_under_lock(
+                    session_lease=session_lease, current=current,
+                    context=None, candidate=None,
+                    error_code="deck_or_input_invalid",
+                )
+        if not run_root.exists():
+            return _pre_session_result(
+                status="FAILED_PRESERVED",
+                deck_name=request.deck_name,
+                error_code="deck_or_input_invalid",
+            )
+        raise
+    return LiveStartPreparation(
+        run_root=run_root,
+        starter_context_path=context_path,
+        candidate_revision=1,
+        visible_limitations=_starter_context_limitations(
+            context.document.to_value()
+        ),
+    )
+
+
+def validate_live_start_candidate(
+    *,
+    session_root: Path,
+    draft_path: Path,
+) -> FrozenJsonDocument:
+    """Seal, install, and validate one lead candidate for the current revision."""
+
+    with _session.lease_live_start_session(Path(session_root)) as session_lease:
+        current = _session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        if current.terminal_status is not None:
+            return _load_terminal_result(
+                session_root=session_lease.session_root,
+                terminal=current,
+            ).summary
+        if current.phase is LiveStartPhase.INPUT_FROZEN:
+            expected_revision = current.candidate_revision
+            final_event = "initial_draft"
+        elif (
+            current.phase is LiveStartPhase.CANDIDATE_DRAFTED
+            and current.revisions_used == current.candidate_revision
+            and current.candidate_revision < 3
+        ):
+            expected_revision = current.candidate_revision + 1
+            final_event = "replacement_draft"
+        else:
+            raise SessionConflictError("live_start_candidate_cursor_invalid")
+        frozen = load_frozen_compiler_inputs(session_lease.session_root)
+        context = build_single_candidate_starter_context(frozen)
+        draft = _load_unsigned_draft(
+            Path(draft_path),
+            maximum_size=STARTER_CANDIDATE_MAX_BYTES,
+        )
+        try:
+            candidate_document = seal_starter_document(
+                draft,
+                expected_fields=SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
+                schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            )
+        except (TypeError, ValueError):
+            return _terminalize_preapply_failure_under_lock(
+                session_lease=session_lease, current=current, context=context,
+                candidate=None, error_code="candidate_document_invalid",
+            ).summary
+        if candidate_document.to_value()["candidate_revision"] != expected_revision:
+            return _terminalize_preapply_failure_under_lock(
+                session_lease=session_lease, current=current, context=context,
+                candidate=None, error_code="candidate_revision_invalid",
+            ).summary
+        documents = {
+            "starter/starter_config_candidate.json": (
+                candidate_document.canonical_json
+            )
+        }
+        if current.phase is LiveStartPhase.INPUT_FROZEN:
+            documents["starter/starter_context.json"] = (
+                context.document.canonical_json
+            )
+        current = _install_session_documents(
+            session_lease=session_lease,
+            current=current,
+            operation="install_candidate",
+            final_event=final_event,
+            documents=documents,
+        )
+        _cursor, result = _validate_installed_candidate_under_lock(
+            session_lease=session_lease, current=current, context=context
+        )
+        return result
+
+
+def _candidate_validation_finding(*, session_root: Path) -> str | None:
+    """Recheck the immutable candidate without charging or creating authority."""
+
+    try:
+        context = _load_bound_starter_context(session_root=session_root)
+        _load_bound_candidate(session_root=session_root, context=context)
+    except (TypeError, ValueError) as error:
+        code = str(error)
+        return code if code in STARTER_CANDIDATE_FINDING_CODES else "candidate_semantics_invalid"
+    return None
+
+
+def _candidate_revision_diagnostic(
+    *, current: LiveStartSession, finding: str,
+) -> FrozenJsonDocument:
+    return _sealed_diagnostic({
+        "schema_version": 1,
+        "diagnostic_kind": "live_start_candidate_validation",
+        "status": "revision_required",
+        "candidate_revision": current.candidate_revision,
+        "next_candidate_revision": current.candidate_revision + 1,
+        "revisions_used": current.revisions_used,
+        "findings": [finding],
+    })
+
+
+def _validate_installed_candidate_under_lock(
+    *, session_lease: LiveStartSessionLease, current: LiveStartSession,
+    context: StarterContext,
+) -> tuple[LiveStartSession, FrozenJsonDocument]:
+    if (current.phase is not LiveStartPhase.CANDIDATE_DRAFTED
+        or current.pending_transition is not None
+        or current.revisions_used >= current.candidate_revision):
+        raise SessionConflictError("live_start_candidate_validation_cursor_invalid")
+    finding = _candidate_validation_finding(session_root=session_lease.session_root)
+    if finding is not None:
+        if current.revisions_used < 2 and current.candidate_revision < 3:
+            failed = _session.transition_live_start_session_under_lock(
+                session_lease=session_lease, expected_session=current, event="technical_failure"
+            )
+            return failed, _candidate_revision_diagnostic(current=failed, finding=finding)
+        result = _terminalize_preapply_failure_under_lock(
+            session_lease=session_lease, current=current, context=context,
+            candidate=None, error_code="revision_budget_exhausted",
+        )
+        return _session.load_live_start_session_under_lock(session_lease=session_lease), result.summary
+    receipt = _session.seal_validation_receipt(
+        receipt_kind="candidate_validation",
+        unsigned_value={
+            "run_id": current.run_id,
+            "candidate_revision": current.candidate_revision,
+            "starter_context_sha256": current.artifact_bindings["starter/starter_context.json"],
+            "candidate_sha256": current.artifact_bindings["starter/starter_config_candidate.json"],
+            "status": "valid", "findings": [],
+        },
+    )
+    current = _install_session_documents(
+        session_lease=session_lease, current=current,
+        operation="install_candidate_validation", final_event="candidate_valid",
+        documents={"receipts/candidate_validation.json": (
+            FrozenJsonDocument.from_value(receipt).canonical_json + b"\n"
+        )},
+    )
+    return current, FrozenJsonDocument.from_value(receipt)
+
+
+def _review_revision_physical_step(
+    *,
+    current: LiveStartSession,
+    action: str,
+) -> _session.CandidateReviewRevisionPhysicalPostcondition:
+    pending = current.pending_transition
+    if not isinstance(pending, Mapping):
+        raise SessionConflictError("live_start_review_revision_pending_missing")
+    external = pending.get("external_file_action")
+    if action != "retire_candidate_validation_receipt":
+        if not isinstance(external, Mapping):
+            raise SessionConflictError("live_start_review_revision_external_missing")
+        final_path = Path(str(external["final_path"]))
+        staging_path = Path(str(external["staging_path"]))
+        inner_path = Path(str(external["inner_temp_path"]))
+    if action == "materialize_review_revision_staging":
+        source = pending["actions"][0]["materialization_source"]
+        source_path = Path(str(source["path"]))
+        payload = _read_plain_bytes(
+            source_path,
+            maximum_size=int(source["size"]),
+        )
+        if _sha256_bytes(payload) != source["sha256"]:
+            raise SessionConflictError("live_start_review_revision_source_changed")
+        published = atomic_write_reserved_bytes(
+            path=staging_path,
+            payload=payload,
+            expected_parent_identity=tuple(external["parent_identity"]),
+            expected_predecessor_identity=None,
+            expected_predecessor_sha256=None,
+            maximum_size=max(1, len(payload)),
+        )
+        evidence = {
+            "staging_path": str(staging_path),
+            "staging_parent_identity": list(path_identity(staging_path.parent)),
+            "staging_identity": list(published.identity),
+            "staging_size": len(payload),
+            "staging_sha256": _sha256_bytes(payload),
+        }
+    elif action == "commit_bound_review_revision_request":
+        staging_identity = tuple(external["staging_identity"])
+        atomic_commit_bound_staging_no_replace(
+            path=final_path,
+            staging_path=staging_path,
+            expected_staging_identity=staging_identity,
+            expected_size=int(external["planned_successor_size"]),
+            expected_sha256=str(external["planned_successor_sha256"]),
+            expected_parent_identity=tuple(external["parent_identity"]),
+        )
+        evidence = {
+            "final_path": str(final_path),
+            "final_parent_identity": list(path_identity(final_path.parent)),
+            "final_identity": list(path_identity(final_path)),
+            "final_size": external["planned_successor_size"],
+            "final_sha256": external["planned_successor_sha256"],
+            "staging_absent": not path_lexists(staging_path),
+        }
+    elif action == "retire_candidate_validation_receipt":
+        row = pending["actions"][0]
+        receipt_path = Path(str(row["path"]))
+        receipt_parent = receipt_path.parent
+        receipt_present = path_lexists(receipt_path)
+        directory_present = path_lexists(receipt_parent)
+        if receipt_present:
+            raw = _read_plain_bytes(
+                receipt_path,
+                maximum_size=int(row["historical_size"]),
+            )
+            if _sha256_bytes(raw) != row["historical_sha256"]:
+                raise SessionConflictError("live_start_candidate_receipt_changed")
+            secure_unlink(
+                receipt_path,
+                expected_identity=tuple(row["historical_identity"]),
+                expected_parent_identity=tuple(row["parent_identity"]),
+                missing_ok=False,
+            )
+        if directory_present:
+            secure_rmdir_verified(
+                receipt_parent,
+                expected_identity=tuple(row["directory_identity"]),
+                expected_parent_identity=tuple(row["directory_parent_identity"]),
+            )
+        evidence = {
+            "path": row["path"],
+            "parent_identity": row["parent_identity"],
+            "historical_identity": row["historical_identity"],
+            "historical_size": row["historical_size"],
+            "historical_sha256": row["historical_sha256"],
+            "directory_path": row["directory_path"],
+            "directory_parent_identity": row["directory_parent_identity"],
+            "directory_identity": row["directory_identity"],
+            "disposition": "removed" if receipt_present else "already_absent",
+            "directory_disposition": (
+                "removed" if directory_present else "already_absent"
+            ),
+        }
+    elif action == "restore_review_revision_predecessor":
+        source = pending["actions"][0]["materialization_source"]
+        evidence = {
+            "source_path": source["path"],
+            "source_parent_identity": source["parent_identity"],
+            "historical_source_identity": source["identity"],
+            "historical_source_size": source["size"],
+            "historical_source_sha256": source["sha256"],
+            "final_path": str(final_path),
+            "staging_path": str(staging_path),
+            "inner_temp_path": str(inner_path),
+            "target_parent_identity": external["parent_identity"],
+            "source_absent": True,
+            "final_absent": True,
+            "staging_absent": True,
+            "inner_temp_absent": True,
+        }
+    elif action == "retire_unbound_review_revision_staging":
+        for path in (staging_path, inner_path):
+            if path_lexists(path):
+                status = plain_file_status(path)
+                secure_unlink(
+                    path,
+                    expected_identity=path_identity_from_status(status),
+                    expected_parent_identity=path_identity(path.parent),
+                    missing_ok=False,
+                )
+        evidence = {
+            "final_path": str(final_path),
+            "staging_path": str(staging_path),
+            "inner_temp_path": str(inner_path),
+            "parent_identity": external["parent_identity"],
+            "final_absent": not path_lexists(final_path),
+            "staging_absent": not path_lexists(staging_path),
+            "inner_temp_absent": not path_lexists(inner_path),
+        }
+    else:
+        raise SessionConflictError("live_start_review_revision_action_invalid")
+    return _session.CandidateReviewRevisionPhysicalPostcondition(
+        action=action,
+        evidence=evidence,
+    )
+
+
+def _drive_candidate_review_revision(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+) -> LiveStartSession:
+    while current.pending_transition is not None:
+        authorization = _session.authorize_candidate_review_revision_under_lock(
+            session_lease=session_lease,
+            expected_revision_session=current,
+        )
+        action = authorization._opaque.action
+        receipt = _session._execute_candidate_review_revision_physical_step(
+            session_lease=session_lease,
+            expected_revision_session=current,
+            revision_authorization=authorization,
+            action=action,
+            physical_action=lambda: _review_revision_physical_step(
+                current=current,
+                action=action,
+            ),
+        )
+        current = _session.advance_candidate_review_revision_under_lock(
+            session_lease=session_lease,
+            expected_revision_session=current,
+            revision_step_receipt=receipt,
+        )
+    return current
+
+
+def validate_live_start_review(
+    *,
+    session_root: Path,
+    draft_path: Path,
+) -> FrozenJsonDocument:
+    """Install an independent approval or consume one shared revision."""
+
+    with _session.lease_live_start_session(Path(session_root)) as session_lease:
+        current = _session.load_live_start_session_under_lock(
+            session_lease=session_lease
+        )
+        if current.terminal_status is not None:
+            return _load_terminal_result(
+                session_root=session_lease.session_root,
+                terminal=current,
+            ).summary
+        if current.phase is not LiveStartPhase.CANDIDATE_VALIDATED:
+            raise SessionConflictError("live_start_review_cursor_invalid")
+        context = _load_bound_starter_context(
+            session_root=session_lease.session_root
+        )
+        candidate = _load_bound_candidate(
+            session_root=session_lease.session_root,
+            context=context,
+        )
+        draft = _load_unsigned_draft(
+            Path(draft_path),
+            maximum_size=STARTER_REVIEW_MAX_BYTES,
+        )
+        try:
+            review_document = seal_starter_document(
+                draft,
+                expected_fields=STARTER_REVIEW_FIELDS,
+                schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            )
+            review = validate_starter_review(
+                review_document,
+                context=context,
+                candidate=candidate,
+            )
+        except (TypeError, ValueError):
+            return _terminalize_preapply_failure_under_lock(
+                session_lease=session_lease, current=current, context=context,
+                candidate=candidate, error_code="review_document_invalid",
+            ).summary
+        if review.review_status == "revision_requested":
+            if current.revisions_used >= 2 or current.candidate_revision >= 3:
+                return _terminalize_preapply_failure_under_lock(
+                    session_lease=session_lease,
+                    current=current,
+                    context=context,
+                    candidate=candidate,
+                    error_code="revision_budget_exhausted",
+                ).summary
+            source_path = _write_external_authority_source(
+                session_root=session_lease.session_root,
+                name=(
+                    "review-revision-"
+                    f"r{current.candidate_revision}-"
+                    f"u{current.revisions_used}.json"
+                ),
+                payload=_session._canonical_json(review.document.to_value()),
+            )
+            current = _session.prepare_candidate_review_revision_under_lock(
+                session_lease=session_lease,
+                expected_validated_session=current,
+                request_review_source_path=source_path,
+            )
+            current = _drive_candidate_review_revision(
+                session_lease=session_lease,
+                current=current,
+            )
+            return _review_revision_diagnostic(current=current, review=review)
+        receipt = _session.seal_validation_receipt(
+            receipt_kind="review_validation",
+            unsigned_value={
+                "run_id": current.run_id,
+                "candidate_revision": current.candidate_revision,
+                "starter_context_sha256": current.artifact_bindings[
+                    "starter/starter_context.json"
+                ],
+                "candidate_sha256": current.artifact_bindings[
+                    "starter/starter_config_candidate.json"
+                ],
+                "review_sha256": _sha256_bytes(review.document.canonical_json),
+                "review_status": "approved",
+                "confidence": review.confidence,
+            },
+        )
+        current = _install_session_documents(
+            session_lease=session_lease,
+            current=current,
+            operation="install_review_validation",
+            final_event="review_approved",
+            documents={
+                "starter/starter_config_review.json": (
+                    review.document.canonical_json
+                ),
+                "receipts/review_validation.json": (
+                    FrozenJsonDocument.from_value(receipt).canonical_json + b"\n"
+                ),
+            },
+        )
+        del current
+        return FrozenJsonDocument.from_value(receipt)
+
+
+def _load_frozen_approval(
+    *, session_root: Path, frozen: FrozenCompilerInputs
+) -> ValidatedSingleStarterApproval:
+    context = _load_bound_starter_context(session_root=session_root)
+    candidate = _load_bound_candidate(session_root=session_root, context=context)
+    document = load_starter_document(
+        session_root / "starter/starter_config_review.json",
+        maximum_bytes=STARTER_REVIEW_MAX_BYTES,
+        expected_fields=STARTER_REVIEW_FIELDS,
+        schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+    )
+    review = validate_starter_review(document, context=context, candidate=candidate)
+    return ValidatedSingleStarterApproval(
+        snapshot=frozen.manifest, context=context, candidate=candidate, review=review
+    )
+
+
+def _release_no_runtime_operation(
+    *,
+    session_lease: LiveStartSessionLease,
+    current: LiveStartSession,
+    profile_lease: OperatorProfileLease,
+    operation_lease: OutputOperationAdmissionLease,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
+) -> LiveStartSession:
+    binding = current.output_operation_admission_binding
+    if not isinstance(binding, Mapping):
+        return current
+    if current.terminal_status is None or current.runtime_admission_binding is not None:
+        raise SessionConflictError("live_start_no_runtime_terminal_required")
+    if binding["state"] == "ACTIVE":
+        successor = _session._thaw(binding)
+        successor.pop("content_sha256")
+        successor.update(
+            state="TERMINAL_RELEASE_AUTHORIZED", release_handoff_kind="terminal_no_runtime"
+        )
+        current = _session._transition_receipt_authorized_under_lock(
+            session_lease=session_lease,
+            expected_session=current,
+            event="same_phase_cas",
+            changes={"output_operation_admission_binding": _session.seal_embedded_document(
+                "output_operation_admission_binding", successor
+            )},
+        )
+        invoke_live_start_fault(fault_hook, LiveStartFaultPoint.AFTER_OUTPUT_OPERATION_RELEASE_AUTHORIZED)
+    expected = load_bound_output_operation_admission(current)
+    authorization = authorize_output_operation_terminal_release_from_context(
+        operation_lease=operation_lease,
+        session_lease=session_lease,
+        expected_terminal_session=current,
+        profile_lease=profile_lease,
+        expected=expected,
+    )
+    _publisher.release_output_operation_admission_under_lease(
+        operation_lease=operation_lease,
+        session_lease=session_lease,
+        expected_release_authorized_session=current,
+        expected=expected,
+        release_authorization=authorization,
+        fault_hook=fault_hook,
+    )
+    return current
+
+
+def _complete_no_runtime_result_under_lock(
+    *, session_lease: LiveStartSessionLease, current: LiveStartSession,
+    profile_lease: OperatorProfileLease, operation_lease: OutputOperationAdmissionLease,
+    fault_hook: LiveStartFaultHook,
+) -> LiveStartSession:
+    intent = current.result_intent
+    if not isinstance(intent, Mapping) or intent["terminal_status"] != "PREVIEW_READY":
+        return _session._complete_live_start_under_lock(
+            session_lease=session_lease, expected_result_session=current,
+            fault_hook=fault_hook,
+        )
+    publication = current.publication_binding
+    if not isinstance(publication, Mapping):
+        raise SessionConflictError("live_start_publication_binding_missing")
+    root = Path(publication["output_child_path"])
+    profile = profile_lease.profile
+    with hold_plain_directory(profile.output_base_root, expected_identity=profile.output_base_root_identity) as base_guard:
+        with hold_plain_directory(root, expected_identity=tuple(publication["output_child_identity"])) as output_guard:
+            with ExclusiveFileLock(
+                root / ".publish.lock", expected_parent_identity=output_guard.identity,
+                path_guard=output_guard,
+            ):
+                def verify_publication() -> None:
+                    base_guard.validate()
+                    revalidate_operator_profile_lease(profile_lease)
+                    observed = observe_output_operation_admission_under_lease(operation_lease)
+                    binding = current.output_operation_admission_binding
+                    if (
+                        observed is None or not isinstance(binding, Mapping)
+                        or binding["state"] != "ACTIVE"
+                        or Path(binding["admission_path"]) != observed.admission_path
+                        or tuple(binding["admission_parent_identity"]) != observed.admission_parent_identity
+                        or tuple(binding["admission_identity"]) != observed.admission_identity
+                        or binding["admission_size"] != observed.admission_size
+                        or binding["admission_sha256"] != _publisher._admission_raw_sha256(observed)
+                    ):
+                        raise SessionConflictError("live_start_output_operation_binding_changed")
+                    _require_exact_current_publication(current=current, output_guard=output_guard)
+
+                verify_publication()
+                return _session._complete_live_start_under_lock(
+                    session_lease=session_lease, expected_result_session=current,
+                    fault_hook=fault_hook, pre_terminal_check=verify_publication,
+                )
+
+
+def _terminal_release_already_complete(
+    *, session_lease: LiveStartSessionLease, current: LiveStartSession,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
+) -> bool:
+    if current.terminal_status is None:
+        return False
+    retirement = current.terminal_retirement
+    if isinstance(retirement, Mapping) and retirement["stage"] == "ADMISSION_RELEASE_AUTHORIZED":
+        admission, _result = _published_apply._load_release_authorized_runtime_context(
+            session_lease=session_lease, cursor=current
+        )
+        authorization = _session.authorize_terminal_retirement_under_lock(
+            session_lease=session_lease, expected_retirement_session=current
+        )
+        _published_apply._release_or_confirm_runtime_live_attempt_without_old_leases(
+            session_lease=session_lease,
+            expected_release_authorized_session=current,
+            terminal_authorization=authorization,
+            expected=admission,
+            fault_hook=fault_hook,
+        )
+        return True
+    if current.runtime_admission_binding is not None:
+        return False
+    binding = current.output_operation_admission_binding
+    if binding is None:
+        return True
+    if binding["state"] != "TERMINAL_RELEASE_AUTHORIZED":
+        return False
+    with lease_output_operation_admission() as operation_lease:
+        observed = observe_output_operation_admission_under_lease(operation_lease)
+        if observed is None:
+            return True
+        if observed.admission_identity == tuple(binding["admission_identity"]):
+            return False
+        if observed.run_id == current.run_id or _publisher._admission_raw_sha256(observed) == binding["admission_sha256"]:
+            raise SessionConflictError("live_start_output_operation_release_replaced_ambiguous")
+        return True
+
+
+def _complete_held_live_result(
+    *,
+    session_lease: LiveStartSessionLease,
+    held: _published_apply.HeldApplyAndMatchPublished,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
+) -> LiveStartSession:
+    current = held.updated_session
+    if current.terminal_status is None:
+        if current.result_intent is None:
+            intent = _session._thaw(_published_apply._sealed_result_intent_from_held(
+                session_lease=session_lease, held=held
+            ))
+            intent.pop("content_sha256")
+            context = _load_bound_starter_context(session_root=session_lease.session_root)
+            intent["visible_limitations"] = list(_starter_context_limitations(context.document.to_value()))
+            if intent["review_confidence"] == "limited" and not intent["visible_limitations"]:
+                intent["visible_limitations"] = ["Independent reviewer confidence is limited."]
+            evidence = held.acknowledgement_evidence
+            acknowledgement = (
+                None if evidence is None else _published_apply._sealed_attempt_acknowledgement(
+                    run_id=current.run_id, evidence=evidence
+                )
+            )
+            current = _session.bind_result_intent_under_lock(
+                session_lease=session_lease,
+                expected_session=current,
+                result_intent=_session.seal_embedded_document("result_intent", intent),
+                attempt_acknowledgement=acknowledgement,
+            )
+            invoke_live_start_fault(fault_hook, LiveStartFaultPoint.AFTER_RESULT_INTENT)
+            if acknowledgement is not None:
+                invoke_live_start_fault(fault_hook, LiveStartFaultPoint.AFTER_ACKNOWLEDGEMENT_INTENT)
+        current = _session._complete_live_start_under_lock(
+            session_lease=session_lease, expected_result_session=current,
+            fault_hook=fault_hook,
+        )
+    retirement = current.terminal_retirement
+    operation = (
+        retirement["operation"] if isinstance(retirement, Mapping)
+        else _published_apply._stable_terminal_operation_without_retirement(current)
+    )
+    if operation == "ack_success":
+        return held.acknowledge_after_terminal(
+            session_lease=session_lease, expected_terminal_session=current
+        )
+    if operation == "release_not_committed":
+        return held.release_admission_after_terminal(
+            session_lease=session_lease, expected_terminal_session=current
+        )
+    if operation == "release_committed_mismatch" or (
+        _published_apply._is_terminal_resolution_recovery(current)
+        and held.result.physical_disposition is _published_apply.PhysicalApplyDisposition.NOT_COMMITTED
+    ):
+        return held.resolve_and_release_after_terminal(
+            session_lease=session_lease, expected_terminal_session=current
+        )
+    return current
+
+
+def _resume_starter_intake_under_lock(
+    *, session_lease: LiveStartSessionLease, current: LiveStartSession,
+    frozen: FrozenCompilerInputs,
+) -> tuple[LiveStartSession, FrozenJsonDocument | None]:
+    pending = current.pending_transition
+    if isinstance(pending, Mapping):
+        operation = pending["operation"]
+        if operation == "review_revision":
+            current = _drive_candidate_review_revision(session_lease=session_lease, current=current)
+        elif operation in {"install_candidate", "install_candidate_validation", "install_review_validation"}:
+            event = {
+                "install_candidate": (
+                    "initial_draft" if current.phase is LiveStartPhase.INPUT_FROZEN else "replacement_draft"
+                ),
+                "install_candidate_validation": "candidate_valid",
+                "install_review_validation": "review_approved",
+            }[operation]
+            current = _continue_pending_document_install(
+                session_lease=session_lease, current=current, final_event=event
+            )
+    if current.phase not in {
+        LiveStartPhase.INPUT_FROZEN, LiveStartPhase.CANDIDATE_DRAFTED,
+        LiveStartPhase.CANDIDATE_VALIDATED,
+    }:
+        return current, None
+    context = build_single_candidate_starter_context(frozen)
+    if (current.phase is LiveStartPhase.CANDIDATE_DRAFTED
+        and current.pending_transition is None
+        and current.revisions_used == current.candidate_revision):
+        if "starter/starter_config_review.json" in current.artifact_bindings:
+            bound_context = _load_bound_starter_context(session_root=session_lease.session_root)
+            review = _load_bound_revision_review(
+                session_root=session_lease.session_root, current=current, context=bound_context,
+            )
+            return current, _review_revision_diagnostic(current=current, review=review)
+        finding = _candidate_validation_finding(session_root=session_lease.session_root)
+        if finding is None:
+            raise SessionConflictError("live_start_rejected_candidate_now_valid")
+        return current, _candidate_revision_diagnostic(current=current, finding=finding)
+    if (current.phase is LiveStartPhase.CANDIDATE_DRAFTED
+        and current.revisions_used < current.candidate_revision):
+        current, validation = _validate_installed_candidate_under_lock(
+            session_lease=session_lease, current=current, context=context
+        )
+        if current.terminal_status is not None:
+            return current, None
+        if current.phase is LiveStartPhase.CANDIDATE_DRAFTED:
+            return current, validation
+    context_path = _materialize_starter_context(
+        local_app_data_root=session_lease.session_root.parent.parent.parent,
+        run_id=current.run_id, payload=context.document.canonical_json,
+    )
+    needs_review = current.phase is LiveStartPhase.CANDIDATE_VALIDATED
+    return current, _sealed_diagnostic({
+        "schema_version": 1,
+        "diagnostic_kind": "live_start_resume",
+        "status": "awaiting_review" if needs_review else "awaiting_candidate",
+        "run_root": str(session_lease.session_root),
+        "phase": current.phase.value,
+        "context_path": str(context_path),
+        "candidate_revision": current.candidate_revision,
+        "next_candidate_revision": current.candidate_revision + int(
+            current.phase is LiveStartPhase.CANDIDATE_DRAFTED
+            and current.revisions_used == current.candidate_revision
+        ),
+        "revisions_used": current.revisions_used,
+        "findings": [],
+    })
+
+
+def _continue_live_start_under_lock(
+    *, session_lease: LiveStartSessionLease, current: LiveStartSession,
+    fault_hook: LiveStartFaultHook, resume_intake: bool,
+) -> LiveStartResult | FrozenJsonDocument:
+    root = session_lease.session_root
+    if _terminal_release_already_complete(
+        session_lease=session_lease, current=current, fault_hook=fault_hook
+    ):
+        return _load_terminal_result(session_root=root, terminal=current)
+    profile = load_operator_profile()
+    with lease_operator_profile(expected_profile=profile) as profile_lease:
+        frozen = _load_frozen_compiler_inputs(root, rebind_operator=False)
+        operator = frozen.manifest.operator_bindings.to_value()
+        compiler = frozen.manifest.compiler_inputs.to_value()
+        if (
+            profile.content_sha256 != operator["operator_profile_sha256"]
+            or profile.runtime_root != Path(operator["runtime_root"])
+            or profile.runtime_root_identity != tuple(operator["runtime_root_identity"])
+            or profile.output_base_root != Path(operator["output_base_root"])
+            or profile.output_base_root_identity != tuple(operator["output_base_root_identity"])
+        ):
+            raise SessionConflictError("live_start_operator_profile_changed")
+        current = _session.validate_resume_under_lock(
+            session_lease=session_lease,
+            expected_deck_code_sha256=compiler["deck_code_sha256"],
+            expected_input_snapshot_manifest_sha256=frozen.manifest.document.content_sha256,
+            expected_runtime_grammar_version=_RUNTIME_GRAMMAR_VERSION,
+            expected_compiler_contract_id=_COMPILER_CONTRACT_ID,
+        )
+        if not profile.live_by_default and not current.preview_requested:
+            raise SessionConflictError("live_start_operator_profile_live_disabled")
+        if resume_intake:
+            current, progress = _resume_starter_intake_under_lock(
+                session_lease=session_lease, current=current, frozen=frozen
+            )
+            if progress is not None:
+                return progress
+        with lease_output_operation_admission() as operation_lease:
+            pending = current.pending_transition
+            if (isinstance(pending, Mapping)
+                and pending["operation"] == "install_apply_invocation"
+                and pending["stage"] == "PREPARED"):
+                current = _published_apply._recover_prepared_apply_not_started_under_lock(
+                    session_lease=session_lease, expected_session=current,
+                    profile_lease=profile_lease, output_operation_lease=operation_lease,
+                )
+                pending = current.pending_transition
+            recovery_only = (
+                current.apply_invocation_sha256 is not None
+                or current.apply_recovery is not None
+                or isinstance(pending, Mapping) and pending["operation"] == "install_apply_invocation"
+            )
+            if recovery_only:
+                with _published_apply._recover_apply_attempt_under_lock(
+                    session_lease=session_lease,
+                    profile_lease=profile_lease,
+                    output_operation_lease=operation_lease,
+                    expected_session=current,
+                    fault_hook=fault_hook,
+                ) as recovered:
+                    current = _complete_held_live_result(
+                        session_lease=session_lease, held=recovered.held, fault_hook=fault_hook
+                    )
+            elif current.terminal_status is not None:
+                current = _release_no_runtime_operation(
+                    session_lease=session_lease, current=current,
+                    profile_lease=profile_lease, operation_lease=operation_lease,
+                    fault_hook=fault_hook,
+                )
+            elif current.result_intent is not None:
+                current = _complete_no_runtime_result_under_lock(
+                    session_lease=session_lease, current=current, profile_lease=profile_lease,
+                    operation_lease=operation_lease,
+                    fault_hook=fault_hook,
+                )
+                current = _release_no_runtime_operation(
+                    session_lease=session_lease, current=current,
+                    profile_lease=profile_lease, operation_lease=operation_lease,
+                    fault_hook=fault_hook,
+                )
+            else:
+                if current.phase not in {
+                    LiveStartPhase.REVIEW_APPROVED,
+                    LiveStartPhase.PACKAGE_VALIDATED,
+                    LiveStartPhase.PREPUBLICATION_CHECK_PASSED,
+                    LiveStartPhase.PUBLICATION_COMMITTED,
+                }:
+                    raise SessionConflictError("live_start_review_approval_required")
+                approval = _load_frozen_approval(session_root=root, frozen=frozen)
+                request = FrozenApprovedLiveConfigureRequest.from_values(
+                    frozen_compiler_inputs=frozen, starter_approval=approval
+                )
+                run_model = build_frozen_live_configure_run(request=request)
+                current = _drive_live_start_pipeline(
+                    run_model=run_model,
+                    session_lease=session_lease,
+                    expected_session=current,
+                    runtime_root=profile.runtime_root,
+                    profile_lease=profile_lease,
+                    operation_lease=operation_lease,
+                    fault_hook=fault_hook,
+                )
+                if current.preview_requested:
+                    if current.result_intent is None:
+                        intent = _session._thaw(_failure_result_intent(
+                            current=current, context=approval.context,
+                            candidate=approval.candidate, error_code="preview",
+                        ))
+                        intent.pop("content_sha256")
+                        intent.update(
+                            terminal_status="PREVIEW_READY",
+                            review_confidence=approval.review.confidence,
+                            error_code=None,
+                            retained_safe_state="PUBLISHED_PREVIEW_RUNTIME_UNCHANGED",
+                        )
+                        current = _session._transition_receipt_authorized_under_lock(
+                            session_lease=session_lease, expected_session=current,
+                            event="same_phase_cas", changes={"result_intent":
+                                _session.seal_embedded_document("result_intent", intent)},
+                        )
+                        invoke_live_start_fault(fault_hook, LiveStartFaultPoint.AFTER_RESULT_INTENT)
+                    current = _complete_no_runtime_result_under_lock(
+                        session_lease=session_lease, current=current, profile_lease=profile_lease,
+                        operation_lease=operation_lease,
+                        fault_hook=fault_hook,
+                    )
+                    current = _release_no_runtime_operation(
+                        session_lease=session_lease, current=current,
+                        profile_lease=profile_lease, operation_lease=operation_lease,
+                        fault_hook=fault_hook,
+                    )
+                else:
+                    publication = current.publication_binding
+                    if not isinstance(publication, Mapping):
+                        raise SessionConflictError("live_start_publication_missing")
+                    with _published_apply._apply_and_match_published(
+                        session_lease=session_lease,
+                        expected_session=current,
+                        profile_lease=profile_lease,
+                        output_operation_lease=operation_lease,
+                        output_operation_admission=load_bound_output_operation_admission(current),
+                        output_root=Path(publication["output_child_path"]),
+                        publication_content_root_sha256=publication["content_root_sha256"],
+                        runtime_root=profile.runtime_root,
+                        apply_attempt_id=secrets.token_hex(16),
+                        fault_hook=fault_hook,
+                    ) as held:
+                        current = _complete_held_live_result(
+                            session_lease=session_lease, held=held, fault_hook=fault_hook
+                        )
+    return _load_terminal_result(session_root=root, terminal=current)
+
+
+def finalize_live_start(*, session_root: Path) -> LiveStartResult:
+    """Complete the approved frozen run under one uninterrupted session lease."""
+
+    result = _finalize_live_start(session_root=session_root, fault_hook=no_live_start_fault)
+    if not isinstance(result, LiveStartResult):
+        raise SessionConflictError("live_start_review_approval_required")
+    return result
+
+
+def _finalize_live_start(
+    *, session_root: Path, fault_hook: LiveStartFaultHook,
+    resume_intake: bool = False,
+) -> LiveStartResult | FrozenJsonDocument:
+    with _session.lease_live_start_session(Path(session_root)) as session_lease:
+        current = _session.load_live_start_session_under_lock(session_lease=session_lease)
+        return _continue_live_start_under_lock(
+            session_lease=session_lease, current=current,
+            fault_hook=fault_hook, resume_intake=resume_intake,
+        )
+
+
+def resume_live_start(*, session_root: Path) -> LiveStartResult | FrozenJsonDocument:
+    """Resume only the explicitly named run; an admitted apply is recovery-only."""
+
+    return _finalize_live_start(
+        session_root=session_root, fault_hook=no_live_start_fault, resume_intake=True
+    )
+
+
 __all__ = (
+    "LiveStartPreparation",
+    "LiveStartRequest",
+    "LiveStartResult",
     "ValidatedPrepublication",
     "build_frozen_live_configure_run",
     "lease_validated_prepublication",
+    "prepare_live_start",
+    "validate_live_start_candidate",
+    "validate_live_start_review",
+    "finalize_live_start",
+    "resume_live_start",
     "publish_validated_prepublication",
 )

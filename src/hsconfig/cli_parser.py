@@ -15,10 +15,12 @@ NEGATIVE_SCOPE_TEXT = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="hsconfig",
-        description="HSConfig builds lean HearthRanger VisionAI CustomConfig packages before games are played.",
+        description="Codex-first HSConfig turns a deck name and deck code into a validated, live-matched VisionAI CustomConfig.",
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
-            "Normal installed-skill path: optimized three-candidate workflow.\n"
+            "Normal installed-skill path: optimized single-candidate workflow.\n"
+            "Deck -> Config -> Validate -> Live -> Match\n"
+            "Live requires a valid enabled profile; explicit preview overrides live.\n"
             "Conservative CLI Compatibility: raw configure.\n"
             "Lower-level inspected path: source-manifest -> "
             "source-autopilot or draft-source-documents -> research-deck -> "
@@ -40,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Conservative CLI Compatibility pre-run package path",
         description=(
             "Conservative CLI Compatibility path. The installed skill's optimized "
-            "three-candidate workflow is the normal generation route. Raw configure "
+            "single-candidate workflow is the normal generation route. Raw configure "
             "decodes a deck, builds source/research artifacts, prepares a load-safe "
             "package, validates it, and can optionally apply it through the existing "
             "guarded apply gate."

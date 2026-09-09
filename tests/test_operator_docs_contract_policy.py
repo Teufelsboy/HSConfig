@@ -24,6 +24,19 @@ def _section(text: str, heading: str) -> str:
     return text.split(heading, 1)[1].split("\n## ", 1)[0]
 
 
+def test_operator_guide_has_one_normal_single_candidate_live_route() -> None:
+    normal = _compact(_text(OPERATOR).split("### Canonical local release gate", 1)[0])
+    for marker in (
+        "one lead strategist", "one independent reviewer", "single candidate",
+        "at most two shared revisions", "`high|limited`",
+        "valid enabled profile", "Explicit preview overrides live",
+        "`PROFILE_REQUIRED`", "`PREVIEW_READY`", "`LIVE_AND_MATCHED`",
+        "`ALREADY_LIVE`", "invocation receipt", "`APPLY_STARTED`", "recovery-only",
+        "`prepare`", "`validate-candidate`", "`validate-review`", "`finalize`", "`resume`",
+    ):
+        assert marker in normal, marker
+
+
 def _markdown_table(text: str, heading: str) -> dict[str, dict[str, str]]:
     section = text.split(heading, 1)[1].split("\n## ", 1)[0]
     table_lines = [line for line in section.splitlines() if line.startswith("|")]
@@ -279,17 +292,14 @@ def test_docs_define_optimized_start_as_pre_game_non_optimality_contract() -> No
     compact = _compact(combined)
 
     for marker in (
-        "exactly three fixed candidates",
-        "`candidate-1.json` (`proactive_tempo`)",
-        "`candidate-2.json` (`balanced`)",
-        "`candidate-3.json` (`resource_oriented`)",
-        "independent clean-context critic",
-        "at most two targeted repair rounds",
+        "single candidate",
+        "one independent reviewer",
+        "at most two shared revisions",
+        "`high|limited`",
         "`LLM_OPTIMIZED_START`",
         "`configure_summary.json.optimized_start`",
         "`optimized_start_summary_invalid`",
         "`optimized_start_derivation_invalid`",
-        "only when live writing was requested",
         "`runtime-match`",
         "best practical pre-game start config",
         "not measured gameplay optimality",
@@ -298,13 +308,29 @@ def test_docs_define_optimized_start_as_pre_game_non_optimality_contract() -> No
 
     for document in (readme, operator, skill):
         assert "Conservative CLI Compatibility" in document
+    for document in (readme, operator):
         assert "only normal generation route" in _compact(document)
+    assert "not the normal installed-skill workflow" in _compact(skill)
+    assert "this single-candidate and approve/revision review workflow is authoritative" in _compact(skill)
     assert "source-contract-only apply blocker" in compact
     assert "visible informational limitations" in compact
     assert "live configure-result" in compact
     assert "re-derives" in compact
     assert "non-persisted" in compact
     assert "cannot roll back an already-published current pointer" in compact
+    legacy = operator.split("### Legacy optimized CLI compatibility", 1)[1].split(
+        "## Conservative CLI Operator Path", 1
+    )[0]
+    assert "not the installed skill's normal schema-v2 route" in legacy
+    for marker in (
+        "`candidate-1.json` (`proactive_tempo`)",
+        "`candidate-2.json` (`balanced`)",
+        "`candidate-3.json` (`resource_oriented`)",
+        "independent clean-context critic",
+        "at most two targeted repair",
+        "only when live writing was requested",
+    ):
+        assert marker in legacy
     for contradiction in (
         "Preferred normal path: `hsconfig configure`.",
         "Run `hsconfig configure` for normal operation.",

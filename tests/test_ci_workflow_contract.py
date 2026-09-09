@@ -132,6 +132,24 @@ def _uses(job: object) -> list[str]:
     return [step["uses"] for step in steps if isinstance(step, dict) and "uses" in step]
 
 
+def test_package_job_runs_posix_bound_no_replace_crash_boundary_on_ubuntu() -> None:
+    job = _workflow()["jobs"]["package"]
+    assert job["runs-on"] == "ubuntu-latest"
+    assert "strategy" not in job and "if" not in job and "continue-on-error" not in job
+    steps = _steps(job)
+    distribution = _named_step(job, "Verify distribution and fresh wheel installation")
+    step = _named_step(job, "Verify POSIX bound no-replace crash boundary")
+    assert steps.index(step) == steps.index(distribution) + 1
+    assert set(step) == {"name", "run"}
+    assert str(step["run"]).split() == [
+        "python", "-B", "-m", "pytest",
+        "tests/test_package_io.py::test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink",
+        "tests/test_atomic_io.py::test_atomic_bound_no_replace_maps_posix_link_before_unlink_fault",
+        "tests/test_package_io.py::test_no_replace_posix_hard_kill_after_link_resumes_bound_identity",
+        "-q", "-p", "no:cacheprovider",
+    ]
+
+
 def test_ci_workflow_reuses_the_locked_release_contract_without_pr_execution() -> None:
     """Catches a CI graph that can run unreviewed PR code or bypass the locked gate."""
     workflow = _workflow()

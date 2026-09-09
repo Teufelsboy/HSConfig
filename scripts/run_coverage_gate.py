@@ -119,6 +119,13 @@ CRITICAL_MODULES = (
     "src/hsconfig/apply_gate.py",
     "src/hsconfig/apply_decision.py",
     "src/hsconfig/operator_status.py",
+    "src/hsconfig/operator_profile.py",
+    "src/hsconfig/output_operation_admission.py",
+    "src/hsconfig/live_start_session.py",
+    "src/hsconfig/apply_invocation.py",
+    "src/hsconfig/runtime_live_admission.py",
+    "src/hsconfig/published_apply.py",
+    "src/hsconfig/live_start_controller.py",
 )
 CHECKER_BRIDGE = r"""
 import json

@@ -79,7 +79,7 @@ def test_compile_mulligan_emits_valid_mulligan_block(
     assert set(result) == {"GameCardId", "ConfigComment", "Mulligan"}
     assert result["Mulligan"]["values"] == [
         {
-            "comment": "Fixture: starter:sha256:candidate-1:keep-ex1-001",
+            "comment": "Fixture: EX1_001_mulligan_1",
             "mulligan": "EX1_001",
             "condition": "*",
             "value": "hold",

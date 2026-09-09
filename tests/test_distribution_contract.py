@@ -81,7 +81,10 @@ def test_skill_bundle_has_exact_source_sdist_wheel_byte_parity(
     payload = (
         Path("src/hsconfig/resources/codex_skill_bundle.json").read_bytes()
     )
-    logical_aggregate = compute_bundle_aggregate(decode_skill_bundle(payload))
+    files = decode_skill_bundle(payload)
+    logical_aggregate = compute_bundle_aggregate(files)
+    assert len(files) == 9
+    assert b"single strongest practical candidate" in files["SKILL.md"]
     assert b"LLM_OPTIMIZED_START" in payload
     source_root, wheel, sdist = _write_bundle_parity_archives(tmp_path, payload)
 

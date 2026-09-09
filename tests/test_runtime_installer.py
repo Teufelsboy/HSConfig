@@ -8112,6 +8112,7 @@ def test_runtime_file_actions_use_planned_staging_bound_commit_matrix(
 ) -> None:
     import hsconfig.live_start_session as live_start_session
     from hsconfig.atomic_io import atomic_materialize_staging_bytes
+    from hsconfig.live_start_faults import LiveStartFaultPoint
 
     with _controller_pair_capabilities(tmp_path, monkeypatch) as capabilities:
         residue = atomic_materialize_staging_bytes(
@@ -8160,6 +8161,7 @@ def test_runtime_file_actions_use_planned_staging_bound_commit_matrix(
                     action="materialize_runtime_admission_staging",
                 )
             )
+            inner_points: list[LiveStartFaultPoint] = []
             staging_receipt = (
                 runtime_installer._execute_runtime_admission_file_action_from_pair(
                     lease_pair=pair,
@@ -8167,8 +8169,15 @@ def test_runtime_file_actions_use_planned_staging_bound_commit_matrix(
                     expected_session=cleaned,
                     admission_authorization=materialize,
                     payload=capabilities.admission_raw,
+                    fault_hook=inner_points.append,
                 )
             )
+            assert inner_points == [
+                LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_CREATED,
+                LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_PARTIAL,
+                LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_FULL,
+                LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_FLUSHED,
+            ]
             staging_bound = live_start_session.advance_runtime_admission_under_lock(
                 session_lease=capabilities.session_lease,
                 expected_admission_session=cleaned,
@@ -28481,15 +28490,19 @@ def test_success_ack_rejects_selected_row_recreated_after_verified_unlink(
         )
 
 
-def test_owning_success_ack_revalidates_current_match_and_nonpending_runtime_facts(
+@pytest.mark.parametrize("prior_owner", (False, True), ids=("owning", "prior-owner"))
+def test_success_ack_revalidates_current_match_and_nonpending_runtime_facts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    prior_owner: bool,
 ) -> None:
-    """Success-Ack refuses every current-runtime drift before fence retirement."""
+    """Both owner routes refuse current-runtime drift before evidence retirement."""
 
     import hsconfig.live_start_session as live_start_session
 
-    prepared_context = _prepared_owning_success_ack_cursor(tmp_path, monkeypatch)
+    prepared_context = _prepared_success_ack_cursor(
+        tmp_path, monkeypatch, prior_owner=prior_owner
+    )
     fixture = prepared_context.fixture
     prepared = prepared_context.prepared
     acknowledgement = prepared.attempt_acknowledgement
@@ -28514,10 +28527,19 @@ def test_owning_success_ack_revalidates_current_match_and_nonpending_runtime_fac
     for surface, changed_path in watched_paths.items():
         original_raw = changed_path.read_bytes()
         original_identity = path_identity(changed_path)
-        changed_path.write_bytes(original_raw + b"\ncurrent-success-ack-drift\n")
+        drift = (
+            b"\n; current-success-ack-drift\n"
+            if surface == "deck_config_ini"
+            else b"\ncurrent-success-ack-drift\n"
+        )
+        changed_path.write_bytes(original_raw + drift)
         assert path_identity(changed_path) == original_identity
         changed_raw = changed_path.read_bytes()
         assert changed_raw != original_raw
+        if surface == "deck_config_ini":
+            assert runtime_installer.read_deck_config(
+                changed_path, deck_name=prepared.deck_name
+            ).selected_config_dir == target_path.name
         try:
             fence_before = fence_path.read_bytes()
             fence_identity_before = path_identity(fence_path)
@@ -28540,10 +28562,11 @@ def test_owning_success_ack_revalidates_current_match_and_nonpending_runtime_fac
                     ValueError,
                     match="^runtime_success_ack_current_runtime_facts_changed$",
                 ):
-                    _retire_owning_success_ack_fence(
+                    _retire_success_ack_evidence_row(
                         fixture=fixture,
                         capabilities=capabilities,
                         prepared=prepared,
+                        action="journal" if prior_owner else "fence",
                     )
                 assert fence_path.read_bytes() == fence_before, surface
                 assert path_identity(fence_path) == fence_identity_before, surface

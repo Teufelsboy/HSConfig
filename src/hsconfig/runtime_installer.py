@@ -21,6 +21,9 @@ from hsconfig.apply_invocation import APPLY_INVOCATION_MAX_BYTES
 from hsconfig.atomic_io import (
     ExclusiveFileLock,
     FaultHook,
+    NO_REPLACE_COMMIT_FAULT_POINT,
+    NO_REPLACE_POSIX_LINK_FAULT_POINT,
+    STAGING_MATERIALIZE_FAULT_POINT,
     atomic_commit_bound_staging_no_replace,
     atomic_commit_bound_staging_replace,
     atomic_materialize_staging_bytes,
@@ -40,6 +43,12 @@ from hsconfig.deck_config_ini import (
     read_deck_config,
     render_deck_config,
     replace_deck_config_if_unchanged,
+)
+from hsconfig.live_start_faults import (
+    LiveStartFaultHook,
+    LiveStartFaultPoint,
+    invoke_live_start_fault,
+    no_live_start_fault,
 )
 from hsconfig.output_publisher import (
     PublishedOutput,
@@ -171,6 +180,23 @@ _STATE_IDENTITY_DOMAIN = b"hsconfig-runtime-deck-state-v1\0"
 _RECEIPT_SCHEMA_VERSION = 1
 _RUNTIME_APPLY_TOKEN_AUTHORITY = object()
 _CONTROLLER_PAIR_TOKEN_AUTHORITY = object()
+_RUNTIME_ATOMIC_FAULT_POINTS = MappingProxyType(
+    {
+        "inner_temp_created": LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_CREATED,
+        "inner_temp_partial": LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_PARTIAL,
+        "inner_temp_full": LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_FULL,
+        "inner_temp_flushed": LiveStartFaultPoint.AFTER_GENERIC_FILE_INNER_TEMP_FLUSHED,
+        STAGING_MATERIALIZE_FAULT_POINT: (
+            LiveStartFaultPoint.AFTER_GENERIC_FILE_STAGING_FLUSH_BEFORE_STAGING_BOUND_CAS
+        ),
+        NO_REPLACE_POSIX_LINK_FAULT_POINT: (
+            LiveStartFaultPoint.AFTER_BOUND_STAGING_POSIX_LINK_BEFORE_UNLINK
+        ),
+        NO_REPLACE_COMMIT_FAULT_POINT: (
+            LiveStartFaultPoint.AFTER_GENERIC_FILE_BOUND_COMMIT_BEFORE_CAS
+        ),
+    }
+)
 RUNTIME_ATTEMPT_RETENTION_SCHEMA_VERSION = 2
 RUNTIME_ATTEMPT_RETENTION_MAX_BYTES = 64 * 1024
 RUNTIME_ATTEMPT_RETENTION_KIND = "live_start_runtime_attempt_retention"
@@ -2031,6 +2057,17 @@ def _initial_owner_retirement_cursor(
         or old_journal.cleanup_entries
     ):
         raise ValueError("runtime_owner_retirement_initial_authority_invalid")
+    preservation = _runtime_attempt_preservation_index(
+        runtime_root,
+        _load_runtime_attempt_retentions(runtime_root),
+    )
+    protected_identity = preservation.target_identities.get(
+        old_journal.target_path.casefold()
+    )
+    if protected_identity is not None:
+        if protected_identity != retired_identity:
+            raise ValueError("runtime_owner_retirement_initial_authority_invalid")
+        return None
     entries = _collect_owner_retirement_cleanup_entries(retired_target)
     if (
         _owner_retirement_package_digest(entries)
@@ -4046,10 +4083,6 @@ def _validate_post_handoff_runtime_admission(
         for value in (operation, admission, child, publication)
     ):
         raise ValueError("controller_apply_pair_runtime_admission_invalid")
-    assert isinstance(operation, Mapping)
-    assert isinstance(admission, Mapping)
-    assert isinstance(child, Mapping)
-    assert isinstance(publication, Mapping)
     if (
         persisted.phase.value
         not in {"APPLY_STARTED", "APPLY_COMMITTED", "RUNTIME_MATCHED"}
@@ -4188,10 +4221,6 @@ def _validate_pre_handoff_runtime_admission(
         for value in (pending, operation, child, publication)
     ):
         raise ValueError("controller_apply_pair_runtime_admission_invalid")
-    assert isinstance(pending, Mapping)
-    assert isinstance(operation, Mapping)
-    assert isinstance(child, Mapping)
-    assert isinstance(publication, Mapping)
     pending_stage = pending.get("stage")
     if pending_stage == "STAGING_BOUND":
         _validate_bound_runtime_admission_commit_reentry(
@@ -5195,6 +5224,7 @@ def _execute_runtime_admission_file_action_from_pair(
     expected_session: LiveStartSession,
     admission_authorization: RuntimeAdmissionAuthorization,
     payload: bytes,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> RuntimeAdmissionStepReceipt:
     """Execute one admission/receipt file row under the exact active pair."""
 
@@ -5306,7 +5336,8 @@ def _execute_runtime_admission_file_action_from_pair(
                 }
             else:
                 pending = expected_session.pending_transition
-                assert isinstance(pending, Mapping)
+                if not isinstance(pending, Mapping):
+                    raise ValueError("runtime_invocation_pending_missing")
                 evidence = {
                     "invocation_receipt_path": str(final_path),
                     "invocation_receipt_absent": True,
@@ -5330,6 +5361,11 @@ def _execute_runtime_admission_file_action_from_pair(
                 payload=content,
                 expected_parent_identity=parent_identity,
                 maximum_size=max(planned_size, 1),
+                inner_temp_fault_hook=(
+                    _runtime_atomic_fault_hook(fault_hook)
+                    if action == "materialize_runtime_admission_staging"
+                    else no_fault
+                ),
             )
             if path_lexists(final_path):
                 raise ValueError("runtime_admission_file_action_direct_final")
@@ -5403,7 +5439,8 @@ def _execute_runtime_admission_file_action_from_pair(
                 }
             else:
                 pending = expected_session.pending_transition
-                assert isinstance(pending, Mapping)
+                if not isinstance(pending, Mapping):
+                    raise ValueError("runtime_invocation_pending_missing")
                 evidence = {
                     "invocation_receipt_path": str(final_path),
                     "invocation_receipt_parent_identity": parent_identity,
@@ -6009,7 +6046,8 @@ def _initial_prior_owner_apply_recovery(
             state_key=state_key,
         ).value
     )
-    assert isinstance(base, dict)
+    if not isinstance(base, dict):
+        raise ValueError("runtime_recovery_base_invalid")
     journal_raw = _planned_prepared_runtime_journal_bytes(
         plan,
         transaction_id=runtime_admission.apply_attempt_id,
@@ -6341,7 +6379,8 @@ def bootstrap_runtime_layout_directory_from_pair(
                 require_empty=False,
             )
         successor = _plain_json_value(refreshed_layout)
-        assert isinstance(successor, dict)
+        if not isinstance(successor, dict):
+            raise ValueError("runtime_layout_successor_invalid")
         successor.pop("content_sha256", None)
         successor_rows = successor["directories"]
         successor_row = successor_rows[current_index]
@@ -6963,6 +7002,7 @@ def _execute_bound_controller_journal_action(
     *,
     external_file_action: Mapping[str, Any],
     transaction_id: str,
+    atomic_fault_hook: FaultHook = no_fault,
 ) -> _ExactRuntimeTransactionObservation:
     """Commit or confirm exactly one identity-bound controller v1 staging."""
 
@@ -7028,6 +7068,7 @@ def _execute_bound_controller_journal_action(
             expected_size=staging_size,
             expected_sha256=staging_sha256,
             expected_parent_identity=parent_identity,
+            fault_hook=atomic_fault_hook,
         )
     elif mode == "replace_exact":
         predecessor_identity = tuple(
@@ -7164,7 +7205,7 @@ def _controller_transaction_external_action(
                 external.get("action_kind")
                 == "materialize_file_action_staging"
                 and external.get("final_path")
-                == value.get("successor_journal_path")
+                == value.get("planned_journal_successor_path")
             )
         )
     ):
@@ -7709,6 +7750,7 @@ def _observe_exact_paired_runtime_attempt(
             exact_committed_successor = (
                 recovery_cursor.get("expected_action")
                     in {
+                        "advance_controller_transaction_journal_write",
                         "bind_renamed_target",
                         "commit_ini_journal",
                     "commit_state_journal",
@@ -8311,8 +8353,6 @@ def _terminal_ownerless_commit_ini_projection(
         or journal.candidate_identity is not None
     ):
         raise ValueError("runtime_terminal_suffix_cursor_invalid")
-    assert target_path is not None
-    assert target_identity is not None
     target_identity = tuple(target_identity)
     journal_target_binding_is_exact = (
         journal.phase == RuntimeTransactionPhase.PREPARED
@@ -8544,8 +8584,6 @@ def _terminal_ownerless_suffix_projection(
         or journal.candidate_identity is not None
     ):
         raise ValueError("runtime_terminal_suffix_cursor_invalid")
-    assert target_path is not None
-    assert target_identity is not None
     target_identity = tuple(target_identity)
     state_path = runtime_admission.runtime_root / ".hsconfig" / "state.json"
     final_journal_suffix = (
@@ -9077,8 +9115,6 @@ def _terminal_ownerless_committed_projection(
         or resolution.get("last_apply_receipt_sha256") is None
     ):
         raise ValueError("runtime_terminal_committed_cursor_invalid")
-    assert target_path is not None
-    assert target_identity is not None
     target_identity = tuple(target_identity)
     projection = {
         field_name: _plain_json_value(resolution.get(field_name))
@@ -9757,11 +9793,22 @@ def _planned_journal_bytes_from_recovery(
     return raw
 
 
+def _runtime_atomic_fault_hook(live_hook: LiveStartFaultHook) -> FaultHook:
+    def forward(stage: str) -> None:
+        point = _RUNTIME_ATOMIC_FAULT_POINTS.get(stage)
+        if point is None:
+            raise ValueError("runtime_atomic_fault_point_invalid")
+        invoke_live_start_fault(live_hook, point)
+
+    return forward
+
+
 def _materialize_initial_retention_staging(
     *,
     recovery: Mapping[str, Any],
     payload: bytes | None = None,
     commit_action: str | None = None,
+    atomic_fault_hook: FaultHook = no_fault,
 ) -> RuntimeApplyRecoveryPhysicalPostcondition:
     external = recovery.get("external_file_action")
     if not isinstance(external, Mapping) or external.get("stage") != "PLANNED":
@@ -9821,9 +9868,12 @@ def _materialize_initial_retention_staging(
         payload=content,
         expected_parent_identity=parent_identity,
         maximum_size=RUNTIME_ATTEMPT_RETENTION_MAX_BYTES,
+        fault_hook=atomic_fault_hook,
+        inner_temp_fault_hook=atomic_fault_hook,
     )
     next_external = _plain_json_value(external)
-    assert isinstance(next_external, dict)
+    if not isinstance(next_external, dict):
+        raise ValueError("runtime_external_action_invalid")
     next_external.pop("content_sha256", None)
     next_external.update(
         {
@@ -11507,6 +11557,7 @@ def _controller_journal_recovery_postcondition(
     recovery: Mapping[str, Any],
     transaction_id: str,
     attempt_retention_parent_identity: PathIdentity,
+    atomic_fault_hook: FaultHook = no_fault,
 ) -> RuntimeApplyRecoveryPhysicalPostcondition:
     external = recovery.get("external_file_action")
     if not isinstance(external, Mapping):
@@ -11514,6 +11565,7 @@ def _controller_journal_recovery_postcondition(
     committed = _execute_bound_controller_journal_action(
         external_file_action=external,
         transaction_id=transaction_id,
+        atomic_fault_hook=atomic_fault_hook,
     )
     journal = committed.journal
     if journal is None:
@@ -15666,7 +15718,8 @@ def _validate_no_commit_cleanup_physical_surface(
     owner_triplet = predecessor_triplet(
         "target_owner_journal", required=False
     )
-    assert attempt_triplet is not None and journal_triplet is not None
+    if attempt_triplet is None or journal_triplet is None:
+        raise ValueError("runtime_no_commit_cleanup_authority_missing")
     attempt_path, expected_attempt_identity, expected_attempt_sha256 = (
         attempt_triplet
     )
@@ -15695,9 +15748,6 @@ def _validate_no_commit_cleanup_physical_surface(
         is not RuntimeLiveAttemptAdmissionEvidence
     ):
         raise ValueError("runtime_no_commit_cleanup_sidecar_path_changed")
-    assert isinstance(
-        binding.runtime_admission, RuntimeLiveAttemptAdmissionEvidence
-    )
     if (
         inventory_identity != tuple(resolution["cleanup_inventory_identity"])
         or raw != inventory.canonical_json
@@ -16055,7 +16105,8 @@ def delete_runtime_no_commit_entry_from_pair(
             raise ValueError(
                 f"runtime_no_commit_cleanup_commitment_mismatch:{failed}"
             )
-        assert isinstance(resolution, Mapping)
+        if not isinstance(resolution, Mapping):
+            raise ValueError("runtime_no_commit_cleanup_resolution_invalid")
         current_path, current, was_absent, _ = (
             _validate_no_commit_cleanup_physical_surface(
                 persisted=persisted,
@@ -16858,7 +16909,8 @@ def retire_runtime_no_commit_metadata_from_pair(
             )
         was_absent = raw is None
         if not was_absent:
-            assert raw is not None and identity is not None
+            if raw is None or identity is None:
+                raise ValueError("runtime_retirement_file_identity_missing")
             secure_unlink_verified(
                 path,
                 expected_identity=identity,
@@ -16964,8 +17016,11 @@ def _require_current_success_runtime_parity_from_pair(
             owner.deck_name != current_session.deck_name
             or owner.logical_config_dir != spec.logical_config_dir
             or owner.package_root_sha256 != spec.package_root_sha256
-            or owner.source_manifest_sha256
-            != expected_package_root_sha256.removeprefix("sha256:")
+            or (
+                owner.transaction_id == runtime_admission.apply_attempt_id
+                and owner.source_manifest_sha256
+                != expected_package_root_sha256.removeprefix("sha256:")
+            )
             or owner.target_path
             != expected_target_path.relative_to(
                 runtime_admission.runtime_root
@@ -16997,7 +17052,11 @@ def _require_current_success_runtime_parity_from_pair(
             "sha256:" + hashlib.sha256(ini_raw).hexdigest()
             != result_intent.get("deck_config_ini_sha256")
             or ini.selected_config_dir != expected_target_path.name
-            or ini.sha256 != owner.next_ini_sha256
+            # A historical owner binds the target, not this attempt's INI.
+            or (
+                owner.transaction_id == runtime_admission.apply_attempt_id
+                and ini.sha256 != owner.next_ini_sha256
+            )
             or ini_raw
             != render_deck_config(
                 ini,
@@ -17041,10 +17100,15 @@ def _require_current_success_runtime_parity_from_pair(
             expected_parent_identity=layout_identities["state_receipts"],
             maximum_size=_RUNTIME_EXTERNAL_FILE_ACTION_MAX_BYTES,
         )
+        # Reusing an immutable owner still receipts the current publication.
+        expected_receipt = _receipt_payload(owner, ini.sha256)
+        expected_receipt["source_manifest_sha256"] = (
+            expected_package_root_sha256.removeprefix("sha256:")
+        )
         if (
             "sha256:" + hashlib.sha256(receipt_raw).hexdigest()
             != result_intent.get("last_apply_receipt_sha256")
-            or receipt_raw != _receipt_bytes(_receipt_payload(owner, ini.sha256))
+            or receipt_raw != _receipt_bytes(expected_receipt)
         ):
             raise ValueError("receipt")
         for (
@@ -17149,6 +17213,7 @@ def revalidate_success_candidate_runtime_parity_from_pair(
             or recovery.get("stable_physical_disposition") != "COMMITTED"
             or recovery.get("runtime_match_status") != "matched"
             or not isinstance(recovery.get("runtime_match_sha256"), str)
+            or recovery.get("apply_attempt_id") != expected_transaction_id
             or runtime_admission.apply_attempt_id != expected_transaction_id
             or runtime_admission.retention_owner_run_id
             != expected_retention_owner_run_id
@@ -17190,8 +17255,11 @@ def revalidate_success_candidate_runtime_parity_from_pair(
             or owner.cleanup_cursor != 0
             or owner.deck_name != persisted.deck_name
             or owner.state_key != _state_key(persisted.deck_name)
-            or owner.source_manifest_sha256
-            != expected_package_root_sha256.removeprefix("sha256:")
+            or (
+                owner.transaction_id == expected_transaction_id
+                and owner.source_manifest_sha256
+                != expected_package_root_sha256.removeprefix("sha256:")
+            )
             or owner.target_path
             != expected_target_path.relative_to(
                 runtime_admission.runtime_root
@@ -17199,6 +17267,52 @@ def revalidate_success_candidate_runtime_parity_from_pair(
             or owner.target_identity != expected_target_identity
         ):
             raise ValueError("owner")
+        # A historical owner authenticates the installed bytes; the exact
+        # current-attempt journal must independently bind their new publication.
+        journal_path_value = recovery.get("predecessor_journal_path")
+        journal_identity_value = recovery.get("predecessor_journal_identity")
+        journal_sha256 = recovery.get("predecessor_journal_sha256")
+        if (
+            not isinstance(journal_path_value, str)
+            or not _valid_path_identity(journal_identity_value)
+            or not isinstance(journal_sha256, str)
+            or _PREFIXED_SHA256.fullmatch(journal_sha256) is None
+        ):
+            raise ValueError("current journal binding")
+        journal_path = Path(journal_path_value)
+        if journal_path != runtime_transaction_journal_path(
+            runtime_admission.runtime_root,
+            expected_transaction_id,
+        ):
+            raise ValueError("current journal path")
+        journal_raw, observed_journal_identity = _read_exact_runtime_external_file(
+            journal_path,
+            expected_parent_identity=identities["transactions"],
+            maximum_size=MAX_RUNTIME_TRANSACTION_BYTES,
+        )
+        journal = parse_runtime_transaction_journal_bytes(
+            journal_raw,
+            expected_transaction_id=expected_transaction_id,
+        )
+        if (
+            observed_journal_identity != journal_identity_value
+            or "sha256:" + hashlib.sha256(journal_raw).hexdigest()
+            != journal_sha256
+            or journal.phase is not RuntimeTransactionPhase.FINALIZED
+            or journal.owns_target
+            != (owner.transaction_id == expected_transaction_id)
+            or journal.source_manifest_sha256
+            != expected_package_root_sha256.removeprefix("sha256:")
+            or journal.deck_name != owner.deck_name
+            or journal.state_key != owner.state_key
+            or journal.logical_config_dir != owner.logical_config_dir
+            or journal.package_root_sha256 != owner.package_root_sha256
+            or journal.target_path != owner.target_path
+            or journal.target_identity != owner.target_identity
+            or journal.next_config_dir != owner.next_config_dir
+            or "sha256:" + journal.next_ini_sha256 != expected_deck_config_ini_sha256
+        ):
+            raise ValueError("current journal")
         _observe_retained_directory(
             expected_target_path,
             expected_identity=expected_target_identity,
@@ -17229,6 +17343,13 @@ def revalidate_success_candidate_runtime_parity_from_pair(
                 maximum_size=MAX_RUNTIME_TRANSACTION_BYTES,
             )
         )
+        current_journal_raw, current_journal_identity = (
+            _read_exact_runtime_external_file(
+                journal_path,
+                expected_parent_identity=identities["transactions"],
+                maximum_size=MAX_RUNTIME_TRANSACTION_BYTES,
+            )
+        )
         if (
             post_active is not binding
             or post != persisted
@@ -17236,6 +17357,8 @@ def revalidate_success_candidate_runtime_parity_from_pair(
             or post.session_identity != persisted.session_identity
             or current_owner_identity != observed_owner_identity
             or current_owner_raw != owner_raw
+            or current_journal_identity != observed_journal_identity
+            or current_journal_raw != journal_raw
         ):
             raise ValueError("current facts changed")
     except Exception as error:
@@ -17382,8 +17505,11 @@ def revalidate_success_terminal_evidence_retired_from_pair(
             or owner.cleanup_cursor != 0
             or owner.deck_name != persisted.deck_name
             or owner.state_key != _state_key(persisted.deck_name)
-            or owner.source_manifest_sha256
-            != package_root_sha256.removeprefix("sha256:")
+            or (
+                owner.transaction_id == transaction_id
+                and owner.source_manifest_sha256
+                != package_root_sha256.removeprefix("sha256:")
+            )
             or owner.target_path
             != target_path.relative_to(runtime_admission.runtime_root).as_posix()
             or owner.target_identity != target_identity
@@ -17695,7 +17821,7 @@ def revalidate_committed_mismatch_terminal_evidence_retired_from_pair(
             "sha256:" + hashlib.sha256(ini_raw).hexdigest()
             != intent.get("deck_config_ini_sha256")
             or ini.selected_config_dir != target_path.name
-            or ini.sha256 != owner.next_ini_sha256
+            or ini.sha256 != journal.next_ini_sha256
         ):
             raise ValueError("ini")
         runtime_binding = _require_active_runtime_apply_lease(
@@ -17736,7 +17862,7 @@ def revalidate_committed_mismatch_terminal_evidence_retired_from_pair(
         if (
             "sha256:" + hashlib.sha256(receipt_raw).hexdigest()
             != intent.get("last_apply_receipt_sha256")
-            or receipt_raw != _receipt_bytes(_receipt_payload(owner, ini.sha256))
+            or receipt_raw != _receipt_bytes(_receipt_payload(journal, ini.sha256))
         ):
             raise ValueError("receipt")
         post = load_live_start_session_under_lock(session_lease=session_lease)
@@ -18428,8 +18554,11 @@ def _retire_success_attempt_evidence_step_from_pair(
             owner_identity != expected_target_owner_journal_identity
             or owner.phase is not RuntimeTransactionPhase.FINALIZED
             or not owner.owns_target
-            or owner.source_manifest_sha256
-            != expected_package_root_sha256.removeprefix("sha256:")
+            or (
+                owner.transaction_id == transaction_id
+                and owner.source_manifest_sha256
+                != expected_package_root_sha256.removeprefix("sha256:")
+            )
             or owner.target_identity != expected_target_identity
             or owner.target_path
             != expected_target_path.relative_to(admission.runtime_root).as_posix()
@@ -18547,7 +18676,8 @@ def _retire_success_attempt_evidence_step_from_pair(
         if action == "journal":
             was_absent = journal_raw is None
             if journal_raw is not None:
-                assert journal_identity is not None
+                if journal_identity is None:
+                    raise ValueError("runtime_retirement_journal_identity_missing")
                 secure_unlink_verified(
                     expected_journal_path,
                     expected_identity=journal_identity,
@@ -19601,6 +19731,7 @@ def recover_runtime_attempt_from_pair(
         RuntimeAttemptRecoveryAuthorization | None
     ) = None,
     terminal_authorization: TerminalRetirementAuthorization | None = None,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> RuntimeAttemptRecovery:
     """Observe or advance one exact attempt under an active controller pair."""
 
@@ -19734,8 +19865,8 @@ def recover_runtime_attempt_from_pair(
     )
 
     if observation_mode:
-        assert observation_family is not None
-        assert runtime_observation_authorization is not None
+        if observation_family is None or runtime_observation_authorization is None:
+            raise ValueError("runtime_observation_authority_missing")
         bearer = _require_opaque_carrier(
             runtime_observation_authorization,
             carrier_type=RuntimeObservationAuthorization,
@@ -20083,6 +20214,7 @@ def recover_runtime_attempt_from_pair(
 
         def advance() -> RuntimeApplyRecoveryPhysicalPostcondition:
             nonlocal observed
+            atomic_fault_hook = _runtime_atomic_fault_hook(fault_hook)
             observed = _observe_exact_paired_runtime_attempt(
                 runtime_root,
                 transaction_id=transaction_id,
@@ -20136,6 +20268,7 @@ def recover_runtime_attempt_from_pair(
                     attempt_retention_parent_identity=layout_identities[
                         "attempt_retention"
                     ],
+                    atomic_fault_hook=atomic_fault_hook,
                 )
             if action == "retire_unbound_file_action_staging":
                 return _retire_unbound_recovery_external_file_action(
@@ -20251,6 +20384,12 @@ def recover_runtime_attempt_from_pair(
                         recovery=recovery,
                         payload=payload,
                         commit_action=commit_action,
+                        atomic_fault_hook=(
+                            atomic_fault_hook
+                            if commit_action
+                            == "advance_controller_transaction_journal_write"
+                            else no_fault
+                        ),
                     )
                 if (
                     recovery.get("successor_candidate_identity") is not None
@@ -20451,6 +20590,7 @@ def recover_runtime_attempt_from_pair(
             recovery_authorization=nonterminal_recovery_authorization,
             action=action,
             physical_action=advance,
+            fault_hook=fault_hook,
         )
         if observed is None:
             raise RuntimeError("runtime_attempt_recovery_observation_missing")
@@ -20463,7 +20603,8 @@ def recover_runtime_attempt_from_pair(
             terminal_resolution_step_receipt=None,
         )
 
-    assert terminal_authorization is not None
+    if terminal_authorization is None:
+        raise ValueError("runtime_terminal_authorization_missing")
     retirement = persisted.terminal_retirement
     if (
         not isinstance(retirement, Mapping)

@@ -18,7 +18,10 @@ Before implementing plans, generating deck packages, or applying runtime-facing 
 
 Do not add replay parsing, HDT parsing, winrate validation, candidate promotion, or post-run tuning to this repo.
 
-Generated runtime packages belong under `outputs/` and are ignored by git.
+The repository's ignored `outputs/` root is the fixed twelve-deck release
+catalog. Personal deck packages belong under a separate operator-profile
+output-base root, outside the repository and outside HSConfig's internal
+state directory. Do not add arbitrary operator decks to the release catalog.
 
 The canonical release gate is the sole producer/verifier for release evidence.
 It derives semantic dispositions from the twelve current package reports, derives

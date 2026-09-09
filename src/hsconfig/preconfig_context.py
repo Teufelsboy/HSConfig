@@ -54,6 +54,7 @@ def build_preconfig_context(
     fetch_latest_cards_fn: Any = fetch_latest_cards,
     fetch_latest_collectible_cards_fn: Any | None = fetch_latest_collectible_cards,
     research_required_guide_sources_fn: Any = research_required_guide_sources,
+    load_cards_fn: Any = load_cards,
 ) -> dict[str, Any]:
     """Build the shared deck/source context used by research and prepare commands."""
     reject_caller_supplied_source_authority(args)
@@ -62,7 +63,7 @@ def build_preconfig_context(
         if current_date is not None
         else getattr(args, "current_date", None)
     )
-    cards_payload = load_cards(
+    cards_payload = load_cards_fn(
         args.cards_json,
         deck_name=args.deck_name,
         deck_code=args.deck_code,

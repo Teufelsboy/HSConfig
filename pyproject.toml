@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hsconfig"
 dynamic = ["version"]
-description = "Guide-aligned HearthRanger VisionAI CustomConfig generator"
+description = "Codex-first HearthRanger start-config generator: deck name and deck code to a validated, live-matched VisionAI CustomConfig."
 readme = "README.md"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]

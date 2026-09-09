@@ -106,7 +106,8 @@ def test_operator_guide_owns_the_detailed_conservative_cli_path() -> None:
     operator = _text(OPERATOR)
     secondary = _combined(*SECONDARY_DOCS)
 
-    assert "The installed skill uses the optimized route for normal generation." in operator
+    assert "Give the installed HSConfig skill only the deck name and deck code." in operator
+    assert "Its single candidate workflow is the only normal generation route." in operator
     assert "## Conservative CLI Compatibility" in operator
     assert "## Conservative CLI Operator Path" in operator
     assert "For conservative CLI compatibility, use raw `hsconfig configure`:" in operator

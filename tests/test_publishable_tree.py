@@ -215,6 +215,42 @@ def test_evaluator_reuses_secret_runtime_residue_and_placeholder_detection(
     assert any(row.startswith(prefix) for row in result["violations"])
 
 
+@pytest.mark.parametrize(
+    "source",
+    (
+        "expected_session = live_session.load_live_start_session_under_lock(\n"
+        "    session_lease=lease,\n)\n",
+        "expected_session = controller.publish_validated_prepublication(\n"
+        "    expected_session=current,\n)\n",
+        "consume(expected_session=session.SessionLockToken._mint(forged_bearer),)\n",
+    ),
+)
+def test_secret_scan_does_not_treat_multiline_python_callables_as_credentials(
+    source: str,
+) -> None:
+    assert publishable_tree.contains_secret(source, python_source=True) is False
+
+
+@pytest.mark.parametrize("quoted", (False, True))
+def test_secret_scan_keeps_literal_session_credentials_after_callable_filter(
+    quoted: bool,
+) -> None:
+    synthetic = "A7b9C2d4E6f8G1h3J5k7L9m2" + "N4p6Q8r1S3t5U7v9W2x4"
+    assigned = repr(synthetic) if quoted else synthetic
+    assert publishable_tree.contains_secret("session = " + assigned, python_source=True)
+
+
+def test_forbidden_helper_option_reference_is_exact_line_bound() -> None:
+    relative = "tests/test_optimized_skill_workflow.py"
+    raw = (ROOT / relative).read_bytes()
+    assert publishable_tree.publishable_text_violations(relative, raw, public_doc=False) == []
+    changed = raw.replace(b'"--force"', b'"' + b"TO" + b'DO"', 1)
+    assert changed != raw
+    assert publishable_tree.publishable_text_violations(relative, changed, public_doc=False) == [
+        f"unallowlisted_source_placeholder:{relative}:163",
+    ]
+
+
 def test_evaluator_rejects_unsafe_or_unresolved_markdown_links_and_anchors() -> None:
     rows = tuple(sorted((
         _row(

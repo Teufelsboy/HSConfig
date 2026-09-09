@@ -429,39 +429,45 @@ def test_atomic_bound_no_replace_posix_two_link_intermediate_converges(
     assert target.stat().st_nlink == 1
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires real POSIX hard-link publication")
 def test_atomic_bound_no_replace_maps_posix_link_before_unlink_fault(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     staging = tmp_path / "authority.json.staged"
     target = tmp_path / "authority.json"
     payload = b"sealed"
     staging.write_bytes(payload)
+    identity = path_identity(staging)
     events: list[str] = []
 
-    def simulate_posix_commit(**kwargs: Any) -> tuple[int, int, int]:
-        kwargs["fault_hook"]("after_posix_link_before_source_unlink")
-        os.replace(kwargs["source_path"], kwargs["target_path"])
-        return kwargs["expected_source_identity"]  # type: ignore[no-any-return]
+    def observe_real_commit(point: str) -> None:
+        events.append(point)
+        assert path_identity(target) == identity
+        assert target.read_bytes() == payload
+        if point == NO_REPLACE_POSIX_LINK_FAULT_POINT:
+            assert path_identity(staging) == identity
+            assert staging.stat().st_nlink == target.stat().st_nlink == 2
+            assert staging.read_bytes() == payload
+        else:
+            assert point == NO_REPLACE_COMMIT_FAULT_POINT
+            assert not staging.exists()
+            assert target.stat().st_nlink == 1
 
-    monkeypatch.setattr(
-        atomic_io,
-        "secure_commit_sibling_no_replace",
-        simulate_posix_commit,
-    )
-    atomic_commit_bound_staging_no_replace(
+    published = atomic_commit_bound_staging_no_replace(
         path=target,
         staging_path=staging,
-        expected_staging_identity=path_identity(staging),
+        expected_staging_identity=identity,
         expected_size=len(payload),
-        expected_sha256="sha256:" + __import__("hashlib").sha256(payload).hexdigest(),
+        expected_sha256="sha256:" + sha256(payload).hexdigest(),
         expected_parent_identity=path_identity(tmp_path),
-        fault_hook=events.append,
+        fault_hook=observe_real_commit,
     )
     assert events == [
         NO_REPLACE_POSIX_LINK_FAULT_POINT,
         NO_REPLACE_COMMIT_FAULT_POINT,
     ]
+    assert published.identity == identity == path_identity(target)
+    assert not staging.exists()
 
 
 def test_reserved_atomic_temp_discards_partial_but_rejects_reparse_hardlink_ads_or_unknown_name(

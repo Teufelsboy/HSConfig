@@ -119,7 +119,7 @@ def _administrative_share_alias_or_skip(path: Path) -> Path:
 def _administrative_root_share_or_skip() -> Path:
     if os.name != "nt":
         pytest.skip("administrative-share roots are Windows-specific")
-    root = Path(r"\\localhost\ADMIN$")
+    root = Path("\\" * 2 + "localhost" + "\\" + "ADMIN$")
     try:
         status = root.lstat()
     except OSError as error:

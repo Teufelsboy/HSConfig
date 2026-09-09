@@ -1312,8 +1312,8 @@ def _join_hard_kill_process(
     process: multiprocessing.Process,
     *,
     expected_exitcode: int,
+    timeout_seconds: int = 120,
 ) -> None:
-    timeout_seconds = 120
     cleanup_timeout_seconds = 10
     process.join(timeout_seconds)
     timed_out = process.is_alive()
@@ -1582,9 +1582,10 @@ def _assert_hard_kill_resume(
         assert resumed.prepublication_work_binding is not None
     else:
         assert (
-            resumed.prepublication_work_binding
+            {key: resumed.prepublication_work_binding[key] for key in interrupted.prepublication_work_binding}
             == interrupted.prepublication_work_binding
         )
+    assert resumed.prepublication_work_binding["cleanup_completion"] is not None
     resumed_receipt_tree = _physical_tree(prepared.session_root / "receipts")
     assert {
         path: resumed_receipt_tree[path] for path in receipt_tree_at_kill
@@ -2615,6 +2616,46 @@ def test_crash_after_prepublication_cas_resumes_same_tree_and_receipt_without_re
         monkeypatch,
         "AFTER_PREPUBLICATION_CAS",
     )
+
+
+def test_prepublication_resume_preserves_bound_diagnostic_after_runtime_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    interrupted = _interrupt_pipeline(prepared, "AFTER_PREPUBLICATION_CAS")
+    receipt_path = (
+        prepared.session_root / "receipts" / "prepublication_apply_check.json"
+    )
+    receipt_raw = receipt_path.read_bytes()
+    session_tree = _physical_tree(prepared.session_root)
+    work = interrupted.prepublication_work_binding
+    assert isinstance(work, Mapping)
+    work_root = Path(str(work["work_root"]))
+    work_tree = _physical_tree(work_root)
+
+    ini_path = prepared.runtime_root / "CustomConfig" / "deck_config.ini"
+    ini_path.parent.mkdir(exist_ok=True)
+    previous_ini = ini_path.read_bytes() if ini_path.exists() else b""
+    ini_path.write_bytes(previous_ini + b"\n; changed after diagnostic receipt\n")
+    runtime_tree = _physical_tree(prepared.runtime_root)
+    planner_calls = 0
+
+    def forbid_replanning(**_kwargs: object) -> None:
+        nonlocal planner_calls
+        planner_calls += 1
+        raise AssertionError("bound diagnostic receipt must not be replanned")
+
+    monkeypatch.setattr(_controller(), "plan_apply_package", forbid_replanning)
+    with _lease_prepublication_capabilities(prepared) as (validated, *_):
+        assert validated.diagnostic_receipt.canonical_json == receipt_raw
+        assert validated.updated_session.canonical_json == interrupted.canonical_json
+        assert validated.updated_session.content_sha256 == interrupted.content_sha256
+        assert validated.updated_session.prepublication_work_binding == work
+    assert planner_calls == 0
+    assert _physical_tree(prepared.session_root) == session_tree
+    assert _physical_tree(work_root) == work_tree
+    assert _physical_tree(prepared.runtime_root) == runtime_tree
 
 
 def test_publication_requires_active_profile_and_output_capabilities(

@@ -1,6 +1,21 @@
 # HSConfig
 
-HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from a Hearthstone deck name and deck code.
+HSConfig turns a Hearthstone deck name and deck code into a validated, live-matched HearthRanger VisionAI `CustomConfig` through the installed Codex skill.
+
+Copy this normal prompt into Codex:
+
+```text
+Deck name: ShadowPriest
+Deck code: <DeckCode>
+```
+
+Example successful response:
+
+ShadowPriest — card coverage: complete — review confidence: high — LIVE_AND_MATCHED
+
+Deck -> Config -> Validate -> Live -> Match
+
+The aim is the best practical evidence-based pre-run configuration, not measured gameplay optimality.
 
 ## License and visibility
 
@@ -26,44 +41,39 @@ satisfied. Source evidence and diagnostics cannot grant runtime-write authority.
 python -m pip install -e .
 ```
 
-The detailed operator instructions are in `docs/operator/README.md`.
+This installs the Python package, not the Codex skill or a live profile.
+Complete "One-time setup" in `docs/operator/README.md` to install the bundled
+skill and explicitly authorize the intended runtime/output roots.
+After setup, the normal prompt needs only the deck name and deck code.
 
 ## Normal operation
 
-The installed HSConfig skill normally builds an LLM-optimized start from
-exactly three fixed candidates:
+The installed HSConfig skill creates a single candidate with one lead
+strategist, then uses one independent reviewer before validation, guarded
+live apply, and an exact runtime match. The lead considers alternatives
+internally; the operator does not choose between competing candidates.
+Technical validation and review share at most two revisions by the same lead.
 
-- `candidate-1.json` (`proactive_tempo`)
-- `candidate-2.json` (`balanced`)
-- `candidate-3.json` (`resource_oriented`)
+This installed optimized workflow is the only normal generation route. A
+valid enabled profile authorizes live operation for its bound runtime and
+output roots, so the normal prompt needs no per-run apply confirmation.
+Explicit preview overrides live and ends at `PREVIEW_READY` without runtime
+writes. A missing or invalid profile, or a disabled profile without explicit
+preview, returns `PROFILE_REQUIRED`; there is no silent preview fallback.
 
-Each candidate is validated against one immutable `starter_context.json`
-before an independent clean-context critic ranks all three without numeric
-scores. A strategist gets at most two targeted repair rounds for technical
-validation defects. The selected document is then compiled through
-`configure --optimized-start --starter-decision-json`; direct raw `hsconfig
-configure` remains the conservative compatibility path.
+Completion is `LIVE_AND_MATCHED`, or `ALREADY_LIVE` after verifying the same
+approved config is already active. Review confidence is `high|limited`;
+limited confidence and evidence gaps remain visible and do not mean gameplay
+quality was measured. `LLM_OPTIMIZED_START` binds the approved starter and
+compiler output, while `reports/operator_summary.json` remains the normal
+apply authority. Source gaps are informational on this optimized route,
+not a substitute authority.
 
-`LLM_OPTIMIZED_START` means the package is bound to the validated starter
-documents and compiler output. It is a best practical pre-game start config,
-not measured gameplay optimality. Inspect
-`configure_summary.json.optimized_start` and the package's
-`reports/operator_summary.json` before any runtime action.
-
-This installed optimized workflow is the only normal generation route. Source
-acquisition eligibility is a source-contract-only apply blocker on the
-conservative route. Optimized packages keep source gaps as visible
-informational limitations while their sealed starter authority, package
-derivation, and guarded apply facts are validated independently.
-
-The skill applies only when live writing was requested, and then runs the
-read-only `runtime-match` check against the exact applied package. Failures such
-as `optimized_start_summary_invalid` or `optimized_start_derivation_invalid`
-inside the production configure transaction leave prior published output and
-runtime state in place. The helper also validates the live configure-result
-summary immediately after production configure returns. That post-configure
-check is read-only detection: it preserves runtime state but cannot roll back
-an already-published current pointer.
+Use the same session's `resume` phase after interruption. Once an invocation
+receipt exists, or `APPLY_STARTED` is reached, resume is recovery-only: it
+does not rerun strategy or review, create a replacement candidate, or blindly
+retry apply. Failures report the actual status instead of claiming live
+success.
 
 ## Conservative CLI Compatibility
 
@@ -72,11 +82,14 @@ source-contract operation. It is compatibility/expert access, not the normal
 installed-skill generation route.
 
 ```powershell
-hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "<OutputBaseRoot>/<DeckName>" --json
 ```
 
-Resolve `outputs/<DeckName>/current.json`, then read the selected package's
-`reports/operator_summary.json`. Runtime writes happen only through `hsconfig
+Use a separate personal output base, not the repository's fixed twelve-deck
+`outputs/` release catalog. Resolve `<OutputBaseRoot>/<DeckName>/current.json`,
+then read the selected package's
+`reports/operator_summary.json`. On these explicit expert paths:
+Runtime writes happen only through `hsconfig
 apply` or `hsconfig configure --apply`.
 
 ## Verification

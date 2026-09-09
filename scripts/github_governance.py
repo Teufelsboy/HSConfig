@@ -49,8 +49,8 @@ REPOSITORY_FIELDS = (
 )
 DESIRED_REPOSITORY = {
     "description": (
-        "Deterministic pre-run HearthRanger VisionAI CustomConfig generator "
-        "with audited contracts."
+        "Codex-first HearthRanger start-config generator: deck name and deck code "
+        "to a validated, live-matched VisionAI CustomConfig."
     ),
     "has_issues": True,
     "has_projects": False,
@@ -68,6 +68,7 @@ DESIRED_REPOSITORY = {
     },
 }
 DESIRED_TOPICS = [
+    "codex",
     "configuration",
     "hearthranger",
     "hearthstone",
@@ -690,6 +691,35 @@ def verify_final(repository: str, ruleset_id: int, transport: Transport) -> dict
     return {"passed": True, "ruleset_id": ruleset_id}
 
 
+def verify_product_polish(repository: str, transport: Transport) -> dict[str, object]:
+    """Read only product metadata; this is not a governance verification."""
+    base = _repository(repository)
+    repository_state = _mapping(
+        transport.request("GET", base), "product_polish_repository"
+    )
+    description = DESIRED_REPOSITORY["description"]
+    if repository_state.get("description") != description:
+        raise GovernanceError("product_polish_description_mismatch")
+    if transport.request("GET", f"{base}/topics") != {"names": DESIRED_TOPICS}:
+        raise GovernanceError("product_polish_topics_mismatch")
+    return {
+        "passed": True,
+        "repository": repository,
+        "description": description,
+        "topics": list(DESIRED_TOPICS),
+    }
+
+
+def product_polish(repository: str, transport: Transport) -> dict[str, object]:
+    """Update only description/topics, then verify those exact fields."""
+    base = _repository(repository)
+    transport.request(
+        "PATCH", base, {"description": DESIRED_REPOSITORY["description"]}
+    )
+    transport.request("PUT", f"{base}/topics", {"names": list(DESIRED_TOPICS)})
+    return verify_product_polish(repository, transport)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manage verified HSConfig GitHub governance.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -701,6 +731,8 @@ def _parser() -> argparse.ArgumentParser:
         "verify-snapshot",
         "activate",
         "verify-final",
+        "product-polish",
+        "verify-product-polish",
     ):
         child = subparsers.add_parser(command)
         child.add_argument("--repo", required=True)
@@ -726,7 +758,11 @@ def main(argv: list[str] | None = None) -> int:
             result: object = {"passed": True, "snapshot": str(args.out.resolve())}
         else:
             snapshot = load_state(args.snapshot) if hasattr(args, "snapshot") else None
-            if args.command == "preflight":
+            if args.command == "product-polish":
+                result = product_polish(args.repo, transport)
+            elif args.command == "verify-product-polish":
+                result = verify_product_polish(args.repo, transport)
+            elif args.command == "preflight":
                 if not args.create_inactive_ruleset:
                     raise GovernanceError("create_inactive_ruleset_required")
                 result = ensure_preflight(args.repo, snapshot, transport)

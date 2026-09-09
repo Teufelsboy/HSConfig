@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import errno
 import json
+import multiprocessing
 import os
 from pathlib import Path
+import signal
 import stat
 import sys
 from types import SimpleNamespace
 from hashlib import sha256
+from typing import Any
 
 import pytest
 
@@ -63,7 +66,7 @@ def _windows_drive_root_or_skip(tmp_path: Path) -> Path:
 def _windows_admin_share_root_or_skip() -> Path:
     if os.name != "nt":
         pytest.skip("UNC-root ADS validation is Windows-specific")
-    root = Path(r"\\localhost\ADMIN$")
+    root = Path("\\" * 2 + "\\".join(("localhost", "ADMIN$")))
     try:
         status = root.lstat()
     except OSError as error:
@@ -179,7 +182,7 @@ def test_no_replace_rejects_foreign_source_hardlink_before_target_creation(
     assert source.read_bytes() == foreign.read_bytes() == b"authority"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback only")
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX hard-link publication")
 def test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink(
     tmp_path: Path,
 ) -> None:
@@ -188,17 +191,61 @@ def test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink(
     source.write_bytes(b"authority")
     expected = package_io.path_identity(source)
     events: list[str] = []
-    package_io.secure_commit_sibling_no_replace(
+
+    def observe_link_boundary(point: str) -> None:
+        events.append(point)
+        assert point == "after_posix_link_before_source_unlink"
+        assert package_io.path_identity(source) == expected
+        assert package_io.path_identity(target) == expected
+        assert source.stat().st_nlink == target.stat().st_nlink == 2
+        assert source.read_bytes() == target.read_bytes() == b"authority"
+
+    result = package_io.secure_commit_sibling_no_replace(
         source_path=source,
         target_path=target,
         expected_source_identity=expected,
         expected_parent_identity=package_io.path_identity(tmp_path),
-        fault_hook=events.append,
+        fault_hook=observe_link_boundary,
     )
-    assert events in ([], ["after_posix_link_before_source_unlink"])
+    assert events == ["after_posix_link_before_source_unlink"]
+    assert result == expected == package_io.path_identity(target)
+    assert target.stat().st_nlink == 1
+    assert not source.exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-kill resume only")
+def _posix_commit_until_link_boundary(
+    root_text: str,
+    expected_source: tuple[int, int, int],
+    expected_parent: tuple[int, int, int],
+    ready: Any,
+) -> None:
+    root = Path(root_text)
+    source = root / "authority.json.staged"
+    target = root / "authority.json"
+
+    def wait_for_parent_kill(point: str) -> None:
+        ready.send(
+            (
+                point,
+                package_io.path_identity(source),
+                package_io.path_identity(target),
+                source.stat().st_nlink,
+                target.stat().st_nlink,
+            )
+        )
+        signal.pause()
+        raise AssertionError("linked child must be killed before source unlink")
+
+    package_io.secure_commit_sibling_no_replace(
+        source_path=source,
+        target_path=target,
+        expected_source_identity=expected_source,
+        expected_parent_identity=expected_parent,
+        fault_hook=wait_for_parent_kill,
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX SIGKILL and hard links")
 def test_no_replace_posix_hard_kill_after_link_resumes_bound_identity(
     tmp_path: Path,
 ) -> None:
@@ -206,14 +253,51 @@ def test_no_replace_posix_hard_kill_after_link_resumes_bound_identity(
     target = tmp_path / "authority.json"
     source.write_bytes(b"authority")
     expected = package_io.path_identity(source)
-    os.link(source, target)
+    parent_identity = package_io.path_identity(tmp_path)
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    child = context.Process(
+        target=_posix_commit_until_link_boundary,
+        args=(str(tmp_path), expected, parent_identity, sender),
+    )
+    child.start()
+    sender.close()
+    try:
+        assert receiver.poll(15), (
+            f"real link boundary not reached; child exit code: {child.exitcode}"
+        )
+        assert receiver.recv() == (
+            "after_posix_link_before_source_unlink",
+            expected,
+            expected,
+            2,
+            2,
+        )
+        child.kill()
+        child.join(10)
+        assert child.exitcode == -signal.SIGKILL
+    finally:
+        if child.is_alive():
+            child.kill()
+            child.join(10)
+        receiver.close()
+        child.close()
+
+    assert package_io.path_identity(source) == expected
+    assert package_io.path_identity(target) == expected
+    assert source.stat().st_nlink == target.stat().st_nlink == 2
+    assert source.read_bytes() == target.read_bytes() == b"authority"
+    resume_events: list[str] = []
     result = package_io.secure_commit_sibling_no_replace(
         source_path=source,
         target_path=target,
         expected_source_identity=expected,
-        expected_parent_identity=package_io.path_identity(tmp_path),
+        expected_parent_identity=parent_identity,
+        fault_hook=resume_events.append,
     )
-    assert result == expected
+    assert resume_events == ["after_posix_link_before_source_unlink"]
+    assert result == expected == package_io.path_identity(target)
+    assert target.read_bytes() == b"authority"
     assert target.stat().st_nlink == 1
     assert not source.exists()
 

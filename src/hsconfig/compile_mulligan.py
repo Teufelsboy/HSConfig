@@ -20,8 +20,13 @@ def compile_mulligan(plan: MulliganPlanModel) -> dict[str, Any]:
         condition = json.loads(rule.condition_canonical_json)
         if rule.selector_kind == "wildcard" or selector == "*":
             raise ValueError("mulligan_wildcard_rule_forbidden")
-        rule_id = rule.claim_id or (
-            f"{rule.card_id}_mulligan_{index}"
+        stable_rule_id = f"{rule.card_id}_mulligan_{index}"
+        # Full candidate authority stays in the typed plan and reports. A new
+        # review of identical rules must not change the runtime file's bytes.
+        rule_id = (
+            stable_rule_id
+            if rule.confidence == "llm_optimized_start"
+            else rule.claim_id or stable_rule_id
         )
         values.append(
             {

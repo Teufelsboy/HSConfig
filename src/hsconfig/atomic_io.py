@@ -93,8 +93,9 @@ def atomic_materialize_staging_bytes(
     expected_parent_identity: PathIdentity,
     maximum_size: int,
     fault_hook: FaultHook = no_fault,
+    inner_temp_fault_hook: FaultHook = no_fault,
 ) -> MaterializedStagingBytes:
-    """Flush exact bytes to deterministic staging without publishing them."""
+    """Flush exact bytes to staging; keep inner faults off the legacy channel."""
 
     staging = Path(staging_path)
     inner = Path(inner_temp_path)
@@ -116,12 +117,19 @@ def atomic_materialize_staging_bytes(
         )
         try:
             inner_identity = path_identity_from_status(os.fstat(descriptor))
+            inner_temp_fault_hook("inner_temp_created")
             with os.fdopen(descriptor, "w+b", closefd=False) as handle:
-                written = handle.write(content)
-                if written != len(content):
+                split = len(content) // 2
+                if split and handle.write(content[:split]) != split:
                     raise OSError(errno.EIO, "atomic staging short write")
+                inner_temp_fault_hook("inner_temp_partial")
+                tail = content[split:]
+                if tail and handle.write(tail) != len(tail):
+                    raise OSError(errno.EIO, "atomic staging short write")
+                inner_temp_fault_hook("inner_temp_full")
                 handle.flush()
                 os.fsync(descriptor)
+                inner_temp_fault_hook("inner_temp_flushed")
             if path_identity_from_status(os.fstat(descriptor)) != inner_identity:
                 raise AtomicWriteConflictError(
                     "owned staging inner identity changed"

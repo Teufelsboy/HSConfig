@@ -127,11 +127,12 @@ FROZEN_POLICY_TEXT = {
     "SECURITY.md": EXPECTED_SECURITY_TEXT,
 }
 FROZEN_README_PREFIX_SHA256 = (
-    "4b0af1f4a1c9a6ba78ca26725087002779ecf7d8370e2adcb7b8958348664d68"
+    "492cbdef50eda3d876362fb8c43f8bced8f34668df5121fe35eb1190e91e85ca"
 )
 EXPECTED_README_OPTIMIZED_ROUTE_PROSE = (
-    "The installed HSConfig skill normally builds an LLM-optimized start from "
-    "exactly three fixed candidates:",
+    "The installed HSConfig skill creates a single candidate with one lead "
+    "strategist, then uses one independent reviewer before validation, guarded "
+    "live apply, and an exact runtime match.",
     "This installed optimized workflow is the only normal generation route.",
     "Conservative CLI Compatibility",
     "Direct raw hsconfig configure remains available for explicitly conservative "
@@ -148,7 +149,7 @@ EXPECTED_README_DOCUMENTATION_ROWS = (
 EXPECTED_PROJECT_FIELDS = {
     "name": "hsconfig",
     "dynamic": ["version"],
-    "description": "Guide-aligned HearthRanger VisionAI CustomConfig generator",
+    "description": "Codex-first HearthRanger start-config generator: deck name and deck code to a validated, live-matched VisionAI CustomConfig.",
     "readme": "README.md",
     "license": "LicenseRef-Proprietary",
     "license-files": ["LICENSE"],
@@ -629,7 +630,7 @@ def test_governance_keeps_human_readable_semantic_diagnostics(
             "pyproject_authors",
         ),
         (
-            'description = "Guide-aligned HearthRanger VisionAI CustomConfig generator"',
+            'description = "Codex-first HearthRanger start-config generator: deck name and deck code to a validated, live-matched VisionAI CustomConfig."',
             'description = "Open Source generator"',
             "pyproject_description",
         ),
@@ -889,7 +890,7 @@ def test_governance_rejects_affirmative_open_source_claims_across_all_metadata(
     text = path.read_text(encoding="utf-8")
     if relative == "pyproject.toml":
         text = text.replace(
-            'description = "Guide-aligned HearthRanger VisionAI CustomConfig generator"',
+            'description = "Codex-first HearthRanger start-config generator: deck name and deck code to a validated, live-matched VisionAI CustomConfig."',
             claim,
             1,
         )
@@ -933,7 +934,7 @@ def test_governance_accepts_explanatory_negations_including_line_breaks(
     text = path.read_text(encoding="utf-8")
     if relative == "pyproject.toml":
         text = text.replace(
-            'description = "Guide-aligned HearthRanger VisionAI CustomConfig generator"',
+            'description = "Codex-first HearthRanger start-config generator: deck name and deck code to a validated, live-matched VisionAI CustomConfig."',
             explanation,
             1,
         )

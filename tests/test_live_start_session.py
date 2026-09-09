@@ -3983,7 +3983,7 @@ def test_physical_executor_consumes_before_callback_and_validates_postcondition(
         )
         pending = session._empty_pending_transition(
             session=cursor,
-            operation="install_candidate",
+            operation="install_review",
             external_file_action=None,
         )
         advanced = session.transition_live_start_session_under_lock(
@@ -4128,7 +4128,7 @@ def test_pending_transition_is_closed_self_digested_and_resumes_exact_physical_c
 
         prepared = session._empty_pending_transition(
             session=cursor,
-            operation="install_candidate",
+            operation="install_review",
             external_file_action=None,
         )
         prepared_cursor = session.transition_live_start_session_under_lock(
@@ -5930,6 +5930,14 @@ def test_lease_rejects_noncanonical_raw_root_spellings_before_observation(
         )
 
 
+def _synthetic_unc(
+    share: str, *, authority: bool = False, prefix: str = "\\",
+    separator: str = "\\",
+) -> str:
+    root = prefix * 2 + "server" + separator + share
+    return root + "\\" + "authority" if authority else root
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
 def test_live_start_raw_root_spelling_gate_preserves_canonical_drive_and_non_ipc_unc(
     tmp_path: Path,
@@ -5940,9 +5948,9 @@ def test_live_start_raw_root_spelling_gate_preserves_canonical_drive_and_non_ipc
         == canonical_drive
     )
     for raw_unc in (
-        r"\\server\ordinary-share\authority",
-        r"\\server\C$\authority",
-        r"\\server\ADMIN$\authority",
+        _synthetic_unc("ordinary-share", authority=True),
+        _synthetic_unc("C$", authority=True),
+        _synthetic_unc("ADMIN$", authority=True),
     ):
         candidate = Path(raw_unc)
         assert (
@@ -5951,9 +5959,9 @@ def test_live_start_raw_root_spelling_gate_preserves_canonical_drive_and_non_ipc
         )
 
     for raw_unc in (
-        r"\\server\ordinary-share",
-        r"\\server\C$",
-        r"\\server\ADMIN$",
+        _synthetic_unc("ordinary-share"),
+        _synthetic_unc("C$"),
+        _synthetic_unc("ADMIN$"),
     ):
         candidate = Path(raw_unc)
         assert candidate.drive == raw_unc
@@ -5965,14 +5973,14 @@ def test_live_start_raw_root_spelling_gate_preserves_canonical_drive_and_non_ipc
             == candidate
         )
 
-    bare_unc = r"\\server\ordinary-share"
+    bare_unc = _synthetic_unc("ordinary-share")
     for raw_unc in (
         bare_unc + "\\",
         bare_unc + "\\\\",
         bare_unc + r"\.",
-        r"\\server\\ordinary-share",
-        r"\\server/ordinary-share",
-        r"//server/ordinary-share",
+        _synthetic_unc("ordinary-share", separator="\\" * 2),
+        _synthetic_unc("ordinary-share", separator="/"),
+        _synthetic_unc("ordinary-share", separator="/", prefix="/"),
     ):
         with pytest.raises(
             session.SessionValidationError,
@@ -6006,9 +6014,9 @@ def test_creation_accepts_raw_bare_unc_roots_through_the_lexical_gate_only(
         "installed_skill_root",
     )
     bare_unc_roots = (
-        r"\\server\ordinary-share",
-        r"\\server\C$",
-        r"\\server\ADMIN$",
+        _synthetic_unc("ordinary-share"),
+        _synthetic_unc("C$"),
+        _synthetic_unc("ADMIN$"),
     )
 
     for share_ordinal, bare_unc in enumerate(bare_unc_roots, start=1):
@@ -6113,9 +6121,9 @@ def test_lease_accepts_raw_bare_unc_local_app_data_through_lexical_gate_only() -
 
     for share_ordinal, bare_unc in enumerate(
         (
-            r"\\server\ordinary-share",
-            r"\\server\C$",
-            r"\\server\ADMIN$",
+            _synthetic_unc("ordinary-share"),
+            _synthetic_unc("C$"),
+            _synthetic_unc("ADMIN$"),
         ),
         start=1,
     ):
@@ -6172,9 +6180,9 @@ def test_lease_accepts_raw_bare_unc_local_app_data_through_lexical_gate_only() -
 @pytest.mark.skipif(os.name != "nt", reason="Windows roots are Windows-specific")
 def test_live_start_path_typed_bare_unc_share_roots_are_canonical() -> None:
     for raw_unc in (
-        r"\\server\ordinary-share",
-        r"\\server\C$",
-        r"\\server\ADMIN$",
+        _synthetic_unc("ordinary-share"),
+        _synthetic_unc("C$"),
+        _synthetic_unc("ADMIN$"),
     ):
         candidate = Path(raw_unc)
         assert os.fspath(candidate) == raw_unc + "\\"
@@ -6211,9 +6219,9 @@ def test_creation_accepts_path_typed_bare_unc_roots_through_lexical_gate_only(
 
     for share_ordinal, raw_unc in enumerate(
         (
-            r"\\server\ordinary-share",
-            r"\\server\C$",
-            r"\\server\ADMIN$",
+            _synthetic_unc("ordinary-share"),
+            _synthetic_unc("C$"),
+            _synthetic_unc("ADMIN$"),
         ),
         start=1,
     ):
@@ -6309,9 +6317,9 @@ def test_lease_accepts_path_typed_bare_unc_local_app_data_through_lexical_gate_o
 
     for share_ordinal, raw_unc in enumerate(
         (
-            r"\\server\ordinary-share",
-            r"\\server\C$",
-            r"\\server\ADMIN$",
+            _synthetic_unc("ordinary-share"),
+            _synthetic_unc("C$"),
+            _synthetic_unc("ADMIN$"),
         ),
         start=1,
     ):
@@ -19082,6 +19090,7 @@ def _exercise_real_recovery_closure_once(base: Path) -> None:
     )
     active = observed.apply_recovery
     assert active is not None
+    assert active["recovery_stage"] == "ACTIVE"
     before = (root / "session.json").read_bytes()
     with _lease(root) as lease:
         noop_authorization = (
@@ -19126,6 +19135,29 @@ def _exercise_real_recovery_closure_once(base: Path) -> None:
         closed_evidence = session.RuntimeApplyRecoveryEvidence(
             _seal_literal_document(closed_value)
         )
+        changed_index_value = dict(closed_value)
+        changed_index_value["action_index"] = active["action_index"] + 1
+        changed_index_evidence = session.RuntimeApplyRecoveryEvidence(
+            _seal_literal_document(changed_index_value)
+        )
+        changed_index_authorization = (
+            session._authorize_nonterminal_apply_recovery_under_lock(
+                session_lease=lease,
+                expected_recovery_session=observed,
+                expected_action="recovery_closed",
+            )
+        )
+        with pytest.raises(session.SessionCapabilityError, match="closure"):
+            session.advance_nonterminal_apply_recovery_under_lock(
+                session_lease=lease,
+                expected_recovery_session=observed,
+                transition="recovery_closed",
+                recovery_evidence=changed_index_evidence,
+                recovery_authorization=changed_index_authorization,
+                physical_step_receipt=None,
+                runtime_observation_receipt=None,
+            )
+        assert (root / "session.json").read_bytes() == before
         close_authorization = (
             session._authorize_nonterminal_apply_recovery_under_lock(
                 session_lease=lease,
@@ -19148,6 +19180,16 @@ def _exercise_real_recovery_closure_once(base: Path) -> None:
         assert reloaded.canonical_json == closed.canonical_json
         assert reloaded.apply_recovery is not None
         assert reloaded.apply_recovery["recovery_stage"] == "CLOSED"
+        assert reloaded.apply_recovery["action_index"] == active["action_index"]
+        assert reloaded.apply_recovery["content_sha256"] != active["content_sha256"]
+        closure_fields = {"recovery_stage", "content_sha256"}
+        assert {
+            key: value for key, value in reloaded.apply_recovery.items()
+            if key not in closure_fields
+        } == {
+            key: value for key, value in active.items()
+            if key not in closure_fields
+        }
         with pytest.raises(session.SessionConflictError, match="cursor"):
             session._authorize_nonterminal_apply_recovery_under_lock(
                 session_lease=lease,

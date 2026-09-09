@@ -1258,8 +1258,12 @@ The recovery cursor stays bound through every legal phase advance. Its
 self-digests and deliberately retains the rest of the complete recovery object.
 Every other recovery transition rejects `CLOSED`. The next
 `bind_result_intent_under_lock()` CAS validates that exact closed cursor,
-installs the result intent, and atomically clears
-`apply_recovery`. A crash between recovery closure and result-intent binding
+installs the result intent, atomically clears active `apply_recovery`, and moves
+the exact unchanged CLOSED object into the inert
+`closed_apply_recovery_commitment` field. That commitment remains crash-stable
+through result-file publication and terminal-status binding; it is neither an
+active recovery cursor nor a user-facing result field. A crash between recovery
+closure and result-intent binding
 therefore resumes the same classification without reinstalling or inventing
 evidence. Both carrier families reject cross-use.
 
@@ -2411,6 +2415,7 @@ Add these exact tests:
 - `test_candidate_tree_copy_verify_rename_and_journal_rows_are_distinct`
 - `test_new_target_ini_is_reachable_only_after_bound_renamed_target`
 - `test_owner_retirement_evidence_action_and_nullability_matrix_is_closed`
+- `test_owner_retirement_nested_size_budget_ladder_is_closed_and_composable`
 - `test_owner_retirement_each_entry_delete_and_journal_advance_need_distinct_receipts`
 - `test_owner_retirement_completed_precedes_old_owner_unlink`
 - `test_owner_retirement_evidence_binds_target_parent_and_complete_manifest_commitment`
@@ -2579,6 +2584,7 @@ python -B -m pytest `
   tests/test_live_start_session.py::test_candidate_tree_copy_verify_rename_and_journal_rows_are_distinct `
   tests/test_live_start_session.py::test_new_target_ini_is_reachable_only_after_bound_renamed_target `
   tests/test_live_start_session.py::test_owner_retirement_evidence_action_and_nullability_matrix_is_closed `
+  tests/test_live_start_session.py::test_owner_retirement_nested_size_budget_ladder_is_closed_and_composable `
   tests/test_live_start_session.py::test_owner_retirement_each_entry_delete_and_journal_advance_need_distinct_receipts `
   tests/test_live_start_session.py::test_owner_retirement_completed_precedes_old_owner_unlink `
   tests/test_live_start_session.py::test_owner_retirement_evidence_binds_target_parent_and_complete_manifest_commitment `
@@ -2609,7 +2615,7 @@ Use these exact outer and nested bounds:
 
 ```python
 LIVE_START_SESSION_SCHEMA_VERSION = 1
-LIVE_START_SESSION_MAX_BYTES = 256 * 1024
+LIVE_START_SESSION_MAX_BYTES = 320 * 1024
 LIVE_START_RESULT_INTENT_SCHEMA_VERSION = 1
 LIVE_START_RESULT_INTENT_MAX_BYTES = 64 * 1024
 LIVE_START_RESULT_INTENT_KIND = "live_start_result_intent"
@@ -2619,15 +2625,15 @@ LIVE_START_ATTEMPT_ACKNOWLEDGEMENT_KIND = (
     "live_start_attempt_acknowledgement"
 )
 LIVE_START_TERMINAL_RETIREMENT_SCHEMA_VERSION = 1
-LIVE_START_TERMINAL_RETIREMENT_MAX_BYTES = 64 * 1024
+LIVE_START_TERMINAL_RETIREMENT_MAX_BYTES = 192 * 1024
 LIVE_START_TERMINAL_RETIREMENT_KIND = "live_start_terminal_retirement"
 LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_SCHEMA_VERSION = 1
-LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_MAX_BYTES = 64 * 1024
+LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_MAX_BYTES = 128 * 1024
 LIVE_START_TERMINAL_RESOLUTION_EVIDENCE_KIND = (
     "live_start_terminal_resolution_evidence"
 )
 LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_SCHEMA_VERSION = 1
-LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_MAX_BYTES = 64 * 1024
+LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_MAX_BYTES = 128 * 1024
 LIVE_START_RUNTIME_APPLY_RECOVERY_EVIDENCE_KIND = (
     "live_start_runtime_apply_recovery_evidence"
 )
@@ -2694,6 +2700,7 @@ apply_invocation_sha256
 runtime_admission_binding
 runtime_layout_bootstrap
 apply_recovery
+closed_apply_recovery_commitment
 result_intent
 attempt_acknowledgement
 terminal_retirement
@@ -3193,7 +3200,7 @@ terminal_retirement:
   retained_target_owner_journal_path, retained_target_owner_journal_identity,
   retained_target_owner_journal_sha256, content_sha256
 terminal_resolution_evidence:
-  schema_version, resolution_kind, run_id, apply_attempt_id,
+  schema_version, resolution_kind, run_id, apply_attempt_id, action_index,
   predecessor_attempt_record_path, predecessor_attempt_record_identity,
   predecessor_attempt_record_sha256, predecessor_journal_path,
   predecessor_journal_identity, predecessor_journal_sha256,
@@ -3761,8 +3768,15 @@ the no-replace commit and `PRIMARY_APPLIED` receipt CAS. Direct final from
 `PREPARED`, partial or substituted staging, foreign final admission, missing
 bound identities, or a mixed receipt state is nonterminal tamper.
 
-The complete session has a 256 KiB maximum. Nested `result_intent` schema
-version 1 has a 64 KiB canonical-serialization maximum. `PROFILE_REQUIRED` and
+The complete session has a 320 KiB maximum. Nested `result_intent` schema
+version 1 has a 64 KiB canonical-serialization maximum. The nested size ladder
+is deliberately composable: Owner evidence remains 64 KiB; ApplyRecovery and
+TerminalResolution are each 128 KiB; TerminalRetirement is 192 KiB. Replacing a
+JSON `null` field with a canonical nested document of size `n` grows its parent
+by exactly `n - 5` bytes because the nested final newline is omitted. The 320
+KiB session bound therefore admits both the CLOSED-recovery/result carrier and
+the result/terminal-retirement carrier at their declared maxima without
+reducing any previously valid nested bound. `PROFILE_REQUIRED` and
 a pre-session input/deck failure never create a run or intent; the
 session-backed status variants use the matrix below. `raw_apply_status` is null or
 `applied|already_current|recovered|committed_receipt_pending`; physical
@@ -3988,10 +4002,16 @@ No result intent, result file, acknowledgement object, publication/apply phase
 advance, or terminal status may be bound while `pending_transition` is non-null,
 except the transition's own declared target-phase CAS that clears it atomically.
 Likewise, no result file, acknowledgement, terminal retirement, or terminal
-status may be bound while `apply_recovery` is non-null. Result intent is the
-single exception: `bind_result_intent_under_lock()` accepts only an exact closed
-recovery object, derives and validates the result from it, installs that intent,
-and clears the object in the same whole-session CAS. Its own closed pure-CAS
+status may be bound while active `apply_recovery` is non-null. Result intent is
+the single exception: `bind_result_intent_under_lock()` accepts only an exact
+closed recovery object, derives and validates the result from it, installs that
+intent, clears the active slot, and copies the exact CLOSED object into
+`closed_apply_recovery_commitment` in the same whole-session CAS. Active
+`apply_recovery` and the commitment are mutually exclusive. An admitted result
+with an attempt requires the commitment until terminal-retirement preparation;
+the commitment must bind the same run, invocation, admission, attempt, runtime
+root, complete layout, physical disposition, result digests, and retained
+triplets. It is forbidden with `terminal_retirement`. Its own closed pure-CAS
 phase edges are the only earlier phase advances; no reload or second
 classification is permitted between `recovery_closed` and that consuming CAS.
 
@@ -4036,7 +4056,7 @@ delete the fence, whose separate receipt CASes `EVIDENCE_RETIRED`. Each
 action-before-CAS crash remints only from the persisted predecessor and exact
 idempotent postcondition. No single token or helper may delete both rows.
 
-`terminal_retirement` schema version is 1 and maximum size is 64 KiB. Its
+`terminal_retirement` schema version is 1 and maximum size is 192 KiB. Its
 operation is exactly `ack_success`, `release_not_committed`,
 `release_committed_mismatch`, or `release_resolved_terminal`. Owning
 `ack_success` advances only `PREPARED -> EVIDENCE_RETIRED ->
@@ -4068,7 +4088,13 @@ Preparing `ack_success|release_not_committed|release_committed_mismatch` require
 `runtime_observation_receipt=null`. Preparing `release_resolved_terminal`
 requires one exact, unconsumed `terminal_resolution` observation receipt from
 the current terminal session and active pair; the CAS installs only its private
-Evidence successor. Caller-supplied terminal Evidence is not an API input.
+Evidence successor. The same CAS clears
+`closed_apply_recovery_commitment`; `source_terminal_session_sha256` binds the
+terminal predecessor that still held it. Direct retirement is permitted only
+when that commitment contains no unresolved Owner or External action. A
+resolved Owner branch must carry the exact Owner value from the commitment,
+with CLOSED-source External null and without a separately invented terminal
+cleanup inventory. Caller-supplied terminal Evidence is not an API input.
 
 The held post-terminal method first CASes `PREPARED` against the exact persisted
 terminal cursor before deleting any attempt evidence. It CASes
@@ -4086,7 +4112,18 @@ malformed bytes, or any unbound combination is tamper.
 `terminal_resolution_evidence` is null for the first three operations and is
 required for `release_resolved_terminal`. Its schema version is 1, kind and
 maximum use the constants above, and its historical predecessor triplets equal
-the immutable terminal `result_intent`. Before the first post-terminal physical
+the immutable terminal `result_intent`. Its initial Owner authority, when
+present, is copied exactly from `closed_apply_recovery_commitment`; read-only
+physical observation may confirm but never reconstruct or replace that Owner.
+The initial terminal `action_index` equals the exact CLOSED recovery index. Each
+Owner `physical_recovery_advanced` receipt/CAS increments it exactly once while
+the sole next Owner action remains derived from the sealed
+`owner_retirement|external_file_action` pair; terminal Evidence does not persist
+a redundant `expected_action`.
+`COMMITTED_RECOVERY_PENDING|UNKNOWN_REQUIRES_RECOVERY` may therefore retain one
+unfinished Owner across classification, closure, result binding, and terminal
+status, but `NOT_COMMITTED` may not invent one and `COMMITTED` requires
+`OWNER_RETIRED`. Before the first post-terminal physical
 metadata mutation, `RECOVERY_PREPARED` binds those predecessors plus the only
 permitted same-run/same-attempt branch and successor states. Successor triplets
 and stable proof fields are null at that stage. Targeted recovery may then make
@@ -7718,6 +7755,13 @@ changes the commitment and stops. Once PREPARED is committed, re-enumeration is
 permanently forbidden and every next-entry authority comes only from the exact
 tombstone list.
 
+`successor_package_root_sha256` is the schema-1 successor journal's digest of
+the materialized Runtime CustomConfig tree. It is not required to equal the
+live-admission publication/package-root digest carried by `apply_recovery`;
+those are different digest domains. The successor journal path, identity,
+bytes digest, transaction id, target ownership, and its internally validated
+runtime-tree digest remain exact.
+
 `initialize_owner_cleanup_journal` is the sole transition from exact old v1
 `FINALIZED,owns_target=true,cleanup_started=false` to the fully derived v1
 successor `cleanup_started=true,cursor=0`; it commits through the generic staged
@@ -8385,9 +8429,11 @@ terminal authorization similarly passes its callback through
 terminal-resolution row from the same physical adjacency table, and returns exactly one
 `TerminalResolutionStepReceipt`; it cannot alter nonterminal recovery. The
 controller consumes the corresponding receipt in its one session CAS before it
-may mint a new authorization. That CAS increments the action index, promotes
-only the receipt-bound successor to predecessor, clears all old successor
-fields, and binds the table's sole next action. Both set, a cross-family token,
+may mint a new authorization. For an Owner `physical_recovery_advanced` row,
+that CAS increments the preserved terminal action index and promotes only the
+receipt-bound Owner/External successor; the table's sole next action is derived
+from that successor. Other terminal cleanup rows retain their separately bound
+stage/cursor authority. Both set, a cross-family token,
 a phase skip, a stale successor, or a multi-phase recovery loop under one token
 fails closed.
 
@@ -9758,6 +9804,52 @@ git -c "user.signingkey=$ApprovedSigningSelector" commit -S -m "feat: compose pu
 
 ## Task 11: Finish the Codex-First Controller and Installed Skill Workflow
 
+### Integration refinements (2026-09-04)
+
+The real controller tests exposed two prerequisite gaps in the existing seams:
+
+- Starter installation must admit its three declared completion events and
+  preserve a reviewer-rejected candidate while its replacement is pending.
+  Recovery accepts only the exact pending successor bytes, never an arbitrary
+  replacement or an unbound temporary file.
+- Finalization needs the original deck code, not only its digest. Capture it in
+  the existing frozen `cards_payload` before sealing the deck projection, and
+  validate its digest against the deck identity and compiler manifest. Keep the
+  existing three envelopes and six blobs. A dedicated
+  `FrozenApprovedLiveConfigureRequest` consumes those inputs and the validated
+  approval directly; it does not synthesize legacy preconfig reports.
+
+These corrections also touch `live_start_session.py`, `package_request.py`,
+`package_compiler.py`, `starter_compiler.py`, and `input_snapshot_manifest.py`,
+with focused behavioral tests. Legacy request and public frozen-input loading
+behavior remain unchanged. The controller may use a private content-only frozen
+reader under its session/profile leases after output creation; the existing
+publication bindings remain responsible for the changed output child.
+
+The integrated controller preserves two already-enforced Task-3/10 contracts
+where the prose below was inconsistent with them. A disabled profile with no
+explicit preview returns `PROFILE_REQUIRED` before capture; it never silently
+changes the immutable preview Boolean. Successful result intent and its exact
+acknowledgement remain one atomic session CAS. Both named post-intent fault
+boundaries therefore observe that same complete carrier, not an invented
+half-authorized success state. Result-pair completion resumes from that carrier
+without recompiling or republishing. The private result writer accepts the
+existing closed fault vocabulary; the public API stays fault-selector-free.
+
+Integration recovery also persists a closed `cleanup_completion` marker inside
+the existing prepublication work binding in the final cleanup CAS. It binds the
+unchanged seven work fields and exact cleanup-parent identity. Only a completed
+cleanup journal may install it; all later transitions preserve it. Missing work
+without this marker is a conflict, not evidence that cleanup happened. Resume
+never recreates a missing marker-bound parent.
+
+Preview completion rechecks the exact current pointer and finalized publisher
+receipt under the existing publish lock, including the reconstructed original
+session predecessor and operation/child bindings. A private read-only callback
+repeats that check immediately before terminal CAS; no public callback or fault
+selector is exposed. This prevents a removed, replaced, or unrelated publication
+from being reported as a ready preview.
+
 **Owned files**
 
 - Modify: `src/hsconfig/live_start_controller.py`
@@ -10660,6 +10752,69 @@ git -c "user.signingkey=$ApprovedSigningSelector" commit -S -m "docs: present th
 
 ## Task 13: Prove the Integrated Route Without Repeating Broad Tests
 
+Inventory consistency: the seven appended critical modules must also be added
+to the real consumer in `scripts/check_coverage_contract.py`; its ordered list,
+the runner's list, and the test fixture must agree. Passing the inventory tests
+proves enforcement only, not that measured coverage has reached the thresholds.
+
+Integration audit (2026-09-04): the POSIX CI nodes now require the real two-name
+hard-link boundary and an actual killed child process, not a simulated link or
+an optional hook. Windows skips are not POSIX verification. The production
+assert guardrail also exposed checks in the new controller/session/apply path;
+replace them with explicit domain errors, or retain the immediately preceding
+equivalent explicit guard, so optimized Python cannot remove a required check.
+
+The real receipt-boundary tests also found that `PRIMARY_APPLIED` includes both
+admitted-before-receipt and receipt-already-committed states. Before completing
+that pending row, authenticate any existing final invocation receipt against
+its exact rebuilt authority. An already committed receipt, including physical
+commit before its receipt CAS, permits observation/recovery only and must not
+initialize `first_install`. The admitted no-final-receipt continuation remains
+the same once-only operation. With no journal or prior runtime action, receipt
+recovery retains `NOT_COMMITTED` and finishes `FAILED_PRESERVED`.
+
+The publishable-tree findings were synthetic UNC test inputs, multiline Python
+callables misclassified as credentials, and one intentional forbidden-option
+literal. Preserve the exact test values using component construction; narrowly
+recognize a callable prefix in the existing credential expression filter; bind
+the option reference to its exact line digest. Do not loosen secret patterns,
+remove credential names, or introduce a blanket file exemption. These local
+corrections do not establish CI coverage or live-canary completion.
+
+Independent-run integration exposed candidate-document hashes in generated
+Mulligan comments: a changed frozen predecessor altered only the audit identity
+but created another runtime revision. Keep the full candidate-bound claim in
+typed plans, decision IDs, and reports; render only a stable card/canonical-row
+label for optimized Mulligan runtime comments. Do not relax the byte-exact
+runtime matcher. Finalization must also reject pre-review phases before loading
+candidate/review documents, while resume may still return intake progress.
+
+The established publisher removes an authenticated old output revision after
+committing its successor; runtime retirement and immutable historical results
+remain separately verified. Public recovery consumes its CLOSED cursor into
+the terminal intent and retirement before returning. Integration assertions
+must require those exact completed bindings, not an obsolete active cursor.
+
+Report-only republication can reuse an immutable historical runtime owner while
+the current non-owning attempt and last-apply receipt bind a new publication.
+Keep those source domains separate: a current owning journal must still bind
+the current publication, and every current attempt must do so unconditionally.
+Candidate reentry authenticates its exact predecessor-journal path, identity,
+digest, finalized disposition, runtime fields, and unchanged post-read bytes.
+Do not rewrite the historical owner or relax runtime-package byte equality.
+The owner-retirement tombstone successor hash is a publication digest, not the
+runtime-only package digest used in the target directory name.
+
+The report-only regression exercises genuine CLOSED success reentry, not the
+`AFTER_RECOVERY_CLOSED_CAS_BEFORE_RESULT_INTENT` fault hook. That hook is now
+invoked immediately after each fresh closure CAS, on both the committed and
+non-committed routes; existing-CLOSED reentry must not fire it again. Separate
+controller regressions require durable CLOSED evidence, exact result-intent
+carrier transfer, unchanged attempt identity, and idempotent terminal replay.
+The session-level closure test also compares every returned recovery field
+except stage/self-digest and rejects an altered action index. Exception-based
+interruption tests do not replace the remaining real process-kill matrix.
+
 **Owned files**
 
 - Create: `tests/test_codex_first_live_e2e.py`
@@ -10744,7 +10899,7 @@ truncation or a literal-30 rejection. The ShadowPriest case uses the repository
 fixture deck and checks optional HS/HDT identity only when present and
 consistent.
 
-Each crash-window test asserts the unchanged apply-attempt ID,
+Each crash-window test with durably bound attempt authority asserts the unchanged apply-attempt ID,
 exact runtime transaction ID, journal count, composite/install call count,
 session phase, physical disposition, and terminal classification. No recovery
 case after invocation receipt may create a second journal or initialize a
@@ -10753,10 +10908,18 @@ cursor and advances each file action once or idempotently confirms it; the
 pre-admission PREPARED row performs no runtime file action. The Runtime-
 admission-staging case hard-kills after inner-temp creation, staging flush,
 `STAGING_BOUND`, bound final commit before Session CAS, and final-admission CAS.
+The two unbound `PLANNED` windows (inner-temp creation and staging flush)
+retain the old ID only as exact delete-only cleanup/rollback authority: public
+resume retires the unbound residue, restores the `PUBLICATION_COMMITTED`
+predecessor, and retries with one distinct attempt ID. The old ID must never
+be adopted into an admission, invocation, or runtime journal. Same-ID
+continuation applies from `STAGING_BOUND` onward, in agreement with the
+pre-admission rollback contract above.
 At every row a fresh legacy install acquires `output-operation -> package ->
 runtime` and broad recovery acquires `output-operation -> runtime`; both invoke
 zero mutators and leave Runtime bytes and the pre-apply snapshot byte-identical
-until exact same-attempt resume completes the handoff. A real two-process
+until the exact owning resume completes the handoff under those stage-specific
+ID rules. A real two-process
 barrier puts the controller after operation-lock acquisition but before package
 acquisition while a legacy installer starts; one proceeds, the other waits, no
 reverse lock is held, both finish without deadlock, and the blocked process
@@ -10918,6 +11081,20 @@ integration evidence and do not create an artificial failure.
 
 ### Step 13.2: Run one consolidated focused acceptance set
 
+**Execution amendment, 2026-09-09:** the user requested an efficient finish
+without repeated long tests. The interrupted aggregate is not a completed
+verdict and must not be restarted for this local handoff. Instead, diagnose
+its observed failures, repair only supported defects, run the minimum targeted
+checks needed for those changes, and run the single normal-route smoke
+`test_shadowpriest_reaches_live_and_matched_through_real_downstream_pipeline`
+once. Keep unchanged prior results as historical evidence. Record unexecuted
+regressions and missing aggregate/coverage evidence explicitly; do not label
+them passing. This changes local verification scope, not runtime guards or
+the exact-OID CI requirements for full integration/release acceptance.
+
+The original consolidated command below is retained as the historical
+acceptance definition, not the command to resume during this lean finish.
+
 Run each named group once. Do not add an entire existing test file to this
 command merely because it is adjacent.
 
@@ -11055,15 +11232,32 @@ No Critical, Important, or Minor finding may remain.
 
 ### Step 13.4: Commit final integration and coverage contracts
 
+Before staging, freeze an individually reviewed allowlist of every intended
+integration path, including implementation corrections, their regression tests,
+operator/skill surfaces, CI/coverage contracts, and this reconciled plan. The
+original six-file Task-13 list is not the complete integration scope. Preserve
+unrelated changes; never infer inclusion merely from a dirty or untracked path.
+
+Save that exact, nonempty, duplicate-free path list as an external UTF-8/LF file
+and bind its fully qualified path to `$IntegrationPathManifest`. Use literal
+repository-relative paths, one per line. Keep a byte-hash manifest and the final
+review/test records beside it, outside the repository and outside `outputs/`.
+Verify those records before removing only proven task-created scratch files;
+do not remove the persistent environment, twelve catalog outputs, or older
+caches whose task provenance is unconfirmed. Require an initially empty index,
+then stage only the frozen allowlist and compare the exact staged path set.
+
 ```powershell
-git add -- `
-  tests/test_codex_first_live_e2e.py `
-  tests/starter_fixtures.py `
-  scripts/run_coverage_gate.py `
-  tests/test_coverage_contract.py `
-  .github/workflows/ci.yml `
-  tests/test_ci_workflow_contract.py
+$ExpectedIntegrationPaths = @(Get-Content -LiteralPath $IntegrationPathManifest)
+git --literal-pathspecs add --pathspec-from-file=$IntegrationPathManifest
+if ($LASTEXITCODE -ne 0) { throw 'integration staging failed' }
+$ActualIntegrationPaths = @(git diff --cached --name-only)
+if ($LASTEXITCODE -ne 0) { throw 'staged path inventory failed' }
+if (Compare-Object -CaseSensitive $ExpectedIntegrationPaths $ActualIntegrationPaths) {
+  throw 'staged paths differ from the reviewed integration allowlist'
+}
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
 git -c "user.signingkey=$ApprovedSigningSelector" commit -S -m "test: prove Codex first live start configuration"
 git log -1 --show-signature --format=fuller
 git status --short --branch
@@ -11071,6 +11265,8 @@ git status --short --branch
 
 Require a clean worktree, empty index, good signature, and no untracked or
 ignored task residue that was created by this implementation.
+Verify UTF-8/LF both in the staged blobs and the working files; Git's automatic
+line-ending conversion is not evidence that the working files already use LF.
 
 ### Step 13.5: Push once and bind one exact-OID CI run
 
@@ -11638,7 +11834,19 @@ commit, force-push, or rerun the same OID. Do not repeat already green local
 groups. The last fully green descendant OID is the sole integrated authority;
 earlier failed OIDs remain immutable evidence.
 
-### Step 13.6: Install the exact embedded skill after green CI
+### Step 13.6: Install the exact embedded skill for the selected handoff mode
+
+**Local-handoff amendment, 2026-09-09:** after the normal-route smoke, focused
+checks, and independent review, the exact embedded bundle may be installed
+locally before final CI. This makes the exact skill bytes locally present,
+not yet generation-ready: the intended checkout must also be clean, current
+and not behind upstream, and `hsconfig.__file__` must resolve under its `src`.
+The normal live prompt additionally requires the explicitly authorized profile
+from Step 13.7; an absent profile still returns `PROFILE_REQUIRED`.
+Record the source checkout, bundle identity, predecessor identity and remaining
+verification limits. This local installation is not a green-CI or release
+claim and grants no profile or runtime-write authority. The release-qualified
+installation below still requires the exact green checkout.
 
 From the exact green checkout, install the bundle with the existing CAS API:
 
@@ -11660,6 +11868,12 @@ aggregate, exact SKILL digest, and no installer staging/backup/journal residue.
 
 ### Step 13.7: Obtain exact live-canary authorization, then bind the profile and run one real canary
 
+For the lean local handoff, the clean, reviewed local integration commit may
+be used before final CI, with its exact OID and verification limits recorded.
+This does not qualify the release or relax any authorization, identity,
+validation, recovery or match requirement below. References to the green
+checkout in this step otherwise remain the full release-acceptance path.
+
 Resolve environment-derived paths read-only so no user-specific absolute path
 enters tracked documentation. The mutating command shown next is gated by the
 authorization paragraphs immediately below it and must not execute before that
@@ -11667,8 +11881,12 @@ gate succeeds:
 
 ```powershell
 $RuntimeRoot = Join-Path $env:USERPROFILE 'Desktop\HS'
-$OutputBaseRoot = Join-Path (Resolve-Path '.').Path 'outputs'
+$OutputBaseRoot = Join-Path $env:LOCALAPPDATA 'HSConfigOutputs'
 $env:PYTHONPATH = Join-Path (Resolve-Path '.').Path 'src'
+# Only after exact authorization; stop on an unexpected existing path.
+# If the read-only probe recorded this output root as absent:
+New-Item -ItemType Directory -Path $OutputBaseRoot -ErrorAction Stop
+# Revalidate the new plain directory and capture its canonical identity.
 # Run only when the read-only probe proved the profile is absent.
 python -B -m hsconfig.cli live-policy enable `
   --runtime-root $RuntimeRoot `
@@ -11677,9 +11895,13 @@ python -B -m hsconfig.cli live-policy enable `
   --json
 ```
 
-Before any mutation, resolve `operator_profile_path()`, `$RuntimeRoot`, and
-`$OutputBaseRoot`, capture their canonical paths and identities, and inspect the
-profile read-only. Design/plan/repository/CI/skill-install approval, silence, or
+Before any mutation, inspect `operator_profile_path()`, `$RuntimeRoot`, and
+`$OutputBaseRoot` read-only. Record canonical paths and identities for existing
+plain roots; for an absent output root, record its intended canonical path and
+verified parent identity instead of inventing a child identity. After exact
+authorization, create that directory only if still absent, then revalidate its
+plain-directory identity before enabling the profile. Preserve an existing
+matching root without recreating it. Design/plan/repository/CI/skill-install approval, silence, or
 an enabled profile is not execution permission for this real-runtime canary.
 
 Proceed only when the conversation contains a fresh execution-time
@@ -11687,6 +11909,7 @@ authorization, or an exact previously recorded message still applicable to the
 current paths and identities, that explicitly permits all of:
 
 - creating and enabling the exact operator profile when absent;
+- creating the separate personal output-base directory when absent;
 - binding it to the exact runtime and output-base roots;
 - one real ShadowPriest live canary through the installed route;
 - creating or replacing its runtime package and changing the active
@@ -11708,9 +11931,10 @@ different, malformed, drifted, or concurrently changed predecessor is a stop
 condition. Even a valid enabled profile does not by itself authorize the named
 canary mutation.
 
-Before all profile/canary commands, require `hsconfig.__file__` to resolve under the exact
-green checkout's `src` directory; do not install or enable from an older
-site-packages copy.
+Before all profile/canary commands, require `hsconfig.__file__` to resolve under
+the authorized checkout's `src`: the clean reviewed local integration OID for
+lean handoff, or the exact green checkout for release acceptance. Do not
+install or enable from an older site-packages copy.
 
 Verify the profile once, then use the newly installed skill with this exact
 normal input:

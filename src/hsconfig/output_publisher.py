@@ -1588,7 +1588,8 @@ def perform_output_child_bootstrap_step_under_guards(
                     raise ValueError(
                         "live_start_output_child_create_postcondition_changed"
                     )
-            assert child_identity is not None
+            if child_identity is None:
+                raise ValueError("live_start_output_child_create_postcondition_changed")
             invoke_live_start_fault(
                 fault_hook,
                 LiveStartFaultPoint.AFTER_OUTPUT_CHILD_CREATE_BEFORE_CAS,
@@ -2776,7 +2777,8 @@ def _finalize_committed_live_start_publication_under_guard(
             raise ValueError("publisher_live_start_commit_receipt_ambiguous")
         journal_path, transaction = candidates[0]
         receipt = transaction.live_start_commit_receipt
-        assert receipt is not None
+        if receipt is None:
+            raise ValueError("publisher_live_start_commit_receipt_invalid")
         if (
             transaction.phase
             not in {"pointer_committed", "cleanup_started", "finalized"}
@@ -4748,7 +4750,8 @@ def _recover_owned_atomic_temps(
             raise ValueError("publisher_transaction_temp_conflict")
         if receipt_upgrade:
             receipt = temp_transaction.live_start_commit_receipt
-            assert receipt is not None
+            if receipt is None:
+                raise ValueError("publisher_transaction_temp_conflict")
             if receipt.output_child_identity != path_identity(output_root):
                 raise ValueError("publisher_transaction_temp_conflict")
             try:

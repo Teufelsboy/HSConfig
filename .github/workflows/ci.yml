@@ -309,6 +309,13 @@ jobs:
           "PYTHONPATH=$buildBackendRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Verify distribution and fresh wheel installation
         run: python scripts/verify_distribution.py --json
+      - name: Verify POSIX bound no-replace crash boundary
+        run: >-
+          python -B -m pytest
+          tests/test_package_io.py::test_no_replace_posix_hook_fires_after_exact_link_before_source_unlink
+          tests/test_atomic_io.py::test_atomic_bound_no_replace_maps_posix_link_before_unlink_fault
+          tests/test_package_io.py::test_no_replace_posix_hard_kill_after_link_resumes_bound_identity
+          -q -p no:cacheprovider
       - name: Verify deterministic twelve-deck builds
         run: python scripts/verify_twelve_decks.py --build-inputs src/hsconfig/resources/audited_build_inputs.json --json
       - name: Verify version authority

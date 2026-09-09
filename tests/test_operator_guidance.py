@@ -4,6 +4,23 @@ from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.operator_summary import build_operator_summary
 
 
+def test_docs_do_not_present_three_candidates_or_per_run_apply_confirmation_as_normal():
+    readme = Path("README.md").read_text(encoding="utf-8")
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    normal = " ".join((
+        readme.split("## Normal operation", 1)[1].split("## Conservative CLI Compatibility", 1)[0]
+        + operator.split("## Quick Start", 1)[1].split("### Canonical local release gate", 1)[0]
+    ).split())
+    assert "single candidate" in normal
+    assert "valid enabled profile" in normal
+    for obsolete in (
+        "three-candidate workflow", "exactly three fixed candidates",
+        "ranks all three", "only when live writing was requested",
+        "candidate-1.json", "candidate-2.json", "candidate-3.json",
+    ):
+        assert obsolete not in normal
+
+
 def test_operator_docs_point_to_active_architecture_and_contract_routes():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
@@ -31,11 +48,14 @@ def test_operator_readme_has_compact_quick_start_before_details():
     quick_start_summary = text[quick_start_index:optimized_details_index]
     quick_start = text[quick_start_index:conservative_path_index]
 
-    assert "installed HSConfig skill's optimized three-candidate workflow" in quick_start
+    assert "installed HSConfig skill only the deck name and deck code" in quick_start
     assert "only normal generation route" in quick_start
     assert "raw `hsconfig configure` only for" in quick_start
     assert "Conservative CLI Compatibility" in quick_start
     assert "Run `hsconfig configure` for normal operation." not in quick_start
+    quick_start = text.split("### Expert source and package inspection", 1)[1].split(
+        "### Legacy optimized CLI compatibility", 1
+    )[0]
     current_pointer = "`<out>/current.json`"
     acceptance = "`<current-revision>/configure_summary.json.acceptance_summary`"
     handoff = "`<current-revision>/configure_summary.json.handoff_contract`"

@@ -67,6 +67,7 @@ from hsconfig.package_compiler_support import (
     seal_function_definition_closure,
 )
 from hsconfig.package_request import (
+    FrozenApprovedLiveConfigureRequest,
     FrozenJsonDocument,
     ResolvedPackageRequest,
 )
@@ -322,10 +323,13 @@ class PackageDecisionSnapshot(_ImmutableAuthorityNode):
 
 
 def compile_package_decisions(
-    request: ResolvedPackageRequest,
+    request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest,
 ) -> PackageDecisionSnapshot:
     """Compile C3 source/claim decisions without external observation."""
 
+    if type(request) is FrozenApprovedLiveConfigureRequest:
+        request.__post_init__()
+        return _compile_single_candidate_review_package_decisions(request)
     if not isinstance(request, ResolvedPackageRequest):
         raise TypeError("resolved_package_request_required")
     schema = request.optimized_start_authority_schema
@@ -706,7 +710,7 @@ def _compile_legacy_optimized_package_decisions(
 
 
 def _compile_single_candidate_review_package_decisions(
-    request: ResolvedPackageRequest,
+    request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest,
 ) -> PackageDecisionSnapshot:
     """Compile one reviewed candidate without conservative reconstruction."""
 
@@ -1078,7 +1082,7 @@ class CompiledPackage(_ImmutableAuthorityNode):
 
 
 def compile_package(
-    request: ResolvedPackageRequest,
+    request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest,
     *,
     build_lowered_runtime_stage_fn=None,
 ) -> CompiledPackage:
@@ -1474,7 +1478,10 @@ def compile_package(
         deck_fingerprint=decisions.deck_fingerprint,
         deck_code_sha256=(
             request.snapshot.strict_build_context.inputs.deck_code_sha256
-            if request.snapshot.strict_build_context is not None
+            if (
+                isinstance(request, ResolvedPackageRequest)
+                and request.snapshot.strict_build_context is not None
+            )
             else state["deck_identity"]["deck_code_hash"]
         ),
         mulligan_plan=decisions.mulligan_plan,

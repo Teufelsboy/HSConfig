@@ -41,6 +41,12 @@ from hsconfig.apply_invocation import (
     require_apply_invocation_admission_capacity as _require_apply_invocation_admission_capacity,
 )
 from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+from hsconfig.live_start_faults import (
+    LiveStartFaultHook,
+    LiveStartFaultPoint,
+    invoke_live_start_fault,
+    no_live_start_fault,
+)
 from hsconfig.output_operation_admission import (
     OUTPUT_OPERATION_ADMISSION_NAME,
     OUTPUT_OPERATION_ADMISSION_RESERVED_TEMP_NAME,
@@ -511,6 +517,9 @@ _INTERNAL_EVENT_FIELD_ALLOWLIST = MappingProxyType(
             {"publication_binding"}
         ),
         "bind_terminal": frozenset({"artifact_bindings", "terminal_status"}),
+        "initial_draft": frozenset({"artifact_bindings", "pending_transition"}),
+        "candidate_valid": frozenset({"artifact_bindings", "pending_transition"}),
+        "review_approved": frozenset({"artifact_bindings", "pending_transition"}),
         "replacement_draft": frozenset(
             {"artifact_bindings", "pending_transition"}
         ),
@@ -1329,6 +1338,9 @@ def load_live_start_session_under_lock(
     session = _load_session_bytes(raw, session_identity=identity)
     if session.run_id != session_lease.session_root.name:
         raise SessionValidationError("live_start_session_run_id_mismatch")
+    _require_starter_document_pending_rows(
+        session, root=session_lease.session_root
+    )
     _validate_run_layout_under_lock(
         session_lease=session_lease,
         session=session,
@@ -1500,7 +1512,9 @@ def validate_resume_under_lock(
 ) -> LiveStartSession:
     """Reread every bound completed artifact and reject frozen-input drift."""
 
-    session = load_live_start_session_under_lock(session_lease=session_lease)
+    session = (
+        load_live_start_session_under_lock(session_lease=session_lease)
+    )
     if (
         session.deck_code_sha256 != expected_deck_code_sha256
         or session.input_snapshot_manifest_sha256
@@ -1542,9 +1556,33 @@ def _validate_bound_artifacts_under_lock(
     session_lease: LiveStartSessionLease,
     session: LiveStartSession,
 ) -> None:
+    pending_rows = _require_starter_document_pending_rows(
+        session, root=session_lease.session_root
+    )
+    pending = session.pending_transition
+    if pending_rows and pending["stage"] == "PRIMARY_APPLIED":
+        _validate_starter_document_postconditions(
+            session_lease=session_lease, session=session
+        )
+    else:
+        pending_rows = ()
+    pending_cursor = (
+        int(pending["next_action_index"])
+        if pending_rows and isinstance(pending, Mapping)
+        else -1
+    )
     for logical_path, digest in session.artifact_bindings.items():
         artifact_path = session_lease.session_root / logical_path
+        action = next(
+            (
+                row for index, row in enumerate(pending_rows)
+                if index <= pending_cursor and row["logical_path"] == logical_path
+            ),
+            None,
+        )
         if not os.path.lexists(artifact_path):
+            if action is not None and action["action"] == "retire":
+                continue
             if _review_revision_candidate_receipt_cleanup_pending(
                 session=session,
                 logical_path=logical_path,
@@ -1563,8 +1601,195 @@ def _validate_bound_artifacts_under_lock(
             expected_parent_identity=path_identity(artifact_path.parent),
             maximum_size=maximum_size,
         )
-        if _bytes_sha256(raw) != digest:
+        actual_digest = _bytes_sha256(raw)
+        if actual_digest != digest and not (
+            action is not None
+            and action["action"] == "install"
+            and len(raw) == action["size"]
+            and actual_digest == action["sha256"]
+        ):
             raise SessionConflictError("live_start_resume_artifact_drift")
+
+
+def _starter_document_pending_rows(
+    session: LiveStartSession,
+) -> tuple[Mapping[str, Any], ...]:
+    """Recognize only a closed, intent-bound starter installation journal."""
+
+    pending = session.pending_transition
+    if (
+        not isinstance(pending, Mapping)
+        or pending.get("operation") not in {
+            "install_candidate", "install_candidate_validation", "install_review_validation"
+        }
+        or pending.get("stage") not in {"PREPARED", "PRIMARY_APPLIED"}
+        or pending.get("external_file_action") is not None
+    ):
+        return ()
+    actions = pending.get("actions")
+    if not isinstance(actions, (list, tuple)) or not 1 <= len(actions) <= 3:
+        return ()
+    cursor = pending.get("next_action_index")
+    if type(cursor) is not int or not 0 <= cursor <= len(actions):
+        return ()
+    if pending["stage"] == "PREPARED" and cursor != 0:
+        return ()
+    operation = pending["operation"]
+    replacement = operation == "install_candidate" and (
+        session.phase is LiveStartPhase.CANDIDATE_DRAFTED
+    )
+    if operation == "install_candidate":
+        if session.phase is LiveStartPhase.INPUT_FROZEN:
+            install_paths = {
+                "starter/starter_context.json", "starter/starter_config_candidate.json"
+            }
+        elif replacement and session.revisions_used == session.candidate_revision:
+            install_paths = {"starter/starter_config_candidate.json"}
+        else:
+            return ()
+        target = LiveStartPhase.CANDIDATE_DRAFTED
+    elif operation == "install_candidate_validation":
+        if session.phase is not LiveStartPhase.CANDIDATE_DRAFTED:
+            return ()
+        install_paths = {"receipts/candidate_validation.json"}
+        target = LiveStartPhase.CANDIDATE_VALIDATED
+    else:
+        if session.phase is not LiveStartPhase.CANDIDATE_VALIDATED:
+            return ()
+        install_paths = {
+            "starter/starter_config_review.json", "receipts/review_validation.json"
+        }
+        target = LiveStartPhase.REVIEW_APPROVED
+    if (
+        pending.get("run_id") != session.run_id
+        or pending.get("source_phase") != session.phase.value
+        or pending.get("source_candidate_revision") != session.candidate_revision
+        or pending.get("source_revisions_used") != session.revisions_used
+        or pending.get("target_phase") != target.value
+        or pending.get("target_candidate_revision")
+        != session.candidate_revision + int(replacement)
+        or pending.get("target_revisions_used") != session.revisions_used
+    ):
+        return ()
+    successor = dict(session.artifact_bindings)
+    seen: set[str] = set()
+    installed: set[str] = set()
+    for row in actions:
+        if not isinstance(row, Mapping):
+            return ()
+        action = row.get("action")
+        fields = {"action", "logical_path", "size", "sha256"}
+        if action == "install":
+            fields.update({"source_path", "source_identity", "source_parent_identity"})
+        elif action != "retire":
+            return ()
+        if set(row) != fields:
+            return ()
+        logical = row["logical_path"]
+        if (
+            not isinstance(logical, str)
+            or logical in seen
+            or type(row["size"]) is not int
+            or not 1 <= row["size"] <= 2 * 1024 * 1024
+            or not isinstance(row["sha256"], str)
+            or _SHA256.fullmatch(row["sha256"]) is None
+        ):
+            return ()
+        seen.add(logical)
+        if action == "install":
+            if logical not in install_paths or len(installed) != len(seen) - 1:
+                return ()
+            try:
+                source = _require_absolute_path(row["source_path"], "starter_source_path")
+                _require_identity(row["source_identity"], "starter_source_identity")
+                _require_identity(row["source_parent_identity"], "starter_source_parent")
+            except (TypeError, ValueError):
+                return ()
+            expected_name = (
+                f"{operation}-r{session.candidate_revision}-"
+                f"u{session.revisions_used}-{len(installed)}-{Path(logical).name}"
+            )
+            if (
+                logical != sorted(install_paths)[len(installed)]
+                or source.name != expected_name
+                or source.parent.name != session.run_id
+                or source.parent.parent.name != "contexts"
+            ):
+                return ()
+            installed.add(logical)
+            successor[logical] = row["sha256"]
+        else:
+            if (
+                not replacement
+                or logical != "starter/starter_config_review.json"
+                or successor.pop(logical, None) != row["sha256"]
+            ):
+                return ()
+    if installed != install_paths or successor != pending.get("successor_artifact_bindings"):
+        return ()
+    return tuple(actions)
+
+
+def _require_starter_document_pending_rows(
+    session: LiveStartSession, *, root: Path
+) -> tuple[Mapping[str, Any], ...]:
+    pending = session.pending_transition
+    if not isinstance(pending, Mapping) or pending.get("operation") not in {
+        "install_candidate", "install_candidate_validation", "install_review_validation"
+    }:
+        return ()
+    rows = _starter_document_pending_rows(session)
+    if not rows or any(
+        row["action"] == "install"
+        and Path(row["source_path"]).parent
+        != root.parent.parent / "contexts" / session.run_id
+        for row in rows
+    ):
+        raise SessionValidationError("live_start_document_actions_invalid")
+    return rows
+
+
+def _validate_starter_document_postconditions(
+    *, session_lease: LiveStartSessionLease, session: LiveStartSession,
+    complete: bool = False,
+) -> None:
+    _require_session_lease(session_lease)
+    rows = _require_starter_document_pending_rows(
+        session, root=session_lease.session_root
+    )
+    pending = session.pending_transition
+    if not rows or pending["stage"] != "PRIMARY_APPLIED":
+        raise SessionValidationError("live_start_document_pending_stage_invalid")
+    cursor = pending["next_action_index"]
+    if complete and cursor != len(rows):
+        raise SessionConflictError("live_start_document_actions_incomplete")
+    for row in rows[:cursor]:
+        target = session_lease.session_root / row["logical_path"]
+        if row["action"] == "retire":
+            if os.path.lexists(target):
+                raise SessionConflictError("live_start_retired_document_reappeared")
+            continue
+        if not os.path.lexists(target):
+            raise SessionConflictError("live_start_installed_document_missing")
+        raw, _identity = _read_bound_file(
+            target, expected_parent_identity=path_identity(target.parent),
+            maximum_size=row["size"],
+        )
+        if len(raw) != row["size"] or _bytes_sha256(raw) != row["sha256"]:
+            raise SessionConflictError("live_start_installed_document_changed")
+    if complete:
+        for logical, digest in pending["successor_artifact_bindings"].items():
+            target = session_lease.session_root / logical
+            if not os.path.lexists(target):
+                raise SessionConflictError("live_start_successor_document_missing")
+            raw, _identity = _read_bound_file(
+                target, expected_parent_identity=path_identity(target.parent),
+                maximum_size=LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES.get(
+                    logical, 64 * 1024 * 1024
+                ),
+            )
+            if _bytes_sha256(raw) != digest:
+                raise SessionConflictError("live_start_successor_document_changed")
 
 
 def _review_revision_candidate_receipt_cleanup_pending(
@@ -1735,6 +1960,10 @@ def _validate_update_authority(
             raise SessionCapabilityError(
                 "live_start_pending_completion_authority_required"
             )
+    _validate_prepublication_cleanup_completion_successor(
+        session=session, event=event, changes=changes,
+        internally_authorized=internally_authorized,
+    )
     expected_operation = _PHASE_FINAL_PENDING_OPERATIONS.get(event)
     if expected_operation is not None:
         pending = session.pending_transition
@@ -2173,6 +2402,64 @@ def _validate_public_update_scope(
         raise SessionCapabilityError(
             "live_start_specialized_field_authority_required"
         )
+
+
+def _completed_prepublication_work_binding(
+    work: Mapping[str, Any], pending: Mapping[str, Any],
+) -> dict[str, Any]:
+    if (
+        set(work) != _PREPUBLICATION_WORK_BINDING_FIELDS
+        or pending.get("operation") != "cleanup_prepublication"
+        or pending.get("stage") != "CLEANUP_DELETING"
+        or pending.get("cleanup_cursor") != work.get("cleanup_entry_count")
+        or pending.get("external_file_action") is not None
+        or any(pending.get(key) != work.get(key) for key in _PREPUBLICATION_WORK_BINDING_FIELDS)
+    ):
+        raise SessionCapabilityError("live_start_prepublication_cleanup_incomplete")
+    base = _normalize_json(work)
+    cleanup_parent = Path(base["work_parent_path"]).parent / "cleanup"
+    work_name = Path(base["work_root"]).name
+    if (
+        pending.get("cleanup_inventory_path") != str(cleanup_parent / (work_name + ".inventory.json"))
+        or pending.get("quarantine_path") != str(cleanup_parent / (work_name + ".quarantine"))
+    ):
+        raise SessionCapabilityError("live_start_prepublication_cleanup_path_invalid")
+    marker = {
+        "work_binding_sha256": _self_digest(base),
+        "cleanup_parent_path": str(cleanup_parent),
+        "cleanup_parent_identity": _normalize_json(pending["cleanup_parent_identity"]),
+    }
+    marker["content_sha256"] = _self_digest(marker)
+    return {**base, "cleanup_completion": marker}
+
+
+def _validate_prepublication_cleanup_completion_successor(
+    *, session: LiveStartSession, event: str, changes: Mapping[str, Any],
+    internally_authorized: bool,
+) -> None:
+    work = session.prepublication_work_binding
+    successor = changes.get("prepublication_work_binding", work)
+    pending = session.pending_transition
+    final_cleanup = (
+        isinstance(pending, Mapping)
+        and pending.get("operation") == "cleanup_prepublication"
+        and "pending_transition" in changes
+        and changes["pending_transition"] is None
+    )
+    if final_cleanup:
+        if not isinstance(work, Mapping):
+            raise SessionCapabilityError("live_start_prepublication_cleanup_completion_invalid")
+        completed = _completed_prepublication_work_binding(work, pending)
+        if (
+            event != "same_phase_cas" or not internally_authorized
+            or set(changes) != {"pending_transition", "prepublication_work_binding"}
+            or _normalize_json(successor) != completed
+        ):
+            raise SessionCapabilityError("live_start_prepublication_cleanup_completion_invalid")
+    elif isinstance(work, Mapping) and _normalize_json(successor) != _normalize_json(work):
+        raise SessionCapabilityError("live_start_prepublication_cleanup_binding_immutable")
+    elif isinstance(successor, Mapping) and "cleanup_completion" in successor and work is None:
+        raise SessionCapabilityError("live_start_prepublication_cleanup_completion_invalid")
 
 
 def _validate_prepublication_cleanup_pending_successor(
@@ -3311,10 +3598,13 @@ def _validate_session_nested_documents(
     ):
         nested = value.get(name)
         if nested is not None:
-            if not isinstance(nested, dict) or set(nested) != fields:
+            allowed_shapes = (fields, fields | {"cleanup_completion"}) if name == "prepublication_work_binding" else (fields,)
+            if not isinstance(nested, dict) or set(nested) not in allowed_shapes:
                 raise SessionValidationError(f"live_start_{name}_fields_invalid")
             if name == "prepublication_work_binding":
                 _validate_prepublication_work_binding(nested)
+                if "cleanup_completion" in nested and list(LiveStartPhase).index(phase) < list(LiveStartPhase).index(LiveStartPhase.PUBLICATION_COMMITTED):
+                    raise SessionValidationError("live_start_cleanup_completion_phase_invalid")
             elif name == "runtime_admission_binding":
                 _validate_runtime_admission_binding(nested)
             else:
@@ -3338,6 +3628,11 @@ def _validate_session_nested_documents(
 def _validate_prepublication_work_binding(
     value: Mapping[str, Any],
 ) -> None:
+    if set(value) not in (
+        _PREPUBLICATION_WORK_BINDING_FIELDS,
+        _PREPUBLICATION_WORK_BINDING_FIELDS | {"cleanup_completion"},
+    ):
+        raise SessionValidationError("live_start_prepublication_work_binding_fields_invalid")
     for key in ("work_parent_path", "work_root"):
         _require_absolute_path(value.get(key), key)
     for key in ("work_parent_identity", "work_root_identity"):
@@ -3354,6 +3649,21 @@ def _validate_prepublication_work_binding(
         raise SessionValidationError(
             "live_start_prepublication_work_path_invalid"
         )
+    if "cleanup_completion" in value:
+        marker = value["cleanup_completion"]
+        if not isinstance(marker, Mapping) or set(marker) != {
+            "work_binding_sha256", "cleanup_parent_path", "cleanup_parent_identity", "content_sha256",
+        }:
+            raise SessionValidationError("live_start_cleanup_completion_fields_invalid")
+        marker = _normalize_json(marker)
+        _validate_self_digest(marker, error_code="live_start_cleanup_completion_digest_invalid")
+        base = _normalize_json({key: value[key] for key in _PREPUBLICATION_WORK_BINDING_FIELDS})
+        _require_identity(marker["cleanup_parent_identity"], "cleanup_parent_identity")
+        if (
+            marker["work_binding_sha256"] != _self_digest(base)
+            or marker["cleanup_parent_path"] != str(Path(value["work_parent_path"]).parent / "cleanup")
+        ):
+            raise SessionValidationError("live_start_cleanup_completion_binding_invalid")
 
 
 def _validate_runtime_admission_binding(
@@ -3521,7 +3831,7 @@ def _validate_top_level_phase_field_matrix(
                 "live_start_pending_outer_binding_invalid"
             )
         if pending.get("operation") == "cleanup_prepublication":
-            if not isinstance(prepublication, Mapping) or any(
+            if not isinstance(prepublication, Mapping) or "cleanup_completion" in prepublication or any(
                 pending.get(field_name) != prepublication.get(field_name)
                 for field_name in _PREPUBLICATION_WORK_BINDING_FIELDS
             ):
@@ -3969,11 +4279,29 @@ def _validate_phase_artifact_bindings(
         )
     extras = actual - mandatory
     revision_request_path = "starter/starter_config_review.json"
+    pending = value.get("pending_transition")
+    replacement_pending = (
+        isinstance(pending, Mapping)
+        and pending.get("operation") == "install_candidate"
+        and pending.get("source_phase") == LiveStartPhase.CANDIDATE_DRAFTED.value
+        and pending.get("target_phase") == LiveStartPhase.CANDIDATE_DRAFTED.value
+        and pending.get("target_candidate_revision")
+        == value.get("candidate_revision") + 1
+        and pending.get("target_revisions_used") == value.get("revisions_used")
+    )
     revision_request_variant = (
         phase is LiveStartPhase.CANDIDATE_DRAFTED
-        and extras == {revision_request_path}
+        and (
+            extras == {revision_request_path}
+            or (
+                extras == result_paths | {revision_request_path}
+                and value.get("terminal_status") == "FAILED_PRESERVED"
+                and isinstance(value.get("result_intent"), Mapping)
+                and pending is None
+            )
+        )
         and value.get("revisions_used") == value.get("candidate_revision")
-        and value.get("pending_transition") is None
+        and (pending is None or replacement_pending)
     )
     if extras - result_paths and not revision_request_variant:
         raise SessionValidationError(
@@ -3984,7 +4312,10 @@ def _validate_phase_artifact_bindings(
         raise SessionValidationError(
             "live_start_result_artifact_binding_phase_invalid"
         )
-    if value.get("terminal_status") is not None and extras != result_paths:
+    terminal_paths = result_paths | (
+        {revision_request_path} if revision_request_variant else set()
+    )
+    if value.get("terminal_status") is not None and extras != terminal_paths:
         raise SessionValidationError(
             "live_start_terminal_result_artifact_binding_missing"
         )
@@ -11898,6 +12229,15 @@ def _allowed_reserved_run_paths(
     session: LiveStartSession,
 ) -> frozenset[str]:
     allowed: set[str] = set()
+    rows = _require_starter_document_pending_rows(session, root=root)
+    pending = session.pending_transition
+    if rows and pending["stage"] == "PRIMARY_APPLIED":
+        cursor = pending["next_action_index"]
+        if cursor < len(rows) and rows[cursor]["action"] == "install":
+            target = Path(rows[cursor]["logical_path"])
+            allowed.add(
+                target.with_name(f".{target.name}.live-start-atomic.tmp").as_posix()
+            )
     if (
         session.result_intent is not None
         and session.terminal_status is None
@@ -13327,9 +13667,18 @@ def _mint_registered_opaque_carrier(
                 bearer.successor
             )
         if ownerless_issuer:
-            assert ownerless_parent_terminal_bearer is not None
-            assert parent_registration is not None
-            assert bearer.physical_precondition is not None
+            if ownerless_parent_terminal_bearer is None:
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_parent_bearer_missing"
+                )
+            if parent_registration is None:
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_parent_registration_missing"
+                )
+            if bearer.physical_precondition is None:
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_physical_precondition_missing"
+                )
             _BOUND_TERMINAL_OWNERLESS_ISSUERS[id(bearer)] = (
                 _TerminalOwnerlessIssuerBinding(
                     issuer_bearer=bearer,
@@ -14694,7 +15043,8 @@ def _validate_owner_action_precondition_under_lock(
                 expected_sha256=owner["tombstone_sha256"],
             )
         )
-        assert raw is not None
+        if raw is None:
+            raise SessionConflictError("live_start_owner_tombstone_missing")
         prepared_document, completed_raw = (
             _validate_owner_tombstone_binding(
                 owner=owner,
@@ -14779,7 +15129,8 @@ def _validate_owner_action_precondition_under_lock(
         )
 
     if action == "commit_owner_retirement_prepared":
-        assert external is not None
+        if external is None:
+            raise SessionConflictError("live_start_owner_external_action_missing")
         raw = (
             visible_bound_commit_raw
             if visible_bound_commit_raw is not None
@@ -14798,8 +15149,10 @@ def _validate_owner_action_precondition_under_lock(
             expected_raw_sha256=owner["tombstone_sha256"],
         )
     elif action == "commit_owner_retirement_completed":
-        assert external is not None
-        assert completed_raw is not None
+        if external is None:
+            raise SessionConflictError("live_start_owner_external_action_missing")
+        if completed_raw is None:
+            raise SessionConflictError("live_start_owner_completed_tombstone_missing")
         staged = (
             visible_bound_commit_raw
             if visible_bound_commit_raw is not None
@@ -15221,7 +15574,8 @@ def _consume_receipt_under_lock(
         family=family,
         action=action,
     )
-    assert isinstance(consumed.successor, _PhysicalPostcondition)
+    if not isinstance(consumed.successor, _PhysicalPostcondition):
+        raise SessionCapabilityError("live_start_physical_receipt_stale")
     return consumed.successor
 
 
@@ -15479,6 +15833,7 @@ def _execute_apply_recovery_physical_step(
     recovery_authorization: RuntimeAttemptRecoveryAuthorization,
     action: RuntimeApplyRecoveryAction,
     physical_action: Callable[[], RuntimeApplyRecoveryPhysicalPostcondition],
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> ApplyRecoveryStepReceipt:
     if action not in RUNTIME_APPLY_RECOVERY_ACTIONS:
         raise SessionValidationError("live_start_apply_recovery_action_invalid")
@@ -15518,6 +15873,10 @@ def _execute_apply_recovery_physical_step(
             raise SessionCapabilityError(
                 "live_start_apply_recovery_authorization_invalid"
             )
+        invoke_live_start_fault(
+            fault_hook,
+            LiveStartFaultPoint.AFTER_AUTHORIZATION_CONSUMED_BEFORE_PHYSICAL_CALLBACK,
+        )
         postcondition = physical_action()
         if (
             not isinstance(
@@ -16220,7 +16579,10 @@ def _execute_terminal_resolution_physical_step(
                 raise SessionCapabilityError(
                     "live_start_terminal_ownerless_successor_missing"
                 )
-            assert issuer_context is not None
+            if issuer_context is None:
+                raise SessionCapabilityError(
+                    "live_start_terminal_ownerless_issuer_context_missing"
+                )
             evidence["_terminal_ownerless_issuer_context"] = {
                 **dict(issuer_context),
                 "successor_retirement_sha256": successor_retirement.get(
@@ -18069,7 +18431,8 @@ def _build_candidate_review_revision_update(
     action: str,
 ) -> LiveStartSessionUpdate:
     pending = current.pending_transition
-    assert isinstance(pending, Mapping)
+    if not isinstance(pending, Mapping):
+        raise SessionCapabilityError("live_start_review_revision_cursor_invalid")
     external = pending.get("external_file_action")
     evidence = postcondition.evidence
     pending_value = _thaw(pending)
@@ -18080,7 +18443,8 @@ def _build_candidate_review_revision_update(
             changes={"pending_transition": None},
         )
     if action == "retire_unbound_review_revision_staging":
-        assert isinstance(external, Mapping)
+        if not isinstance(external, Mapping):
+            raise SessionCapabilityError("live_start_review_revision_external_action_invalid")
         pending_value["external_file_action"] = _thaw(
             _retire_unbound_external_from_receipt(
                 external=external,
@@ -18088,7 +18452,8 @@ def _build_candidate_review_revision_update(
             )
         )
     elif action == "materialize_review_revision_staging":
-        assert isinstance(external, Mapping)
+        if not isinstance(external, Mapping):
+            raise SessionCapabilityError("live_start_review_revision_external_action_invalid")
         pending_value.update(
             {
                 "stage": "STAGING_BOUND",
@@ -18099,7 +18464,8 @@ def _build_candidate_review_revision_update(
             }
         )
     elif action == "commit_bound_review_revision_request":
-        assert isinstance(external, Mapping)
+        if not isinstance(external, Mapping):
+            raise SessionCapabilityError("live_start_review_revision_external_action_invalid")
         final_path = Path(external["final_path"])
         pending_value.update(
             {
@@ -18118,7 +18484,8 @@ def _build_candidate_review_revision_update(
             }
         )
     else:
-        assert action == "retire_candidate_validation_receipt"
+        if action != "retire_candidate_validation_receipt":
+            raise SessionCapabilityError("live_start_review_revision_cleanup_action_invalid")
         return LiveStartSessionUpdate(
             event="review_revision",
             changes={
@@ -18591,7 +18958,7 @@ def prepare_output_operation_admission_under_lock(
         commit_mode="create_no_replace",
     )
     pending = _empty_pending_transition(
-        session=expected_prepublication_session,
+        session=(expected_prepublication_session),
         operation="install_output_operation_admission",
         external_file_action=external,
     )
@@ -18805,7 +19172,7 @@ def prepare_output_child_bootstrap_under_lock(
         commit_mode="create_no_replace",
     )
     pending = _empty_pending_transition(
-        session=expected_prepublication_session,
+        session=(expected_prepublication_session),
         operation="bootstrap_output_child",
         external_file_action=external,
     )
@@ -18866,7 +19233,7 @@ def prepare_output_child_claim_retirement_under_lock(
             "live_start_output_claim_retirement_prepare_invalid"
         )
     pending = _empty_pending_transition(
-        session=expected_publication_session,
+        session=(expected_publication_session),
         operation="retire_output_child_claim",
         external_file_action=None,
     )
@@ -18976,7 +19343,8 @@ def advance_output_child_bootstrap_under_lock(
         if receipt_action not in {"bind_existing_child", "create_output_child"}:
             raise SessionCapabilityError("live_start_output_bootstrap_receipt_action_invalid")
         expected_action = receipt_action
-    assert expected_action is not None
+    if expected_action is None:
+        raise SessionCapabilityError("live_start_output_bootstrap_receipt_action_invalid")
     postcondition = _consume_receipt_under_lock(
         receipt=physical_step_receipt,
         receipt_type=OutputChildBootstrapStepReceipt,
@@ -20166,7 +20534,7 @@ def _complete_apply_started_under_lock(
         )
     _validate_apply_started_authority_bindings(
         session_lease=session_lease,
-        session=expected_receipt_committed_session,
+        session=(expected_receipt_committed_session),
         pending=pending,
         layout=layout,
         operation=operation,
@@ -20938,13 +21306,13 @@ def _live_start_result_payloads(
         f"- Status: {markdown_text(intent['terminal_status'])}",
         f"- Deck: {markdown_text(intent['deck_name'])}",
         f"- Candidate revision: {intent['candidate_revision']}",
-        (
+        ("- Card coverage: unavailable" if intent["configured_cards"] is None else (
             "- Card coverage: "
             f"{markdown_text(intent['configured_cards'])} configured, "
             f"{markdown_text(intent['deliberately_unconfigured_cards'])} "
             "deliberately unconfigured, "
             f"{intent['unique_main_deck_cards']} unique main-deck cards"
-        ),
+        )),
         f"- Review confidence: {markdown_text(intent['review_confidence'])}",
         f"- Apply status: {markdown_text(intent['raw_apply_status'])}",
         (
@@ -21056,6 +21424,7 @@ def _materialize_exact_result_file(
     path: Path,
     payload: bytes,
     parent_identity: PathIdentity,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> None:
     if _read_exact_result_file_or_absent(
         path=path,
@@ -21063,6 +21432,15 @@ def _materialize_exact_result_file(
         parent_identity=parent_identity,
     ):
         return
+    def result_atomic_fault(point: str) -> None:
+        surface = "json" if path.name == "summary.json" else "markdown"
+        name = (
+            f"before_result_{surface}_replace" if point == "before_replace"
+            else f"after_result_{surface}" if point == "after_replace"
+            else f"after_result_{surface}_{point}"
+        )
+        invoke_live_start_fault(fault_hook, LiveStartFaultPoint(name))
+
     published = atomic_write_reserved_bytes(
         path=path,
         payload=payload,
@@ -21070,6 +21448,7 @@ def _materialize_exact_result_file(
         expected_predecessor_identity=None,
         expected_predecessor_sha256=None,
         maximum_size=LIVE_START_RESULT_SUMMARY_MAX_BYTES,
+        fault_hook=result_atomic_fault,
     )
     if published.sha256 != _bytes_sha256(payload):
         raise SessionConflictError("live_start_result_persistence_mismatch")
@@ -21081,6 +21460,20 @@ def complete_live_start_under_lock(
     expected_result_session: LiveStartSession,
 ) -> LiveStartSession:
     """Persist one intent-derived result pair and terminalize in one CAS."""
+
+    return _complete_live_start_under_lock(
+        session_lease=session_lease,
+        expected_result_session=expected_result_session,
+        fault_hook=no_live_start_fault,
+    )
+
+
+def _complete_live_start_under_lock(
+    *, session_lease: LiveStartSessionLease,
+    expected_result_session: LiveStartSession,
+    fault_hook: LiveStartFaultHook,
+    pre_terminal_check: Callable[[], None] | None = None,
+) -> LiveStartSession:
 
     _require_session_lease(session_lease)
     persisted = load_live_start_session_under_lock(session_lease=session_lease)
@@ -21141,6 +21534,7 @@ def complete_live_start_under_lock(
         path=json_path,
         payload=summary_json,
         parent_identity=result_parent_identity,
+        fault_hook=fault_hook,
     )
     if markdown_temp_present:
         _retire_reserved_result_temp(
@@ -21151,6 +21545,7 @@ def complete_live_start_under_lock(
         path=markdown_path,
         payload=summary_markdown,
         parent_identity=result_parent_identity,
+        fault_hook=fault_hook,
     )
     for path, payload in (
         (json_path, summary_json),
@@ -21183,6 +21578,9 @@ def complete_live_start_under_lock(
             "result/summary.md": _bytes_sha256(summary_markdown),
         }
     )
+    invoke_live_start_fault(fault_hook, LiveStartFaultPoint.BEFORE_TERMINAL_CAS)
+    if pre_terminal_check is not None:
+        pre_terminal_check()
     terminal = _transition_receipt_authorized_under_lock(
         session_lease=session_lease,
         expected_session=persisted,
@@ -21192,6 +21590,7 @@ def complete_live_start_under_lock(
             "terminal_status": persisted.result_intent["terminal_status"],
         },
     )
+    invoke_live_start_fault(fault_hook, LiveStartFaultPoint.AFTER_TERMINAL_CAS_BEFORE_ACK)
     return terminal
 
 

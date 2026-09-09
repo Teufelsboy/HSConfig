@@ -1728,7 +1728,7 @@ def test_recovery_rebinds_session_receipt_profile_publication_snapshot_and_exact
     assert context_checks == 1
     assert parity_transactions == [_ATTEMPT_A]
     assert retained_journal["transaction_id"] == _ATTEMPT_A
-    assert recovered.raw_apply_status is None
+    assert recovered.raw_apply_status == "recovered"
     assert _disposition_value(recovered) == "COMMITTED"
     assert recovered.runtime_match_status == "matched"
 
@@ -2041,9 +2041,14 @@ def test_recovery_callback_failure_before_consume_discards_slot_without_classify
 ) -> None:
     published_apply = _published_apply()
     prepared = _prepare_pipeline(tmp_path, monkeypatch)
+    crashed = Event()
 
-    def crash_before_apply_committed(point: Any) -> None:
-        if _point_value(point) == "after_installer_return_before_apply_committed":
+    def crash_after_first_nonterminal_recovery_cursor_cas(point: Any) -> None:
+        if (
+            _point_value(point) == "after_nonterminal_recovery_cursor_cas"
+            and not crashed.is_set()
+        ):
+            crashed.set()
             raise RuntimeError("crash-before-slot-discard-recovery")
 
     with _lease_published_capabilities(prepared) as capabilities:
@@ -2055,9 +2060,10 @@ def test_recovery_callback_failure_before_consume_discards_slot_without_classify
                 published_apply,
                 capabilities,
                 apply_attempt_id=_ATTEMPT_A,
-                fault_hook=crash_before_apply_committed,
+                fault_hook=crash_after_first_nonterminal_recovery_cursor_cas,
             ):
                 pass
+        assert crashed.is_set()
 
     from hsconfig.operator_profile import (
         lease_operator_profile,
@@ -2088,6 +2094,13 @@ def test_recovery_callback_failure_before_consume_discards_slot_without_classify
     ) as session_lease:
         expected = live_start_session.load_live_start_session_under_lock(
             session_lease=session_lease
+        )
+        recovery = expected.apply_recovery
+        assert isinstance(recovery, Mapping)
+        assert recovery["recovery_stage"] == "ACTIVE"
+        assert (
+            recovery["expected_action"]
+            in live_start_session.RUNTIME_APPLY_RECOVERY_ACTIONS
         )
         profile = load_operator_profile()
         with lease_operator_profile(expected_profile=profile) as profile_lease:
@@ -2176,6 +2189,7 @@ def test_postconsume_failure_selects_terminal_observation_and_resume_uses_only_s
         recovery_authorization: Any,
         action: Any,
         physical_action: Any,
+        fault_hook: Any,
     ) -> Any:
         del physical_action
 
@@ -2187,6 +2201,7 @@ def test_postconsume_failure_selects_terminal_observation_and_resume_uses_only_s
             recovery_authorization=recovery_authorization,
             action=action,
             physical_action=fail_after_consume,
+            fault_hook=fault_hook,
         )
 
     def trace_discard(*args: Any, **kwargs: Any) -> bool:
@@ -2953,7 +2968,7 @@ def test_admission_before_receipt_prepares_one_bound_recovery_cursor(
         session_root=prepared.session_root
     )
 
-    assert recovered.raw_apply_status is None
+    assert recovered.raw_apply_status == "recovered"
     assert _disposition_value(recovered) == "COMMITTED"
     assert recovered.runtime_match_status == "matched"
     assert observed_attempts == [_ATTEMPT_A]
@@ -2962,10 +2977,12 @@ def test_admission_before_receipt_prepares_one_bound_recovery_cursor(
         local_app_data_root=prepared.local_app_data,
     )
     assert persisted.phase is live_start_session.LiveStartPhase.RUNTIME_MATCHED
-    assert isinstance(persisted.apply_recovery, Mapping)
-    assert persisted.apply_recovery["recovery_stage"] == "CLOSED"
-    assert persisted.result_intent is None
-    assert persisted.terminal_status is None
+    assert persisted.terminal_status == "LIVE_AND_MATCHED"
+    assert persisted.pending_transition is None
+    assert persisted.apply_recovery is None
+    assert persisted.closed_apply_recovery_commitment is None
+    assert isinstance(persisted.result_intent, Mapping)
+    assert persisted.result_intent["apply_attempt_id"] == _ATTEMPT_A
 
 
 @pytest.mark.parametrize(
@@ -3051,8 +3068,12 @@ def test_persisted_runtime_admission_staging_bound_resumes_exact_commit(
         local_app_data_root=prepared.local_app_data,
     )
     assert persisted.phase is live_start_session.LiveStartPhase.RUNTIME_MATCHED
-    assert isinstance(persisted.apply_recovery, Mapping)
-    assert persisted.apply_recovery["recovery_stage"] == "CLOSED"
+    assert persisted.terminal_status == "LIVE_AND_MATCHED"
+    assert persisted.pending_transition is None
+    assert persisted.apply_recovery is None
+    assert persisted.closed_apply_recovery_commitment is None
+    assert isinstance(persisted.result_intent, Mapping)
+    assert persisted.result_intent["apply_attempt_id"] == _ATTEMPT_A
 
 
 @pytest.mark.parametrize(
@@ -3127,18 +3148,81 @@ def test_composite_runtime_layout_bootstrap_precedes_invocation_receipt_and_appl
         session_root=prepared.session_root
     )
 
-    assert recovered.raw_apply_status == "recovered"
-    assert _disposition_value(recovered) == "COMMITTED"
-    assert recovered.runtime_match_status == "matched"
+    receipt_was_committed = crash_point == "after_invocation_receipt_bound_commit_before_cas"
+    assert recovered.raw_apply_status == (None if receipt_was_committed else "recovered")
+    assert _disposition_value(recovered) == ("NOT_COMMITTED" if receipt_was_committed else "COMMITTED")
+    assert recovered.runtime_match_status == ("not_run" if receipt_was_committed else "matched")
     persisted = live_start_session.load_live_start_session(
         prepared.session_root,
         local_app_data_root=prepared.local_app_data,
     )
-    assert persisted.phase is live_start_session.LiveStartPhase.RUNTIME_MATCHED
+    assert persisted.phase is (
+        live_start_session.LiveStartPhase.APPLY_STARTED if receipt_was_committed
+        else live_start_session.LiveStartPhase.RUNTIME_MATCHED
+    )
     assert isinstance(persisted.runtime_layout_bootstrap, Mapping)
     assert persisted.runtime_layout_bootstrap["stage"] == "COMPLETE"
-    assert isinstance(persisted.apply_recovery, Mapping)
-    assert persisted.apply_recovery["recovery_stage"] == "CLOSED"
+    assert persisted.runtime_layout_bootstrap["apply_attempt_id"] == _ATTEMPT_A
+    assert persisted.apply_recovery is None
+    assert persisted.closed_apply_recovery_commitment is None
+    assert persisted.terminal_status == (
+        "FAILED_PRESERVED" if receipt_was_committed else "LIVE_AND_MATCHED"
+    )
+    intent = persisted.result_intent
+    retirement = persisted.terminal_retirement
+    assert isinstance(intent, Mapping)
+    assert isinstance(retirement, Mapping)
+    assert intent["apply_attempt_id"] == _ATTEMPT_A
+    assert intent["terminal_status"] == persisted.terminal_status
+    assert intent["raw_apply_status"] == recovered.raw_apply_status
+    assert intent["physical_disposition"] == _disposition_value(recovered)
+    assert intent["runtime_match_status"] == recovered.runtime_match_status
+    assert retirement["apply_attempt_id"] == _ATTEMPT_A
+    assert retirement["result_intent_sha256"] == intent["content_sha256"]
+    assert retirement["operation"] == (
+        "release_not_committed" if receipt_was_committed else "ack_success"
+    )
+    assert retirement["stage"] == "ADMISSION_RELEASE_AUTHORIZED"
+
+    from hsconfig.runtime_live_admission import load_runtime_live_attempt_admission
+    from hsconfig.runtime_transaction_journal import (
+        RuntimeTransactionPhase,
+        load_runtime_transaction_journals,
+    )
+
+    assert load_runtime_live_attempt_admission() is None
+    assert not Path(intent["runtime_admission_path"]).exists()
+    journals = load_runtime_transaction_journals(prepared.runtime_root)
+    journal_root = prepared.runtime_root / ".hsconfig" / "transactions"
+    if receipt_was_committed:
+        assert persisted.attempt_acknowledgement is None
+        assert journals == ()
+        assert list(journal_root.iterdir()) == []
+    else:
+        acknowledgement = persisted.attempt_acknowledgement
+        assert isinstance(acknowledgement, Mapping)
+        assert acknowledgement["apply_attempt_id"] == _ATTEMPT_A
+        assert len(journals) == 1
+        assert journals[0].transaction_id == _ATTEMPT_A
+        assert journals[0].phase is RuntimeTransactionPhase.FINALIZED
+        assert journals[0].owns_target is True
+        assert {path.name for path in journal_root.iterdir()} == {f"{_ATTEMPT_A}.json"}
+
+    session_bytes = (prepared.session_root / "session.json").read_bytes()
+    result_pair = {
+        name: (prepared.session_root / "result" / name).read_bytes()
+        for name in ("summary.json", "summary.md")
+    }
+    journal_bytes = {path.name: path.read_bytes() for path in journal_root.iterdir()}
+    replayed = published_apply.recover_apply_attempt(session_root=prepared.session_root)
+    assert replayed == recovered
+    assert (prepared.session_root / "session.json").read_bytes() == session_bytes
+    assert {
+        name: (prepared.session_root / "result" / name).read_bytes()
+        for name in result_pair
+    } == result_pair
+    assert {path.name: path.read_bytes() for path in journal_root.iterdir()} == journal_bytes
+    assert load_runtime_live_attempt_admission() is None
 
 
 def test_recovery_finishes_output_operation_handoff_before_runtime_observation_or_mutation(
@@ -3214,6 +3298,8 @@ def test_recovery_never_creates_or_starts_a_second_apply(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import os
+
     published_apply = _published_apply()
     prepared = _prepare_pipeline(tmp_path, monkeypatch)
 
@@ -3260,6 +3346,10 @@ def test_recovery_never_creates_or_starts_a_second_apply(
     real_prepare = published_apply.prepare_package_install_from_lease
     real_recover = published_apply.recover_runtime_attempt_from_pair
 
+    def assert_admission_unchanged() -> None:
+        assert path_identity(admission_path) == admission_identity
+        assert admission_path.read_bytes() == admission_raw
+
     def forbid_second_apply(*args: Any, **kwargs: Any) -> Any:
         del args, kwargs
         raise AssertionError("recovery-must-not-prepare-second-apply")
@@ -3277,12 +3367,16 @@ def test_recovery_never_creates_or_starts_a_second_apply(
         bound_admission = kwargs["runtime_admission"]
         assert invocation.apply_attempt_id == bound_admission.apply_attempt_id
         prepared_attempts.append(str(invocation.apply_attempt_id))
+        assert_admission_unchanged()
         return real_prepare(*args, **kwargs)
 
     def trace_recovery(*args: Any, **kwargs: Any) -> Any:
         assert kwargs["transaction_id"] == kwargs["runtime_admission"].apply_attempt_id
         recovery_attempts.append(str(kwargs["transaction_id"]))
-        return real_recover(*args, **kwargs)
+        assert_admission_unchanged()
+        result = real_recover(*args, **kwargs)
+        assert_admission_unchanged()
+        return result
 
     monkeypatch.setattr(
         live_start_session,
@@ -3317,8 +3411,7 @@ def test_recovery_never_creates_or_starts_a_second_apply(
     )
     assert invocation.apply_attempt_id == _ATTEMPT_A
     assert invocation.content_sha256 == pending["apply_invocation_sha256"]
-    assert path_identity(admission_path) == admission_identity
-    assert admission_path.read_bytes() == admission_raw
+    assert not os.path.lexists(admission_path)
     assert authority_attempts == [_ATTEMPT_A]
     assert prepared_attempts == [_ATTEMPT_A]
     assert recovery_attempts and set(recovery_attempts) == {_ATTEMPT_A}
@@ -3635,13 +3728,26 @@ def test_result_intent_completion_resumes_without_reapply(
 
 
 @pytest.mark.parametrize(
-    "crash_edge",
-    ["runtime_matched", "recovery_closed", "success_result_intent"],
+    ("crash_edge", "drift_surface"),
+    [
+        pytest.param("runtime_matched", "target", id="runtime_matched"),
+        pytest.param("recovery_closed", "state", id="recovery_closed"),
+        pytest.param("success_result_intent", "receipt", id="success_result_intent"),
+        pytest.param(
+            "runtime_matched", "current_attempt_source",
+            id="runtime_matched-current_attempt_source",
+        ),
+        pytest.param(
+            "recovery_closed", "current_attempt_source",
+            id="recovery_closed-current_attempt_source",
+        ),
+    ],
 )
 def test_success_resume_revalidates_current_runtime_before_terminalization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     crash_edge: str,
+    drift_surface: str,
 ) -> None:
     published_apply = _published_apply()
     prepared = _prepare_pipeline(tmp_path, monkeypatch)
@@ -3744,12 +3850,36 @@ def test_success_resume_revalidates_current_runtime_before_terminalization(
         prepared.session_root / "result" / "summary.md",
     )
     assert all(not path.exists() for path in result_paths)
-    if crash_edge == "runtime_matched":
+    if drift_surface == "current_attempt_source":
+        changed_path = attempt_journal_path
+        original_raw = changed_path.read_bytes()
+        original_identity = path_identity(changed_path)
+        original_value = json.loads(original_raw)
+        assert original_value["transaction_id"] == admission.apply_attempt_id
+        assert original_value["owns_target"] is False
+        original_source = original_value["source_manifest_sha256"]
+        assert "sha256:" + original_source == (
+            interrupted.publication_binding["content_root_sha256"]
+        )
+        changed_source = ("0" if original_source[0] != "0" else "1") + original_source[1:]
+        original_field = f'"source_manifest_sha256": "{original_source}"'.encode()
+        changed_field = f'"source_manifest_sha256": "{changed_source}"'.encode()
+        assert original_raw.count(original_field) == 1
+        changed_raw = original_raw.replace(original_field, changed_field)
+        assert len(changed_raw) == len(original_raw)
+        # Tamper with the current nonowner only; its authenticated session,
+        # fence, receipt, and historical owner remain entirely unchanged.
+        changed_path.write_bytes(changed_raw)
+        assert path_identity(changed_path) == original_identity
+        assert json.loads(changed_path.read_bytes()) == {
+            **original_value, "source_manifest_sha256": changed_source,
+        }
+    elif drift_surface == "target":
         changed_path = _mutate_one_runtime_json(
             prepared.runtime_root,
             "task10_resume_drift_runtime_matched",
         )
-    elif crash_edge == "recovery_closed":
+    elif drift_surface == "state":
         changed_path = prepared.runtime_root / ".hsconfig" / "state.json"
         assert changed_path.read_bytes() != b"{}\n"
         changed_path.write_bytes(b"{}\n")
@@ -4590,7 +4720,7 @@ def test_held_context_preserves_primary_error_when_post_yield_validation_fails(
         "_require_active_runtime_apply_lease",
         validate_runtime_lease,
     )
-    with pytest.raises(RuntimeError, match="^primary-held-body-error$") as caught:
+    with pytest.raises(RuntimeError) as caught:
         with _lease_published_capabilities(prepared) as capabilities:
             with _composite(
                 published_apply,
@@ -4601,6 +4731,7 @@ def test_held_context_preserves_primary_error_when_post_yield_validation_fails(
                 armed = True
                 raise RuntimeError("primary-held-body-error")
 
+    assert str(caught.value) == "primary-held-body-error"
     assert any(
         "held context validation failed: SessionCapabilityError: "
         "sentinel_post_yield_runtime_lease" in note

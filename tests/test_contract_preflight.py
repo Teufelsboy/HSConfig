@@ -293,6 +293,13 @@ def test_contract_preflight_exposes_skill_thin_router_contract(
     assert payload["diagnostic_only"] is True
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert payload["source_status_apply_blocking"] is False
+    files = load_embedded_skill_bundle()
+    skill = files["SKILL.md"].decode("utf-8")
+    lines = [line for line in skill.splitlines() if line.strip()]
+    assert len(lines) <= 70
+    assert all(len(line) <= 220 for line in lines)
+    assert "single strongest practical candidate" in skill
+    assert "references/workflow.md" in skill
 
 
 def test_contract_preflight_checks_configure_acceptance_route_contract(

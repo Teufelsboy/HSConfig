@@ -14,7 +14,11 @@ from hsconfig.package_domain import (
     GlobalValuesDecisionLedger,
     MulliganPlanModel,
 )
-from hsconfig.package_request import FrozenJsonDocument, ResolvedPackageRequest
+from hsconfig.package_request import (
+    FrozenApprovedLiveConfigureRequest,
+    FrozenJsonDocument,
+    ResolvedPackageRequest,
+)
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.starter_contract import (
     STARTER_CANDIDATE_FILENAMES,
@@ -138,12 +142,14 @@ def lower_optimized_start(
 
 def lower_single_candidate_start(
     *,
-    request: ResolvedPackageRequest,
+    request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest,
     approval: ValidatedSingleStarterApproval,
 ) -> SingleCandidateStartLowering:
     """Lower one durable V2 approval from its already frozen inputs only."""
 
-    if not isinstance(request, ResolvedPackageRequest):
+    if not isinstance(
+        request, (ResolvedPackageRequest, FrozenApprovedLiveConfigureRequest)
+    ):
         raise TypeError("resolved_package_request_required")
     if not isinstance(approval, ValidatedSingleStarterApproval):
         raise TypeError("validated_single_starter_approval_required")
@@ -226,7 +232,7 @@ def lower_single_candidate_start(
 
 def _single_candidate_compiler_state(
     *,
-    request: ResolvedPackageRequest,
+    request: ResolvedPackageRequest | FrozenApprovedLiveConfigureRequest,
     approval: ValidatedSingleStarterApproval,
     card_behavior_plan: dict[str, object],
 ) -> dict[str, object]:

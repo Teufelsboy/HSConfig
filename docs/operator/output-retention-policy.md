@@ -2,15 +2,17 @@
 
 [Back to the operator guide](README.md)
 
-`outputs/` is ignored local working state. Keep one current package per deck
-when practical. Older same-deck entries may be retained when they support an
-active comparison, but should not be mistaken for the current operator
-package.
+Personal deck packages live under the separate output-base root bound by the
+operator profile. Keep one current package per deck when practical. Older
+same-deck entries may be retained when they support an active comparison, but
+should not be mistaken for the current operator package. The repository's
+ignored `outputs/` root is a separate, fixed twelve-deck release catalog; do
+not add personal decks or maintenance sidecars there.
 
 List output entries and likely older same-deck candidates with:
 
 ```powershell
-python scripts/report_output_inventory.py outputs
+python scripts/report_output_inventory.py "<OutputBaseRoot>"
 ```
 
 The inventory recognizes both `<entry>/04_package/reports` and direct

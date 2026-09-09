@@ -38,6 +38,13 @@ CRITICAL_MODULES = [
     "src/hsconfig/apply_gate.py",
     "src/hsconfig/apply_decision.py",
     "src/hsconfig/operator_status.py",
+    "src/hsconfig/operator_profile.py",
+    "src/hsconfig/output_operation_admission.py",
+    "src/hsconfig/live_start_session.py",
+    "src/hsconfig/apply_invocation.py",
+    "src/hsconfig/runtime_live_admission.py",
+    "src/hsconfig/published_apply.py",
+    "src/hsconfig/live_start_controller.py",
 ]
 PRODUCTION_MODULES = tuple(
     sorted(
@@ -46,6 +53,36 @@ PRODUCTION_MODULES = tuple(
         if "resources" not in path.relative_to(ROOT / "src" / "hsconfig").parts
     )
 )
+
+
+def test_new_live_write_authority_modules_are_critical() -> None:
+    expected = (
+        "src/hsconfig/operator_profile.py",
+        "src/hsconfig/output_operation_admission.py",
+        "src/hsconfig/live_start_session.py",
+        "src/hsconfig/apply_invocation.py",
+        "src/hsconfig/runtime_live_admission.py",
+        "src/hsconfig/published_apply.py",
+        "src/hsconfig/live_start_controller.py",
+    )
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    checker = importlib.import_module("scripts.check_coverage_contract")
+    assert tuple(CRITICAL_MODULES[-7:]) == expected
+    assert len(CRITICAL_MODULES) == len(set(CRITICAL_MODULES)) == 16
+    assert runner.CRITICAL_MODULES == checker.CRITICAL_MODULES == tuple(CRITICAL_MODULES)
+    assert checker.check_coverage(_coverage_payload())["passed"] is True
+    for module in expected:
+        for dimension in ("statement", "branch"):
+            payload = _coverage_payload()
+            payload["files"][module] = (
+                _file_coverage(covered_lines=1, num_statements=2, missing_lines=[17])
+                if dimension == "statement" else
+                _file_coverage(covered_branches=1, num_branches=2, missing_branches=[[23, 27]])
+            )
+            _refresh_coverage_totals(payload)
+            report = checker.check_coverage(payload)
+            assert report["passed"] is False
+            assert any(f"critical module {module} {dimension} coverage 50.00%" in error for error in report["errors"])
 
 
 def _file_coverage(

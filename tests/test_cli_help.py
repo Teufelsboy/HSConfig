@@ -9,14 +9,35 @@ INSPECTED_PATH = (
     "research-deck -> prepare -> validate -> apply"
 )
 OLD_LOWER_LEVEL_LABEL = "Lower-level " + "normal path:"
-NORMAL_SKILL_ROUTE = "Normal installed-skill path: optimized three-candidate workflow."
+NORMAL_SKILL_ROUTE = "Normal installed-skill path: optimized single-candidate workflow."
 CONSERVATIVE_CLI_ROUTE = "Conservative CLI Compatibility: raw configure."
+
+
+def test_cli_help_presents_codex_first_live_route_and_preserves_expert_commands():
+    parser = build_parser()
+    text = parser.format_help()
+    assert "Codex-first" in text
+    assert "single-candidate" in text
+    assert "Deck -> Config -> Validate -> Live -> Match" in text
+    assert "three-candidate" not in text
+    assert "valid enabled profile" in text
+    assert "explicit preview" in text
+    assert "Conservative CLI Compatibility" in text
+    for command in ("configure", "apply", "runtime-match", "source-manifest", "research-deck", "build"):
+        assert command in text
+    args = parser.parse_args([
+        "configure", "--deck-name", "Deck", "--deck-code", "AAE=",
+        "--runtime-root", "runtime", "--out", "output", "--apply",
+        "--optimized-start", "--starter-decision-json", "decision.json",
+    ])
+    assert args.apply and args.optimized_start
+    assert args.starter_decision_json == "decision.json"
 
 
 def test_cli_parser_module_builds_same_root_help():
     help_text = build_parser().format_help()
 
-    assert "HSConfig builds lean HearthRanger VisionAI CustomConfig packages" in help_text
+    assert "Codex-first HSConfig turns a deck name and deck code" in help_text
     assert "docs/operator/README.md" in help_text
     assert NORMAL_SKILL_ROUTE in help_text
     assert CONSERVATIVE_CLI_ROUTE in help_text

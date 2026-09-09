@@ -527,11 +527,7 @@ def test_compile_package_uses_selected_candidate_for_every_runtime_authority(
     assert compiled.decision_snapshot.optimized_start_lowering is not None
     assert runtime["Mulligan.json"]["Mulligan"]["values"] == [
         {
-            "comment": (
-                "ShadowPriest: starter:"
-                f"{selection.selected.document.content_sha256}:"
-                "candidate-1:keep-toy-518"
-            ),
+            "comment": "ShadowPriest: TOY_518_mulligan_1",
             "mulligan": "TOY_518",
             "condition": "*",
             "value": "hold",

@@ -281,6 +281,7 @@ class HeldApplyAndMatchPublished:
         "_acknowledgement_evidence",
         "_active",
         "_acknowledged",
+        "_fault_hook",
         "_invocation",
         "_lease_pair",
         "_profile_lease",
@@ -301,6 +302,7 @@ class HeldApplyAndMatchPublished:
         session_lease: LiveStartSessionLease,
         profile_lease: OperatorProfileLease,
         lease_pair: ControllerApplyLeasePair,
+        fault_hook: LiveStartFaultHook = no_live_start_fault,
     ) -> None:
         self._updated_session = updated_session
         self._invocation = invocation
@@ -310,6 +312,7 @@ class HeldApplyAndMatchPublished:
         self._session_lease = session_lease
         self._profile_lease = profile_lease
         self._lease_pair = lease_pair
+        self._fault_hook = fault_hook
         self._active = True
         self._acknowledged = False
 
@@ -591,6 +594,10 @@ class HeldApplyAndMatchPublished:
         retirement = cursor.terminal_retirement
         stage = retirement.get("stage") if isinstance(retirement, Mapping) else None
         if stage == "EVIDENCE_RETIRED":
+            invoke_live_start_fault(
+                self._fault_hook,
+                LiveStartFaultPoint.AFTER_ATTEMPT_EVIDENCE_RETIRED_BEFORE_ADMISSION_RELEASE,
+            )
             current_facts_receipt = self._terminal_release_observation_receipt(
                 session_lease=session_lease,
                 cursor=cursor,
@@ -625,6 +632,7 @@ class HeldApplyAndMatchPublished:
             profile_lease=self._profile_lease,
             lease_pair=self._lease_pair,
             expected=self._runtime_admission,
+            fault_hook=self._fault_hook,
         )
         self._acknowledged = True
         return cursor
@@ -741,7 +749,10 @@ class HeldApplyAndMatchPublished:
             acknowledgement="required",
         )
         evidence = self._acknowledgement_evidence
-        assert evidence is not None
+        if evidence is None:
+            raise live_start_session.SessionCapabilityError(
+                "published_apply_acknowledgement_evidence_missing"
+            )
 
         retirement = persisted.terminal_retirement
         if retirement is None:
@@ -752,6 +763,10 @@ class HeldApplyAndMatchPublished:
                 runtime_observation_receipt=None,
             )
             self._updated_session = cursor
+            invoke_live_start_fault(
+                self._fault_hook,
+                LiveStartFaultPoint.AFTER_TERMINAL_RETIREMENT_PREPARED,
+            )
             stage = "PREPARED"
         else:
             if (
@@ -836,6 +851,19 @@ class HeldApplyAndMatchPublished:
                 ),
                 action=action,
             )
+            invoke_live_start_fault(
+                self._fault_hook,
+                (
+                    LiveStartFaultPoint.AFTER_SUCCESS_ACK_JOURNAL_DELETE_BEFORE_STAGE_CAS
+                    if action == "journal"
+                    else LiveStartFaultPoint.AFTER_SUCCESS_ACK_FENCE_DELETE_BEFORE_EVIDENCE_CAS
+                ),
+            )
+            if action == "fence":
+                invoke_live_start_fault(
+                    self._fault_hook,
+                    LiveStartFaultPoint.AFTER_ATTEMPT_EVIDENCE_PHYSICAL_RETIREMENT_BEFORE_CAS,
+                )
             cursor = live_start_session.advance_terminal_retirement_under_lock(
                 session_lease=session_lease,
                 expected_retirement_session=cursor,
@@ -848,6 +876,14 @@ class HeldApplyAndMatchPublished:
                 physical_step_receipt=step.step_receipt,
             )
             self._updated_session = cursor
+            invoke_live_start_fault(
+                self._fault_hook,
+                (
+                    LiveStartFaultPoint.AFTER_SUCCESS_ACK_JOURNAL_RETIRED_CAS
+                    if action == "journal"
+                    else LiveStartFaultPoint.AFTER_SUCCESS_ACK_EVIDENCE_RETIRED_CAS
+                ),
+            )
 
         return self._release_runtime_admission_after_evidence_retired(
             session_lease=session_lease,
@@ -901,6 +937,10 @@ class HeldApplyAndMatchPublished:
                 runtime_observation_receipt=None,
             )
             self._updated_session = cursor
+            invoke_live_start_fault(
+                self._fault_hook,
+                LiveStartFaultPoint.AFTER_TERMINAL_RETIREMENT_PREPARED,
+            )
             stage = "PREPARED"
         else:
             if (
@@ -973,7 +1013,10 @@ class HeldApplyAndMatchPublished:
             acknowledgement="forbidden",
         )
         intent = cursor.result_intent
-        assert isinstance(intent, Mapping)
+        if not isinstance(intent, Mapping):
+            raise live_start_session.SessionConflictError(
+                "published_apply_terminal_result_intent_invalid"
+            )
         has_historical_evidence = any(
             intent.get(field_name) is not None
             for field_name in (
@@ -1030,6 +1073,10 @@ class HeldApplyAndMatchPublished:
                     "published_apply_terminal_observation_receipt_missing"
                 )
             cleanup_inventory = observed.terminal_cleanup_inventory
+            invoke_live_start_fault(
+                self._fault_hook,
+                LiveStartFaultPoint.AFTER_TERMINAL_RESOLUTION_OBSERVATION_BEFORE_PREPARE_CAS,
+            )
             cursor = live_start_session.prepare_terminal_retirement_under_lock(
                 session_lease=session_lease,
                 expected_terminal_session=cursor,
@@ -1039,6 +1086,10 @@ class HeldApplyAndMatchPublished:
                 ),
             )
             self._updated_session = cursor
+            invoke_live_start_fault(
+                self._fault_hook,
+                LiveStartFaultPoint.AFTER_TERMINAL_RECOVERY_RESOLUTION_PREPARED,
+            )
         elif (
             not isinstance(retirement, Mapping)
             or retirement.get("operation") != "release_resolved_terminal"
@@ -1079,7 +1130,7 @@ class HeldApplyAndMatchPublished:
                 "RECOVERY_CLEANING",
                 "RECOVERY_JOURNAL_RETIRED",
                 "RECOVERY_FENCE_RETIRED",
-            }:
+            } and resolution_value.get("cleanup_stage") is not None:
                 inventory_path = Path(
                     str(resolution_value.get("cleanup_inventory_path"))
                 )
@@ -1119,6 +1170,10 @@ class HeldApplyAndMatchPublished:
                     raise ValueError(
                         "published_apply_terminal_resolution_receipt_missing"
                     )
+                invoke_live_start_fault(
+                    self._fault_hook,
+                    LiveStartFaultPoint.AFTER_TERMINAL_RECOVERY_METADATA_SUCCESSOR,
+                )
                 cursor = (
                     live_start_session.advance_terminal_resolution_under_lock(
                         session_lease=session_lease,
@@ -1146,6 +1201,14 @@ class HeldApplyAndMatchPublished:
                     action=metadata_action,
                     session_lease=session_lease,
                     expected_resolution_session=cursor,
+                )
+                invoke_live_start_fault(
+                    self._fault_hook,
+                    (
+                        LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_JOURNAL_DELETE_BEFORE_STAGE_CAS
+                        if metadata_action == "journal"
+                        else LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_FENCE_DELETE_BEFORE_STAGE_CAS
+                    ),
                 )
                 cursor = (
                     live_start_session.advance_terminal_resolution_under_lock(
@@ -1207,6 +1270,10 @@ class HeldApplyAndMatchPublished:
                             action="unbound_staging",
                         )
                     )
+                    invoke_live_start_fault(
+                        self._fault_hook,
+                        LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_UNBOUND_STAGING_RETIRE_BEFORE_CAS,
+                    )
                     cursor = live_start_session.advance_terminal_resolution_under_lock(
                         session_lease=session_lease,
                         expected_resolution_session=cursor,
@@ -1240,6 +1307,10 @@ class HeldApplyAndMatchPublished:
                             action="final_sidecar",
                         )
                     )
+                    invoke_live_start_fault(
+                        self._fault_hook,
+                        LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_SIDECAR_DELETE_BEFORE_STAGE_CAS,
+                    )
                     cursor = live_start_session.advance_terminal_resolution_under_lock(
                         session_lease=session_lease,
                         expected_resolution_session=cursor,
@@ -1267,6 +1338,10 @@ class HeldApplyAndMatchPublished:
                             session_lease=session_lease,
                             expected_resolution_session=cursor,
                         )
+                        invoke_live_start_fault(
+                            self._fault_hook,
+                            LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_ENTRY_DELETE_BEFORE_CURSOR_CAS,
+                        )
                         cursor = live_start_session.advance_terminal_resolution_under_lock(
                             session_lease=session_lease,
                             expected_resolution_session=cursor,
@@ -1289,6 +1364,14 @@ class HeldApplyAndMatchPublished:
                             inventory=cleanup_inventory,
                             action=publish_action,
                         )
+                        invoke_live_start_fault(
+                            self._fault_hook,
+                            (
+                                LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_STAGING_FLUSH_BEFORE_STAGING_BOUND_CAS
+                                if publish_action == "materialize"
+                                else LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_BOUND_COMMIT_BEFORE_INVENTORY_BOUND_CAS
+                            ),
+                        )
                         cursor = live_start_session.advance_terminal_resolution_under_lock(
                             session_lease=session_lease,
                             expected_resolution_session=cursor,
@@ -1306,6 +1389,22 @@ class HeldApplyAndMatchPublished:
                     "published_apply_terminal_resolution_action_invalid"
                 )
             self._updated_session = cursor
+            after_cas_point = {
+                "materialize_terminal_cleanup_inventory_staging": (
+                    LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_STAGING_BOUND
+                ),
+                "commit_bound_terminal_cleanup_inventory": (
+                    LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_BOUND
+                ),
+                "cleaning_started": LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_STARTED,
+                "delete_cleanup_entry": LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_CURSOR_CAS,
+                "retire_cleanup_journal": LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_JOURNAL_RETIRED_CAS,
+                "retire_cleanup_fence": LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_FENCE_RETIRED_CAS,
+                "retire_cleanup_inventory": LiveStartFaultPoint.AFTER_TERMINAL_CLEANUP_INVENTORY_RETIRED_CAS,
+                "stabilized": LiveStartFaultPoint.AFTER_TERMINAL_RECOVERY_STABILIZED,
+            }.get(action)
+            if after_cas_point is not None:
+                invoke_live_start_fault(self._fault_hook, after_cas_point)
 
         return self._release_runtime_admission_after_evidence_retired(
             session_lease=session_lease,
@@ -1734,7 +1833,10 @@ def _require_entry_context(
         raise live_start_session.SessionConflictError(
             "published_apply_context_changed:" + ",".join(violations)
         )
-    assert observed is not None
+    if observed is None:
+        raise live_start_session.SessionConflictError(
+            "published_apply_output_operation_admission_missing"
+        )
     return observed
 
 
@@ -1828,9 +1930,18 @@ def _build_apply_authority(
     publication = expected_session.publication_binding
     child = expected_session.output_child_binding
     operation = expected_session.output_operation_admission_binding
-    assert isinstance(publication, Mapping)
-    assert isinstance(child, Mapping)
-    assert isinstance(operation, Mapping)
+    if not isinstance(publication, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_publication_binding_missing"
+        )
+    if not isinstance(child, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_output_child_binding_missing"
+        )
+    if not isinstance(operation, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_output_operation_binding_missing"
+        )
     inventory_sha256 = _runtime_inventory_sha256(runtime_root)
     snapshot = capture_pre_apply_runtime_snapshot(
         runtime_root=runtime_root,
@@ -2113,6 +2224,7 @@ def _claim_runtime_admission(
             expected_session=cursor,
             admission_authorization=authorization,
             payload=admission_raw,
+            fault_hook=fault_hook,
         )
         if action == "materialize_runtime_admission_staging":
             invoke_live_start_fault(
@@ -2585,6 +2697,53 @@ def _drive_recovery_rows(
         if not isinstance(action, str):
             raise ValueError("published_apply_recovery_action_invalid")
         _require_active_controller_apply_pair(lease_pair)
+        external = recovery.get("external_file_action")
+        if (
+            action == "materialize_file_action_staging"
+            and isinstance(external, Mapping)
+            and external.get("stage") == "PLANNED"
+            and any(
+                os.path.lexists(Path(str(external[field_name])))
+                for field_name in ("staging_path", "inner_temp_path")
+            )
+        ):
+            action = "retire_unbound_file_action_staging"
+        initial_new_target_prepared_journal_commit = (
+            action == "advance_controller_transaction_journal_write"
+            and recovery.get("install_route") == "new_target"
+            and recovery.get("planned_journal_successor_phase") == "PREPARED"
+            and recovery.get("successor_journal_path") is None
+            and recovery.get("successor_journal_identity") is None
+            and recovery.get("successor_journal_sha256") is None
+            and isinstance(external, Mapping)
+            and external.get("stage") == "STAGING_BOUND"
+            and external.get("action_kind")
+            == "advance_controller_transaction_journal_write"
+            and external.get("commit_mode") == "create_no_replace"
+            and external.get("final_path")
+            == recovery.get("planned_journal_successor_path")
+            and external.get("planned_successor_size")
+            == recovery.get("planned_journal_successor_size")
+            and external.get("planned_successor_sha256")
+            == recovery.get("planned_journal_successor_sha256")
+        )
+        created_candidate_before_identity_cas = (
+            action == "bind_created_candidate"
+            and recovery.get("install_route") == "new_target"
+            and external is None
+            and recovery.get("successor_journal_path") is not None
+            and recovery.get("successor_journal_identity") is not None
+            and recovery.get("successor_journal_sha256") is not None
+            and recovery.get("planned_journal_successor_path") is None
+            and recovery.get("planned_journal_successor_parent_identity") is None
+            and recovery.get("planned_journal_successor_phase") is None
+            and recovery.get("planned_journal_successor_size") is None
+            and recovery.get("planned_journal_successor_sha256") is None
+            and recovery.get("candidate_path") is not None
+            and recovery.get("candidate_parent_identity") is not None
+            and recovery.get("predecessor_candidate_identity") is None
+            and recovery.get("successor_candidate_identity") is None
+        )
         authorization = (
             live_start_session._authorize_nonterminal_apply_recovery_under_lock(
                 session_lease=session_lease,
@@ -2605,6 +2764,7 @@ def _drive_recovery_rows(
                 expected_deck_name=plan.deck_name,
                 runtime_admission=runtime_admission,
                 nonterminal_recovery_authorization=authorization,
+                fault_hook=fault_hook,
             )
         except BaseException as primary:
             try:
@@ -2681,6 +2841,16 @@ def _drive_recovery_rows(
             continue
         if physical.apply_recovery_step_receipt is None:
             raise ValueError("published_apply_recovery_receipt_missing")
+        if initial_new_target_prepared_journal_commit:
+            invoke_live_start_fault(
+                fault_hook,
+                LiveStartFaultPoint.AFTER_RUNTIME_JOURNAL_CREATED,
+            )
+        if created_candidate_before_identity_cas:
+            invoke_live_start_fault(
+                fault_hook,
+                LiveStartFaultPoint.AFTER_RUNTIME_CANDIDATE_CREATE_BEFORE_CANDIDATE_IDENTITY_RECEIPT_CAS,
+            )
         invoke_live_start_fault(
             fault_hook,
             LiveStartFaultPoint.AFTER_NONTERMINAL_RECOVERY_PHYSICAL_STEP_BEFORE_CURSOR_CAS,
@@ -2694,6 +2864,30 @@ def _drive_recovery_rows(
             physical_step_receipt=physical.apply_recovery_step_receipt,
             runtime_observation_receipt=None,
         )
+        if initial_new_target_prepared_journal_commit:
+            successor = cursor.apply_recovery
+            if (
+                isinstance(successor, Mapping)
+                and successor.get("recovery_stage") == "ACTIVE"
+                and successor.get("install_route") == "new_target"
+                and successor.get("expected_action") == "bind_created_candidate"
+                and successor.get("external_file_action") is None
+                and successor.get("successor_journal_path") is not None
+                and successor.get("successor_journal_identity") is not None
+                and successor.get("successor_journal_sha256") is not None
+                and successor.get("planned_journal_successor_path") is None
+                and successor.get("planned_journal_successor_parent_identity")
+                is None
+                and successor.get("planned_journal_successor_phase") is None
+                and successor.get("planned_journal_successor_size") is None
+                and successor.get("planned_journal_successor_sha256") is None
+                and successor.get("predecessor_candidate_identity") is None
+                and successor.get("successor_candidate_identity") is None
+            ):
+                invoke_live_start_fault(
+                    fault_hook,
+                    LiveStartFaultPoint.AFTER_RUNTIME_CANDIDATE_JOURNAL_BOUND_BEFORE_CANDIDATE_CREATE,
+                )
         invoke_live_start_fault(
             fault_hook,
             LiveStartFaultPoint.AFTER_NONTERMINAL_RECOVERY_CURSOR_CAS,
@@ -3077,8 +3271,15 @@ def _finish_stable_recovery(
             physical_step_receipt=None,
             runtime_observation_receipt=None,
         )
+        invoke_live_start_fault(
+            fault_hook,
+            LiveStartFaultPoint.AFTER_RECOVERY_CLOSED_CAS_BEFORE_RESULT_INTENT,
+        )
         recovery = cursor.apply_recovery
-        assert isinstance(recovery, Mapping)
+        if not isinstance(recovery, Mapping):
+            raise live_start_session.SessionConflictError(
+                "published_apply_recovery_cursor_missing"
+            )
         result = _result_from_closed_recovery(
             recovery=recovery,
             runtime_admission=runtime_admission,
@@ -3161,7 +3362,10 @@ def _finish_stable_recovery(
             raise ValueError("published_apply_runtime_match_invalid")
         match_sha256 = _match_digest(report)
         recovery = cursor.apply_recovery
-        assert isinstance(recovery, Mapping)
+        if not isinstance(recovery, Mapping):
+            raise live_start_session.SessionConflictError(
+                "published_apply_recovery_cursor_missing"
+            )
         if match_status == "matched":
             matched_recovery = _sealed_recovery(
                 recovery,
@@ -3196,7 +3400,10 @@ def _finish_stable_recovery(
                 "runtime_match_sha256": match_sha256,
             }
     recovery = cursor.apply_recovery
-    assert isinstance(recovery, Mapping)
+    if not isinstance(recovery, Mapping):
+        raise live_start_session.SessionConflictError(
+            "published_apply_recovery_cursor_missing"
+        )
     closed_recovery = _sealed_recovery(recovery, changes=closure_changes)
     authorization = (
         live_start_session._authorize_nonterminal_apply_recovery_under_lock(
@@ -3214,8 +3421,15 @@ def _finish_stable_recovery(
         physical_step_receipt=None,
         runtime_observation_receipt=None,
     )
+    invoke_live_start_fault(
+        fault_hook,
+        LiveStartFaultPoint.AFTER_RECOVERY_CLOSED_CAS_BEFORE_RESULT_INTENT,
+    )
     recovery = cursor.apply_recovery
-    assert isinstance(recovery, Mapping)
+    if not isinstance(recovery, Mapping):
+        raise live_start_session.SessionConflictError(
+            "published_apply_recovery_cursor_missing"
+        )
     result = _result_from_closed_recovery(
         recovery=recovery,
         runtime_admission=runtime_admission,
@@ -3245,8 +3459,16 @@ def _triplet(
 def _runtime_admission_release_postcondition(
     *,
     expected: RuntimeLiveAttemptAdmissionEvidence,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> live_start_session.RuntimeAdmissionReleasePostcondition:
+    invoke_live_start_fault(
+        fault_hook,
+        LiveStartFaultPoint.AFTER_ADMISSION_RELEASE_AUTHORIZED_BEFORE_RUNTIME_ADMISSION_UNLINK,
+    )
     observation = release_runtime_live_attempt_exact(expected=expected)
+    invoke_live_start_fault(
+        fault_hook, LiveStartFaultPoint.AFTER_RUNTIME_ADMISSION_UNLINK
+    )
     return live_start_session.RuntimeAdmissionReleasePostcondition(
         admission_path=observation.admission_path,
         admission_parent_identity=observation.admission_parent_identity,
@@ -3332,6 +3554,7 @@ def _release_runtime_live_attempt_from_pair(
     profile_lease: OperatorProfileLease,
     lease_pair: ControllerApplyLeasePair,
     expected: RuntimeLiveAttemptAdmissionEvidence,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> live_start_session.RuntimeAdmissionReleasePostcondition:
     _require_release_authorized_runtime_cursor(
         session_lease=session_lease,
@@ -3355,7 +3578,9 @@ def _release_runtime_live_attempt_from_pair(
             )
         revalidate_operator_profile_lease(profile_lease)
         revalidate_package_input_lease(lease_pair.package_lease)
-        return _runtime_admission_release_postcondition(expected=expected)
+        return _runtime_admission_release_postcondition(
+            expected=expected, fault_hook=fault_hook
+        )
 
     return live_start_session._execute_runtime_admission_release(
         terminal_authorization=terminal_authorization,
@@ -3370,6 +3595,7 @@ def _release_or_confirm_runtime_live_attempt_without_old_leases(
     expected_release_authorized_session: LiveStartSession,
     terminal_authorization: live_start_session.TerminalRetirementAuthorization,
     expected: RuntimeLiveAttemptAdmissionEvidence,
+    fault_hook: LiveStartFaultHook = no_live_start_fault,
 ) -> live_start_session.RuntimeAdmissionReleasePostcondition:
     _require_release_authorized_runtime_cursor(
         session_lease=session_lease,
@@ -3382,7 +3608,7 @@ def _release_or_confirm_runtime_live_attempt_without_old_leases(
         terminal_authorization=terminal_authorization,
         action="release_runtime_admission",
         physical_action=lambda: _runtime_admission_release_postcondition(
-            expected=expected
+            expected=expected, fault_hook=fault_hook
         ),
     )
 
@@ -4039,6 +4265,7 @@ def _apply_and_match_published(
                 session_lease=session_lease,
                 profile_lease=profile_lease,
                 lease_pair=lease_pair,
+                fault_hook=fault_hook,
             )
             with _validated_held_yield(held=held, exposed=held):
                 yield held
@@ -4251,13 +4478,34 @@ def _load_release_authorized_runtime_context(
         raise live_start_session.SessionCapabilityError(
             "published_apply_terminal_release_context_invalid"
         )
-    assert isinstance(retirement, Mapping)
-    assert isinstance(intent, Mapping)
-    assert isinstance(admission, Mapping)
-    assert isinstance(operation, Mapping)
-    assert isinstance(child, Mapping)
-    assert isinstance(publication, Mapping)
-    assert isinstance(layout, Mapping)
+    if not isinstance(retirement, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_terminal_retirement_missing"
+        )
+    if not isinstance(intent, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_terminal_result_intent_invalid"
+        )
+    if not isinstance(admission, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_runtime_admission_missing"
+        )
+    if not isinstance(operation, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_output_operation_binding_missing"
+        )
+    if not isinstance(child, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_output_child_binding_missing"
+        )
+    if not isinstance(publication, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_publication_binding_missing"
+        )
+    if not isinstance(layout, Mapping):
+        raise live_start_session.SessionCapabilityError(
+            "published_apply_runtime_layout_binding_missing"
+        )
 
     invocation_path = session_lease.session_root / "receipts" / "apply_invocation.json"
     invocation = load_apply_invocation(
@@ -4631,6 +4879,25 @@ def recover_apply_attempt_under_lock(
     output_operation_lease: OutputOperationAdmissionLease,
     expected_session: LiveStartSession,
 ) -> Iterator[HeldRecoveredApplyAndMatch]:
+    with _recover_apply_attempt_under_lock(
+        session_lease=session_lease,
+        profile_lease=profile_lease,
+        output_operation_lease=output_operation_lease,
+        expected_session=expected_session,
+        fault_hook=no_live_start_fault,
+    ) as recovered:
+        yield recovered
+
+
+@contextmanager
+def _recover_apply_attempt_under_lock(
+    *,
+    session_lease: LiveStartSessionLease,
+    profile_lease: OperatorProfileLease,
+    output_operation_lease: OutputOperationAdmissionLease,
+    expected_session: LiveStartSession,
+    fault_hook: LiveStartFaultHook,
+) -> Iterator[HeldRecoveredApplyAndMatch]:
     if (
         not isinstance(session_lease, LiveStartSessionLease)
         or not isinstance(profile_lease, OperatorProfileLease)
@@ -4774,7 +5041,7 @@ def recover_apply_attempt_under_lock(
                     output_operation_lease=output_operation_lease,
                     historical=historical,
                     runtime_admission=runtime_admission,
-                    fault_hook=no_live_start_fault,
+                    fault_hook=fault_hook,
                 )
                 pair_binding = _authenticate_controller_apply_pair_binding(
                     lease_pair
@@ -4791,7 +5058,10 @@ def recover_apply_attempt_under_lock(
             if publication_value is None:
                 raise ValueError("published_apply_package_missing")
             if pre_admission_continuation or pre_receipt_continuation:
-                assert isinstance(pending, Mapping)
+                if not isinstance(pending, Mapping):
+                    raise live_start_session.SessionConflictError(
+                        "published_apply_recovery_pending_missing"
+                    )
                 apply_attempt_id = pending.get("apply_attempt_id")
                 if not isinstance(apply_attempt_id, str):
                     raise ValueError("published_apply_attempt_id_missing")
@@ -4822,6 +5092,30 @@ def recover_apply_attempt_under_lock(
                     raise live_start_session.SessionCapabilityError(
                         "published_apply_recovery_invocation_invalid"
                     )
+                # A final receipt, even before its receipt CAS, makes this an
+                # observation-only recovery. Only an absent receipt may still
+                # complete the already admitted first-install continuation.
+                receipt_was_present = False
+                if pre_receipt_continuation:
+                    invocation_path = (
+                        session_lease.session_root / "receipts/apply_invocation.json"
+                    )
+                    try:
+                        prior_invocation = load_apply_invocation(
+                            invocation_path,
+                            expected_parent_identity=path_identity(invocation_path.parent),
+                        )
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        if (
+                            prior_invocation.canonical_json != invocation.canonical_json
+                            or prior_invocation.content_sha256 != invocation.content_sha256
+                        ):
+                            raise live_start_session.SessionCapabilityError(
+                                "published_apply_recovery_invocation_invalid"
+                            )
+                        receipt_was_present = True
                 if pre_admission_continuation:
                     cursor, runtime_admission = _claim_runtime_admission(
                         lease_pair=lease_pair,
@@ -4834,7 +5128,7 @@ def recover_apply_attempt_under_lock(
                         admission_inner_temp_path=admission_inner_temp_path,
                         profile_lease=profile_lease,
                         runtime_inventory_sha256=runtime_inventory_sha256,
-                        fault_hook=no_live_start_fault,
+                        fault_hook=fault_hook,
                     )
                 if runtime_admission is None or (
                     runtime_admission.apply_invocation_sha256
@@ -4877,7 +5171,7 @@ def recover_apply_attempt_under_lock(
                     output_operation_admission=historical,
                     runtime_admission=runtime_admission,
                     invocation=invocation,
-                    fault_hook=no_live_start_fault,
+                    fault_hook=fault_hook,
                 )
                 _release_output_operation_handoff(
                     lease_pair=lease_pair,
@@ -4887,20 +5181,21 @@ def recover_apply_attempt_under_lock(
                     output_operation_lease=output_operation_lease,
                     historical=historical,
                     runtime_admission=runtime_admission,
-                    fault_hook=no_live_start_fault,
+                    fault_hook=fault_hook,
                 )
-                cursor = _prepare_initial_recovery(
-                    plan=prepared.plan,
-                    lease_pair=lease_pair,
-                    session_lease=session_lease,
-                    cursor=cursor,
-                    profile_lease=profile_lease,
-                    historical=historical,
-                    package_lease=package_lease,
-                    runtime_admission=runtime_admission,
-                    invocation=invocation,
-                    fault_hook=no_live_start_fault,
-                )
+                if not receipt_was_present:
+                    cursor = _prepare_initial_recovery(
+                        plan=prepared.plan,
+                        lease_pair=lease_pair,
+                        session_lease=session_lease,
+                        cursor=cursor,
+                        profile_lease=profile_lease,
+                        historical=historical,
+                        package_lease=package_lease,
+                        runtime_admission=runtime_admission,
+                        invocation=invocation,
+                        fault_hook=fault_hook,
+                    )
                 plan = prepared.plan
             else:
                 invocation_path = (
@@ -4937,7 +5232,10 @@ def recover_apply_attempt_under_lock(
                 )
                 if result_completion_recovery:
                     intent = cursor.result_intent
-                    assert isinstance(intent, Mapping)
+                    if not isinstance(intent, Mapping):
+                        raise live_start_session.SessionConflictError(
+                            "published_apply_terminal_result_intent_invalid"
+                        )
                     result = _result_from_bound_terminal_intent(
                         intent=intent,
                         runtime_admission=runtime_admission,
@@ -4976,6 +5274,7 @@ def recover_apply_attempt_under_lock(
                         session_lease=session_lease,
                         profile_lease=profile_lease,
                         lease_pair=lease_pair,
+                        fault_hook=fault_hook,
                     )
                     recovered = HeldRecoveredApplyAndMatch(held=held)
                     with _validated_held_yield(
@@ -4986,7 +5285,10 @@ def recover_apply_attempt_under_lock(
                     return
                 if stable_terminal_retirement_recovery:
                     intent = cursor.result_intent
-                    assert isinstance(intent, Mapping)
+                    if not isinstance(intent, Mapping):
+                        raise live_start_session.SessionConflictError(
+                            "published_apply_terminal_result_intent_invalid"
+                        )
                     result = _result_from_bound_terminal_intent(
                         intent=intent,
                         runtime_admission=runtime_admission,
@@ -5013,6 +5315,7 @@ def recover_apply_attempt_under_lock(
                         session_lease=session_lease,
                         profile_lease=profile_lease,
                         lease_pair=lease_pair,
+                        fault_hook=fault_hook,
                     )
                     recovered = HeldRecoveredApplyAndMatch(held=held)
                     with _validated_held_yield(
@@ -5023,7 +5326,10 @@ def recover_apply_attempt_under_lock(
                     return
                 if terminal_resolution_recovery:
                     intent = cursor.result_intent
-                    assert isinstance(intent, Mapping)
+                    if not isinstance(intent, Mapping):
+                        raise live_start_session.SessionConflictError(
+                            "published_apply_terminal_result_intent_invalid"
+                        )
                     result = _result_from_terminal_intent(
                         intent=intent,
                         runtime_admission=runtime_admission,
@@ -5038,6 +5344,7 @@ def recover_apply_attempt_under_lock(
                         session_lease=session_lease,
                         profile_lease=profile_lease,
                         lease_pair=lease_pair,
+                        fault_hook=fault_hook,
                     )
                     recovered = HeldRecoveredApplyAndMatch(held=held)
                     with _validated_held_yield(
@@ -5090,6 +5397,10 @@ def recover_apply_attempt_under_lock(
                     raise ValueError(
                         "published_apply_recovery_observation_receipt_missing"
                     )
+                invoke_live_start_fault(
+                    fault_hook,
+                    LiveStartFaultPoint.AFTER_NONTERMINAL_OBSERVATION_BEFORE_PREPARE_CAS,
+                )
                 cursor = (
                     live_start_session.prepare_nonterminal_apply_recovery_under_lock(
                         session_lease=session_lease,
@@ -5105,7 +5416,7 @@ def recover_apply_attempt_under_lock(
                 session_lease=session_lease,
                 cursor=cursor,
                 runtime_admission=runtime_admission,
-                fault_hook=no_live_start_fault,
+                fault_hook=fault_hook,
             )
             cursor, result, acknowledgement = _finish_stable_recovery(
                 plan=plan,
@@ -5114,7 +5425,7 @@ def recover_apply_attempt_under_lock(
                 cursor=cursor,
                 runtime_admission=runtime_admission,
                 raw_apply_status="recovered",
-                fault_hook=no_live_start_fault,
+                fault_hook=fault_hook,
                 fire_installer_faults=False,
             )
             revalidate_package_input_lease(package_lease)
@@ -5127,6 +5438,7 @@ def recover_apply_attempt_under_lock(
                 session_lease=session_lease,
                 profile_lease=profile_lease,
                 lease_pair=lease_pair,
+                fault_hook=fault_hook,
             )
             recovered = HeldRecoveredApplyAndMatch(held=held)
             with _validated_held_yield(
