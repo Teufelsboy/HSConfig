@@ -216,72 +216,33 @@ def collect_public_source_records(
             failures.append({"url": url, "error": f"unsupported_content_type:{content_type}"})
             continue
 
-        parsed = extract_visible_text(body.decode("utf-8", errors="replace"))
-        deck_match, deck_match_scope = _deck_match_evidence(
-            deck_name,
-            deck_identity,
-            parsed["title"],
-            parsed["text"],
-            card_snapshot=card_snapshot,
-        )
-        sanitized_text = _redact_deckstring_tokens(parsed["text"])
-        source_family = _infer_source_family(url, parsed["text"])
-        visibility = _source_visibility(source_family, parsed["text"])
-        publication_year = _publication_year_from_metadata(
-            parsed["publication_values"],
-            current_date=current_date,
-        )
-        lane_hint = _source_lane_hint(source_family, visibility)
-        strength = _source_record_strength(
-            source_family=source_family,
-            visibility=visibility,
-            deck_match_scope=deck_match_scope,
-            publication_year=publication_year,
-            current_date=current_date,
-        )
-        provenance = build_acquisition_provenance(
-            mode=(
-                acquisition_mode
-                if fetcher is None or acquisition_mode != LIVE_HTTP
-                else CAPTURED_RECORD
-            ),
-            content=body,
-        )
-        evidence_id = source_evidence_id(url, provenance["content_sha256"])
-        record = {
-            "evidence_id": evidence_id,
-            "source_id": _source_id(url),
-            "source_identity": url,
-            "source_url": url,
-            "source_title": parsed["title"] or url,
-            "source_family": source_family,
-            "source_visibility": visibility,
-            "source_lane_hint": lane_hint,
-            "source_category": _source_category(source_family, visibility, lane_hint),
-            "source_document_kind": _source_document_kind(source_family, visibility),
-            "publication_year": publication_year,
-            "source_updated_at": _source_updated_at(parsed["update_values"]),
-            "source_record_strength": strength,
-            "source_strength": strength,
-            "retrieved_at": retrieved_at,
-            "as_of_date": normalize_acquisition_date(retrieved_at),
-            "deck_match": deck_match,
-            "deck_match_scope": deck_match_scope,
-            "normalized_text": sanitized_text,
-            "content_sha256": provenance["content_sha256"],
-            "acquisition_provenance": provenance,
-        }
-        if fetch_url != url:
-            record["source_fetch_url"] = fetch_url
-        policy = classify_source_evidence(
-            record,
-            deck_name=deck_name,
-            current_date=current_date,
-            deck_identity=deck_identity,
-        )
-        records.append(
-            _redact_persisted_deckstrings({**record, **_record_policy_fields(policy)})
-        )
+        def process_page(target=url, fetch_target=fetch_url, content=body):
+            # Return a private value only. A timed-out worker cannot publish into
+            # the collector's records or observe the next loop iteration's page.
+            return _source_record_from_body(
+                url=target, fetch_url=fetch_target, body=content,
+                deck_name=deck_name, deck_identity=deck_identity,
+                card_snapshot=card_snapshot, current_date=current_date,
+                retrieved_at=retrieved_at,
+                acquisition_mode=(
+                    acquisition_mode
+                    if fetcher is None or acquisition_mode != LIVE_HTTP
+                    else CAPTURED_RECORD
+                ),
+            )
+
+        try:
+            record = _bounded_stage(
+                process_page, deadline_utc=page_deadline,
+                timeout_seconds=timeout_seconds,
+            )
+            _stage_timeout(page_deadline, timeout_seconds)
+        except TimeoutError:
+            if deadline_utc is None:
+                raise
+            failures.append({"url": url, "error": "research_budget_exhausted"})
+            continue
+        records.append(record)
 
     attempted_at = normalize_acquisition_date(retrieved_at)
     attempts = _acquisition_attempts(
@@ -325,6 +286,77 @@ def collect_public_source_records(
         "source_records": records,
         "source_acquisition_report": report,
     })
+
+
+def _source_record_from_body(
+    *,
+    url: str,
+    fetch_url: str,
+    body: bytes,
+    deck_name: str,
+    deck_identity: Mapping[str, Any],
+    card_snapshot: FrozenJsonDocument | None,
+    current_date: str | date | None,
+    retrieved_at: str,
+    acquisition_mode: str,
+) -> dict[str, Any]:
+    parsed = extract_visible_text(body.decode("utf-8", errors="replace"))
+    deck_match, deck_match_scope = _deck_match_evidence(
+        deck_name,
+        deck_identity,
+        parsed["title"],
+        parsed["text"],
+        card_snapshot=card_snapshot,
+    )
+    sanitized_text = _redact_deckstring_tokens(parsed["text"])
+    source_family = _infer_source_family(url, parsed["text"])
+    visibility = _source_visibility(source_family, parsed["text"])
+    publication_year = _publication_year_from_metadata(
+        parsed["publication_values"],
+        current_date=current_date,
+    )
+    lane_hint = _source_lane_hint(source_family, visibility)
+    strength = _source_record_strength(
+        source_family=source_family,
+        visibility=visibility,
+        deck_match_scope=deck_match_scope,
+        publication_year=publication_year,
+        current_date=current_date,
+    )
+    provenance = build_acquisition_provenance(mode=acquisition_mode, content=body)
+    evidence_id = source_evidence_id(url, provenance["content_sha256"])
+    record = {
+        "evidence_id": evidence_id,
+        "source_id": _source_id(url),
+        "source_identity": url,
+        "source_url": url,
+        "source_title": parsed["title"] or url,
+        "source_family": source_family,
+        "source_visibility": visibility,
+        "source_lane_hint": lane_hint,
+        "source_category": _source_category(source_family, visibility, lane_hint),
+        "source_document_kind": _source_document_kind(source_family, visibility),
+        "publication_year": publication_year,
+        "source_updated_at": _source_updated_at(parsed["update_values"]),
+        "source_record_strength": strength,
+        "source_strength": strength,
+        "retrieved_at": retrieved_at,
+        "as_of_date": normalize_acquisition_date(retrieved_at),
+        "deck_match": deck_match,
+        "deck_match_scope": deck_match_scope,
+        "normalized_text": sanitized_text,
+        "content_sha256": provenance["content_sha256"],
+        "acquisition_provenance": provenance,
+    }
+    if fetch_url != url:
+        record["source_fetch_url"] = fetch_url
+    policy = classify_source_evidence(
+        record,
+        deck_name=deck_name,
+        current_date=current_date,
+        deck_identity=deck_identity,
+    )
+    return _redact_persisted_deckstrings({**record, **_record_policy_fields(policy)})
 
 
 def _acquisition_attempts(

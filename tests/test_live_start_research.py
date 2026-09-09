@@ -84,7 +84,7 @@ def test_request_is_sealed_and_uses_deck_facts_not_only_label():
         run_id="run-1",
         deck_identity=IDENTITY,
         captured_input_sha256=DIGEST,
-        queries=("Wild MyDeck guide", "Wild MyDeck card roles", "third query"),
+        queries=(),
     )
     assert type(doc) is FrozenJsonDocument
     value = doc.to_value()
@@ -496,3 +496,51 @@ def test_delayed_worker_never_starts_a_stage_after_deadline(monkeypatch):
             forbidden, deadline_utc=time.time() + 0.01, timeout_seconds=10
         )
     assert started == []
+
+
+def test_supplied_enriched_queries_keep_priority_without_changing_identity():
+    identity = {key: value for key, value in IDENTITY.items() if key != "class"}
+    queries = (
+        "Wild MAGE Alpha Mage Beta Spell guide mulligan",
+        "Wild MAGE Alpha Mage Beta Spell strategic interactions",
+    )
+    request = research().build_research_request(
+        run_id="run-1", deck_identity=identity,
+        captured_input_sha256=DIGEST, queries=queries,
+    ).to_value()
+    assert request["queries"] == list(queries)
+    assert request["deck_identity"] == identity
+    assert "class" not in request["deck_identity"]
+
+
+@pytest.mark.parametrize("stage", [
+    "extract_visible_text", "_deck_match_evidence", "classify_source_evidence",
+])
+def test_post_fetch_processing_is_bounded_and_cannot_publish_late(monkeypatch, stage):
+    release = Event()
+    finished = Event()
+    original = getattr(acquisition, stage)
+
+    def delayed(*args, **kwargs):
+        try:
+            release.wait(0.8)
+            return original(*args, **kwargs)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(acquisition, stage, delayed)
+    monkeypatch.setattr(acquisition, "_fetch_with_validated_address",
+                        lambda *args: (200, "text/html", b"Alpha Mage"))
+    started = time.monotonic()
+    result = None
+    try:
+        result = collect(deadline_utc=time.time() + 0.03)
+        assert time.monotonic() - started < 0.3
+        assert result["source_records"] == []
+        assert result["source_acquisition_report"]["failures"] == [
+            {"url": URL, "error": "research_budget_exhausted"},
+        ]
+    finally:
+        release.set()
+        assert finished.wait(1)
+    assert result["source_records"] == []

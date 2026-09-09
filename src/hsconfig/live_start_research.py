@@ -120,7 +120,7 @@ def build_research_request(
         deck_identity=deck_identity,
         candidate_archetypes={},
     )
-    choices = [factual_query, *queries, *(row["query"] for row in candidate["queries"])]
+    choices = [*queries, factual_query, *(row["query"] for row in candidate["queries"])]
     selected = list(dict.fromkeys(" ".join(query.split()) for query in choices))[:2]
     return _seal(
         {
