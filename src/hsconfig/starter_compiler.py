@@ -20,7 +20,9 @@ from hsconfig.package_request import (
     ResolvedPackageRequest,
 )
 from hsconfig.research_contract import build_research_contract_bundle
+from hsconfig.starter_context import quality_main_card_rows
 from hsconfig.starter_contract import (
+    QUALITY_STARTER_SCHEMA_VERSION,
     STARTER_CANDIDATE_FILENAMES,
     STARTER_CONTEXT_FILENAME,
     STARTER_DECISION_FILENAME,
@@ -246,7 +248,11 @@ def _single_candidate_compiler_state(
     frozen_documents = frozen.source_documents.to_value()
     cards_payload = frozen_deck["cards_payload"]
     deck_identity = frozen_deck["deck_identity"]
-    context_cards = context["cards"]
+    context_cards = (
+        quality_main_card_rows(context)
+        if context["schema_version"] == QUALITY_STARTER_SCHEMA_VERSION
+        else context["cards"]
+    )
     card_metadata = {"cards": context_cards}
     physical_ids = sorted({str(row["card_id"]) for row in context_cards})
     existing_claims = list(context["existing_claims"])

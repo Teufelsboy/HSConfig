@@ -113,6 +113,9 @@ LEGACY_STARTER_CANDIDATE_FIELDS = frozenset(
 SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS = frozenset(
     LEGACY_STARTER_CANDIDATE_FIELDS
 )
+QUALITY_STARTER_CANDIDATE_FIELDS = SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS | {
+    "globalvalues_justifications",
+}
 STARTER_CANDIDATE_FIELDS = LEGACY_STARTER_CANDIDATE_FIELDS
 STARTER_DECISION_FIELDS = frozenset(
     {
@@ -172,6 +175,14 @@ STARTER_REVIEW_FIELDS = frozenset(
     }
 )
 REVIEW_STATUSES = frozenset({"approved", "revision_requested"})
+QUALITY_STARTER_REVIEW_FIELDS = STARTER_REVIEW_FIELDS | {
+    "candidate_validation_receipt_sha256",
+}
+QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS = frozenset({
+    "schema_version", "receipt_kind", "run_id", "candidate_revision",
+    "starter_context_sha256", "candidate_sha256", "status", "findings",
+    "content_sha256", "review_facts",
+})
 REVIEW_CONFIDENCE = frozenset({"high", "limited"})
 REVIEW_TARGETS = frozenset(
     {
@@ -285,6 +296,10 @@ __all__ = (
     "LEGACY_STARTER_CANDIDATE_FIELDS",
     "LEGACY_STARTER_CONTEXT_FIELDS",
     "LEGACY_STARTER_SCHEMA_VERSION",
+    "QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS",
+    "QUALITY_STARTER_CANDIDATE_FIELDS",
+    "QUALITY_STARTER_CONTEXT_FIELDS",
+    "QUALITY_STARTER_REVIEW_FIELDS",
     "QUALITY_STARTER_SCHEMA_VERSION",
     "REVIEW_CONFIDENCE",
     "REVIEW_STATUSES",

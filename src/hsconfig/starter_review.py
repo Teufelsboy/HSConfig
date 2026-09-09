@@ -1,4 +1,4 @@
-"""Closed independent review authority for one schema-2 starter candidate."""
+"""Closed independent review authority and fresh quality decision facts."""
 
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ import unicodedata
 from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.starter_candidate import (
     ValidatedStarterCandidate,
+    _known_evidence_references,
+    _quality_globalvalues_semantic_projection,
+    _validate_mulligan_rows,
+    changed_globalvalue_keys,
     validate_starter_candidate,
 )
 from hsconfig.starter_context import (
@@ -19,6 +23,9 @@ from hsconfig.starter_context import (
     validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
+    QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+    QUALITY_STARTER_REVIEW_FIELDS,
+    QUALITY_STARTER_SCHEMA_VERSION,
     REVIEW_CONFIDENCE,
     REVIEW_STATUSES,
     REVIEW_TARGETS,
@@ -36,6 +43,14 @@ from hsconfig.starter_document import StarterDocument, seal_starter_document
 
 
 _REVIEW_REQUEST_FIELDS = frozenset({"code", "target", "message"})
+_REVIEW_FACTS_FIELDS = frozenset(
+    {
+        "schema_version", "starter_context_sha256", "candidate_sha256", "candidate_id",
+        "candidate_revision", "globalvalues_changes", "card_dispositions",
+        "rules_by_runtime_owner", "evidence_references", "assumptions", "findings",
+        "runtime_authorized", "content_sha256",
+    }
+)
 _CLOSED_IDENTIFIER_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 _CONTENT_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _WINDOWS_DRIVE_PATH_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]")
@@ -89,6 +104,7 @@ def validate_starter_review(
     *,
     context: StarterContext,
     candidate: ValidatedStarterCandidate,
+    validation_receipt: FrozenJsonDocument | None = None,
 ) -> ValidatedStarterReview:
     """Validate one review against freshly derived context/candidate values."""
 
@@ -98,6 +114,8 @@ def validate_starter_review(
         context=fresh_context,
     )
     value = _validated_review_document_value(document)
+    if value["schema_version"] != fresh_context.document.to_value()["schema_version"]:
+        raise ValueError("starter_review_schema_pair_invalid")
 
     review_id = _closed_identifier(
         value.get("review_id"),
@@ -135,6 +153,13 @@ def validate_starter_review(
     )
     if candidate_sha256 != fresh_candidate.document.content_sha256:
         raise ValueError("starter_review_candidate_sha256_invalid")
+    if value["schema_version"] == QUALITY_STARTER_SCHEMA_VERSION:
+        _validate_quality_receipt(
+            validation_receipt,
+            context=fresh_context,
+            candidate=fresh_candidate,
+            expected_digest=value["candidate_validation_receipt_sha256"],
+        )
 
     revision_requests = _validated_revision_requests(
         value.get("revision_requests")
@@ -160,6 +185,171 @@ def validate_starter_review(
     )
 
 
+def build_candidate_review_facts(
+    *,
+    context: StarterContext,
+    candidate: ValidatedStarterCandidate,
+) -> FrozenJsonDocument:
+    """Seal diagnostic facts only after reconstructing both authority objects."""
+
+    context = _fresh_context(context)
+    candidate = _fresh_candidate(candidate, context=context)
+    context_value = context.document.to_value()
+    if context_value["schema_version"] != QUALITY_STARTER_SCHEMA_VERSION:
+        raise ValueError("starter_review_context_invalid")
+    value = candidate.document.to_value()
+    baseline = context_value["globalvalues_baseline"]["values"]
+    desired = candidate.globalvalues.to_value()
+    before = _quality_globalvalues_semantic_projection(baseline)
+    after = _quality_globalvalues_semantic_projection(desired)
+    changes = {
+        key: {
+            "before": before[key],
+            "after": after[key],
+            "justification": value["globalvalues_justifications"][key],
+        }
+        for key in changed_globalvalue_keys(baseline, desired)
+    }
+    physical_cards = {row["card_id"]: row["count"] for row in context_value["cards"]}
+    rules = []
+    for row in _validate_mulligan_rows(
+        value["mulligan"], physical_cards=physical_cards
+    ):
+        for card_id in row["selector_cards"]:
+            rules.append(
+                {
+                    "rule_id": row["rule_id"],
+                    "runtime_card_id": card_id,
+                    "source_card_ids": list(row["selector_cards"]),
+                    "surface": "Mulligan",
+                    "condition": row["condition"],
+                    "action": row["action"],
+                    "selector_kind": row["selector_kind"],
+                    "rationale": value["rule_rationales"][row["rule_id"]],
+                }
+            )
+    for document in candidate.card_behavior_rows:
+        row = document.to_value()
+        rules.append(
+            {
+                "rule_id": row["rule_id_suffix"],
+                "runtime_card_id": row["runtime_card_id"],
+                "source_card_ids": [row["source_card_id"]],
+                "surface": row["behavior_block"],
+                "condition": row["condition"],
+                "value": row["value"],
+                "link_kind": row["link_kind"],
+                "rationale": value["rule_rationales"][row["rule_id_suffix"]],
+            }
+        )
+    if value["combo"] is not None:
+        row = value["combo"]
+        for card_id in row["cards"]:
+            rules.append(
+                {
+                    "rule_id": row["rule_id"],
+                    "runtime_card_id": card_id,
+                    "source_card_ids": row["cards"],
+                    "surface": "Combo",
+                    "condition": row["condition"],
+                    "timing": row["timing"],
+                    "values": row["values"],
+                    "rationale": value["rule_rationales"][row["rule_id"]],
+                }
+            )
+    known_refs = _known_evidence_references(context_value)
+    refs = sorted(
+        {
+            ref
+            for row in value["globalvalues_justifications"].values()
+            for ref in row["evidence_refs"]
+        }
+    )
+    research_conflicts = [
+        {"observation_id": row["observation_id"], "conflict": conflict}
+        for row in context_value["research_evidence"]["observations"]
+        for conflict in row["conflicts"]
+    ]
+    facts = {
+        "schema_version": 1,
+        "starter_context_sha256": context.document.content_sha256,
+        "candidate_sha256": candidate.document.content_sha256,
+        "candidate_id": candidate.candidate_id,
+        "candidate_revision": candidate.candidate_revision,
+        "globalvalues_changes": changes,
+        "card_dispositions": sorted(
+            value["card_dispositions"], key=lambda row: row["card_id"]
+        ),
+        "rules_by_runtime_owner": sorted(rules, key=_canonical_json_bytes),
+        "evidence_references": [
+            {"reference_id": ref, "kind": known_refs[ref]} for ref in refs
+        ],
+        "assumptions": value["assumptions"],
+        # Fresh candidate validation has already rejected runtime duplicates/conflicts.
+        "findings": {
+            "runtime_duplicates": [],
+            "runtime_conflicts": [],
+            "research_conflicts": sorted(research_conflicts, key=_canonical_json_bytes),
+        },
+        "runtime_authorized": False,
+    }
+    return FrozenJsonDocument.from_value(
+        seal_starter_document(
+            facts,
+            expected_fields=_REVIEW_FACTS_FIELDS,
+            schema_version=1,
+        ).to_value()
+    )
+
+
+def _validate_quality_receipt(
+    receipt: FrozenJsonDocument | None,
+    *,
+    context: StarterContext,
+    candidate: ValidatedStarterCandidate,
+    expected_digest: object,
+) -> None:
+    error = "starter_review_validation_receipt_invalid"
+    if type(receipt) is not FrozenJsonDocument:
+        raise ValueError(error)
+    try:
+        value = receipt.to_value()
+        if set(value) != QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS:
+            raise ValueError(error)
+        unsigned = dict(value)
+        digest = unsigned.pop("content_sha256")
+        sealed = seal_starter_document(
+            unsigned,
+            expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
+            schema_version=2,
+        )
+        if (
+            type(value["schema_version"]) is not int
+            or value["schema_version"] != 2
+            or value["receipt_kind"] != "candidate_validation"
+            or type(value["run_id"]) is not str
+            or re.fullmatch(r"[0-9a-f]{32}", value["run_id"]) is None
+            or type(value["candidate_revision"]) is not int
+            or value["candidate_revision"] != candidate.candidate_revision
+            or value["candidate_sha256"] != candidate.document.content_sha256
+            or value["starter_context_sha256"] != context.document.content_sha256
+            or value["status"] != "valid"
+            or value["findings"] != []
+            or digest != sealed.content_sha256
+            or digest != expected_digest
+            or receipt.canonical_json != sealed.canonical_json
+        ):
+            raise ValueError(error)
+        fresh_facts = build_candidate_review_facts(context=context, candidate=candidate)
+        if (
+            FrozenJsonDocument.from_value(value["review_facts"]).canonical_json
+            != fresh_facts.canonical_json
+        ):
+            raise ValueError(error)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise ValueError(error) from None
+
+
 def _fresh_context(context: StarterContext) -> StarterContext:
     if type(context) is not StarterContext:
         raise TypeError("starter_review_context_invalid")
@@ -173,7 +363,7 @@ def _fresh_context(context: StarterContext) -> StarterContext:
         raise ValueError("starter_review_context_invalid")
     if (
         fresh.document.to_value().get("schema_version")
-        != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        not in {SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION, QUALITY_STARTER_SCHEMA_VERSION}
     ):
         raise ValueError("starter_review_context_invalid")
     return fresh
@@ -209,21 +399,28 @@ def _validated_review_document_value(
         value = document.to_value()
     except (TypeError, ValueError):
         raise ValueError("starter_review_document_invalid") from None
-    if set(value) != STARTER_REVIEW_FIELDS:
-        raise ValueError("starter_review_fields_invalid")
+    schema_version = value.get("schema_version")
     if (
-        type(value.get("schema_version")) is not int
-        or value["schema_version"]
-        != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        type(schema_version) is not int
+        or schema_version not in {
+            SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION, QUALITY_STARTER_SCHEMA_VERSION,
+        }
     ):
         raise ValueError("starter_review_schema_version_invalid")
+    fields = (
+        QUALITY_STARTER_REVIEW_FIELDS
+        if schema_version == QUALITY_STARTER_SCHEMA_VERSION
+        else STARTER_REVIEW_FIELDS
+    )
+    if set(value) != fields:
+        raise ValueError("starter_review_fields_invalid")
     unsigned = dict(value)
     content_sha256 = unsigned.pop("content_sha256")
     try:
         resealed = seal_starter_document(
             unsigned,
-            expected_fields=STARTER_REVIEW_FIELDS,
-            schema_version=SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            expected_fields=fields,
+            schema_version=schema_version,
         )
     except (TypeError, ValueError):
         raise ValueError("starter_review_content_sha256_invalid") from None
@@ -318,4 +515,8 @@ def _canonical_json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-__all__ = ("ValidatedStarterReview", "validate_starter_review")
+__all__ = (
+    "ValidatedStarterReview",
+    "build_candidate_review_facts",
+    "validate_starter_review",
+)

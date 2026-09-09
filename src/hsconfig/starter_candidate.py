@@ -35,12 +35,16 @@ from hsconfig.runtime_entity_owner import (
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 from hsconfig.starter_context import (
     StarterContext,
+    quality_main_card_rows,
     validate_starter_context_document,
 )
 from hsconfig.starter_contract import (
     LEGACY_STARTER_CANDIDATE_FIELDS,
     LEGACY_STARTER_CONTEXT_FIELDS,
     LEGACY_STARTER_SCHEMA_VERSION,
+    QUALITY_STARTER_CANDIDATE_FIELDS,
+    QUALITY_STARTER_CONTEXT_FIELDS,
+    QUALITY_STARTER_SCHEMA_VERSION,
     SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
     SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
@@ -102,6 +106,7 @@ STARTER_CANDIDATE_FINDING_CODES = frozenset({
     "starter_candidate_globalvalue_row_invalid",
     "starter_candidate_globalvalue_value_invalid",
     "starter_candidate_globalvalues_keys_invalid",
+    "starter_candidate_globalvalues_justifications_invalid",
     "starter_candidate_globalvalues_metadata_mismatch",
     "starter_candidate_id_invalid",
     "starter_candidate_material_runtime_intent_required",
@@ -163,7 +168,10 @@ def validate_starter_candidate(
         error="starter_candidate_id_invalid",
     )
     if (
-        schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
+        schema_version in {
+            SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+            QUALITY_STARTER_SCHEMA_VERSION,
+        }
         and candidate_id != "lead"
     ):
         raise ValueError("starter_candidate_id_invalid")
@@ -238,7 +246,21 @@ def validate_starter_candidate(
     )
     _validate_assumptions(value.get("assumptions"))
 
-    if not globalvalues_changed and not card_behavior_rows and combo_decision is None:
+    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        changed_keys = changed_globalvalue_keys(baseline, globalvalues.to_value())
+        globalvalues_changed = bool(changed_keys)
+        _validate_globalvalues_justifications(
+            value.get("globalvalues_justifications"),
+            changed_keys=changed_keys,
+            context_value=context_value,
+            assumptions=value["assumptions"],
+        )
+    has_intent = (
+        globalvalues_changed or bool(card_behavior_rows) or combo_decision is not None
+    )
+    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        has_intent = has_intent or bool(mulligan_rows)
+    if not has_intent:
         raise ValueError("starter_candidate_material_runtime_intent_required")
 
     runtime_intent_sha256 = _runtime_intent_sha256(
@@ -246,6 +268,7 @@ def validate_starter_candidate(
         globalvalues=globalvalues,
         card_rows=candidate_card_rows,
         combo=candidate_combo,
+        quality=schema_version == QUALITY_STARTER_SCHEMA_VERSION,
     )
     return ValidatedStarterCandidate(
         document=document,
@@ -274,6 +297,8 @@ def _validated_candidate_document_value(
         expected_fields = LEGACY_STARTER_CANDIDATE_FIELDS
     elif schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
         expected_fields = SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS
+    elif schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        expected_fields = QUALITY_STARTER_CANDIDATE_FIELDS
     else:
         raise ValueError("starter_candidate_schema_version_invalid")
     return _validated_starter_document_value(
@@ -337,20 +362,18 @@ def _validated_context(
     dict[str, tuple[tuple[str, str], ...]],
     dict[str, Any],
 ]:
-    if (
-        candidate_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
-        and type(context) is not StarterContext
-    ) or (
-        candidate_schema_version != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
-        and not isinstance(context, StarterContext)
+    live_schema = candidate_schema_version in {
+        SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
+        QUALITY_STARTER_SCHEMA_VERSION,
+    }
+    if (live_schema and type(context) is not StarterContext) or (
+        not live_schema and not isinstance(context, StarterContext)
     ):
         raise TypeError("starter_candidate_context_invalid")
     if (
-        candidate_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
-        and type(context.document) is not StarterDocument
+        live_schema and type(context.document) is not StarterDocument
     ) or (
-        candidate_schema_version != SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION
-        and not isinstance(context.document, StarterDocument)
+        not live_schema and not isinstance(context.document, StarterDocument)
     ):
         raise TypeError("starter_candidate_context_invalid")
     try:
@@ -365,8 +388,12 @@ def _validated_context(
         raise ValueError("starter_candidate_schema_pair_invalid")
     if context_schema_version == LEGACY_STARTER_SCHEMA_VERSION:
         expected_fields = LEGACY_STARTER_CONTEXT_FIELDS
-    elif context_schema_version == SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION:
-        expected_fields = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+    elif live_schema:
+        expected_fields = (
+            QUALITY_STARTER_CONTEXT_FIELDS
+            if context_schema_version == QUALITY_STARTER_SCHEMA_VERSION
+            else SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
+        )
         try:
             freshly_validated = validate_starter_context_document(
                 context.document
@@ -399,6 +426,8 @@ def _validated_context(
         raise ValueError("starter_candidate_context_invalid")
 
     raw_cards = value.get("cards")
+    if context_schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+        raw_cards = quality_main_card_rows(value)
     if not isinstance(raw_cards, list) or not raw_cards:
         raise ValueError("starter_candidate_context_invalid")
     physical_cards: dict[str, int] = {}
@@ -1022,11 +1051,14 @@ def _runtime_intent_sha256(
     globalvalues: FrozenJsonDocument,
     card_rows: list[dict[str, str]],
     combo: dict[str, Any] | None,
+    quality: bool = False,
 ) -> str:
     payload = {
         "mulligan": _mulligan_semantic_projection(mulligan_rows),
-        "globalvalues": _globalvalues_semantic_projection(
-            globalvalues.to_value()
+        "globalvalues": (
+            _quality_globalvalues_semantic_projection(globalvalues.to_value())
+            if quality
+            else _globalvalues_semantic_projection(globalvalues.to_value())
         ),
         "card_rules": [
             {
@@ -1133,6 +1165,88 @@ def _bounded_decimal(
     return text
 
 
+def changed_globalvalue_keys(baseline: dict, desired: dict) -> tuple[str, ...]:
+    """Compare matching key sets using quality-route numeric/row semantics."""
+
+    if baseline.keys() != desired.keys() or not set(baseline) <= set(
+        STARTER_GLOBALVALUE_CONSTRAINTS
+    ):
+        raise ValueError("starter_candidate_globalvalues_keys_invalid")
+    before = _quality_globalvalues_semantic_projection(baseline)
+    after = _quality_globalvalues_semantic_projection(desired)
+    return tuple(sorted(key for key in before if before[key] != after[key]))
+
+
+def _quality_globalvalues_semantic_projection(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    projection = _globalvalues_semantic_projection(value)
+    for key, row in projection.items():
+        if not STARTER_GLOBALVALUE_CONSTRAINTS[key].copy_baseline_only:
+            row["values"].sort(key=lambda item: (item["condition"], item["value"]))
+    return projection
+
+
+def _known_evidence_references(context_value: Mapping[str, Any]) -> dict[str, str]:
+    # Research observations support reasoning only; they are not canonical claims.
+    return {
+        **{row["claim_id"]: "claim" for row in context_value["existing_claims"]},
+        **{
+            row["observation_id"]: "observation"
+            for row in context_value.get("research_evidence", {}).get(
+                "observations", []
+            )
+        },
+    }
+
+
+def _validate_globalvalues_justifications(
+    value: object,
+    *,
+    changed_keys: tuple[str, ...],
+    context_value: Mapping[str, Any],
+    assumptions: list[str],
+) -> None:
+    error = "starter_candidate_globalvalues_justifications_invalid"
+    if not isinstance(value, Mapping) or set(value) != set(changed_keys):
+        raise ValueError(error)
+    known_refs = _known_evidence_references(context_value)
+    for raw_row in value.values():
+        row = require_closed_object(
+            raw_row,
+            expected_fields=frozenset(
+                {
+                    "decision",
+                    "baseline_gap",
+                    "basis",
+                    "evidence_refs",
+                    "assumption",
+                }
+            ),
+            error=error,
+        )
+        refs = row["evidence_refs"]
+        if (
+            not _nonempty_text(row["decision"], maximum=_MAX_RATIONALE_CHARS)
+            or not _nonempty_text(row["baseline_gap"], maximum=_MAX_RATIONALE_CHARS)
+            or not isinstance(refs, list)
+            or any(not isinstance(ref, str) or ref not in known_refs for ref in refs)
+            or len(set(refs)) != len(refs)
+        ):
+            raise ValueError(error)
+        if row["basis"] == "evidence":
+            if not refs or row["assumption"] is not None:
+                raise ValueError(error)
+        elif row["basis"] == "inference":
+            if (
+                not _nonempty_text(row["assumption"], maximum=_MAX_RATIONALE_CHARS)
+                or row["assumption"] not in assumptions
+            ):
+                raise ValueError(error)
+        else:
+            raise ValueError(error)
+
+
 def _globalvalues_semantic_projection(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1220,4 +1334,8 @@ def _canonical_json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-__all__ = ("ValidatedStarterCandidate", "validate_starter_candidate")
+__all__ = (
+    "ValidatedStarterCandidate",
+    "changed_globalvalue_keys",
+    "validate_starter_candidate",
+)
