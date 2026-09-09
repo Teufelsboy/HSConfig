@@ -27,7 +27,7 @@ from hsconfig.external_skill_bundle import (
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCE = ROOT / "src/hsconfig/resources/codex_skill_bundle.json"
 EXPECTED_AGGREGATE_SHA256 = (
-    "5a3bb29a895e06080a8ccff786789fe9d3de691cd76cad3167ed2d474b10d682"
+    "e4a10d53a60935549b22e1f21e8d9a34a0c84dfd4df0e5f61d34c98a14fbba20"
 )
 
 
@@ -160,13 +160,13 @@ def test_embedded_bundle_is_exact_closed_nine_file_contract() -> None:
     assert all(b"\r" not in content for content in files.values())
     preserved = {
         "references/card-behavior-policy.md": (
-            "c2457ac64a2601c9b27fa55aae344bf8f8e2132d4a93aa9bf8795f0b963be5b0"
+            "db27f9e115b77d83713a3a54e5563dd3980510974b464f002953fc82b5b4aa3d"
         ),
         "references/globalvalues-policy.md": (
-            "383d6da6bd90e6c160aa9843b55ae91d816a7eeb66a8fa8e99e0b390603ed0df"
+            "32bac2c59998c206fdc5b67b38533e9ada33956aaea6af59e36054553767e183"
         ),
         "references/guide-research-policy.md": (
-            "7b8e838d8da370f5b5f32502db6aec367e190fe0b91d95944926ea7b6f0a5343"
+            "45cb78ec1c2d5c3f0ce34272771d1df5716377416087aab3bc47886a8bb8f9bb"
         ),
         "references/visionai-surfaces.md": (
             "ed5c5b3f497188598f86a01ddde8cf9372644706bc0bf7cf12c1ab50adddace0"

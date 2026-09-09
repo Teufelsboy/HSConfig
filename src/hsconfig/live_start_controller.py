@@ -4424,6 +4424,255 @@ class LiveStartDiscovery:
     acquisition_request_sha256: str
 
 
+_QUALITY_RESEARCH_QUERY_LIMIT = 2
+_QUALITY_RESEARCH_URL_LIMIT = 3
+_QUALITY_REVISION_LIMIT = 2
+
+
+def _quality_summary_progress(
+    *, run_root: Path, current: LiveStartSession
+) -> Mapping[str, Any]:
+    from hsconfig.live_start_research import (
+        build_research_result,
+        validate_research_draft,
+    )
+
+    logical = "research/progress.json"
+    raw = _read_plain_bytes(
+        run_root / logical,
+        maximum_size=_session.QUALITY_FILE_LIMITS[logical],
+    )
+    if _sha256_bytes(raw) != current.artifact_bindings.get(logical):
+        raise SessionConflictError("live_start_quality_progress_binding_changed")
+    document = FrozenJsonDocument.from_json_bytes(raw)
+    if document.canonical_json != raw:
+        raise SessionConflictError("live_start_quality_progress_noncanonical")
+    progress = document.to_value()
+    expected = {
+        "schema_version",
+        "request_sha256",
+        "search_slots",
+        "draft",
+        "deadline_utc",
+        "attempts",
+        "source_records",
+        "source_acquisition_reports",
+    }
+    slots = progress.get("search_slots") if isinstance(progress, dict) else None
+    if (
+        not isinstance(progress, dict)
+        or set(progress) != expected
+        or progress.get("schema_version") != 1
+        or progress.get("request_sha256")
+        != current.research_binding["request_sha256"]
+        or not isinstance(slots, list)
+        or len(slots) > _QUALITY_RESEARCH_QUERY_LIMIT
+        or any(
+            not isinstance(row, dict)
+            or set(row) != {"query", "state"}
+            or not isinstance(row["query"], str)
+            or not row["query"]
+            or row["state"] != "reserved_unknown"
+            for row in slots
+        )
+    ):
+        raise SessionConflictError("live_start_quality_progress_invalid")
+    draft = progress["draft"]
+    urls: list[Any] = (
+        draft.get("urls", []) if isinstance(draft, dict) else []
+    )
+    if (
+        (draft is not None and not isinstance(draft, dict))
+        or not isinstance(urls, list)
+        or len(urls) > _QUALITY_RESEARCH_URL_LIMIT
+        or any(not isinstance(url, str) or not url for url in urls)
+    ):
+        raise SessionConflictError("live_start_quality_progress_invalid")
+    if draft is None:
+        if (
+            progress["deadline_utc"] is not None
+            or progress["attempts"]
+            or progress["source_records"]
+            or progress["source_acquisition_reports"]
+        ):
+            raise SessionConflictError("live_start_quality_progress_invalid")
+    else:
+        admitted_urls, _outcome = validate_research_draft(
+            draft,
+            request_sha256=current.research_binding["request_sha256"],
+        )
+        if any(
+            attempt.get("url") not in admitted_urls
+            for attempt in progress["attempts"]
+            if isinstance(attempt, Mapping)
+        ):
+            raise SessionConflictError("live_start_quality_progress_invalid")
+        build_research_result(
+            acquired={"source_records": progress["source_records"]},
+            discovery_outcome=draft["discovery_outcome"],
+            attempts=progress["attempts"],
+            deadline_utc=progress["deadline_utc"],
+            card_metadata={},
+        )
+    return progress
+
+
+def _quality_summary_runtime_write_state(current: LiveStartSession) -> str:
+    intent = current.result_intent
+    if current.terminal_status in {"LIVE_AND_MATCHED", "ALREADY_LIVE"}:
+        return "yes"
+    if isinstance(intent, Mapping):
+        disposition = intent.get("physical_disposition")
+        if disposition == "COMMITTED":
+            return "yes"
+        if disposition == "NOT_COMMITTED":
+            return "no"
+        if disposition in {
+            "COMMITTED_RECOVERY_PENDING",
+            "UNKNOWN_REQUIRES_RECOVERY",
+        }:
+            return "unknown"
+    pending = current.pending_transition
+    apply_pending = (
+        isinstance(pending, Mapping)
+        and pending.get("operation") == "install_apply_invocation"
+    )
+    if (
+        current.apply_invocation_sha256 is not None
+        or current.runtime_admission_binding is not None
+        or current.apply_recovery is not None
+        or apply_pending
+        or current.phase
+        in {
+            LiveStartPhase.APPLY_STARTED,
+            LiveStartPhase.APPLY_COMMITTED,
+            LiveStartPhase.RUNTIME_MATCHED,
+        }
+    ):
+        return "unknown"
+    return "no"
+
+
+def _quality_summary_route(current: LiveStartSession) -> tuple[str, str]:
+    if current.terminal_status in {"LIVE_AND_MATCHED", "ALREADY_LIVE"}:
+        return "result/summary.json", "use_installed_configuration"
+    if current.terminal_status == "PREVIEW_READY":
+        return "result/summary.json", "inspect_preserved_preview"
+    if current.terminal_status == "APPLIED_BUT_NOT_VERIFIED":
+        return "result/summary.json", "resume_existing_recovery"
+    if current.terminal_status is not None:
+        return "result/summary.json", "inspect_preserved_review_finding"
+    pending = current.pending_transition
+    if (
+        current.apply_invocation_sha256 is not None
+        or current.runtime_admission_binding is not None
+        or current.apply_recovery is not None
+        or (
+            isinstance(pending, Mapping)
+            and pending.get("operation") == "install_apply_invocation"
+        )
+        or current.phase
+        in {
+            LiveStartPhase.APPLY_STARTED,
+            LiveStartPhase.APPLY_COMMITTED,
+            LiveStartPhase.RUNTIME_MATCHED,
+        }
+    ):
+        return "receipts/apply_invocation.json", "resume_existing_recovery"
+    if current.phase is LiveStartPhase.DISCOVERY_REQUIRED:
+        return "research/request.json", "complete_or_resume_same_research_request"
+    if current.phase is LiveStartPhase.INPUT_FROZEN:
+        return "inputs/input_snapshot_manifest.json", "dispatch_lead_strategist"
+    if current.phase is LiveStartPhase.CANDIDATE_VALIDATED:
+        return "receipts/candidate_validation.json", "dispatch_independent_reviewer"
+    if current.phase is LiveStartPhase.CANDIDATE_DRAFTED:
+        logical = (
+            "starter/starter_config_review.json"
+            if "starter/starter_config_review.json" in current.artifact_bindings
+            else "starter/starter_config_candidate.json"
+        )
+        return logical, "return_exact_findings_to_same_lead"
+    return "receipts/review_validation.json", "finalize_reviewed_candidate"
+
+
+def quality_start_summary(*, run_root: Path) -> FrozenJsonDocument:
+    """Project one read-only next action from a validated persisted session."""
+
+    root = Path(run_root)
+    current = _session.load_live_start_session(root)
+    if current.schema_version == 1:
+        if current.terminal_status is not None:
+            raw = _read_plain_bytes(
+                root / "result/summary.json",
+                maximum_size=_session.LIVE_START_RESULT_SUMMARY_MAX_BYTES,
+            )
+            return FrozenJsonDocument.from_json_bytes(raw)
+        return _sealed_diagnostic(
+            {
+                "schema_version": 1,
+                "diagnostic_kind": "live_start_resume",
+                "status": current.phase.value,
+                "run_root": str(root),
+                "phase": current.phase.value,
+                "candidate_revision": current.candidate_revision,
+                "revisions_used": current.revisions_used,
+                "findings": [],
+            }
+        )
+    if current.schema_version != 2:
+        raise SessionConflictError("live_start_quality_summary_version_invalid")
+    progress = _quality_summary_progress(run_root=root, current=current)
+    logical, next_action = _quality_summary_route(current)
+    artifact_digest = current.artifact_bindings.get(logical)
+    if artifact_digest is None:
+        if logical == "receipts/apply_invocation.json":
+            logical = "session.json"
+            artifact_digest = _sha256_bytes(current.canonical_json)
+        else:
+            raise SessionConflictError(
+                "live_start_quality_summary_artifact_missing"
+            )
+    draft = progress["draft"]
+    urls = [] if draft is None else draft["urls"]
+    source_records = progress["source_records"]
+    intent = current.result_intent
+    limitations = (
+        list(intent.get("visible_limitations", []))
+        if isinstance(intent, Mapping)
+        else []
+    )
+    return _sealed_diagnostic(
+        {
+            "schema_version": 2,
+            "diagnostic_kind": "quality_live_start_route",
+            "status": current.terminal_status or current.phase.value,
+            "deck_name": current.deck_name,
+            "phase": current.phase.value,
+            "preserved_artifact": {
+                "path": str(root / logical),
+                "sha256": artifact_digest,
+            },
+            "acquisition_budget": {
+                "search_query_limit": _QUALITY_RESEARCH_QUERY_LIMIT,
+                "search_queries_reserved_unknown": len(progress["search_slots"]),
+                "search_queries_remaining": 0,
+                "page_url_limit": _QUALITY_RESEARCH_URL_LIMIT,
+                "page_urls_admitted": len(urls),
+                "resume_resets_budget": False,
+            },
+            "revision_budget": {
+                "maximum": _QUALITY_REVISION_LIMIT,
+                "used": current.revisions_used,
+                "remaining": max(0, _QUALITY_REVISION_LIMIT - current.revisions_used),
+            },
+            "source_evidence": "bounded" if source_records else "limited",
+            "visible_limitations": limitations,
+            "runtime_write_state": _quality_summary_runtime_write_state(current),
+            "next_action": next_action,
+        }
+    )
+
+
 def _quality_fault(_point: str) -> None:
     """Deterministic crash-injection seam; never an authority or write bypass."""
 
@@ -5221,8 +5470,8 @@ def prepare_quality_live_start(
 
 def prepare_live_start(
     request: LiveStartRequest,
-) -> LiveStartPreparation | LiveStartResult:
-    return _prepare_legacy_live_start(request)
+) -> LiveStartDiscovery | LiveStartResult:
+    return prepare_quality_live_start(request)
 
 
 def _prepare_legacy_live_start(
@@ -6291,6 +6540,7 @@ __all__ = (
     "prepare_live_start",
     "prepare_quality_live_start",
     "complete_live_start_research",
+    "quality_start_summary",
     "validate_live_start_candidate",
     "validate_live_start_review",
     "finalize_live_start",

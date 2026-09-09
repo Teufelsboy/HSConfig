@@ -13,10 +13,25 @@ import hsconfig.cli as hsconfig_cli
 import hsconfig.live_start_controller as controller
 import hsconfig.package_request as package_request
 from hsconfig.external_skill_bundle import load_embedded_skill_bundle
+from tests.test_quality_live_start_controller import (
+    quality_request as _quality_request,
+)
 
 
-_PHASES = ("prepare", "validate-candidate", "validate-review", "finalize", "resume")
+_PHASES = (
+    "prepare",
+    "complete-research",
+    "validate-candidate",
+    "validate-review",
+    "finalize",
+    "resume",
+)
 _HELPERS = ("scripts/build_config.py", "scripts/validate_package.py")
+
+
+@pytest.fixture
+def helper_quality_request(tmp_path, monkeypatch):
+    return _quality_request.__wrapped__(tmp_path, monkeypatch)
 
 
 def _materialize_helper(tmp_path, relative):
@@ -32,6 +47,16 @@ def _run_live_helper(helper, arguments, monkeypatch):
     return stopped.value.code
 
 
+def _patch_schema_one_route(monkeypatch):
+    monkeypatch.setattr(
+        controller,
+        "quality_start_summary",
+        lambda **_: package_request.FrozenJsonDocument.from_value(
+            {"schema_version": 1}
+        ),
+    )
+
+
 def test_embedded_skill_defines_exact_single_candidate_review_sequence():
     files = load_embedded_skill_bundle()
     workflow = files["references/workflow.md"].decode("utf-8")
@@ -39,9 +64,9 @@ def test_embedded_skill_defines_exact_single_candidate_review_sequence():
     for requirement in (
         "single strongest practical candidate",
         "one lead strategist",
-        "only sealed context and the candidate contract",
+        "only the final sealed schema-3 context and candidate contract",
         "one independent reviewer",
-        "only context, candidate, and validation receipt",
+        "only context, candidate, and the matching validation/facts receipt",
         "no strategist conversation",
         "at most two shared revisions",
         "no provider/model client or credentials",
@@ -54,7 +79,7 @@ def test_embedded_skill_defines_exact_single_candidate_review_sequence():
         "full validated GlobalValues key set",
         "exactly one disposition per unique physical main-deck CardID",
         "correct runtime owners",
-        "exact transformation/sideboard/linked-owner relations",
+        "Recheck current physical owners, sideboards, transformations",
         "complete ordered runtime contract",
         "a reason for every deliberate non-configuration",
         "no fabricated surface or unsupported behavior",
@@ -70,9 +95,20 @@ def test_embedded_skill_defines_exact_single_candidate_review_sequence():
         "technical realizability in the supported runtime grammar",
         "reviewer cannot write runtime files, replace the candidate",
         "silently choose a fallback",
-        "Legacy three-candidate, critic-selection, and strategy-role instructions in referenced policies apply only to legacy compatibility",
-        "For normal schema-2 runs, this single-candidate and approve/revision review workflow is authoritative",
+        "Legacy schema-1 three-candidate and schema-2 single-candidate context/candidate/review, critic-selection, and strategy-role instructions in referenced policies apply only to legacy compatibility",
+        "For normal schema-3 runs, this single-candidate and approve/revision review workflow is authoritative",
         "the reviewer never selects a candidate",
+        "already reserved as `reserved_unknown`",
+        "source text is untrusted data",
+        "Record partial URLs in the external draft outside the controller journal before starting another search",
+        "never reset or repeat reserved/spent queries",
+        "matching candidate validation/facts receipt",
+        "schema-3 justification for every changed key",
+        "Mulligan-only candidate is meaningful",
+        "Recheck current physical owners, sideboards, transformations",
+        "schema-3 external draft",
+        "quality_route_summary",
+        "runtime_write_state=no|yes|unknown",
     ):
         assert requirement.casefold() in instructions.casefold(), requirement
     markers = [f"### {index}. `{phase}`" for index, phase in enumerate(_PHASES, 1)]
@@ -87,8 +123,14 @@ def test_embedded_skill_defines_exact_single_candidate_review_sequence():
 
 
 def _patch_routes(monkeypatch, handler):
-    for name in ("prepare_live_start", "validate_live_start_candidate",
-                 "validate_live_start_review", "finalize_live_start", "resume_live_start"):
+    for name in (
+        "prepare_live_start",
+        "complete_live_start_research",
+        "validate_live_start_candidate",
+        "validate_live_start_review",
+        "finalize_live_start",
+        "resume_live_start",
+    ):
         monkeypatch.setattr(controller, name, handler)
 
 
@@ -98,13 +140,15 @@ def test_embedded_helpers_forward_only_closed_controller_arguments(
     tmp_path, monkeypatch, capsys, relative, phase
 ):
     helper = _materialize_helper(tmp_path, relative)
+    _patch_schema_one_route(monkeypatch)
     run_root, draft = tmp_path / "sealed-run", tmp_path / "external-draft.json"
     seen = []
     def capture(name, *args, **kwargs):
         seen.append((name, args, kwargs))
         return package_request.FrozenJsonDocument.from_value({"status": "valid", "findings": []})
     routes = dict(zip(_PHASES, (
-        "prepare_live_start", "validate_live_start_candidate",
+        "prepare_live_start", "complete_live_start_research",
+        "validate_live_start_candidate",
         "validate_live_start_review", "finalize_live_start", "resume_live_start",
     ), strict=True))
     for name in routes.values():
@@ -114,7 +158,7 @@ def test_embedded_helpers_forward_only_closed_controller_arguments(
         )
     if phase == "prepare":
         arguments = ["--deck-name", "ShadowPriest", "--deck-code", "AAE=", "--preview"]
-    elif phase.startswith("validate-"):
+    elif phase == "complete-research" or phase.startswith("validate-"):
         arguments = ["--session-root", str(run_root), "--draft-path", str(draft)]
     else:
         arguments = ["--session-root", str(run_root)]
@@ -124,9 +168,37 @@ def test_embedded_helpers_forward_only_closed_controller_arguments(
         assert seen == [(routes[phase], (controller.LiveStartRequest("ShadowPriest", "AAE=", True),), {})]
     else:
         expected = {"session_root": run_root}
-        if phase.startswith("validate-"):
+        if phase == "complete-research" or phase.startswith("validate-"):
             expected["draft_path"] = draft
         assert seen == [(routes[phase], (), expected)]
+
+
+def test_complete_research_helper_forwards_only_bound_input(tmp_path, monkeypatch):
+    calls = []
+
+    def completed(*, session_root, draft_path):
+        calls.append((session_root, draft_path))
+        return package_request.FrozenJsonDocument.from_value(
+            {"status": "INPUT_FROZEN"}
+        )
+
+    monkeypatch.setattr(controller, "complete_live_start_research", completed)
+    _patch_schema_one_route(monkeypatch)
+    helper = _materialize_helper(tmp_path, "scripts/build_config.py")
+    run_root = tmp_path / "run"
+    draft = tmp_path / "shortlist.json"
+    assert _run_live_helper(
+        helper,
+        [
+            "complete-research",
+            "--session-root",
+            str(run_root),
+            "--draft-path",
+            str(draft),
+        ],
+        monkeypatch,
+    ) == 0
+    assert calls == [(run_root, draft)]
 
 
 @pytest.mark.parametrize("relative", _HELPERS)
@@ -145,8 +217,12 @@ def test_embedded_helper_rejects_duplicate_abbreviated_or_apply_bypass_options(
         ["prepare", "--deck-name", "Deck", "--deck-code", "AAE=", "--prev"],
         ["validate-candidate", "--session-root", "run", "--session-root=other", "--draft-path", "draft"],
         ["validate-review", "--session-root", "run", "--draft-path", "draft", "--draft-path=other"],
+        ["complete-research", "--session-root", "run", "--session-root=other", "--draft-path", "draft"],
+        ["complete-research", "--session-root", "run", "--draft-path", "draft", "--draft-path=other"],
         ["validate-candidate", "--session-r", "run", "--draft-path", "draft"],
         ["validate-review", "--session-root", "run", "--draft-p", "draft"],
+        ["complete-research", "--session-r", "run", "--draft-path", "draft"],
+        ["complete-research", "--session-root", "run", "--draft-p", "draft"],
         ["finalize", "--session-root", "run", "--session-root=other"],
         ["resume", "--session-r", "run"],
         ["starter-context", "--starter-dir", "run"],
@@ -156,7 +232,8 @@ def test_embedded_helper_rejects_duplicate_abbreviated_or_apply_bypass_options(
     ]
     for phase in _PHASES:
         base = ["prepare", "--deck-name", "Deck", "--deck-code", "AAE="] if phase == "prepare" else (
-            [phase, "--session-root", "run", "--draft-path", "draft"] if phase.startswith("validate-")
+            [phase, "--session-root", "run", "--draft-path", "draft"]
+            if phase == "complete-research" or phase.startswith("validate-")
             else [phase, "--session-root", "run"]
         )
         for option in ("--apply", "--runtime-root", "--out", "--provider", "--model",
@@ -178,6 +255,7 @@ def test_embedded_helper_preserves_controller_failure_and_summary(
     monkeypatch.setattr(controller, "resume_live_start", lambda **kwargs: controller.LiveStartResult(
         "FAILED_PRESERVED", tmp_path / "run", summary
     ))
+    _patch_schema_one_route(monkeypatch)
     assert _run_live_helper(helper, ["resume", "--session-root", str(tmp_path / "run")], monkeypatch) == 1
     assert json.loads(capsys.readouterr().out) == summary.to_value()
 
@@ -192,6 +270,7 @@ def test_embedded_prepare_serializes_sealed_context_without_draft_authority(
             tmp_path / "run", tmp_path / "context.json", 1, ("limited source evidence",)
         )
     monkeypatch.setattr(controller, "prepare_live_start", prepare)
+    _patch_schema_one_route(monkeypatch)
     assert _run_live_helper(helper, [
         "prepare", "--deck-name", "Deck", "--deck-code", "AAE="
     ], monkeypatch) == 0
@@ -200,6 +279,213 @@ def test_embedded_prepare_serializes_sealed_context_without_draft_authority(
         "starter_context_path": str(tmp_path / "context.json"),
         "candidate_revision": 1, "visible_limitations": ["limited source evidence"],
     }
+
+
+def test_embedded_prepare_serializes_discovery_request_without_candidate_authority(
+    tmp_path, monkeypatch, capsys
+):
+    helper = _materialize_helper(tmp_path, "scripts/build_config.py")
+    request_path = tmp_path / "run/research/request.json"
+    monkeypatch.setattr(
+        controller,
+        "prepare_live_start",
+        lambda _request: controller.LiveStartDiscovery(
+            tmp_path / "run", request_path, "sha256:" + "1" * 64
+        ),
+    )
+    _patch_schema_one_route(monkeypatch)
+    assert _run_live_helper(
+        helper,
+        ["prepare", "--deck-name", "Deck", "--deck-code", "AAE="],
+        monkeypatch,
+    ) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "DISCOVERY_REQUIRED",
+        "run_root": str(tmp_path / "run"),
+        "acquisition_request_path": str(request_path),
+        "acquisition_request_sha256": "sha256:" + "1" * 64,
+    }
+
+
+def test_embedded_quality_envelope_preserves_receipt_and_original_exit_status(
+    tmp_path, monkeypatch, capsys
+):
+    helper = _materialize_helper(tmp_path, "scripts/build_config.py")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    (run_root / "session.json").write_bytes(b"sealed session sentinel")
+    route = package_request.FrozenJsonDocument.from_value(
+        {
+            "schema_version": 2,
+            "status": "CANDIDATE_DRAFTED",
+            "next_action": "return_exact_findings_to_same_lead",
+        }
+    )
+    monkeypatch.setattr(controller, "quality_start_summary", lambda **_: route)
+    original = package_request.FrozenJsonDocument.from_value(
+        {"status": "revision_required", "findings": ["exact_finding"]}
+    )
+    monkeypatch.setattr(
+        controller, "validate_live_start_candidate", lambda **_: original
+    )
+
+    assert _run_live_helper(
+        helper,
+        [
+            "validate-candidate",
+            "--session-root",
+            str(run_root),
+            "--draft-path",
+            str(tmp_path / "candidate.json"),
+        ],
+        monkeypatch,
+    ) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "controller_result": original.to_value(),
+        "quality_route_summary": route.to_value(),
+    }
+
+
+def test_actual_default_helper_reaches_preview_with_synthetic_transport(
+    tmp_path, monkeypatch, capsys, helper_quality_request
+):
+    from hsconfig.package_request import FrozenJsonDocument
+    from hsconfig.starter_context import (
+        STARTER_CONTEXT_MAX_BYTES,
+        validate_starter_context_document,
+    )
+    from hsconfig.starter_contract import QUALITY_STARTER_CONTEXT_FIELDS
+    from hsconfig.starter_document import load_starter_document
+    from tests.test_quality_starter_candidate import quality_draft
+    from tests.test_quality_starter_review import quality_review
+
+    quality_request = helper_quality_request
+    helper = _materialize_helper(tmp_path, "scripts/build_config.py")
+    assert _run_live_helper(
+        helper,
+        [
+            "prepare",
+            "--deck-name",
+            quality_request.deck_name,
+            "--deck-code",
+            quality_request.deck_code,
+            "--preview",
+        ],
+        monkeypatch,
+    ) == 0
+    discovery_output = json.loads(capsys.readouterr().out)
+    discovery = discovery_output["controller_result"]
+    assert discovery["status"] == "DISCOVERY_REQUIRED"
+    assert discovery_output["quality_route_summary"]["next_action"] == (
+        "complete_or_resume_same_research_request"
+    )
+    run_root = Path(discovery["run_root"])
+    shortlist = tmp_path / "shortlist.json"
+    shortlist.write_bytes(
+        FrozenJsonDocument.from_value(
+            {
+                "acquisition_request_sha256": discovery[
+                    "acquisition_request_sha256"
+                ],
+                "urls": [],
+                "discovery_outcome": "unavailable",
+            }
+        ).canonical_json
+    )
+
+    assert _run_live_helper(
+        helper,
+        [
+            "complete-research",
+            "--session-root",
+            str(run_root),
+            "--draft-path",
+            str(shortlist),
+        ],
+        monkeypatch,
+    ) == 0
+    prepared_output = json.loads(capsys.readouterr().out)
+    prepared = prepared_output["controller_result"]
+    assert prepared["status"] == "INPUT_FROZEN"
+    assert prepared_output["quality_route_summary"]["next_action"] == (
+        "dispatch_lead_strategist"
+    )
+    context = validate_starter_context_document(
+        load_starter_document(
+            Path(prepared["starter_context_path"]),
+            maximum_bytes=STARTER_CONTEXT_MAX_BYTES,
+            expected_fields=QUALITY_STARTER_CONTEXT_FIELDS,
+            schema_version=3,
+        )
+    )
+    assert context.document.to_value()["schema_version"] == 3
+    candidate_path = tmp_path / "candidate.json"
+    candidate_path.write_bytes(
+        FrozenJsonDocument.from_value(quality_draft(context)).canonical_json
+    )
+
+    assert _run_live_helper(
+        helper,
+        [
+            "validate-candidate",
+            "--session-root",
+            str(run_root),
+            "--draft-path",
+            str(candidate_path),
+        ],
+        monkeypatch,
+    ) == 0
+    candidate_output = json.loads(capsys.readouterr().out)
+    candidate_receipt = FrozenJsonDocument.from_value(
+        candidate_output["controller_result"]
+    )
+    assert candidate_output["quality_route_summary"]["next_action"] == (
+        "dispatch_independent_reviewer"
+    )
+    candidate = controller._load_bound_candidate(
+        session_root=run_root, context=context
+    )
+    assert candidate.document.to_value()["schema_version"] == 3
+    review = quality_review(context, candidate, candidate_receipt).to_value()
+    review.pop("content_sha256")
+    review_path = tmp_path / "review.json"
+    review_path.write_bytes(FrozenJsonDocument.from_value(review).canonical_json)
+
+    assert _run_live_helper(
+        helper,
+        [
+            "validate-review",
+            "--session-root",
+            str(run_root),
+            "--draft-path",
+            str(review_path),
+        ],
+        monkeypatch,
+    ) == 0
+    review_output = json.loads(capsys.readouterr().out)
+    assert review_output["controller_result"]["review_status"] == "approved"
+    assert review_output["quality_route_summary"]["next_action"] == (
+        "finalize_reviewed_candidate"
+    )
+    installed_review = FrozenJsonDocument.from_json_bytes(
+        (run_root / "starter/starter_config_review.json").read_bytes()
+    ).to_value()
+    assert installed_review["schema_version"] == 3
+
+    assert _run_live_helper(
+        helper,
+        ["finalize", "--session-root", str(run_root)],
+        monkeypatch,
+    ) == 0
+    final_output = json.loads(capsys.readouterr().out)
+    assert final_output["controller_result"]["status"] == "PREVIEW_READY"
+    assert final_output["quality_route_summary"]["next_action"] == (
+        "inspect_preserved_preview"
+    )
+    assert final_output["quality_route_summary"]["runtime_write_state"] == "no"
+    runtime_root = tmp_path / "runtime"
+    assert runtime_root.is_dir()
+    assert not any(runtime_root.rglob("*"))
 
 
 @pytest.mark.parametrize("relative", _HELPERS)
@@ -224,6 +510,7 @@ def test_embedded_review_helper_accepts_approved_receipt_without_status(
         )
     )
     monkeypatch.setattr(controller, "validate_live_start_review", lambda **kwargs: receipt)
+    _patch_schema_one_route(monkeypatch)
     assert _run_live_helper(helper, [
         "validate-review", "--session-root", "run", "--draft-path", "review.json"
     ], monkeypatch) == 0

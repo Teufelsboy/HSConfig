@@ -82,12 +82,12 @@ def _assert_pre_session(
 def test_invalid_name_is_not_echoed_into_bounded_failure(
     name: object, local_state: Path,
 ) -> None:
-    result = controller.prepare_live_start(_request(deck_name=name))
+    result = controller._prepare_legacy_live_start(_request(deck_name=name))
     _assert_pre_session(result, local_state, name=None)
 
 
 def test_invalid_code_retains_safe_name_but_no_roster(local_state: Path) -> None:
-    result = controller.prepare_live_start(_request(deck_code="not a deck"))
+    result = controller._prepare_legacy_live_start(_request(deck_code="not a deck"))
     _assert_pre_session(result, local_state, name="ShadowPriest")
 
 
@@ -105,7 +105,7 @@ def test_missing_or_drifted_profile_precedes_capture(
         pytest.fail("profile failure reached acquisition")
 
     monkeypatch.setattr(controller, "_capture_live_start_inputs", unexpected_capture)
-    result = controller.prepare_live_start(_request())
+    result = controller._prepare_legacy_live_start(_request())
     _assert_pre_session(result, local_state, name="ShadowPriest", status="PROFILE_REQUIRED")
     if drifted:
         assert list((tmp_path / "outputs").iterdir()) == []
@@ -130,7 +130,7 @@ def test_acquisition_failure_uses_only_completely_validated_roster_count(
         unavailable,
     )
     with _offline_network_and_card_data(cards, database):
-        result = controller.prepare_live_start(_request())
+        result = controller._prepare_legacy_live_start(_request())
     _assert_pre_session(result, local_state, name="ShadowPriest", unique=16 if after_roster else None)
     assert list((tmp_path / "outputs").iterdir()) == []
     assert list((tmp_path / "runtime").iterdir()) == []
@@ -146,7 +146,7 @@ def test_context_io_failure_after_session_creation_is_durable_bounded_failure(
         raise OSError(PRIVATE_CAUSE)
 
     monkeypatch.setattr(controller, "_materialize_starter_context", unavailable)
-    result = controller.prepare_live_start(_request(deck_code=code))
+    result = controller._prepare_legacy_live_start(_request(deck_code=code))
     assert isinstance(result, controller.LiveStartResult)
     assert result.status == "FAILED_PRESERVED"
     assert result.run_root is not None
@@ -176,7 +176,7 @@ def test_partial_resolved_roster_never_supplies_a_failure_count(
 
     monkeypatch.setattr(controller, "load_globalvalues_baseline", unavailable)
     with _offline_network_and_card_data(cards, database):
-        result = controller.prepare_live_start(_request())
+        result = controller._prepare_legacy_live_start(_request())
     _assert_pre_session(result, local_state, name="ShadowPriest")
     assert list((tmp_path / "outputs").iterdir()) == []
     assert list((tmp_path / "runtime").iterdir()) == []
@@ -187,7 +187,7 @@ def test_early_failure_renders_coverage_unavailable_not_unconfigured(
 ) -> None:
     code, frozen = _frozen_live_start_inputs(tmp_path)
     monkeypatch.setattr(controller, "_capture_live_start_inputs", lambda *_args: frozen)
-    prepared = controller.prepare_live_start(_request(deck_code=code))
+    prepared = controller._prepare_legacy_live_start(_request(deck_code=code))
     assert isinstance(prepared, controller.LiveStartPreparation)
     current = load_live_start_session(prepared.run_root)
     intent = controller._failure_result_intent(
@@ -215,7 +215,7 @@ def test_context_authority_errors_are_not_relabelled_as_input_failure(
 
     monkeypatch.setattr(controller, "_materialize_starter_context", rejected)
     with pytest.raises(error_type, match="bound_context_authority_changed"):
-        controller.prepare_live_start(_request(deck_code=code))
+        controller._prepare_legacy_live_start(_request(deck_code=code))
     assert not list(local_state.rglob("summary.json"))
     assert list((tmp_path / "outputs").iterdir()) == []
     assert list((tmp_path / "runtime").iterdir()) == []

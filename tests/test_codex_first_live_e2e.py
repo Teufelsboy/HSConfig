@@ -37,7 +37,7 @@ def _prepare(root, monkeypatch, *, deck_kind="shadowpriest", preview=False, conf
     )
     with monkeypatch.context() as acquisition:
         acquisition.setattr(controller, "_capture_live_start_inputs", lambda *_args: fixture.frozen_inputs)
-        prepared = controller.prepare_live_start(controller.LiveStartRequest(
+        prepared = controller._prepare_legacy_live_start(controller.LiveStartRequest(
             deck_name=fixture.deck_name, deck_code=fixture.deck_code, preview_requested=preview,
         ))
     assert isinstance(prepared, controller.LiveStartPreparation)

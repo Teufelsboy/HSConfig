@@ -83,7 +83,7 @@ def _prepared_run(
         "_capture_live_start_inputs",
         lambda *_args: frozen,
     )
-    prepared = controller.prepare_live_start(
+    prepared = controller._prepare_legacy_live_start(
         controller.LiveStartRequest(
             deck_name="ShadowPriest",
             deck_code=deck_code,
@@ -138,7 +138,7 @@ def test_prepare_requires_only_deck_name_and_code_after_profile_enablement(
             return frozen
 
         monkeypatch.setattr(controller, "_capture_live_start_inputs", capture)
-        result = controller.prepare_live_start(
+        result = controller._prepare_legacy_live_start(
             controller.LiveStartRequest(
                 deck_name="ShadowPriest",
                 deck_code=deck_code,
@@ -177,7 +177,7 @@ def test_missing_or_drifted_profile_stops_before_llm_output_or_runtime_write(
         unexpected_capture,
     )
     with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
-        result = controller.prepare_live_start(
+        result = controller._prepare_legacy_live_start(
             controller.LiveStartRequest(
                 deck_name="ShadowPriest",
                 deck_code=str(request.invocation.deck_code),
@@ -226,8 +226,8 @@ def test_prepare_always_creates_a_new_run_and_only_resume_reuses_one(
             preview_requested=True,
         )
 
-        first = controller.prepare_live_start(request)
-        second = controller.prepare_live_start(request)
+        first = controller._prepare_legacy_live_start(request)
+        second = controller._prepare_legacy_live_start(request)
 
     assert isinstance(first, controller.LiveStartPreparation)
     assert isinstance(second, controller.LiveStartPreparation)
@@ -621,7 +621,9 @@ def test_disabled_profile_requires_explicit_preview_before_input_capture(
             raise AssertionError("disabled live profile reached input capture")
 
         monkeypatch.setattr(controller, "_capture_live_start_inputs", unexpected_capture)
-        result = controller.prepare_live_start(controller.LiveStartRequest("ShadowPriest", code, False))
+        result = controller._prepare_legacy_live_start(
+            controller.LiveStartRequest("ShadowPriest", code, False)
+        )
         assert result.status == "PROFILE_REQUIRED"
         assert result.run_root is None
         assert not (local / "HSConfig" / "runs").exists()
