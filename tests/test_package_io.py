@@ -689,6 +689,63 @@ def test_file_state_omits_ctime_only_for_windows_semantics(tmp_path: Path) -> No
     assert package_io._file_state(status, platform_name="posix")[-1] == status.st_ctime_ns
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows path/handle mode semantics")
+@pytest.mark.parametrize("suffix", (".exe", ".bat", ".cmd", ".com", ".ini"))
+def test_no_follow_read_accepts_windows_extension_mode_bits(
+    tmp_path: Path, suffix: str,
+) -> None:
+    path = tmp_path / f"payload{suffix}"
+    path.write_bytes(b"inert test payload")
+
+    assert package_io.read_file_no_follow(
+        path, expected_status=path.lstat(), maximum_size=64,
+    ) == b"inert test payload"
+
+
+@pytest.mark.parametrize("platform_name,equal", (("nt", True), ("posix", False)))
+def test_file_state_normalizes_execute_bits_only_on_windows(
+    platform_name: str, equal: bool,
+) -> None:
+    fields = dict(st_dev=1, st_ino=2, st_mode=0o100666, st_size=4,
+                  st_mtime_ns=5, st_ctime_ns=6)
+    plain = SimpleNamespace(**fields)
+    executable = SimpleNamespace(**{**fields, "st_mode": 0o100777})
+
+    assert (
+        package_io._file_state(plain, platform_name=platform_name)
+        == package_io._file_state(executable, platform_name=platform_name)
+    ) is equal
+
+
+@pytest.mark.parametrize("field,value", (
+    ("st_dev", 7), ("st_ino", 7), ("st_size", 7), ("st_mtime_ns", 7),
+    ("st_mode", 0o100444), ("st_mode", 0o040666),
+))
+def test_windows_file_state_still_detects_material_changes(
+    field: str, value: int,
+) -> None:
+    fields = dict(st_dev=1, st_ino=2, st_mode=0o100666, st_size=4,
+                  st_mtime_ns=5, st_ctime_ns=6)
+
+    assert package_io._file_state(
+        SimpleNamespace(**fields), platform_name="nt",
+    ) != package_io._file_state(
+        SimpleNamespace(**{**fields, field: value}), platform_name="nt",
+    )
+
+
+def test_no_follow_read_rejects_changed_content_size(tmp_path: Path) -> None:
+    path = tmp_path / "payload.exe"
+    path.write_bytes(b"before")
+    expected_status = path.lstat()
+    path.write_bytes(b"changed payload")
+
+    with pytest.raises(ValueError, match="filesystem_file_identity_changed"):
+        package_io.read_file_no_follow(
+            path, expected_status=expected_status, maximum_size=64,
+        )
+
+
 def test_secure_file_lifecycle_binds_parent_and_child_identity(tmp_path: Path) -> None:
     parent = tmp_path / "parent"
     parent.mkdir()

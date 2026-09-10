@@ -2644,10 +2644,15 @@ def _file_state(
 ) -> tuple[int, int, int, int, int, int | None]:
     if platform_name is None:
         platform_name = os.name
+    mode = status.st_mode
+    if platform_name == "nt" and stat.S_ISREG(mode):
+        # Windows lstat synthesizes execute bits from the filename extension;
+        # fstat has no filename. Preserve file type and all other mode bits.
+        mode &= ~0o111
     return (
         status.st_dev,
         status.st_ino,
-        status.st_mode,
+        mode,
         status.st_size,
         status.st_mtime_ns,
         None if platform_name == "nt" else status.st_ctime_ns,
