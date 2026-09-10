@@ -202,6 +202,14 @@ def test_checked_in_dual_locks_match_controlled_dependency_contract() -> None:
     assert _read_constraints(REPOSITORY_ROOT / "constraints-ci.txt") == mappings[0]
 
 
+def test_checked_in_bootstrap_pip_is_patched_for_pysec_2026_3721() -> None:
+    """Catches reintroducing a pip version affected by PYSEC-2026-3721."""
+    locks = [_load_lock(REPOSITORY_ROOT / filename) for filename in LOCK_FILENAMES]
+
+    assert {_package_mapping(lock)["pip"] for lock in locks} == {"26.2"}
+    assert _read_constraints(REPOSITORY_ROOT / "constraints-ci.txt")["pip"] == "26.2"
+
+
 @pytest.mark.parametrize(
     ("contents", "message"),
     (

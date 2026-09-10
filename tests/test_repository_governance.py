@@ -170,7 +170,7 @@ EXPECTED_PROJECT_FIELDS = {
             "hypothesis>=6.0",
             "ruff>=0.12",
             "pip-audit>=2.9",
-            "pip==26.1.2",
+            "pip==26.2",
             "build>=1.0",
         ],
     },

@@ -72,9 +72,9 @@ jobs:
           python -m venv --without-pip $venvRoot
           $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
           $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
-          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
-          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
-          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl'
+          $expectedPipSha256 = '931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
@@ -82,7 +82,7 @@ jobs:
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
+          if ($actualPip -notmatch '^pip 26\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
@@ -278,9 +278,9 @@ jobs:
           python -m venv --without-pip $venvRoot
           $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
           $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
-          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
-          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
-          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl'
+          $expectedPipSha256 = '931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
@@ -288,7 +288,7 @@ jobs:
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
+          if ($actualPip -notmatch '^pip 26\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock
@@ -415,9 +415,9 @@ jobs:
           python -m venv --without-pip $venvRoot
           $venvPython = if ($IsWindows) { Join-Path $venvRoot 'Scripts/python.exe' } else { Join-Path $venvRoot 'bin/python' }
           $gate = Join-Path $sourceRoot 'scripts/check_release_gate.py'
-          $pipWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
-          $expectedPipSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
-          $pipWheel = Join-Path $runtimeRoot 'pip-26.1.2-py3-none-any.whl'
+          $pipWheelUrl = 'https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl'
+          $expectedPipSha256 = '931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad'
+          $pipWheel = Join-Path $runtimeRoot 'pip-26.2-py3-none-any.whl'
           Invoke-WebRequest -Uri $pipWheelUrl -OutFile $pipWheel
           $actualPipSha256 = (Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualPipSha256 -ne $expectedPipSha256) { throw 'bootstrap_pip_hash_mismatch' }
@@ -425,7 +425,7 @@ jobs:
           & $venvPython -m pip install --no-index --no-deps --force-reinstall $pipWheel
           Remove-Item Env:PYTHONPATH
           $actualPip = (& $venvPython -m pip --version)
-          if ($actualPip -notmatch '^pip 26\.1\.2 ') { throw 'bootstrap_pip_version_mismatch' }
+          if ($actualPip -notmatch '^pip 26\.2 ') { throw 'bootstrap_pip_version_mismatch' }
           $selectedLock = Join-Path $sourceRoot "pylock.$pythonMinor.toml"
           $canonicalLock = Join-Path $runtimeRoot 'pylock.toml'
           Copy-Item -LiteralPath $selectedLock -Destination $canonicalLock

@@ -5,10 +5,10 @@ $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $pyprojectPath = Join-Path $repositoryRoot 'pyproject.toml'
-$pipVersion = '26.1.2'
-$pipBootstrapWheelName = 'pip-26.1.2-py3-none-any.whl'
-$pipBootstrapWheelUrl = 'https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl'
-$pipBootstrapWheelSha256 = '382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab'
+$pipVersion = '26.2'
+$pipBootstrapWheelName = 'pip-26.2-py3-none-any.whl'
+$pipBootstrapWheelUrl = 'https://files.pythonhosted.org/packages/62/36/a3aed958d60531cb442b7ab4596cda7b3621cfb916f8ae1d6769795c7dc1/pip-26.2-py3-none-any.whl'
+$pipBootstrapWheelSha256 = '931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad'
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'hsconfig-lock-refresh-' + [guid]::NewGuid().ToString('N')
 )
