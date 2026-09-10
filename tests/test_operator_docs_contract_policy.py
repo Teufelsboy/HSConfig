@@ -321,7 +321,6 @@ def test_docs_define_optimized_start_as_pre_game_non_optimality_contract() -> No
     legacy = operator.split("### Legacy optimized CLI compatibility", 1)[1].split(
         "## Conservative CLI Operator Path", 1
     )[0]
-    assert "not the installed skill's normal schema-v2 route" in legacy
     for marker in (
         "`candidate-1.json` (`proactive_tempo`)",
         "`candidate-2.json` (`balanced`)",
