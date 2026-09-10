@@ -253,7 +253,7 @@ def test_readme_leads_with_deck_name_code_to_live_matched_config() -> None:
     introduction = text.split("## License and visibility", 1)[0]
     assert "deck name and deck code" in introduction
     assert "validated, live-matched" in introduction
-    assert "Deck -> Config -> Validate -> Live -> Match" in introduction
+    assert "Deck -> Snapshot -> Bounded research -> Candidate -> Independent review -> Live or Preview" in introduction
     assert "best practical evidence-based pre-run configuration" in introduction
     assert "not measured gameplay optimality" in introduction
 

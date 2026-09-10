@@ -15,7 +15,7 @@ CANONICAL_PUBLIC_METADATA_SHA256 = {
         "24a05243b2e472ad59887d529faedd21a3dddb5a15050c03865a1e44ec1f7031"
     ),
     "README.md": (
-        "163f480aff4a79c011161a65614acb968999500de0c55a30d166d293a365785c"
+        "16dfc13950a06cc0ac1c9ef73a6abbb6c9716b38375ddfcb086af19d3edde97b"
     ),
 }
 

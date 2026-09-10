@@ -127,12 +127,14 @@ FROZEN_POLICY_TEXT = {
     "SECURITY.md": EXPECTED_SECURITY_TEXT,
 }
 FROZEN_README_PREFIX_SHA256 = (
-    "492cbdef50eda3d876362fb8c43f8bced8f34668df5121fe35eb1190e91e85ca"
+    "f02e7e3d2f702c72b5fa7edb06c7f3da954b98149127ff903d697411190e3c46"
 )
 EXPECTED_README_OPTIMIZED_ROUTE_PROSE = (
-    "The installed HSConfig skill creates a single candidate with one lead "
-    "strategist, then uses one independent reviewer before validation, guarded "
-    "live apply, and an exact runtime match.",
+    "The installed HSConfig skill captures one consistent local data snapshot, "
+    "performs bounded Codex discovery, and asks the controller to seal the resulting "
+    "research and rich deck facts before candidate work begins.",
+    "It creates one candidate with one lead strategist, then uses one independent "
+    "reviewer whose approval is bound to that candidate's matching validation receipt.",
     "This installed optimized workflow is the only normal generation route.",
     "Conservative CLI Compatibility",
     "Direct raw hsconfig configure remains available for explicitly conservative "
