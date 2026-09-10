@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 import importlib.util
 import json
@@ -24,6 +25,7 @@ from hsconfig.release_verification import (
     _capture_prior_runtime,
     _new_runtime_state_is_exact,
     _render_canonical_prior,
+    _isolated_verification_local_app_data,
     _validate_private_work_roots,
     _verify_one_audited_deck,
     verify_audited_decks,
@@ -38,6 +40,16 @@ from hsconfig.runtime_state import RuntimeDeckState
 
 BUILD_INPUTS_PATH = Path("src/hsconfig/resources/audited_build_inputs.json")
 BUILD_RESOURCES_PATH = Path("src/hsconfig/resources/audited_build_resources.json")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_appdata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    local_app_data = tmp_path / "local-app-data"
+    local_app_data.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
 
 
 def _deck_codes() -> dict[str, str]:
@@ -56,9 +68,11 @@ def _tree_bytes(root: Path) -> dict[str, bytes]:
 
 
 def test_private_cold_build_is_byte_identical_and_root_independent(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """Catches serialized absolute roots or divergent cold-build content."""
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     audited = load_audited_build_inputs(BUILD_INPUTS_PATH)
     resources = load_audited_build_resource_store(
         BUILD_RESOURCES_PATH,
@@ -82,6 +96,7 @@ def test_private_cold_build_is_byte_identical_and_root_independent(
     assert row.first_content_root_sha256 == (
         row.second_content_root_sha256
     )
+    assert "LOCALAPPDATA" not in os.environ
 
     first = _tree_bytes(root_a / "ShadowPriest" / "configure-run")
     second = _tree_bytes(root_b / "ShadowPriest" / "configure-run")
@@ -93,6 +108,27 @@ def test_private_cold_build_is_byte_identical_and_root_independent(
         for content in first.values()
         for marker in forbidden
     )
+
+
+def test_verification_appdata_restores_existing_value_after_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    existing = tmp_path / "existing-local-app-data"
+    existing.mkdir()
+    verification_root = tmp_path / "verification-root"
+    verification_root.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(existing))
+
+    with pytest.raises(RuntimeError, match="injected"):
+        with _isolated_verification_local_app_data(verification_root):
+            assert Path(os.environ["LOCALAPPDATA"]) == (
+                verification_root / ".verification-local-app-data"
+            )
+            raise RuntimeError("injected")
+
+    assert os.environ["LOCALAPPDATA"] == str(existing)
+    assert not any(existing.iterdir())
 
 
 def test_public_verifier_rejects_a_partial_audited_deck_set(

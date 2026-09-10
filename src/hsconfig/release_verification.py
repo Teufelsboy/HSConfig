@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import os
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -162,25 +164,26 @@ def _verify_one_audited_deck(
     _assert_semantic_closure(first_run_root)
     _assert_semantic_closure(second_run_root)
 
-    runtime_safe = _verify_exception_recovery(
-        rendered=first,
-        inputs=inputs,
-        resource_store=resource_store,
-        deck_code=deck_code,
-        publication_root=first_root / "publication",
-        runtime_root=first_root / "runtime-pre-commit",
-        checkpoint="before_ini_compare_and_swap",
-        expect_new=False,
-    ) and _verify_exception_recovery(
-        rendered=second,
-        inputs=inputs,
-        resource_store=resource_store,
-        deck_code=deck_code,
-        publication_root=second_root / "publication",
-        runtime_root=second_root / "runtime-post-commit",
-        checkpoint="after_state_write",
-        expect_new=True,
-    )
+    with _isolated_verification_local_app_data(work_root_a):
+        runtime_safe = _verify_exception_recovery(
+            rendered=first,
+            inputs=inputs,
+            resource_store=resource_store,
+            deck_code=deck_code,
+            publication_root=first_root / "publication",
+            runtime_root=first_root / "runtime-pre-commit",
+            checkpoint="before_ini_compare_and_swap",
+            expect_new=False,
+        ) and _verify_exception_recovery(
+            rendered=second,
+            inputs=inputs,
+            resource_store=resource_store,
+            deck_code=deck_code,
+            publication_root=second_root / "publication",
+            runtime_root=second_root / "runtime-post-commit",
+            checkpoint="after_state_write",
+            expect_new=True,
+        )
     if not runtime_safe:
         raise ValueError("runtime_exception_recovery_unsafe")
     return DeckVerification(
@@ -190,6 +193,21 @@ def _verify_one_audited_deck(
         configure_run_bytes_equal=configure_run_bytes_equal,
         runtime_old_or_new_safe=runtime_safe,
     )
+
+
+@contextmanager
+def _isolated_verification_local_app_data(root: Path) -> Iterator[None]:
+    local_app_data = Path(root) / ".verification-local-app-data"
+    local_app_data.mkdir()
+    previous = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = str(local_app_data.resolve())
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = previous
 
 
 def _validate_private_work_roots(left: Path, right: Path) -> None:
