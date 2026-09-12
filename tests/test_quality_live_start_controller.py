@@ -3,6 +3,7 @@
 import time
 from contextlib import contextmanager
 from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -381,6 +382,8 @@ def test_empty_research_freezes_same_seed_bytes(quality_request, tmp_path):
 def test_bootstrap_fault_resumes_same_request(
     quality_request, monkeypatch, tmp_path, point
 ):
+    import hsconfig.live_start_research as live_start_research
+
     class Crash(BaseException):
         pass
 
@@ -393,7 +396,28 @@ def test_bootstrap_fault_resumes_same_request(
         controller.prepare_quality_live_start(quality_request)
     run = next((tmp_path / "local-app-data/HSConfig/runs").iterdir())
     before = load_live_start_session(run)
+
+    def sealed_bytes(logical):
+        target = run / logical
+        if target.exists():
+            return target.read_bytes()
+        row = next(
+            row
+            for row in before.pending_transition["actions"]
+            if row["logical_path"] == logical
+        )
+        return Path(row["source_path"]).read_bytes()
+
+    request_bytes = sealed_bytes("research/request.json")
+    reserved_rows = FrozenJsonDocument.from_json_bytes(
+        sealed_bytes("research/progress.json")
+    ).to_value()["search_slots"]
     monkeypatch.setattr(controller, "_quality_fault", lambda _: None)
+    monkeypatch.setattr(
+        live_start_research,
+        "build_research_request",
+        lambda **_: pytest.fail("resume regenerated research request"),
+    )
     monkeypatch.setattr(
         controller,
         "fetch_card_snapshot",
@@ -406,8 +430,12 @@ def test_bootstrap_fault_resumes_same_request(
         == before.research_binding["request_sha256"]
     )
     after = load_live_start_session(run)
+    assert (run / "research/request.json").read_bytes() == request_bytes
     assert after.research_binding == before.research_binding
     assert after.phase.value == "DISCOVERY_REQUIRED"
+    assert FrozenJsonDocument.from_json_bytes(
+        (run / "research/progress.json").read_bytes()
+    ).to_value()["search_slots"] == reserved_rows
 
 
 @pytest.mark.parametrize(

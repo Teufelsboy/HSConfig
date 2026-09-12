@@ -4879,9 +4879,9 @@ def _load_quality_state(*, root, current, profile):
     from hsconfig.card_snapshot import validated_card_snapshot
     from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
     from hsconfig.live_start_research import (
-        build_research_request,
         build_research_result,
         validate_research_draft,
+        validate_research_request,
     )
 
     def read(logical):
@@ -4952,15 +4952,18 @@ def _load_quality_state(*, root, current, profile):
         collectible_cards=cards["collectible_cards"],
     )
     request = read("research/request.json")
-    rebuilt = build_research_request(
-        run_id=current.run_id,
-        deck_identity=deck["deck_identity"],
-        captured_input_sha256=current.research_binding["seed_sha256"],
-        queries=tuple(request.get("queries", [])),
-    )
+    try:
+        checked_request = validate_research_request(
+            request,
+            run_id=current.run_id,
+            deck_identity=deck["deck_identity"],
+            captured_input_sha256=current.research_binding["seed_sha256"],
+        )
+    except ValueError:
+        raise SessionConflictError("live_start_quality_request_changed") from None
     if (
-        request != rebuilt.to_value()
-        or request["content_sha256"] != current.research_binding["request_sha256"]
+        checked_request.to_value()["content_sha256"]
+        != current.research_binding["request_sha256"]
     ):
         raise SessionConflictError("live_start_quality_request_changed")
     progress = read("research/progress.json")

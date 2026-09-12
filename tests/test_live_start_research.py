@@ -102,6 +102,243 @@ def test_request_is_sealed_and_uses_deck_facts_not_only_label():
     assert doc.to_value()["deck_identity"]["cards"]
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (1, "Wild"),
+        (2, "Standard"),
+        (3, "Classic"),
+        (4, "Twist"),
+        ("FT_WILD", "Wild"),
+        ("FT_STANDARD", "Standard"),
+        ("FT_CLASSIC", "Classic"),
+        ("FT_TWIST", "Twist"),
+        ("Wild", "Wild"),
+        ("standard", "Standard"),
+        ("CLASSIC", "Classic"),
+        ("Twist", "Twist"),
+        (None, "Hearthstone"),
+        (999, "Hearthstone"),
+        ("unknown", "Hearthstone"),
+        (True, "Hearthstone"),
+    ],
+)
+def test_new_queries_share_decoded_format(raw, expected):
+    identity = {**IDENTITY, "format": raw, "deck_name": "Wild Label"}
+    value = research().build_research_request(
+        run_id="run-1",
+        deck_identity=identity,
+        captured_input_sha256=DIGEST,
+        queries=(),
+    ).to_value()
+    assert len(value["queries"]) == 2
+    assert all(query.startswith(expected + " ") for query in value["queries"])
+    assert "Alpha Mage" in value["queries"][0]
+    assert "Wild Label" in value["queries"][1]
+    assert value["deck_identity"] == identity
+
+
+@pytest.mark.parametrize(
+    "supplied",
+    [
+        (),
+        ("manual query",),
+        ("manual query", "manual query"),
+        ("manual query", "second query"),
+    ],
+)
+def test_supplied_query_priority_and_bound_remain(supplied):
+    value = research().build_research_request(
+        run_id="run-1",
+        deck_identity=IDENTITY,
+        captured_input_sha256=DIGEST,
+        queries=supplied,
+    ).to_value()
+    normalized = list(dict.fromkeys(" ".join(q.split()) for q in supplied))
+    assert value["queries"][: len(normalized)] == normalized
+    assert len(value["queries"]) == 2
+    assert len(set(value["queries"])) == 2
+
+
+def test_old_request_is_validated_without_new_query_generation(monkeypatch):
+    module = research()
+    unsigned = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "deck_identity": IDENTITY,
+        "captured_input_sha256": DIGEST,
+        "queries": [
+            "Wild MAGE Alpha Mage Beta Spell guide mulligan",
+            "Wild MyDeck guide mulligan",
+        ],
+        "limits": {
+            "search_calls": 2,
+            "pages": 3,
+            "total_seconds": 30,
+            "request_seconds": 10,
+        },
+    }
+    old = module._seal(unsigned)
+    monkeypatch.setattr(
+        module,
+        "build_research_request",
+        lambda **kwargs: pytest.fail("historical request regenerated"),
+    )
+    checked = module.validate_research_request(
+        old.to_value(),
+        run_id="run-1",
+        deck_identity=IDENTITY,
+        captured_input_sha256=DIGEST,
+    )
+    assert checked.canonical_json == old.canonical_json
+    for count in (0, 1):
+        invalid = module._seal({**unsigned, "queries": unsigned["queries"][:count]})
+        with pytest.raises(ValueError, match="research_request_invalid"):
+            module.validate_research_request(
+                invalid.to_value(),
+                run_id="run-1",
+                deck_identity=IDENTITY,
+                captured_input_sha256=DIGEST,
+            )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "run_id",
+        "deck_identity",
+        "seed_digest",
+        "limits",
+        "boolean_limit",
+        "repeated_query",
+        "padded_query",
+        "extra_field",
+        "self_digest",
+        "non_list_cards",
+    ],
+)
+def test_research_request_rejects_changed_binding_shape_or_digest(change):
+    module = research()
+    unsigned = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "deck_identity": IDENTITY,
+        "captured_input_sha256": DIGEST,
+        "queries": [
+            "Wild MAGE Alpha Mage Beta Spell guide mulligan",
+            "Wild MyDeck guide mulligan",
+        ],
+        "limits": {
+            "search_calls": 2,
+            "pages": 3,
+            "total_seconds": 30,
+            "request_seconds": 10,
+        },
+    }
+    expected_identity = IDENTITY
+    error = "research_request_invalid"
+    if change == "run_id":
+        unsigned["run_id"] = "other-run"
+    elif change == "deck_identity":
+        unsigned["deck_identity"] = {**IDENTITY, "deck_name": "OtherDeck"}
+    elif change == "seed_digest":
+        unsigned["captured_input_sha256"] = "sha256:" + "b" * 64
+    elif change == "limits":
+        unsigned["limits"] = {**unsigned["limits"], "pages": 4}
+    elif change == "boolean_limit":
+        unsigned["limits"] = {**unsigned["limits"], "search_calls": True}
+    elif change == "repeated_query":
+        unsigned["queries"] = [unsigned["queries"][0], unsigned["queries"][0]]
+    elif change == "padded_query":
+        unsigned["queries"][0] = " " + unsigned["queries"][0]
+    elif change == "extra_field":
+        unsigned["extra"] = "not-admitted"
+    elif change == "non_list_cards":
+        expected_identity = {**IDENTITY, "cards": "not-a-list"}
+        unsigned["deck_identity"] = expected_identity
+        error = "research_request_signature_cards_missing"
+
+    value = module._seal(unsigned).to_value()
+    if change == "self_digest":
+        value["content_sha256"] = "sha256:" + "c" * 64
+
+    with pytest.raises(ValueError, match=error):
+        module.validate_research_request(
+            value,
+            run_id="run-1",
+            deck_identity=expected_identity,
+            captured_input_sha256=DIGEST,
+        )
+
+
+@pytest.mark.parametrize("change", ["format_bool", "format_float", "count_float"])
+def test_research_request_binding_compares_canonical_identity_bytes(change):
+    module = research()
+    changed_identity = FrozenJsonDocument.from_value(IDENTITY).to_value()
+    if change == "format_bool":
+        changed_identity["format"] = True
+    elif change == "format_float":
+        changed_identity["format"] = 1.0
+    else:
+        changed_identity["cards"][0]["count"] = 2.0
+    changed = module._seal(
+        {
+            "schema_version": 1,
+            "run_id": "run-1",
+            "deck_identity": changed_identity,
+            "captured_input_sha256": DIGEST,
+            "queries": [
+                "Wild MAGE Alpha Mage Beta Spell guide mulligan",
+                "Wild MyDeck guide mulligan",
+            ],
+            "limits": {
+                "search_calls": 2,
+                "pages": 3,
+                "total_seconds": 30,
+                "request_seconds": 10,
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="research_request_invalid"):
+        module.validate_research_request(
+            changed.to_value(),
+            run_id="run-1",
+            deck_identity=IDENTITY,
+            captured_input_sha256=DIGEST,
+        )
+
+
+def test_research_request_rejects_numerically_equal_float_limit():
+    module = research()
+    changed = module._seal(
+        {
+            "schema_version": 1,
+            "run_id": "run-1",
+            "deck_identity": IDENTITY,
+            "captured_input_sha256": DIGEST,
+            "queries": [
+                "Wild MAGE Alpha Mage Beta Spell guide mulligan",
+                "Wild MyDeck guide mulligan",
+            ],
+            "limits": {
+                "search_calls": 2.0,
+                "pages": 3,
+                "total_seconds": 30,
+                "request_seconds": 10,
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="research_request_invalid"):
+        module.validate_research_request(
+            changed.to_value(),
+            run_id="run-1",
+            deck_identity=IDENTITY,
+            captured_input_sha256=DIGEST,
+        )
+
+
 def test_deadline_does_not_reset_between_pages():
     timeout = research().research_timeout
     assert timeout(deadline_utc=130, now_utc=100) == 10

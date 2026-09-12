@@ -20,7 +20,6 @@ from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
 from hsconfig.source_autopilot import build_source_autopilot_bundle
-from hsconfig.source_candidate_plan import build_source_candidate_plan
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_claim_conflicts import build_claim_conflict_report
 
@@ -75,6 +74,23 @@ def _public_url(value: Any) -> str:
     return parsed._replace(netloc=netloc, fragment="", path=parsed.path or "/").geturl()
 
 
+def _research_format(raw: object) -> str:
+    numeric = {1: "Wild", 2: "Standard", 3: "Classic", 4: "Twist"}
+    if type(raw) is int:
+        return numeric.get(raw, "Hearthstone")
+    if type(raw) is str:
+        token = raw.strip().upper()
+        if token.startswith("FT_"):
+            token = token[3:]
+        return {
+            "WILD": "Wild",
+            "STANDARD": "Standard",
+            "CLASSIC": "Classic",
+            "TWIST": "Twist",
+        }.get(token, "Hearthstone")
+    return "Hearthstone"
+
+
 def build_research_request(
     *,
     run_id: str,
@@ -108,30 +124,17 @@ def build_research_request(
         or deck_identity.get("card_class")
         or " ".join(classes)
     )
-    format_name = {
-        1: "Wild",
-        2: "Standard",
-        3: "Classic",
-        4: "Twist",
-        "FT_WILD": "Wild",
-        "FT_STANDARD": "Standard",
-        "FT_CLASSIC": "Classic",
-        "FT_TWIST": "Twist",
-    }.get(
-        deck_identity.get("format"),
-        str(deck_identity.get("format") or "Hearthstone"),
-    )
+    format_name = _research_format(deck_identity.get("format"))
     if not names:
         raise ValueError("research_request_signature_cards_missing")
     factual_query = " ".join(
         [format_name, card_class, *names, "guide mulligan"]
     ).strip()
-    candidate = build_source_candidate_plan(
-        deck_name=str(deck_identity.get("deck_name", "")),
-        deck_identity=deck_identity,
-        candidate_archetypes={},
-    )
-    choices = [*queries, factual_query, *(row["query"] for row in candidate["queries"])]
+    label = str(deck_identity.get("deck_name") or "Deck").strip() or "Deck"
+    label_query = " ".join(
+        [format_name, card_class, label, "guide strategy"]
+    ).strip()
+    choices = [*queries, factual_query, label_query]
     selected = list(dict.fromkeys(" ".join(query.split()) for query in choices))[:2]
     return _seal(
         {
@@ -148,6 +151,79 @@ def build_research_request(
             },
         }
     )
+
+
+def validate_research_request(
+    value: object,
+    *,
+    run_id: str,
+    deck_identity: dict,
+    captured_input_sha256: str,
+) -> FrozenJsonDocument:
+    error = "research_request_invalid"
+    fields = {
+        "schema_version",
+        "run_id",
+        "deck_identity",
+        "captured_input_sha256",
+        "queries",
+        "limits",
+        "content_sha256",
+    }
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError(error)
+    queries = value["queries"]
+    if (
+        type(value["schema_version"]) is not int
+        or value["schema_version"] != 1
+        or value["run_id"] != run_id
+        or value["captured_input_sha256"] != captured_input_sha256
+        or not isinstance(run_id, str)
+        or not run_id.strip()
+        or type(value["deck_identity"]) is not dict
+        or type(deck_identity) is not dict
+        or not re.fullmatch(
+            r"(?:sha256:)?[0-9a-f]{64}",
+            str(deck_identity.get("deck_fingerprint", "")),
+        )
+        or not isinstance(captured_input_sha256, str)
+        or _SHA256.fullmatch(captured_input_sha256) is None
+        or type(queries) is not list
+        or len(queries) != 2
+        or any(
+            type(query) is not str
+            or not query
+            or query != " ".join(query.split())
+            for query in queries
+        )
+        or len(set(queries)) != 2
+        or type(value["limits"]) is not dict
+        or value["limits"]
+        != {
+            "search_calls": 2,
+            "pages": 3,
+            "total_seconds": 30,
+            "request_seconds": 10,
+        }
+        or any(type(limit) is not int for limit in value["limits"].values())
+    ):
+        raise ValueError(error)
+    cards = deck_identity.get("cards", [])
+    if type(cards) is not list or not any(
+        isinstance(card, dict) and str(card.get("name", "")).strip()
+        for card in cards
+    ):
+        raise ValueError("research_request_signature_cards_missing")
+    if (
+        FrozenJsonDocument.from_value(value["deck_identity"]).canonical_json
+        != FrozenJsonDocument.from_value(deck_identity).canonical_json
+    ):
+        raise ValueError(error)
+    unsigned = {key: item for key, item in value.items() if key != "content_sha256"}
+    sealed = _seal(unsigned)
+    if sealed.to_value() != value:
+        raise ValueError(error)
+    return sealed
 
 
 def validate_research_draft(
