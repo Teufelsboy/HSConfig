@@ -1,6 +1,7 @@
 """Quality intake exercises real capture, closure, journal and package authority."""
 
 import time
+from contextlib import contextmanager
 from hashlib import sha256
 from types import SimpleNamespace
 
@@ -136,11 +137,16 @@ def test_quality_missing_profile_stops_before_acquisition(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize(
-    "failure",
-    ["snapshot_transport", "required_identity", "globalvalues_baseline"],
+    "failure, expected_code",
+    [
+        ("snapshot_transport", "card_snapshot_unavailable"),
+        ("invalid_snapshot", "card_snapshot_invalid"),
+        ("required_identity", "deck_or_input_invalid"),
+        ("globalvalues_baseline", "runtime_baseline_unavailable"),
+    ],
 )
 def test_default_prepare_converts_expected_quality_intake_failures(
-    quality_request, monkeypatch, tmp_path, failure
+    quality_request, monkeypatch, tmp_path, failure, expected_code
 ):
     snapshot = controller.fetch_card_snapshot()
 
@@ -149,6 +155,11 @@ def test_default_prepare_converts_expected_quality_intake_failures(
             raise OSError("snapshot transport unavailable")
 
         monkeypatch.setattr(controller, "fetch_card_snapshot", fetch_failed)
+    elif failure == "invalid_snapshot":
+        monkeypatch.setattr(
+            controller, "fetch_card_snapshot",
+            lambda **_: FrozenJsonDocument.from_value({"full_cards": []}),
+        )
     elif failure == "required_identity":
         from hsconfig.deckstring_decode import decode_deck_code_from_snapshot
 
@@ -180,8 +191,155 @@ def test_default_prepare_converts_expected_quality_intake_failures(
     summary = result.summary.to_value()
     assert result.status == "FAILED_PRESERVED"
     assert result.run_root is None
-    assert summary["error_code"] == "deck_or_input_invalid"
+    assert summary["error_code"] == expected_code
     assert summary["retained_safe_state"] == "NO_SESSION_OR_RUNTIME_WRITE"
+    assert not (tmp_path / "local-app-data/HSConfig/runs").exists()
+
+
+@pytest.mark.parametrize(
+    "stage, exception_type, expected_code",
+    [
+        ("lease_acquisition", OSError, "operator_profile_changed"),
+        ("fetch", OSError, "card_snapshot_unavailable"),
+        ("fetch", RuntimeError, "card_snapshot_unavailable"),
+        ("fetch", ValueError, "card_snapshot_invalid"),
+        ("fetch", TypeError, "card_snapshot_invalid"),
+        ("validation", ValueError, "card_snapshot_invalid"),
+        ("decode", ValueError, "deck_or_input_invalid"),
+        ("roster", ValueError, "deck_or_input_invalid"),
+        ("fingerprint", TypeError, "deck_or_input_invalid"),
+        ("identity", ValueError, "deck_or_input_invalid"),
+        ("deck_freeze", TypeError, "deck_or_input_invalid"),
+        ("closure", ValueError, "deck_or_input_invalid"),
+        ("baseline_read", OSError, "runtime_baseline_unavailable"),
+        ("baseline_normalize", ValueError, "runtime_baseline_unavailable"),
+        ("cards_envelope", TypeError, "input_snapshot_invalid"),
+        ("operator_bindings", ValueError, "input_snapshot_invalid"),
+        ("policy", ValueError, "input_snapshot_invalid"),
+        ("seed_freeze", TypeError, "input_snapshot_invalid"),
+        ("lease_exit", RuntimeError, "operator_profile_changed"),
+    ],
+)
+def test_quality_intake_failure_is_phase_specific_and_preserves_lease(
+    quality_request, monkeypatch, tmp_path, stage, exception_type, expected_code
+):
+    import hsconfig.card_snapshot as snapshots
+    import hsconfig.deck_identity as identities
+    import hsconfig.deckstring_decode as decoding
+    import hsconfig.input_snapshot_manifest as manifests
+
+    original_lease = controller.lease_operator_profile
+    events = []
+    active = False
+
+    def fail(*_args, **_kwargs):
+        assert active
+        raise exception_type("private C:/Users/secret/operator-profile.json")
+
+    @contextmanager
+    def tracked_lease(**kwargs):
+        nonlocal active
+        events.append("acquisition")
+        if stage == "lease_acquisition":
+            raise exception_type("private C:/Users/secret/profile.json")
+        with original_lease(**kwargs) as lease:
+            active = True
+            events.append("body")
+            try:
+                yield lease
+                if stage == "lease_exit":
+                    fail()
+            finally:
+                events.append("exit")
+                active = False
+
+    monkeypatch.setattr(controller, "lease_operator_profile", tracked_lease)
+    targets = {
+        "fetch": (controller, "fetch_card_snapshot"),
+        "validation": (snapshots, "validated_card_snapshot"),
+        "decode": (decoding, "decode_deck_code_from_snapshot"),
+        "roster": (identities, "normalize_roster"),
+        "fingerprint": (identities, "stable_deck_fingerprint"),
+        "identity": (controller, "build_deck_identity"),
+        "closure": (controller, "_validate_deck_and_card_closure"),
+        "baseline_read": (controller, "load_globalvalues_baseline"),
+        "baseline_normalize": (controller, "normalize_globalvalues_decision_baseline"),
+        "operator_bindings": (manifests, "_operator_bindings_from_values"),
+        "policy": (controller, "_policy_profile_value"),
+    }
+    if stage in targets:
+        module, attribute = targets[stage]
+        monkeypatch.setattr(module, attribute, fail)
+    elif stage in {"deck_freeze", "cards_envelope", "seed_freeze"}:
+        original_freeze = FrozenJsonDocument.from_value
+        key = {
+            "deck_freeze": "cards_payload",
+            "cards_envelope": "globalvalues_baseline",
+            "seed_freeze": "operator_bindings",
+        }[stage]
+
+        def freeze(value):
+            if isinstance(value, dict) and key in value:
+                fail()
+            return original_freeze(value)
+
+        monkeypatch.setattr(FrozenJsonDocument, "from_value", staticmethod(freeze))
+
+    profile = controller.load_operator_profile()
+    before = {
+        path: path.read_bytes()
+        for root in (profile.runtime_root, profile.output_base_root)
+        for path in root.rglob("*") if path.is_file()
+    }
+    result = controller.prepare_quality_live_start(quality_request)
+    summary = result.summary.to_value()
+
+    assert result.status == "FAILED_PRESERVED"
+    assert result.run_root is None
+    assert summary["deck_name"] == quality_request.deck_name
+    assert summary["error_code"] == expected_code
+    assert summary["retained_safe_state"] == "NO_SESSION_OR_RUNTIME_WRITE"
+    assert "next_action" not in summary
+    assert b"secret" not in result.summary.canonical_json
+    assert b"private" not in result.summary.canonical_json
+    assert events == (
+        ["acquisition"] if stage == "lease_acquisition"
+        else ["acquisition", "body", "exit"]
+    )
+    assert not (tmp_path / "local-app-data/HSConfig/runs").exists()
+    assert {
+        path: path.read_bytes()
+        for root in (profile.runtime_root, profile.output_base_root)
+        for path in root.rglob("*") if path.is_file()
+    } == before
+
+
+@pytest.mark.parametrize("stage", ["fetch", "baseline"])
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        controller.SessionCapabilityError,
+        controller.SessionConflictError,
+        controller._session.SessionValidationError,
+        BaseException,
+    ],
+)
+def test_quality_intake_propagates_protected_exceptions(
+    quality_request, monkeypatch, tmp_path, stage, exception_type
+):
+    error = exception_type("private C:/Users/secret/profile.json")
+
+    def fail(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        controller,
+        "fetch_card_snapshot" if stage == "fetch" else "load_globalvalues_baseline",
+        fail,
+    )
+    with pytest.raises(exception_type) as caught:
+        controller.prepare_quality_live_start(quality_request)
+    assert caught.value is error
     assert not (tmp_path / "local-app-data/HSConfig/runs").exists()
 
 
@@ -317,12 +475,34 @@ def test_research_fault_spends_attempt_and_keeps_deadline(
     ).to_value()
     binding_before = load_live_start_session(root).research_binding
     calls_before = list(calls)
+    frozen_before = {}
+    if point in {"after_final_input_installation", "during_input_frozen_transition"}:
+        import hsconfig.live_start_research as research_module
+
+        frozen_before = {
+            path.relative_to(root): path.read_bytes()
+            for folder in (root / "inputs", root / "research")
+            for path in folder.rglob("*.json")
+        }
+        assert {
+            "quality.json", "sources.json", "input_snapshot_manifest.json",
+        } <= {path.name for path in frozen_before}
+
+        def no_recomputation(*_args, **_kwargs):
+            pytest.fail("staged quality freeze must not re-extract or re-rank")
+
+        monkeypatch.setattr(research_module, "_observations", no_recomputation)
+        monkeypatch.setattr(
+            research_module, "_select_observation_snippets", no_recomputation
+        )
+        monkeypatch.setattr(controller, "fetch_card_snapshot", no_recomputation)
     monkeypatch.setattr(controller, "_quality_fault", lambda _: None)
     prepared = controller.resume_live_start(session_root=root)
     assert isinstance(prepared, controller.LiveStartPreparation)
     assert calls == calls_before
     after = load_live_start_session(root)
     assert after.research_binding == binding_before
+    assert all((root / path).read_bytes() == raw for path, raw in frozen_before.items())
     quality = FrozenJsonDocument.from_json_bytes(
         (root / "inputs/quality.json").read_bytes()
     ).to_value()

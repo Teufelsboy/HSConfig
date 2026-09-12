@@ -4578,7 +4578,25 @@ def _quality_summary_route(current: LiveStartSession) -> tuple[str, str]:
     ):
         return "result/summary.json", "resume_existing_recovery"
     if current.terminal_status is not None:
-        return "result/summary.json", "inspect_preserved_review_finding"
+        review_phases = {
+            "candidate_document_invalid": {
+                LiveStartPhase.INPUT_FROZEN, LiveStartPhase.CANDIDATE_DRAFTED,
+            },
+            "candidate_revision_invalid": {
+                LiveStartPhase.INPUT_FROZEN, LiveStartPhase.CANDIDATE_DRAFTED,
+            },
+            "review_document_invalid": {LiveStartPhase.CANDIDATE_VALIDATED},
+            "revision_budget_exhausted": {
+                LiveStartPhase.CANDIDATE_DRAFTED, LiveStartPhase.CANDIDATE_VALIDATED,
+            },
+        }
+        error_code = intent.get("error_code") if isinstance(intent, Mapping) else None
+        next_action = (
+            "inspect_preserved_review_finding"
+            if current.phase in review_phases.get(error_code, ())
+            else "inspect_preserved_failure"
+        )
+        return "result/summary.json", next_action
     pending = current.pending_transition
     if (
         current.apply_invocation_sha256 is not None
@@ -5353,10 +5371,23 @@ def prepare_quality_live_start(
             deck_name=request.deck_name,
             error_code="operator_profile_required",
         )
+    failure_code = "operator_profile_changed"
     try:
         with lease_operator_profile(expected_profile=profile):
-            snapshot = fetch_card_snapshot(timeout=10.0)
+            failure_code = "card_snapshot_unavailable"
+            try:
+                snapshot = fetch_card_snapshot(timeout=10.0)
+            except (
+                SessionCapabilityError, SessionConflictError,
+                _session.SessionValidationError,
+            ):
+                raise
+            except (TypeError, ValueError):
+                failure_code = "card_snapshot_invalid"
+                raise
+            failure_code = "card_snapshot_invalid"
             captured = validated_card_snapshot(snapshot)
+            failure_code = "deck_or_input_invalid"
             decoded = decode_deck_code_from_snapshot(request.deck_code, snapshot)
             payload = {
                 key: decoded[key]
@@ -5394,10 +5425,12 @@ def prepare_quality_live_start(
                 full_cards=captured["full_cards"],
                 collectible_cards=captured["collectible_cards"],
             )
+            failure_code = "runtime_baseline_unavailable"
             baseline_receipt = load_globalvalues_baseline(profile.runtime_root)
             baseline = normalize_globalvalues_decision_baseline(
                 baseline_receipt["baseline"]
             )
+            failure_code = "input_snapshot_invalid"
             cards = FrozenJsonDocument.from_value(
                 {
                     "full_cards": captured["full_cards"],
@@ -5421,13 +5454,14 @@ def prepare_quality_live_start(
                     "card_snapshot_upstream_version": captured["upstream_version"],
                 }
             )
+            failure_code = "operator_profile_changed"
     except (SessionCapabilityError, SessionConflictError, _session.SessionValidationError):
         raise
     except (OSError, RuntimeError, TypeError, ValueError):
         return _pre_session_result(
             status="FAILED_PRESERVED",
             deck_name=request.deck_name,
-            error_code="deck_or_input_invalid",
+            error_code=failure_code,
         )
     run_id = secrets.token_hex(16)
     root = Path(os.environ["LOCALAPPDATA"]) / "HSConfig" / "runs" / run_id

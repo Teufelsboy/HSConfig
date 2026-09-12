@@ -99,6 +99,7 @@ def _progress(root):
             {
                 "visible_limitations": ["limited public guide evidence"],
                 "physical_disposition": None,
+                "error_code": "revision_budget_exhausted",
             },
             {"result/summary.json"},
             "inspect_preserved_review_finding",
@@ -299,3 +300,98 @@ def test_terminal_not_committed_retained_recovery_routes_to_resume(tmp_path):
         "resume_existing_recovery",
     )
     assert controller._quality_summary_runtime_write_state(persisted) == "no"
+
+
+def _terminal_route_cursor(phase, code):
+    return SimpleNamespace(
+        phase=phase,
+        terminal_status="FAILED_PRESERVED",
+        result_intent={"error_code": code, "physical_disposition": None},
+        apply_invocation_sha256=None,
+        runtime_admission_binding=None,
+        apply_recovery=None,
+        closed_apply_recovery_commitment=None,
+        pending_transition=None,
+        artifact_bindings={},
+    )
+
+
+@pytest.mark.parametrize("phase", list(LiveStartPhase))
+@pytest.mark.parametrize(
+    "code, review_phases",
+    [
+        ("candidate_document_invalid", {"INPUT_FROZEN", "CANDIDATE_DRAFTED"}),
+        ("candidate_revision_invalid", {"INPUT_FROZEN", "CANDIDATE_DRAFTED"}),
+        ("review_document_invalid", {"CANDIDATE_VALIDATED"}),
+        ("revision_budget_exhausted", {"CANDIDATE_DRAFTED", "CANDIDATE_VALIDATED"}),
+        ("card_snapshot_unavailable", set()),
+        ("compile_failed", set()),
+        ("unknown_failure", set()),
+        (None, set()),
+    ],
+)
+def test_terminal_error_route_uses_closed_code_phase_matrix(phase, code, review_phases):
+    current = _terminal_route_cursor(phase, code)
+    if code is None:
+        current.result_intent.pop("error_code")
+    expected = (
+        "inspect_preserved_review_finding"
+        if phase.value in review_phases else "inspect_preserved_failure"
+    )
+    assert controller._quality_summary_route(current) == ("result/summary.json", expected)
+
+
+@pytest.mark.parametrize("code", [None, "unknown_failure"])
+@pytest.mark.parametrize("phase", [LiveStartPhase.CANDIDATE_DRAFTED,
+                                   LiveStartPhase.CANDIDATE_VALIDATED])
+def test_terminal_old_review_artifacts_do_not_classify_failure(phase, code):
+    current = _terminal_route_cursor(phase, code)
+    current.artifact_bindings = {
+        "starter/starter_config_candidate.json": "sha256:" + "1" * 64,
+        "starter/starter_config_review.json": "sha256:" + "2" * 64,
+    }
+    if code is None:
+        current.result_intent.pop("error_code")
+    assert controller._quality_summary_route(current) == (
+        "result/summary.json", "inspect_preserved_failure",
+    )
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "apply_invocation_sha256", "runtime_admission_binding", "apply_recovery",
+        "closed_apply_recovery_commitment", "NOT_COMMITTED",
+        "COMMITTED_RECOVERY_PENDING", "UNKNOWN_REQUIRES_RECOVERY",
+    ],
+)
+@pytest.mark.parametrize("code", ["revision_budget_exhausted", "compile_failed"])
+def test_terminal_recovery_markers_precede_error_matrix(marker, code):
+    current = _terminal_route_cursor(LiveStartPhase.CANDIDATE_VALIDATED, code)
+    if marker.isupper():
+        current.result_intent["physical_disposition"] = marker
+    else:
+        setattr(current, marker, "sha256:" + "3" * 64)
+    assert controller._quality_summary_route(current) == (
+        "result/summary.json", "resume_existing_recovery",
+    )
+
+
+@pytest.mark.parametrize(
+    "status, expected",
+    [
+        ("LIVE_AND_MATCHED", "use_installed_configuration"),
+        ("ALREADY_LIVE", "use_installed_configuration"),
+        ("PREVIEW_READY", "inspect_preserved_preview"),
+        ("APPLIED_BUT_NOT_VERIFIED", "resume_existing_recovery"),
+    ],
+)
+@pytest.mark.parametrize("has_recovery_marker", [False, True])
+def test_terminal_status_route_precedes_recovery_markers_and_errors(
+    status, expected, has_recovery_marker
+):
+    current = _terminal_route_cursor(LiveStartPhase.RUNTIME_MATCHED, "compile_failed")
+    current.terminal_status = status
+    if has_recovery_marker:
+        current.apply_recovery = {"retained": True}
+    assert controller._quality_summary_route(current) == ("result/summary.json", expected)
