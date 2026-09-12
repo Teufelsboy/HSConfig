@@ -364,22 +364,53 @@ jobs:
       HSCONFIG_PYTHON_MINOR: "3.12"
     steps:
       - name: Initialize runner-scoped environment
+        id: security_environment
         shell: pwsh
         env:
           HSCONFIG_RUNNER_TEMP: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not $env:GITHUB_ENV -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
-          $runnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          if (-not $env:GITHUB_ENV -or -not $env:GITHUB_OUTPUT -or -not [IO.Path]::IsPathFullyQualified($env:HSCONFIG_RUNNER_TEMP)) { throw 'runner_environment_initialization_failed' }
+          $lexicalRunnerTemp = [IO.Path]::GetFullPath($env:HSCONFIG_RUNNER_TEMP)
+          $runnerItem = Get-Item -LiteralPath $lexicalRunnerTemp -Force -ErrorAction Stop
+          if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) { throw 'unsafe_security_runner_temp_root' }
+          $runnerTemp = (Resolve-Path -LiteralPath $lexicalRunnerTemp -ErrorAction Stop).Path
+          $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          if (-not [String]::Equals($runnerTemp, $lexicalRunnerTemp, $comparison)) { throw 'unsafe_security_runner_temp_root' }
+          $createState = @'
+          import os, stat, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          def identity(path):
+              row = path.lstat()
+              if row.st_ino <= 0:
+                  raise ValueError('security_state_identity_unavailable')
+              if not stat.S_ISDIR(row.st_mode) or stat.S_ISLNK(row.st_mode) or getattr(row, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                  raise ValueError('unsafe_security_state_directory')
+              if os.path.normcase(os.path.realpath(path)) != os.path.normcase(os.path.abspath(path)):
+                  raise ValueError('unsafe_security_state_resolution')
+              return row.st_dev, row.st_ino, row.st_mode
+          root_identity = identity(root)
+          candidate = root / 'hsconfig-security-localappdata'
+          os.mkdir(candidate)
+          candidate_identity = identity(candidate)
+          if identity(root) != root_identity:
+              raise ValueError('security_runner_root_identity_changed')
+          print(':'.join(format(value, 'x') for value in root_identity + candidate_identity))
+          '@
+          $ownedIdentity = (& python -B -c $createState $runnerTemp)
+          if ($LASTEXITCODE -ne 0 -or $ownedIdentity -is [array] -or $ownedIdentity -notmatch '^[0-9a-f]+(:[0-9a-f]+){5}$') { throw 'security_state_initialization_failed' }
           $values = [ordered]@{
             PIP_CACHE_DIR = (Join-Path $runnerTemp 'pip-cache')
             TEMP = $runnerTemp
             TMP = $runnerTemp
             TMPDIR = $runnerTemp
+            LOCALAPPDATA = (Join-Path $runnerTemp 'hsconfig-security-localappdata')
           }
           foreach ($entry in $values.GetEnumerator()) {
-            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "$($entry.Key)=$($entry.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append -ErrorAction Stop
           }
+          "owned_identity=$ownedIdentity" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append -ErrorAction Stop
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Bind and materialize the event commit
@@ -457,14 +488,53 @@ jobs:
       - name: Verify checkout residue is zero
         if: always()
         shell: pwsh
+        env:
+          HSCONFIG_SECURITY_INIT_OUTCOME: ${{ steps.security_environment.outcome }}
+          HSCONFIG_SECURITY_OWNED_IDENTITY: ${{ steps.security_environment.outputs.owned_identity }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
-          $runnerItem = Get-Item -LiteralPath $runnerTemp -Force
+          if (-not [IO.Path]::IsPathFullyQualified($env:RUNNER_TEMP)) { throw 'unsafe_runner_temp_cleanup_root' }
+          $lexicalRunnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $runnerItem = Get-Item -LiteralPath $lexicalRunnerTemp -Force -ErrorAction Stop
           if ($runnerItem.LinkType -or (($runnerItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or -not $runnerItem.PSIsContainer) {
-            throw "unsafe_runner_temp_cleanup_root:$runnerTemp"
+            throw 'unsafe_runner_temp_cleanup_root'
           }
+          $runnerTemp = (Resolve-Path -LiteralPath $lexicalRunnerTemp -ErrorAction Stop).Path
           $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+          if (-not [String]::Equals($runnerTemp, $lexicalRunnerTemp, $comparison)) { throw 'unsafe_runner_temp_cleanup_root' }
+          if ($env:HSCONFIG_SECURITY_INIT_OUTCOME -eq 'success' -and $env:HSCONFIG_SECURITY_OWNED_IDENTITY) {
+            if ($env:HSCONFIG_SECURITY_OWNED_IDENTITY -notmatch '^[0-9a-f]+(:[0-9a-f]+){5}$') { throw 'security_state_cleanup_binding_invalid' }
+            $verifyState = @'
+          import os, stat, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          expected = tuple(int(value, 16) for value in sys.argv[2].split(':'))
+          def identity(path):
+              row = path.lstat()
+              if row.st_ino <= 0:
+                  raise ValueError('security_state_identity_unavailable')
+              if not stat.S_ISDIR(row.st_mode) or stat.S_ISLNK(row.st_mode) or getattr(row, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                  raise ValueError('unsafe_security_state_cleanup_directory')
+              if os.path.normcase(os.path.realpath(path)) != os.path.normcase(os.path.abspath(path)):
+                  raise ValueError('unsafe_security_state_cleanup_resolution')
+              return row.st_dev, row.st_ino, row.st_mode
+          candidate = root / 'hsconfig-security-localappdata'
+          if identity(root) != expected[:3]:
+              raise ValueError('security_runner_root_identity_changed')
+          if not os.path.lexists(candidate):
+              print('absent')
+          else:
+              if identity(candidate) != expected[3:]:
+                  raise ValueError('security_state_identity_changed')
+              print('owned')
+          '@
+            $ownership = (& python -B -c $verifyState $runnerTemp $env:HSCONFIG_SECURITY_OWNED_IDENTITY)
+            if ($LASTEXITCODE -ne 0 -or $ownership -is [array] -or $ownership -notin @('owned', 'absent')) { throw 'security_state_cleanup_refused' }
+            if ($ownership -eq 'owned') {
+              $candidate = Join-Path $runnerTemp 'hsconfig-security-localappdata'
+              Remove-Item -LiteralPath $candidate -Recurse -Force -ErrorAction Stop
+            }
+          }
           foreach ($name in @('hsconfig-ci-source-baseline', 'hsconfig-locked-runtime', 'pip-cache', 'hypothesis', 'security-outputs')) {
             $candidate = Join-Path $runnerTemp $name
             if (Test-Path -LiteralPath $candidate) {

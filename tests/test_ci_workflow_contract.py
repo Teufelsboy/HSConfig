@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
 import venv
 
+import pytest
 import yaml
 from yaml.constructor import ConstructorError
 
@@ -17,6 +19,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 RUNNER_ENVIRONMENT_STEP = "Initialize runner-scoped environment"
+SECURITY_STATE_NAME = "hsconfig-security-localappdata"
 LOCKED_COVERAGE = (
     "python scripts/check_release_gate.py --repo . --outputs outputs "
     "--tree-mode working-pre-cutover --locked-check full-tests-and-coverage --json"
@@ -301,6 +304,10 @@ def test_runner_context_is_scoped_to_initialization_steps_that_persist_environme
             "TMP": str(runner_temp),
             "TMPDIR": str(runner_temp),
         }
+        if job_name == "security":
+            expected_environment["LOCALAPPDATA"] = str(
+                runner_temp / SECURITY_STATE_NAME
+            )
         if job_name == "test":
             expected_environment["HYPOTHESIS_STORAGE_DIRECTORY"] = (
                 str(runner_temp / "hypothesis")
@@ -311,6 +318,7 @@ def test_runner_context_is_scoped_to_initialization_steps_that_persist_environme
         github_environment = tmp_path / job_name / "github-env"
         environment = os.environ.copy()
         environment["GITHUB_ENV"] = str(github_environment)
+        environment["GITHUB_OUTPUT"] = str(tmp_path / job_name / "github-output")
         environment["HSCONFIG_RUNNER_TEMP"] = str(runner_temp)
 
         completed = subprocess.run(
@@ -464,6 +472,473 @@ def _create_junction(link: Path, target: Path) -> None:
         cwd=target,
         environment=environment,
     )
+
+
+def _security_command(name: str) -> str:
+    command = _named_step(_workflow()["jobs"]["security"], name)["run"]
+    assert isinstance(command, str)
+    return command
+
+
+def _security_run(
+    command: str,
+    checkout: Path,
+    environment: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+        cwd=checkout,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _security_init(
+    checkout: Path,
+    runner_temp: Path,
+    control: Path,
+    *,
+    extra: dict[str, str] | None = None,
+) -> tuple[
+    subprocess.CompletedProcess[str],
+    dict[str, str],
+    dict[str, str],
+]:
+    control.mkdir()
+    environment = os.environ.copy()
+    environment.pop("LOCALAPPDATA", None)
+    environment.update(
+        {
+            "HSCONFIG_RUNNER_TEMP": str(runner_temp),
+            "GITHUB_ENV": str(control / "github-env"),
+            "GITHUB_OUTPUT": str(control / "github-output"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    environment.update(extra or {})
+    completed = _security_run(
+        _security_command(RUNNER_ENVIRONMENT_STEP),
+        checkout,
+        environment,
+    )
+
+    def read_fields(name: str) -> dict[str, str]:
+        path = control / name
+        if not path.is_file():
+            return {}
+        return dict(
+            line.split("=", 1)
+            for line in path.read_text(encoding="utf-8-sig").splitlines()
+        )
+
+    return completed, read_fields("github-env"), read_fields("github-output")
+
+
+def _security_cleanup(
+    checkout: Path,
+    runner_temp: Path,
+    initialized: subprocess.CompletedProcess[str],
+    outputs: dict[str, str],
+    *,
+    extra: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment.update(extra or {})
+    # Authoritative expression results overwrite inherited/spoofed env values.
+    environment.update(
+        {
+            "RUNNER_TEMP": str(runner_temp),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "HSCONFIG_SECURITY_INIT_OUTCOME": (
+                "success" if initialized.returncode == 0 else "failure"
+            ),
+            "HSCONFIG_SECURITY_OWNED_IDENTITY": outputs.get(
+                "owned_identity", ""
+            ),
+        }
+    )
+    return _security_run(
+        _security_command("Verify checkout residue is zero"),
+        checkout,
+        environment,
+    )
+
+
+def _security_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    checkout = tmp_path / "checkout"
+    _clean_repository(checkout)
+    runner_temp = tmp_path / "runner temp with spaces"
+    runner_temp.mkdir()
+    return checkout, runner_temp
+
+
+def _security_identity(path: Path) -> tuple[int, int, int]:
+    row = path.lstat()
+    return row.st_dev, row.st_ino, row.st_mode
+
+
+def _security_inventory(
+    root: Path,
+) -> dict[str, tuple[bytes | None, int, tuple[int, int, int]]]:
+    paths = [root, *sorted(root.rglob("*"))]
+    return {
+        "." if path == root else path.relative_to(root).as_posix(): (
+            path.read_bytes() if path.is_file() else None,
+            path.stat().st_mtime_ns,
+            _security_identity(path),
+        )
+        for path in paths
+    }
+
+
+def _security_link(
+    link: Path,
+    target: Path,
+    *,
+    dangling: bool = False,
+) -> None:
+    if os.name == "nt" and not dangling:
+        _create_junction(link, target)
+        return
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        if os.name == "nt" and error.winerror == 1314:
+            pytest.skip(
+                "Windows symlink privilege unavailable; Ubuntu case remains required"
+            )
+        raise
+
+
+def test_security_cleanup_authority_is_bound_to_step_outcome_and_output() -> None:
+    job = _workflow()["jobs"]["security"]
+    initial = _named_step(job, RUNNER_ENVIRONMENT_STEP)
+    final = _named_step(job, "Verify checkout residue is zero")
+
+    assert initial.get("id") == "security_environment"
+    assert final["if"] == "always()"
+    assert final["env"] == {
+        "HSCONFIG_SECURITY_INIT_OUTCOME": (
+            "${{ steps.security_environment.outcome }}"
+        ),
+        "HSCONFIG_SECURITY_OWNED_IDENTITY": (
+            "${{ steps.security_environment.outputs.owned_identity }}"
+        ),
+    }
+    assert "${{" not in initial["run"]
+    assert "${{" not in final["run"]
+    assert initial["run"].index("$env:GITHUB_ENV -Encoding") < initial[
+        "run"
+    ].index("$env:GITHUB_OUTPUT -Encoding")
+    assert "$env:HSCONFIG_SECURITY_STATE_CREATED" not in final["run"]
+    assert final["run"].index("$verifyState") < final["run"].index(
+        "foreach ($name in @("
+    )
+
+
+@pytest.mark.parametrize("foreign_host", [False, True])
+def test_security_initializer_guard_and_cleanup_chain(
+    tmp_path: Path,
+    foreign_host: bool,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    host = tmp_path / "foreign host profile"
+    nested = host / "nested"
+    nested.mkdir(parents=True)
+    (host / "keep.txt").write_bytes(b"private host must stay unchanged")
+    (nested / "also keep.bin").write_bytes(b"complete inventory")
+    before = _security_inventory(host)
+    extra = {"LOCALAPPDATA": str(host)} if foreign_host else {}
+
+    initialized, persisted, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+        extra=extra,
+    )
+
+    assert initialized.returncode == 0, initialized.stderr
+    state = runner_temp / SECURITY_STATE_NAME
+    assert persisted["LOCALAPPDATA"] == str(state)
+    assert state.is_dir() and not state.is_symlink()
+    assert not (
+        getattr(state.lstat(), "st_file_attributes", 0)
+        & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
+    assert outputs["owned_identity"]
+    probe = "\n".join(
+        [
+            "from pathlib import Path",
+            "import os",
+            "from hsconfig.runtime_live_admission import load_runtime_live_attempt_admission, require_live_admission_allows_publication",
+            "from hsconfig.output_operation_admission import output_operation_state_root",
+            "from hsconfig.package_io import require_plain_directory",
+            "assert load_runtime_live_attempt_admission() is None",
+            "require_plain_directory(output_operation_state_root().parent)",
+            "require_live_admission_allows_publication(output_root=Path(os.environ['LOCALAPPDATA'])/'probe-output', output_root_identity=None)",
+        ]
+    )
+    environment = os.environ.copy()
+    environment.update(persisted)
+    environment.update(
+        {
+            "PYTHONPATH": str(ROOT / "src"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    observed = subprocess.run(
+        [sys.executable, "-B", "-c", probe],
+        cwd=checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert observed.returncode == 0, observed.stderr
+    assert list(state.iterdir()) == []
+    (state / "owned marker.txt").write_bytes(b"job state")
+
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+    )
+
+    assert finished.returncode == 0, finished.stderr
+    assert not state.exists()
+    assert _security_inventory(host) == before
+
+
+@pytest.mark.parametrize("kind", ["directory", "file", "link", "dangling"])
+def test_security_preexisting_target_failure_never_authorizes_cleanup(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    candidate = runner_temp / SECURITY_STATE_NAME
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_bytes(b"foreign")
+    if kind == "directory":
+        candidate.mkdir()
+        (candidate / "keep.txt").write_bytes(b"preexisting")
+    elif kind == "file":
+        candidate.write_bytes(b"preexisting file")
+    else:
+        _security_link(
+            candidate,
+            outside if kind == "link" else tmp_path / "absent",
+            dangling=kind == "dangling",
+        )
+    identity = _security_identity(candidate)
+
+    initialized, persisted, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+    )
+
+    assert initialized.returncode != 0
+    assert "owned_identity" not in outputs
+    assert "LOCALAPPDATA" not in persisted
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+        extra={
+            "HSCONFIG_SECURITY_STATE_CREATED": "true",
+            "HSCONFIG_SECURITY_INIT_OUTCOME": "success",
+            "HSCONFIG_SECURITY_OWNED_IDENTITY": "1:2:3:4:5:6",
+        },
+    )
+
+    assert finished.returncode == 0, finished.stderr
+    assert os.path.lexists(candidate)
+    assert _security_identity(candidate) == identity
+    if kind == "directory":
+        assert (candidate / "keep.txt").read_bytes() == b"preexisting"
+    elif kind == "file":
+        assert candidate.read_bytes() == b"preexisting file"
+    assert marker.read_bytes() == b"foreign"
+
+
+@pytest.mark.parametrize("failed_channel", ["GITHUB_ENV", "GITHUB_OUTPUT"])
+def test_security_persistence_failure_does_not_authorize_cleanup(
+    tmp_path: Path,
+    failed_channel: str,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    blocked = tmp_path / "not a writable channel file"
+    blocked.mkdir()
+
+    initialized, persisted, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+        extra={failed_channel: str(blocked)},
+    )
+
+    assert initialized.returncode != 0
+    assert "owned_identity" not in outputs
+    state = runner_temp / SECURITY_STATE_NAME
+    assert state.is_dir()
+    identity = _security_identity(state)
+
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+    )
+
+    assert finished.returncode == 0, finished.stderr
+    assert _security_identity(state) == identity
+
+
+@pytest.mark.parametrize("replacement", ["plain", "link", "dangling", "file"])
+def test_security_cleanup_refuses_replaced_owned_target(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    initialized, _, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+    )
+    assert initialized.returncode == 0, initialized.stderr
+    state = runner_temp / SECURITY_STATE_NAME
+    original = runner_temp / "retained original identity"
+    state.rename(original)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_bytes(b"outside")
+    if replacement == "plain":
+        state.mkdir()
+        (state / "keep.txt").write_bytes(b"replacement")
+    elif replacement == "file":
+        state.write_bytes(b"replacement file")
+    else:
+        _security_link(
+            state,
+            outside if replacement == "link" else tmp_path / "absent",
+            dangling=replacement == "dangling",
+        )
+    identity = _security_identity(state)
+
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+    )
+
+    assert finished.returncode != 0
+    assert _security_identity(state) == identity
+    assert original.is_dir()
+    assert (outside / "keep.txt").read_bytes() == b"outside"
+
+
+@pytest.mark.parametrize(
+    "authority",
+    ["missing_output", "failed_outcome", "malformed_output"],
+)
+def test_security_cleanup_requires_both_trusted_authority_parts(
+    tmp_path: Path,
+    authority: str,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    initialized, _, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+    )
+    assert initialized.returncode == 0, initialized.stderr
+    state = runner_temp / SECURITY_STATE_NAME
+    marker = state / "keep.txt"
+    marker.write_bytes(b"no cleanup authority")
+    if authority == "missing_output":
+        outputs = {}
+    elif authority == "failed_outcome":
+        initialized = subprocess.CompletedProcess(
+            initialized.args,
+            1,
+            "",
+            "later initialization failure",
+        )
+    else:
+        outputs = {"owned_identity": "../../foreign"}
+
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+        extra={"HSCONFIG_SECURITY_STATE_CREATED": "true"},
+    )
+
+    assert (finished.returncode != 0) is (authority == "malformed_output")
+    assert marker.read_bytes() == b"no cleanup authority"
+
+
+def test_security_initializer_rejects_lexical_runner_root_redirect(
+    tmp_path: Path,
+) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    redirect = tmp_path / "redirected runner temp"
+    _security_link(redirect, runner_temp)
+
+    initialized, _, outputs = _security_init(
+        checkout,
+        redirect,
+        tmp_path / "control",
+    )
+
+    assert initialized.returncode != 0
+    assert "owned_identity" not in outputs
+    assert not (runner_temp / SECURITY_STATE_NAME).exists()
+    finished = _security_cleanup(
+        checkout,
+        redirect,
+        initialized,
+        outputs,
+    )
+    assert finished.returncode != 0
+    assert runner_temp.is_dir()
+
+
+def test_security_cleanup_rejects_replaced_runner_root(tmp_path: Path) -> None:
+    checkout, runner_temp = _security_fixture(tmp_path)
+    initialized, _, outputs = _security_init(
+        checkout,
+        runner_temp,
+        tmp_path / "control",
+    )
+    assert initialized.returncode == 0, initialized.stderr
+    previous = runner_temp.with_name("retained runner root")
+    runner_temp.rename(previous)
+    runner_temp.mkdir()
+    state = runner_temp / SECURITY_STATE_NAME
+    state.mkdir()
+    (state / "keep.txt").write_bytes(b"foreign root")
+
+    finished = _security_cleanup(
+        checkout,
+        runner_temp,
+        initialized,
+        outputs,
+    )
+
+    assert finished.returncode != 0
+    assert (state / "keep.txt").read_bytes() == b"foreign root"
+    assert (previous / SECURITY_STATE_NAME).is_dir()
 
 
 def _run_cleanup(checkout: Path, runner_temp: Path) -> subprocess.CompletedProcess[str]:
