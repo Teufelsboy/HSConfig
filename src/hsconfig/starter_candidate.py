@@ -26,6 +26,7 @@ from hsconfig.package_domain import (
     ComboTiming,
     MulliganPlanModel,
     MulliganRuleModel,
+    SemanticMulliganPlanModel,
 )
 from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.runtime_entity_owner import (
@@ -45,6 +46,9 @@ from hsconfig.starter_contract import (
     QUALITY_STARTER_CANDIDATE_FIELDS,
     QUALITY_STARTER_CONTEXT_FIELDS,
     QUALITY_STARTER_SCHEMA_VERSION,
+    SEMANTIC_STARTER_CANDIDATE_FIELDS,
+    SEMANTIC_STARTER_CONTEXT_FIELDS,
+    SEMANTIC_STARTER_SCHEMA_VERSION,
     SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS,
     SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS,
     SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
@@ -59,6 +63,12 @@ from hsconfig.starter_contract import (
     validate_candidate_revision,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
+from hsconfig.starter_semantics import (
+    semantic_selector,
+    semantic_rule_justifications,
+    validate_semantic_condition,
+    validate_semantic_owner,
+)
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
     STARTER_CARD_VALUE_CONSTRAINT,
@@ -93,6 +103,10 @@ STARTER_CANDIDATE_FINDING_CODES = frozenset({
     "starter_candidate_combo_timing_invalid",
     "starter_candidate_combo_values_invalid",
     "starter_candidate_condition_invalid",
+    "starter_candidate_condition_phase_invalid",
+    "starter_candidate_condition_context_invalid",
+    "starter_candidate_condition_mixed_logic",
+    "starter_candidate_condition_contradiction",
     "starter_candidate_content_sha256_invalid",
     "starter_candidate_context_invalid",
     "starter_candidate_context_sha256_mismatch",
@@ -118,13 +132,18 @@ STARTER_CANDIDATE_FINDING_CODES = frozenset({
     "starter_candidate_mulligan_required",
     "starter_candidate_mulligan_selector_forbidden",
     "starter_candidate_mulligan_selector_invalid",
+    "starter_candidate_mulligan_selector_duplicate_member",
+    "starter_candidate_mulligan_copy_count_exceeded",
     "starter_candidate_path_forbidden",
     "starter_candidate_revision_invalid",
     "starter_candidate_rule_id_duplicate",
     "starter_candidate_rule_id_invalid",
     "starter_candidate_rule_rationales_invalid",
+    "starter_candidate_rule_justifications_invalid",
+    "starter_candidate_rule_evidence_invalid",
     "starter_candidate_rule_source_invalid",
     "starter_candidate_runtime_owner_unauthorized",
+    "starter_candidate_surface_owner_unproven",
     "starter_candidate_runtime_row_conflict",
     "starter_candidate_runtime_row_duplicate",
     "starter_candidate_schema_pair_invalid",
@@ -158,6 +177,7 @@ def validate_starter_candidate(
         raise TypeError("starter_candidate_document_invalid")
     value = _validated_candidate_document_value(document)
     schema_version = int(value["schema_version"])
+    semantic = schema_version == SEMANTIC_STARTER_SCHEMA_VERSION
     context_value, physical_cards, linked_entities, baseline = (
         _validated_context(context, candidate_schema_version=schema_version)
     )
@@ -171,6 +191,7 @@ def validate_starter_candidate(
         schema_version in {
             SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
             QUALITY_STARTER_SCHEMA_VERSION,
+            SEMANTIC_STARTER_SCHEMA_VERSION,
         }
         and candidate_id != "lead"
     ):
@@ -190,19 +211,24 @@ def validate_starter_candidate(
     mulligan_rows = _validate_mulligan_rows(
         value.get("mulligan"),
         physical_cards=physical_cards,
+        semantic=semantic,
     )
     globalvalues, globalvalues_changed = _validate_globalvalues(
         value.get("globalvalues"),
         baseline=baseline,
+        semantic=semantic,
     )
     candidate_card_rows, card_behavior_rows = _validate_card_rules(
         value.get("card_rules"),
         physical_cards=physical_cards,
         linked_entities=linked_entities,
+        semantic=semantic,
+        context_value=context_value if semantic else None,
     )
     candidate_combo, combo_decision = _validate_combo(
         value.get("combo"),
         physical_cards=physical_cards,
+        semantic=semantic,
     )
 
     all_rule_ids = [
@@ -228,7 +254,8 @@ def validate_starter_candidate(
         value.get("rule_rationales"),
         rule_ids=set(all_rule_ids),
     )
-    mulligan_plan = _build_mulligan_plan(
+    mulligan_builder = _build_semantic_mulligan_plan if semantic else _build_mulligan_plan
+    mulligan_plan = mulligan_builder(
         mulligan_rows,
         candidate_id=candidate_id,
         candidate_digest=document.content_sha256,
@@ -245,9 +272,17 @@ def validate_starter_candidate(
         expected_rule_ids=physical_rule_ids,
     )
     _validate_assumptions(value.get("assumptions"))
+    if semantic:
+        semantic_rule_justifications(
+            value.get("rule_justifications"), physical_rule_ids=physical_rule_ids,
+            context_value=context_value, assumptions=value["assumptions"],
+        )
 
-    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
-        changed_keys = changed_globalvalue_keys(baseline, globalvalues.to_value())
+    if schema_version in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}:
+        changed_keys = (
+            changed_semantic_globalvalue_keys(baseline, globalvalues.to_value())
+            if semantic else changed_globalvalue_keys(baseline, globalvalues.to_value())
+        )
         globalvalues_changed = bool(changed_keys)
         _validate_globalvalues_justifications(
             value.get("globalvalues_justifications"),
@@ -258,7 +293,7 @@ def validate_starter_candidate(
     has_intent = (
         globalvalues_changed or bool(card_behavior_rows) or combo_decision is not None
     )
-    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+    if schema_version in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}:
         has_intent = has_intent or bool(mulligan_rows)
     if not has_intent:
         raise ValueError("starter_candidate_material_runtime_intent_required")
@@ -269,6 +304,7 @@ def validate_starter_candidate(
         card_rows=candidate_card_rows,
         combo=candidate_combo,
         quality=schema_version == QUALITY_STARTER_SCHEMA_VERSION,
+        semantic=semantic,
     )
     return ValidatedStarterCandidate(
         document=document,
@@ -299,6 +335,8 @@ def _validated_candidate_document_value(
         expected_fields = SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS
     elif schema_version == QUALITY_STARTER_SCHEMA_VERSION:
         expected_fields = QUALITY_STARTER_CANDIDATE_FIELDS
+    elif schema_version == SEMANTIC_STARTER_SCHEMA_VERSION:
+        expected_fields = SEMANTIC_STARTER_CANDIDATE_FIELDS
     else:
         raise ValueError("starter_candidate_schema_version_invalid")
     return _validated_starter_document_value(
@@ -365,6 +403,7 @@ def _validated_context(
     live_schema = candidate_schema_version in {
         SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
         QUALITY_STARTER_SCHEMA_VERSION,
+        SEMANTIC_STARTER_SCHEMA_VERSION,
     }
     if (live_schema and type(context) is not StarterContext) or (
         not live_schema and not isinstance(context, StarterContext)
@@ -390,7 +429,9 @@ def _validated_context(
         expected_fields = LEGACY_STARTER_CONTEXT_FIELDS
     elif live_schema:
         expected_fields = (
-            QUALITY_STARTER_CONTEXT_FIELDS
+            SEMANTIC_STARTER_CONTEXT_FIELDS
+            if context_schema_version == SEMANTIC_STARTER_SCHEMA_VERSION
+            else QUALITY_STARTER_CONTEXT_FIELDS
             if context_schema_version == QUALITY_STARTER_SCHEMA_VERSION
             else SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
         )
@@ -426,7 +467,7 @@ def _validated_context(
         raise ValueError("starter_candidate_context_invalid")
 
     raw_cards = value.get("cards")
-    if context_schema_version == QUALITY_STARTER_SCHEMA_VERSION:
+    if context_schema_version in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}:
         raw_cards = quality_main_card_rows(value)
     if not isinstance(raw_cards, list) or not raw_cards:
         raise ValueError("starter_candidate_context_invalid")
@@ -514,7 +555,10 @@ def _validate_mulligan_rows(
     value: object,
     *,
     physical_cards: Mapping[str, int],
+    semantic: bool = False,
 ) -> list[dict[str, Any]]:
+    if semantic:
+        return _validate_semantic_mulligan_rows(value, physical_cards=physical_cards)
     if not isinstance(value, list) or not value:
         raise ValueError("starter_candidate_mulligan_required")
     result: list[dict[str, Any]] = []
@@ -595,6 +639,34 @@ def _validate_mulligan_rows(
     )
 
 
+def _validate_semantic_mulligan_rows(value, *, physical_cards):
+    if not isinstance(value, list) or not value:
+        raise ValueError("starter_candidate_mulligan_required")
+    result = []
+    actions_by_match = {}
+    for raw_row in value:
+        if isinstance(raw_row, Mapping):
+            validate_semantic_condition(raw_row.get("condition"), phase="Mulligan")
+        row = require_closed_object(
+            raw_row, expected_fields=STARTER_MULLIGAN_ROW_FIELDS,
+            error="starter_candidate_mulligan_fields_invalid",
+        )
+        rule_id = _identifier(row.get("rule_id"), error="starter_candidate_rule_id_invalid")
+        selector = semantic_selector(row, physical_cards)
+        action = row.get("action")
+        if not isinstance(action, str) or action not in {"hold", "discard"}:
+            raise ValueError("starter_candidate_mulligan_action_invalid")
+        condition = _runtime_condition(row.get("condition"))
+        key = (selector["selector_kind"], selector["selector"], condition)
+        if key in actions_by_match:
+            code = "duplicate" if actions_by_match[key] == action else "conflict"
+            raise ValueError(f"starter_candidate_mulligan_{code}")
+        actions_by_match[key] = action
+        result.append({**selector, "rule_id": rule_id, "action": action,
+                       "condition": condition, "card_id": selector["selector_cards"][0]})
+    return result
+
+
 def _mulligan_conditions_overlap(left: str, right: str) -> bool:
     if "*" in {left, right}:
         return True
@@ -616,6 +688,7 @@ def _validate_globalvalues(
     value: object,
     *,
     baseline: Mapping[str, Any],
+    semantic: bool = False,
 ) -> tuple[FrozenJsonDocument, bool]:
     if not isinstance(value, Mapping) or (
         len(value) != 38
@@ -638,6 +711,8 @@ def _validate_globalvalues(
             raise ValueError("starter_candidate_globalvalue_block_invalid")
         values_by_condition: dict[str, str] = {}
         for raw_row in rows:
+            if semantic and isinstance(raw_row, Mapping):
+                validate_semantic_condition(raw_row.get("condition"), phase="GlobalValues")
             if not isinstance(raw_row, Mapping) or set(raw_row) != {
                 "condition",
                 "value",
@@ -697,12 +772,16 @@ def _validate_card_rules(
     *,
     physical_cards: Mapping[str, int],
     linked_entities: Mapping[str, tuple[tuple[str, str], ...]],
+    semantic: bool = False,
+    context_value: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, str]], tuple[FrozenJsonDocument, ...]]:
     if not isinstance(value, list):
         raise ValueError("starter_candidate_card_rules_invalid")
     candidate_rows: list[dict[str, str]] = []
     runtime_rows: list[dict[str, Any]] = []
     for raw_row in value:
+        if semantic and isinstance(raw_row, Mapping):
+            validate_semantic_condition(raw_row.get("condition"), phase=raw_row.get("behavior_block"))
         row = require_closed_object(
             raw_row,
             expected_fields=STARTER_CARD_RULE_FIELDS,
@@ -739,6 +818,8 @@ def _validate_card_rules(
             linked_entities=linked_entities,
         ):
             raise ValueError("starter_candidate_runtime_owner_unauthorized")
+        if semantic:
+            validate_semantic_owner(context_value, row)
         condition = _runtime_condition(row.get("condition"))
         numeric_value = _bounded_decimal(
             row.get("value"),
@@ -777,6 +858,11 @@ def _validate_card_rules(
         raise ValueError("starter_candidate_runtime_row_conflict")
     if canonical["merged_duplicate_count"]:
         raise ValueError("starter_candidate_runtime_row_duplicate")
+    if semantic:
+        # Cross-owner grouping is stable; evaluation order within an owner is not sorted.
+        candidate_rows.sort(key=lambda row: row["runtime_card_id"])
+        runtime_rows.sort(key=lambda row: row["runtime_card_id"])
+        return candidate_rows, tuple(FrozenJsonDocument.from_value(row) for row in runtime_rows)
     candidate_rows.sort(
         key=lambda row: (
             row["runtime_card_id"],
@@ -830,9 +916,12 @@ def _validate_combo(
     value: object,
     *,
     physical_cards: Mapping[str, int],
+    semantic: bool = False,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if value is None:
         return None, None
+    if semantic and isinstance(value, Mapping):
+        validate_semantic_condition(value.get("condition"), phase="Combo")
     row = require_closed_object(
         value,
         expected_fields=STARTER_COMBO_FIELDS,
@@ -949,6 +1038,36 @@ def _build_mulligan_plan(
         raise
 
 
+def _build_semantic_mulligan_plan(
+    rows: list[dict[str, Any]],
+    *,
+    candidate_id: str,
+    candidate_digest: str,
+    deck_name: str,
+    rationales: Mapping[str, str],
+) -> SemanticMulliganPlanModel:
+    rules = tuple(
+        MulliganRuleModel(
+            card_id=row["card_id"], selector_kind=row["selector_kind"],
+            selector_canonical_json=_canonical_json_bytes(row["selector"]),
+            action=row["action"], condition_canonical_json=_canonical_json_bytes(row["condition"]),
+            reason=rationales[row["rule_id"]], confidence="llm_optimized_start",
+            source_claim_ids=(),
+            claim_id=_starter_rule_authority(candidate_id, candidate_digest, row["rule_id"]),
+        )
+        for row in rows
+    )
+    try:
+        return SemanticMulliganPlanModel(
+            deck_name=deck_name, rules=rules, suppressed=(), bot_delegated=(),
+            merged_duplicate_rule_count=0,
+        )
+    except ValueError as error:
+        if str(error) == "mulligan_duplicate_rule_identity":
+            raise ValueError("starter_candidate_mulligan_duplicate") from error
+        raise
+
+
 def _build_combo_plan(
     row: dict[str, Any] | None,
     *,
@@ -1052,9 +1171,14 @@ def _runtime_intent_sha256(
     card_rows: list[dict[str, str]],
     combo: dict[str, Any] | None,
     quality: bool = False,
+    semantic: bool = False,
 ) -> str:
     payload = {
-        "mulligan": _mulligan_semantic_projection(mulligan_rows),
+        "mulligan": (
+            [{key: row[key] for key in ("selector_kind", "selector", "selector_multiset", "condition", "action")}
+             for row in mulligan_rows]
+            if semantic else _mulligan_semantic_projection(mulligan_rows)
+        ),
         "globalvalues": (
             _quality_globalvalues_semantic_projection(globalvalues.to_value())
             if quality
@@ -1268,6 +1392,20 @@ def _globalvalues_semantic_projection(
     return projection
 
 
+def semantic_globalvalues_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Schema4 projection keeps evaluation order with existing numeric semantics."""
+    return _globalvalues_semantic_projection(value)
+
+
+def changed_semantic_globalvalue_keys(baseline: dict, desired: dict) -> tuple[str, ...]:
+    """Compare ordered normalized values; key-name ordering is non-semantic."""
+    if baseline.keys() != desired.keys() or not set(baseline) <= set(STARTER_GLOBALVALUE_CONSTRAINTS):
+        raise ValueError("starter_candidate_globalvalues_keys_invalid")
+    before = semantic_globalvalues_projection(baseline)
+    after = semantic_globalvalues_projection(desired)
+    return tuple(sorted(key for key in before if before[key] != after[key]))
+
+
 def _semantic_globalvalue_numeric(value: str) -> str:
     number = _numeric_value(value)
     if number == 0.0:
@@ -1337,5 +1475,7 @@ def _canonical_json_bytes(value: object) -> bytes:
 __all__ = (
     "ValidatedStarterCandidate",
     "changed_globalvalue_keys",
+    "semantic_globalvalues_projection",
+    "changed_semantic_globalvalue_keys",
     "validate_starter_candidate",
 )

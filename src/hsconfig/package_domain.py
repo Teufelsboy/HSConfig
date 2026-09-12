@@ -788,8 +788,7 @@ class MulliganPlanModel(_ImmutableAuthorityNode):
         identities = tuple(rule.identity for rule in self.rules)
         if len(set(identities)) != len(identities):
             raise ValueError("mulligan_duplicate_rule_identity")
-        if tuple(sorted(identities)) != identities:
-            raise ValueError("mulligan_rule_order_unstable")
+        self._validate_rule_order(identities)
         suppressed = tuple(row.card_id for row in self.suppressed)
         if len(set(suppressed)) != len(suppressed) or tuple(sorted(suppressed)) != suppressed:
             raise ValueError("mulligan_suppression_order_unstable")
@@ -801,6 +800,10 @@ class MulliganPlanModel(_ImmutableAuthorityNode):
             raise ValueError("mulligan_card_ruled_and_delegated")
         if self.merged_duplicate_rule_count < 0:
             raise ValueError("mulligan_merged_duplicate_count_invalid")
+
+    def _validate_rule_order(self, identities) -> None:
+        if tuple(sorted(identities)) != identities:
+            raise ValueError("mulligan_rule_order_unstable")
 
     def to_report(self) -> dict[str, Any]:
         rules = [
@@ -943,6 +946,15 @@ class MulliganPlanModel(_ImmutableAuthorityNode):
             "bot_delegated": bot_delegated,
             "merged_duplicate_rule_count": self.merged_duplicate_rule_count,
         }
+
+
+@dataclass(frozen=True, init=False)
+class SemanticMulliganPlanModel(MulliganPlanModel):
+    """Nonempty semantic rules retain their supplied evaluation order."""
+
+    def _validate_rule_order(self, identities) -> None:
+        if not identities:
+            raise ValueError("starter_candidate_mulligan_required")
 
 
 class ComboTiming(StrEnum):

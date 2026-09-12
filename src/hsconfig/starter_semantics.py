@@ -1,10 +1,12 @@
 """Pure schema4 admission policy; no runtime, clock or source-fetch authority."""
 
+from collections import Counter
 from collections.abc import Mapping
 import re
 from types import MappingProxyType
 
 from hsconfig.condition_format import ALLOWED_ATOM_PATTERNS, classify_runtime_condition
+from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.runtime_entity_owner import (
     linked_runtime_entity_semantic_surface,
     runtime_entity_owner_relation_is_authorized,
@@ -155,4 +157,83 @@ def validate_semantic_owner(context_value: Mapping, row: Mapping) -> None:
         raise ValueError("starter_candidate_surface_owner_unproven")
 
 
-__all__ = ("semantic_runtime_policy", "validate_semantic_condition", "validate_semantic_owner")
+def semantic_selector(row, physical_cards):
+    """Canonical alternatives or opening-hand conjunction with exact copies."""
+    normalized = normalize_mulligan_selector(row)
+    kind = normalized.get("selector_kind")
+    cards = normalized.get("selector_cards")
+    if not normalized.get("supported") or kind not in {"card", "card_list", "plus_combo"}:
+        raise ValueError("starter_candidate_mulligan_selector_invalid")
+    if not isinstance(cards, list) or not cards or any(card not in physical_cards for card in cards):
+        raise ValueError("starter_candidate_mulligan_card_invalid")
+    if kind == "card_list" and len(cards) != len(set(cards)):
+        raise ValueError("starter_candidate_mulligan_selector_duplicate_member")
+    counts = Counter(cards)
+    if kind == "plus_combo" and any(count > physical_cards[card] for card, count in counts.items()):
+        raise ValueError("starter_candidate_mulligan_copy_count_exceeded")
+    members = tuple(sorted(counts.items()))
+    expanded = [card for card, count in members for _ in range(count)]
+    selector = "+".join(expanded) if kind == "plus_combo" else ",".join(expanded)
+    return {
+        "selector_kind": kind, "selector": selector,
+        "selector_multiset": [{"card_id": card, "count": count} for card, count in members],
+        "selector_cards": tuple(card for card, _ in members),
+    }
+
+
+def validate_rule_basis(row, *, assumptions, applicable_refs):
+    """Validate one closed evidence/inference basis against explicit authority."""
+    if type(row) is not dict or set(row) != {"basis", "evidence_refs", "assumption"}:
+        raise ValueError("starter_candidate_rule_justifications_invalid")
+    refs = row["evidence_refs"]
+    if type(refs) is not list or any(type(ref) is not str or ref not in applicable_refs for ref in refs) or len(refs) != len(set(refs)):
+        raise ValueError("starter_candidate_rule_evidence_invalid")
+    if row["basis"] == "evidence":
+        valid = bool(refs) and row["assumption"] is None
+    elif row["basis"] == "inference":
+        assumption = row["assumption"]
+        valid = type(assumption) is str and bool(assumption.strip()) and assumption == assumption.strip() and assumption in assumptions
+    else:
+        valid = False
+    if not valid:
+        raise ValueError("starter_candidate_rule_justifications_invalid")
+
+
+def semantic_rule_justifications(value, *, physical_rule_ids, context_value, assumptions):
+    """Project rule bases; each ref alone must cover every physical source ID.
+
+    Context claims/observations have already passed the context validator. Research
+    is reasoning context only and is never promoted to runtime source_claim_ids.
+    """
+    sources_by_rule = {}
+    for card_id, rule_ids in physical_rule_ids.items():
+        for rule_id in rule_ids:
+            sources_by_rule.setdefault(rule_id, set()).add(card_id)
+    if type(value) is not dict or set(value) != set(sources_by_rule):
+        raise ValueError("starter_candidate_rule_justifications_invalid")
+    claims = context_value.get("existing_claims", [])
+    observations = context_value.get("research_evidence", {}).get("observations", [])
+    result = {}
+    for rule_id, sources in sorted(sources_by_rule.items()):
+        applicable_refs = set()
+        for claim in claims:
+            cards = claim.get("cards")
+            if (type(cards) is list and all(type(card) is str for card in cards)
+                    and sources <= set(cards)) or claim.get("scope") == "deck":
+                if type(claim.get("claim_id")) is str:
+                    applicable_refs.add(claim["claim_id"])
+        for observation in observations:
+            cards = observation.get("card_ids")
+            if type(cards) is list and all(type(card) is str for card in cards) and sources <= set(cards):
+                if type(observation.get("observation_id")) is str:
+                    applicable_refs.add(observation["observation_id"])
+        row = value[rule_id]
+        validate_rule_basis(row, assumptions=assumptions, applicable_refs=applicable_refs)
+        result[rule_id] = {**row, "evidence_refs": list(row["evidence_refs"])}
+    return result
+
+
+__all__ = (
+    "semantic_runtime_policy", "validate_semantic_condition", "validate_semantic_owner",
+    "semantic_selector", "semantic_rule_justifications", "validate_rule_basis",
+)
