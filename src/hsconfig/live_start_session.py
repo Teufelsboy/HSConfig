@@ -41,6 +41,11 @@ from hsconfig.apply_invocation import (
     require_apply_invocation_admission_capacity as _require_apply_invocation_admission_capacity,
 )
 from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+from hsconfig.starter_contract import (
+    LiveStarterContract, LEGACY_LIVE_CONTRACT, QUALITY_LIVE_CONTRACT,
+    SEMANTIC_LIVE_CONTRACT, live_contract_for_session_version,
+    require_live_starter_contract,
+)
 from hsconfig.live_start_faults import (
     LiveStartFaultHook,
     LiveStartFaultPoint,
@@ -842,9 +847,11 @@ def _validate_frozen_compiler_inputs(
     runtime_root: Path,
     output_base_root: Path,
     output_deck_root: Path,
+    contract: LiveStarterContract | None = None,
 ) -> tuple[Mapping[str, bytes], str]:
-    """Revalidate one genuine Task-2 carrier and derive its four envelopes."""
+    """Revalidate one genuine carrier and derive its route's physical envelopes."""
 
+    contract = require_live_starter_contract(LEGACY_LIVE_CONTRACT if contract is None else contract)
     if not isinstance(value, FrozenCompilerInputs):
         raise SessionValidationError(
             "live_start_task2_frozen_inputs_required"
@@ -855,6 +862,8 @@ def _validate_frozen_compiler_inputs(
                 value.manifest.document.document
             )
         )
+        if contract is SEMANTIC_LIVE_CONTRACT:
+            _require_semantic_manifest_route(validated_manifest, contract)
         validated = FrozenCompilerInputs(
             manifest=validated_manifest,
             deck=value.deck,
@@ -913,10 +922,15 @@ def _validate_frozen_compiler_inputs(
             "inputs/cards.json": cards_envelope.canonical_json,
             "inputs/sources.json": sources_envelope.canonical_json,
         }
+        if contract is SEMANTIC_LIVE_CONTRACT:
+            frozen["inputs/quality.json"] = validated.quality_inputs.canonical_json
         for logical, raw in frozen.items():
             if (
                 not raw
-                or len(raw) > LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES[logical]
+                or len(raw) > (
+                    QUALITY_FILE_LIMITS if contract is SEMANTIC_LIVE_CONTRACT
+                    else LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES
+                )[logical]
                 or _canonical_frozen_input_json(
                     _decode_frozen_input_json(raw)
                 )
@@ -1079,9 +1093,20 @@ def _validate_quality_research_binding(value: Mapping[str, Any]) -> None:
             raise SessionValidationError("live_start_research_input_binding_changed")
 
 
+def _session_contract(version: object) -> LiveStarterContract:
+    try:
+        return require_live_starter_contract(live_contract_for_session_version(version))
+    except ValueError as error:
+        raise SessionValidationError("live_start_session_schema_invalid") from error
+
+
+def _session_has_quality(version: object) -> bool:
+    return _session_contract(version) is not LEGACY_LIVE_CONTRACT
+
+
 def _validate_quality_discovery_matrix(value: Mapping[str, Any]) -> None:
     if (
-        value.get("schema_version") != 2
+        not _session_has_quality(value.get("schema_version"))
         or value.get("candidate_revision") != 1
         or value.get("revisions_used") != 0
     ):
@@ -1118,7 +1143,7 @@ def _quality_pending_rows(
 ) -> tuple[Mapping[str, Any], ...]:
     pending = session.pending_transition
     if (
-        session.schema_version != 2
+        not _session_has_quality(session.schema_version)
         or session.phase is not LiveStartPhase.DISCOVERY_REQUIRED
     ):
         raise SessionValidationError("live_start_quality_pending_version_invalid")
@@ -1200,13 +1225,73 @@ def _quality_pending_rows(
         successor[logical] = row["sha256"]
     if successor != pending.get("successor_artifact_bindings"):
         raise SessionValidationError("live_start_quality_successor_bindings_invalid")
+    _validate_semantic_manifest_binding(session=session, root=root)
     return tuple(rows)
+
+
+def _require_semantic_manifest_route(
+    manifest: _task2_inputs.ValidatedInputSnapshotManifest,
+    contract: LiveStarterContract,
+) -> None:
+    contract = require_live_starter_contract(contract)
+    value = manifest.document.to_value()
+    compiler = manifest.compiler_inputs.to_value()
+    if (type(value.get("schema_version")) is not int
+            or value["schema_version"] != contract.manifest
+            or compiler["compiler_contract_id"] != contract.compiler
+            or compiler["runtime_grammar_version"] != "visionai-runtime-v1"):
+        raise SessionConflictError("live_start_semantic_manifest_contract_mismatch")
+
+
+def _validate_semantic_manifest_binding(
+    *, session: LiveStartSession, root: Path, complete: bool = False,
+) -> None:
+    """Bind only semantic manifests; pending freeze need not have all envelopes yet."""
+    contract = _session_contract(session.schema_version)
+    if contract is not SEMANTIC_LIVE_CONTRACT:
+        return
+    pending = session.pending_transition
+    discovery = session.phase is LiveStartPhase.DISCOVERY_REQUIRED
+    if discovery:
+        if not isinstance(pending, Mapping) or pending.get("operation") != "quality_freeze":
+            return
+        row = next(row for row in pending["actions"]
+                   if row["logical_path"] == "inputs/input_snapshot_manifest.json")
+        target = root / row["logical_path"]
+        if os.path.lexists(target):
+            if pending["stage"] != "PRIMARY_APPLIED":
+                raise SessionConflictError("live_start_semantic_manifest_install_state_invalid")
+            path = target
+            expected_parent = path_identity(target.parent)
+            expected_identity = None  # Atomic external-source copy has its own identity.
+        else:
+            if pending["next_action_index"] > 0:
+                raise SessionConflictError("live_start_semantic_manifest_installed_missing")
+            path = Path(row["source_path"])
+            expected_parent = tuple(row["source_parent_identity"])
+            expected_identity = tuple(row["source_identity"])
+        raw, identity = _read_bound_file(
+            path, expected_parent_identity=expected_parent,
+            maximum_size=QUALITY_FILE_LIMITS[row["logical_path"]],
+        )
+        if ((expected_identity is not None and identity != expected_identity)
+                or len(raw) != row["size"] or _bytes_sha256(raw) != row["sha256"]):
+            raise SessionConflictError("live_start_semantic_manifest_physical_binding_changed")
+        manifest = _task2_inputs.validate_input_snapshot_manifest_document(
+            _task2_inputs._canonical_physical_document(raw, "input_snapshot_manifest"))
+        _require_semantic_manifest_route(manifest, contract)
+        if not complete:
+            return
+    frozen = _task2_inputs._load_frozen_compiler_inputs(root, rebind_operator=False)
+    _require_semantic_manifest_route(frozen.manifest, contract)
+    if not discovery and session.input_snapshot_manifest_sha256 != frozen.manifest.document.content_sha256:
+        raise SessionConflictError("live_start_semantic_manifest_commitment_mismatch")
 
 
 def _quality_session_successor(*, session, changes, transition_authority):
     if (
         transition_authority is not _INTERNAL_TRANSITION_AUTHORITY
-        or session.schema_version != 2
+        or not _session_has_quality(session.schema_version)
         or session.phase is not LiveStartPhase.DISCOVERY_REQUIRED
         or set(changes)
         - {
@@ -1290,7 +1375,11 @@ def _create_quality_bootstrap_cursor(
     deck_code_sha256,
     preview_requested,
     fault_hook,
+    contract: LiveStarterContract | None = None,
 ):
+    contract = require_live_starter_contract(QUALITY_LIVE_CONTRACT if contract is None else contract)
+    if contract is LEGACY_LIVE_CONTRACT:
+        raise SessionValidationError("live_start_quality_contract_required")
     if set(documents) != QUALITY_SEED_PATHS:
         raise SessionValidationError("live_start_quality_bootstrap_inputs_invalid")
     contexts = root.parent.parent / "contexts"
@@ -1320,7 +1409,7 @@ def _create_quality_bootstrap_cursor(
     value = {name: None for name in _QUALITY_SESSION_FIELDS - {"content_sha256"}}
     value.update(
         {
-            "schema_version": 2,
+            "schema_version": contract.session,
             "run_id": root.name,
             "deck_name": deck_name,
             "deck_code_sha256": deck_code_sha256,
@@ -1389,9 +1478,17 @@ def create_live_start_session(
     _fault_hook: Callable[[str], None] = _no_creation_fault,
     _quality_documents: Mapping[str, bytes] | None = None,
     _research_binding: Mapping[str, Any] | None = None,
+    contract: LiveStarterContract | None = None,
 ) -> LiveStartSession:
     """Create one run, its external persistent lock, and initial cursor."""
 
+    contract = require_live_starter_contract(
+        (QUALITY_LIVE_CONTRACT if _quality_documents is not None else LEGACY_LIVE_CONTRACT)
+        if contract is None else contract
+    )
+    if (_quality_documents is None and contract is not LEGACY_LIVE_CONTRACT
+            or _quality_documents is not None and contract is LEGACY_LIVE_CONTRACT):
+        raise SessionValidationError("live_start_creation_contract_path_invalid")
     root = _canonical_absolute_root(session_root, field="session_root")
     local_root = _resolve_local_app_data_root(local_app_data_root)
     canonical_repository_root = _canonical_absolute_root(
@@ -1520,6 +1617,7 @@ def create_live_start_session(
                 deck_code_sha256=deck_code_sha256,
                 preview_requested=preview_requested,
                 fault_hook=_fault_hook,
+                contract=contract,
             )
         input_bindings: dict[str, str] = {}
         for logical in LIVE_START_FROZEN_INPUT_FILES:
@@ -1781,6 +1879,9 @@ def _update_session_under_lock(
         update=update,
         transition_authority=transition_authority,
     )
+    if _session_contract(successor.schema_version) is SEMANTIC_LIVE_CONTRACT:
+        _require_starter_document_pending_rows(successor, root=session_lease.session_root)
+        _validate_semantic_manifest_binding(session=successor, root=session_lease.session_root)
     return _publish_session_successor_under_lock(
         session_lease=session_lease,
         current=current,
@@ -1800,6 +1901,9 @@ def _build_session_successor(
         update,
         transition_authority=transition_authority,
     )
+    if (type(successor_value.get("schema_version")) is not int
+            or successor_value["schema_version"] != current.schema_version):
+        raise SessionConflictError("live_start_successor_schema_changed")
     return _seal_session_value(successor_value, session_identity=None)
 
 
@@ -1984,7 +2088,7 @@ def _validate_bound_artifacts_under_lock(
                 "live_start_resume_artifact_missing"
             )
         maximum_size = (
-            QUALITY_FILE_LIMITS if session.schema_version == 2
+            QUALITY_FILE_LIMITS if _session_has_quality(session.schema_version)
             else LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES
         ).get(
             logical_path,
@@ -2003,6 +2107,7 @@ def _validate_bound_artifacts_under_lock(
             and actual_digest == action["sha256"]
         ):
             raise SessionConflictError("live_start_resume_artifact_drift")
+    _validate_semantic_manifest_binding(session=session, root=session_lease.session_root)
 
 
 def _starter_document_pending_rows(
@@ -2181,7 +2286,7 @@ def _validate_starter_document_postconditions(
             raw, _identity = _read_bound_file(
                 target, expected_parent_identity=path_identity(target.parent),
                 maximum_size=(
-                    QUALITY_FILE_LIMITS if session.schema_version == 2
+                    QUALITY_FILE_LIMITS if _session_has_quality(session.schema_version)
                     else LIVE_START_FROZEN_INPUT_MAXIMUM_BYTES
                 ).get(
                     logical, 64 * 1024 * 1024
@@ -2189,6 +2294,7 @@ def _validate_starter_document_postconditions(
             )
             if _bytes_sha256(raw) != digest:
                 raise SessionConflictError("live_start_successor_document_changed")
+        _validate_semantic_manifest_binding(session=session, root=session_lease.session_root, complete=True)
 
 
 def _review_revision_candidate_receipt_cleanup_pending(
@@ -3013,7 +3119,7 @@ def _seal_session_value(
     unsigned.pop("content_sha256", None)
     fields = (
         _QUALITY_SESSION_FIELDS
-        if unsigned.get("schema_version") == 2
+        if _session_has_quality(unsigned.get("schema_version"))
         else _SESSION_FIELDS
     )
     if set(unsigned) != fields - {"content_sha256"}:
@@ -3035,7 +3141,7 @@ def _load_session_bytes(
     if _canonical_json(value) != raw:
         raise SessionValidationError("live_start_session_not_canonical")
     schema_version = value.get("schema_version")
-    fields = _QUALITY_SESSION_FIELDS if schema_version == 2 else _SESSION_FIELDS
+    fields = _QUALITY_SESSION_FIELDS if _session_has_quality(schema_version) else _SESSION_FIELDS
     if set(value) != fields:
         raise SessionValidationError("live_start_session_fields_invalid")
     content_sha256 = value.get("content_sha256")
@@ -3043,12 +3149,12 @@ def _load_session_bytes(
     unsigned.pop("content_sha256")
     if content_sha256 != _self_digest(unsigned):
         raise SessionValidationError("live_start_session_content_sha256_invalid")
-    if type(schema_version) is not int or schema_version not in {1, 2}:
+    if type(schema_version) is not int or schema_version not in {1, 2, 3}:
         raise SessionValidationError("live_start_session_schema_invalid")
     _require_run_id(value.get("run_id"))
     _require_deck_name(value.get("deck_name"))
     _require_sha256(value.get("deck_code_sha256"), "deck_code_sha256")
-    discovery = schema_version == 2 and value.get("phase") == "DISCOVERY_REQUIRED"
+    discovery = _session_has_quality(schema_version) and value.get("phase") == "DISCOVERY_REQUIRED"
     if not discovery:
         _require_sha256(
             value.get("input_snapshot_manifest_sha256"),
@@ -3074,10 +3180,10 @@ def _load_session_bytes(
         raise SessionValidationError("live_start_session_phase_invalid")
     artifact_bindings = _validate_artifact_bindings(
         value.get("artifact_bindings"),
-        quality=schema_version == 2,
+        quality=_session_has_quality(schema_version),
         discovery=discovery,
     )
-    if schema_version == 2:
+    if _session_has_quality(schema_version):
         _validate_quality_research_binding(value)
     _validate_session_nested_documents(value=value, phase=phase)
     _validate_phase_artifact_bindings(
@@ -4009,7 +4115,7 @@ def _validate_session_nested_documents(
     if (
         isinstance(pending, Mapping)
         and pending.get("operation") in _QUALITY_OPERATIONS
-        and value.get("schema_version") != 2
+        and not _session_has_quality(value.get("schema_version"))
     ):
         raise SessionValidationError("live_start_quality_operation_version_invalid")
     if (
@@ -4018,7 +4124,7 @@ def _validate_session_nested_documents(
     ):
         _validate_artifact_bindings(
             pending["successor_artifact_bindings"],
-            quality=value.get("schema_version") == 2,
+            quality=_session_has_quality(value.get("schema_version")),
             discovery=phase is LiveStartPhase.DISCOVERY_REQUIRED,
         )
     for name in (
@@ -4714,7 +4820,7 @@ def _validate_phase_artifact_bindings(
         _validate_quality_discovery_matrix(value)
         return
     mandatory = _PHASE_MANDATORY_ARTIFACTS[phase]
-    if value.get("schema_version") == 2:
+    if _session_has_quality(value.get("schema_version")):
         mandatory = mandatory | QUALITY_INPUT_PATHS
     result_paths = frozenset(
         {"result/summary.json", "result/summary.md"}
@@ -12219,7 +12325,10 @@ def validate_validation_receipt(
     quality = (
         isinstance(normalized, dict)
         and receipt_kind == "candidate_validation"
-        and normalized.get("schema_version") == 2
+        and type(normalized.get("schema_version")) is int
+        and normalized.get("schema_version") in {
+            QUALITY_LIVE_CONTRACT.validation_receipt, SEMANTIC_LIVE_CONTRACT.validation_receipt,
+        }
     )
     from hsconfig.starter_contract import QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS
 
@@ -12232,7 +12341,7 @@ def validate_validation_receipt(
         raise SessionValidationError("live_start_validation_receipt_fields_invalid")
     if (
         type(normalized.get("schema_version")) is not int
-        or normalized.get("schema_version") != (2 if quality else 1)
+        or (not quality and normalized.get("schema_version") != 1)
         or normalized.get("receipt_kind") != receipt_kind
     ):
         raise SessionValidationError("live_start_validation_receipt_kind_invalid")
@@ -12396,6 +12505,29 @@ def _validate_completed_phase_receipts(
         )
 
 
+def _require_semantic_facts_version(value: object, *, contract: LiveStarterContract) -> None:
+    contract = require_live_starter_contract(contract)
+    if (contract is not SEMANTIC_LIVE_CONTRACT or not isinstance(value, Mapping)
+            or type(value.get("schema_version")) is not int
+            or value["schema_version"] != contract.review_facts):
+        raise SessionConflictError("live_start_semantic_review_facts_version_mismatch")
+
+
+def _require_semantic_receipt_headers(
+    *, contract: LiveStarterContract, context: object, candidate: object,
+    review_facts: object,
+) -> None:
+    contract = require_live_starter_contract(contract)
+    for name, value, version in (
+        ("context", context, contract.context), ("candidate", candidate, contract.candidate),
+    ):
+        if (contract is not SEMANTIC_LIVE_CONTRACT or not isinstance(value, Mapping)
+                or type(value.get("schema_version")) is not int
+                or value["schema_version"] != version):
+            raise SessionConflictError(f"live_start_semantic_{name}_version_mismatch")
+    _require_semantic_facts_version(review_facts, contract=contract)
+
+
 def _require_completed_receipt_binding(
     *,
     session: LiveStartSession,
@@ -12415,9 +12547,11 @@ def _require_completed_receipt_binding(
         ),
     }
     if receipt_kind == "candidate_validation":
-        if receipt["schema_version"] != (2 if session.schema_version == 2 else 1):
+        contract = _session_contract(session.schema_version)
+        if (type(receipt["schema_version"]) is not int
+                or receipt["schema_version"] != contract.validation_receipt):
             raise SessionConflictError("live_start_candidate_receipt_version_mismatch")
-        if session.schema_version == 2:
+        if _session_has_quality(session.schema_version):
             if session_root is None:
                 raise SessionConflictError(
                     "live_start_candidate_receipt_run_root_missing"
@@ -12449,6 +12583,11 @@ def _require_completed_receipt_binding(
                         content_sha256=frozen.to_value()["content_sha256"],
                     )
                 )
+            if contract is SEMANTIC_LIVE_CONTRACT:
+                _require_semantic_receipt_headers(
+                    contract=contract, context=documents[0].to_value(),
+                    candidate=documents[1].to_value(), review_facts=receipt.get("review_facts"),
+                )
             context = validate_starter_context_document(documents[0])
             candidate = validate_starter_candidate(documents[1], context=context)
             expected.update(
@@ -12457,12 +12596,10 @@ def _require_completed_receipt_binding(
                     "candidate_sha256": candidate.document.content_sha256,
                 }
             )
-            if (
-                _thaw(receipt["review_facts"])
-                != build_candidate_review_facts(
-                    context=context, candidate=candidate
-                ).to_value()
-            ):
+            rebuilt_facts = build_candidate_review_facts(context=context, candidate=candidate).to_value()
+            if contract is SEMANTIC_LIVE_CONTRACT:
+                _require_semantic_facts_version(rebuilt_facts, contract=contract)
+            if _thaw(receipt["review_facts"]) != rebuilt_facts:
                 raise SessionConflictError("live_start_candidate_review_facts_changed")
     if receipt_kind in {"review_validation", "package_validation"}:
         expected["review_sha256"] = bindings.get(
