@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -10,6 +11,7 @@ from typing import Any
 LEGACY_STARTER_SCHEMA_VERSION = 1
 SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION = 2
 QUALITY_STARTER_SCHEMA_VERSION = 3
+SEMANTIC_STARTER_SCHEMA_VERSION = 4
 STARTER_SCHEMA_VERSION = LEGACY_STARTER_SCHEMA_VERSION
 
 STARTER_CONTEXT_FILENAME = "starter_context.json"
@@ -31,6 +33,93 @@ STARTER_CANDIDATE_FILENAMES = (
 )
 
 
+_CLOSED_LIVE_STARTER_VALUES = (
+    ("legacy_live", 1, 1, 2, 2, 2, "hsconfig-live-start-v1", "single_candidate_review_v1", 1, None),
+    ("quality_live", 2, 2, 3, 3, 3, "hsconfig-live-start-v2", "single_candidate_review_v2", 2, 1),
+    ("semantic_live", 3, 3, 4, 4, 4, "hsconfig-live-start-v3", "single_candidate_review_v3", 3, 2),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveStarterContract:
+    route_id: str
+    session: int
+    manifest: int
+    context: int
+    candidate: int
+    review: int
+    compiler: str
+    authority: str
+    validation_receipt: int
+    review_facts: int | None
+
+    def _values(self):
+        return (self.route_id, self.session, self.manifest, self.context,
+                self.candidate, self.review, self.compiler, self.authority,
+                self.validation_receipt, self.review_facts)
+
+    def __post_init__(self):
+        values = self._values()
+        if (any(type(values[index]) is not str for index in (0, 6, 7))
+                or any(type(values[index]) is not int for index in (1, 2, 3, 4, 5, 8))
+                or (self.review_facts is not None and type(self.review_facts) is not int)
+                or values not in _CLOSED_LIVE_STARTER_VALUES):
+            raise ValueError("live_start_contract_combination_invalid")
+
+
+LEGACY_LIVE_CONTRACT = LiveStarterContract(
+    "legacy_live", 1, 1, 2, 2, 2, "hsconfig-live-start-v1",
+    "single_candidate_review_v1", 1, None,
+)
+QUALITY_LIVE_CONTRACT = LiveStarterContract(
+    "quality_live", 2, 2, 3, 3, 3, "hsconfig-live-start-v2",
+    "single_candidate_review_v2", 2, 1,
+)
+SEMANTIC_LIVE_CONTRACT = LiveStarterContract(
+    "semantic_live", 3, 3, 4, 4, 4, "hsconfig-live-start-v3",
+    "single_candidate_review_v3", 3, 2,
+)
+LIVE_STARTER_CONTRACTS = (
+    LEGACY_LIVE_CONTRACT, QUALITY_LIVE_CONTRACT, SEMANTIC_LIVE_CONTRACT,
+)
+
+
+def require_live_starter_contract(value: object) -> LiveStarterContract:
+    if type(value) is LiveStarterContract:
+        value.__post_init__()
+        for route, expected in zip(LIVE_STARTER_CONTRACTS, _CLOSED_LIVE_STARTER_VALUES):
+            if value is route and value._values() == expected:
+                return route
+    raise ValueError("live_start_contract_combination_invalid")
+
+
+def live_contract_for_session_version(value: object) -> LiveStarterContract:
+    if type(value) is not int:
+        raise ValueError("live_start_contract_combination_invalid")
+    for route in LIVE_STARTER_CONTRACTS:
+        if route.session == value:
+            return route
+    raise ValueError("live_start_contract_combination_invalid")
+
+
+def live_contract_for_context_version(value: object) -> LiveStarterContract:
+    if type(value) is not int:
+        raise ValueError("live_start_contract_combination_invalid")
+    for route in LIVE_STARTER_CONTRACTS:
+        if route.context == value:
+            return route
+    raise ValueError("live_start_contract_combination_invalid")
+
+
+def live_contract_for_authority(value: object) -> LiveStarterContract:
+    if type(value) is not str:
+        raise ValueError("live_start_contract_combination_invalid")
+    for route in LIVE_STARTER_CONTRACTS:
+        if route.authority == value:
+            return route
+    raise ValueError("live_start_contract_combination_invalid")
+
+
 def live_contract_for_versions(
     *,
     session: int,
@@ -43,14 +132,13 @@ def live_contract_for_versions(
     versions = (session, manifest, context, candidate, review)
     if any(type(value) is not int for value in versions) or type(compiler) is not str:
         raise ValueError("live_start_contract_combination_invalid")
-    routes = {
-        (1, 1, 2, 2, 2, "hsconfig-live-start-v1"): "legacy_live",
-        (2, 2, 3, 3, 3, "hsconfig-live-start-v2"): "quality_live",
-    }
-    try:
-        return routes[(*versions, compiler)]
-    except KeyError:
-        raise ValueError("live_start_contract_combination_invalid") from None
+    for route in LIVE_STARTER_CONTRACTS:
+        if (*versions, compiler) == (
+            route.session, route.manifest, route.context,
+            route.candidate, route.review, route.compiler,
+        ):
+            return route.route_id
+    raise ValueError("live_start_contract_combination_invalid")
 
 
 SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES = (
@@ -90,6 +178,9 @@ SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS = frozenset(
 QUALITY_STARTER_CONTEXT_FIELDS = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS | {
     "card_metadata", "sideboards", "linked_entities", "research_evidence",
 }
+SEMANTIC_STARTER_CONTEXT_FIELDS = QUALITY_STARTER_CONTEXT_FIELDS | {
+    "temporal_provenance",
+}
 STARTER_CONTEXT_FIELDS = LEGACY_STARTER_CONTEXT_FIELDS
 
 LEGACY_STARTER_CANDIDATE_FIELDS = frozenset(
@@ -116,6 +207,10 @@ SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS = frozenset(
 QUALITY_STARTER_CANDIDATE_FIELDS = SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS | {
     "globalvalues_justifications",
 }
+SEMANTIC_STARTER_CANDIDATE_FIELDS = QUALITY_STARTER_CANDIDATE_FIELDS | {
+    "rule_justifications",
+}
+SEMANTIC_RULE_JUSTIFICATION_FIELDS = frozenset({"basis", "evidence_refs", "assumption"})
 STARTER_CANDIDATE_FIELDS = LEGACY_STARTER_CANDIDATE_FIELDS
 STARTER_DECISION_FIELDS = frozenset(
     {
@@ -178,6 +273,7 @@ REVIEW_STATUSES = frozenset({"approved", "revision_requested"})
 QUALITY_STARTER_REVIEW_FIELDS = STARTER_REVIEW_FIELDS | {
     "candidate_validation_receipt_sha256",
 }
+SEMANTIC_STARTER_REVIEW_FIELDS = QUALITY_STARTER_REVIEW_FIELDS
 QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS = frozenset({
     "schema_version", "receipt_kind", "run_id", "candidate_revision",
     "starter_context_sha256", "candidate_sha256", "status", "findings",
@@ -293,10 +389,14 @@ def reject_path_like_fields(value: object, *, error: str) -> None:
 
 
 __all__ = (
+    "LEGACY_LIVE_CONTRACT",
     "LEGACY_STARTER_CANDIDATE_FIELDS",
     "LEGACY_STARTER_CONTEXT_FIELDS",
     "LEGACY_STARTER_SCHEMA_VERSION",
+    "LIVE_STARTER_CONTRACTS",
+    "LiveStarterContract",
     "QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS",
+    "QUALITY_LIVE_CONTRACT",
     "QUALITY_STARTER_CANDIDATE_FIELDS",
     "QUALITY_STARTER_CONTEXT_FIELDS",
     "QUALITY_STARTER_REVIEW_FIELDS",
@@ -304,6 +404,12 @@ __all__ = (
     "REVIEW_CONFIDENCE",
     "REVIEW_STATUSES",
     "REVIEW_TARGETS",
+    "SEMANTIC_LIVE_CONTRACT",
+    "SEMANTIC_RULE_JUSTIFICATION_FIELDS",
+    "SEMANTIC_STARTER_CANDIDATE_FIELDS",
+    "SEMANTIC_STARTER_CONTEXT_FIELDS",
+    "SEMANTIC_STARTER_REVIEW_FIELDS",
+    "SEMANTIC_STARTER_SCHEMA_VERSION",
     "SINGLE_CANDIDATE_REVIEW_REPORT_FILENAMES",
     "SINGLE_CANDIDATE_STARTER_CANDIDATE_FIELDS",
     "SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS",
@@ -340,9 +446,13 @@ __all__ = (
     "StarterStrategyRole",
     "reject_path_like_fields",
     "require_closed_object",
+    "require_live_starter_contract",
     "require_nonempty_string",
     "require_object_list",
     "require_string_list",
+    "live_contract_for_authority",
+    "live_contract_for_context_version",
+    "live_contract_for_session_version",
     "live_contract_for_versions",
     "validate_candidate_revision",
     "validate_starter_sibling_name",
