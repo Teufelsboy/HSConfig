@@ -321,6 +321,89 @@ def _mentioned_cards(text: str, metadata: dict) -> list[str]:
     )
 
 
+def _observation_windows(text: str, metadata: dict) -> list[tuple[str, bool]]:
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    boundaries: list[re.Match[str] | None] = [
+        *re.finditer(r"(?<=[.!?])\s+|\n+", text),
+        None,
+    ]
+    for boundary in boundaries:
+        end = len(text) if boundary is None else boundary.start()
+        start = cursor
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if start < end:
+            spans.append((start, end))
+        cursor = len(text) if boundary is None else boundary.end()
+
+    matches: set[tuple[int, int]] = set()
+    for card_id, card in metadata.items():
+        for token in (card_id, str(card.get("name") or "")):
+            if not token:
+                continue
+            for match in re.finditer(
+                r"(?<!\w)" + re.escape(token) + r"(?!\w)",
+                text,
+                re.IGNORECASE,
+            ):
+                matches.add(match.span())
+
+    windows: list[tuple[int, int, str, bool]] = []
+    span_index = 0
+    for match_start, match_end in sorted(matches):
+        while span_index < len(spans) and spans[span_index][1] <= match_start:
+            span_index += 1
+        if (
+            span_index == len(spans)
+            or match_start < spans[span_index][0]
+            or match_end - match_start > 600
+        ):
+            continue
+        last_span = span_index
+        while last_span + 1 < len(spans) and spans[last_span][1] < match_end:
+            last_span += 1
+        if match_end > spans[last_span][1]:
+            continue
+        left = spans[max(0, span_index - 1)][0]
+        right = spans[min(len(spans) - 1, last_span + 1)][1]
+        start, end = left, right
+        if right - left > 600:
+            before = (600 - (match_end - match_start)) // 2
+            start = max(left, min(match_start - before, right - 600))
+            end = start + 600
+        while (
+            start < match_start
+            and start > 0
+            and re.match(r"\w", text[start - 1])
+        ):
+            start += 1
+        while (
+            end > match_end
+            and end < len(text)
+            and re.match(r"\w", text[end])
+        ):
+            end -= 1
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if not (start <= match_start < match_end <= end):
+            continue
+        snippet = text[start:end]
+        if snippet and _mentioned_cards(snippet, metadata):
+            windows.append((start, end, snippet, start > left or end < right))
+
+    unique: dict[str, bool] = {}
+    for _start, _end, snippet, incomplete in sorted(
+        windows, key=lambda item: (item[0], item[1])
+    ):
+        unique[snippet] = unique.get(snippet, False) or incomplete
+    return list(unique.items())
+
+
 def _select_observation_snippets(snippets: list[str]) -> list[str]:
     def rank(index: int) -> tuple[int, int]:
         decision = bool(_DECISION_HINT.search(snippets[index]))
@@ -372,18 +455,15 @@ def _observations(acquired: dict, metadata: dict) -> list[dict]:
             else "card_only"
         )
         text = record.get("normalized_text", "")
-        # Select relevant windows rather than truncating the start of a page.
-        snippets: list[str] = []
-        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
-            for match in re.finditer(r"\S(?:.{0,598}\S)?", sentence):
-                snippet = match.group().strip()
-                if _mentioned_cards(snippet, metadata) and snippet not in snippets:
-                    snippets.append(snippet)
-        for snippet in _select_observation_snippets(snippets):
+        windows = _observation_windows(text, metadata)
+        incomplete_by_text = dict(windows)
+        for snippet in _select_observation_snippets([item[0] for item in windows]):
             limitations = [
                 "context_only_not_runtime_authority",
                 "strategic_conflicts_require_review",
             ]
+            if incomplete_by_text[snippet]:
+                limitations.append("source_context_incomplete")
             if not strategic_source_provenance_is_verified(
                 record.get("acquisition_provenance")
             ):
@@ -485,6 +565,10 @@ def build_research_result(
         limitations.append("discovery_" + discovery_outcome)
     if not observations:
         limitations.append("no_useful_observations")
+    if any(
+        "source_context_incomplete" in row["limitations"] for row in observations
+    ):
+        limitations.append("source_context_incomplete")
     if not any(row["applicability"] == "exact_list" for row in observations):
         limitations.append("no_verified_exact_guide_observations")
     limitations.extend(

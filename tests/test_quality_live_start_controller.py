@@ -504,9 +504,14 @@ def test_research_fault_spends_attempt_and_keeps_deadline(
     binding_before = load_live_start_session(root).research_binding
     calls_before = list(calls)
     frozen_before = {}
+    staged_before = {}
     if point in {"after_final_input_installation", "during_input_frozen_transition"}:
         import hsconfig.live_start_research as research_module
 
+        frozen_quality = root / "inputs/quality.json"
+        frozen_manifest = root / "inputs/input_snapshot_manifest.json"
+        assert frozen_quality.is_file()
+        assert frozen_manifest.is_file()
         frozen_before = {
             path.relative_to(root): path.read_bytes()
             for folder in (root / "inputs", root / "research")
@@ -515,6 +520,19 @@ def test_research_fault_spends_attempt_and_keeps_deadline(
         assert {
             "quality.json", "sources.json", "input_snapshot_manifest.json",
         } <= {path.name for path in frozen_before}
+        pending = load_live_start_session(root).pending_transition
+        assert pending is not None
+        assert pending["operation"] == "quality_freeze"
+        staged_before = {
+            Path(row["source_path"]): Path(row["source_path"]).read_bytes()
+            for row in pending["actions"]
+        }
+        assert staged_before
+        assert frozen_before[Path("inputs/quality.json")] in staged_before.values()
+        assert (
+            frozen_before[Path("inputs/input_snapshot_manifest.json")]
+            in staged_before.values()
+        )
 
         def no_recomputation(*_args, **_kwargs):
             pytest.fail("staged quality freeze must not re-extract or re-rank")
@@ -531,6 +549,7 @@ def test_research_fault_spends_attempt_and_keeps_deadline(
     after = load_live_start_session(root)
     assert after.research_binding == binding_before
     assert all((root / path).read_bytes() == raw for path, raw in frozen_before.items())
+    assert all(path.read_bytes() == raw for path, raw in staged_before.items())
     quality = FrozenJsonDocument.from_json_bytes(
         (root / "inputs/quality.json").read_bytes()
     ).to_value()
