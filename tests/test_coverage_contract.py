@@ -18,6 +18,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+from dataclasses import replace
 import tomllib
 from types import ModuleType, SimpleNamespace
 import zipfile
@@ -27,6 +28,427 @@ from pytest import MonkeyPatch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _progress_state(runner, tmp_path):
+    root = tmp_path / "progress-run"
+    root.mkdir()
+    metadata = root.stat()
+    binding = runner._try_create_pytest_progress_binding(
+        root, (metadata.st_dev, metadata.st_ino)
+    )
+    assert binding is not None
+    state = runner._PytestFailureState(ROOT, root / "pytest-failures.json")
+    state.progress_binding = binding
+    identity = {
+        "path": "tests/test_probe.py", "class": None,
+        "function": "test_probe", "parameter": {"ordinal": 1, "total": 2},
+    }
+    state.identities_by_nodeid["tests/test_probe.py::test_probe[SECRET]"] = identity
+    return state, binding, identity
+
+
+def test_pytest_progress_checkpoint_survives_timeout_before_sessionfinish(
+    tmp_path, monkeypatch, capsys,
+):
+    """Catches losing the last redacted checkpoint when sessionfinish never runs."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    repository = tmp_path / "repository"
+    (repository / "tests").mkdir(parents=True)
+    marker = tmp_path / "call-reached"
+    (repository / "tests" / "test_probe.py").write_text(
+        "import time\nfrom pathlib import Path\n"
+        "def test_probe():\n"
+        f"    Path({str(marker)!r}).write_text(str(time.monotonic()))\n"
+        "    time.sleep(60)\n", encoding="utf-8",
+    )
+    monkeypatch.setattr(runner, "PYTEST_TIMEOUT_SECONDS", 2)
+    original_wait = subprocess.Popen.wait
+    handshake_seen = []
+
+    def wait_after_handshake(process, timeout=None):
+        if timeout == 2 and not handshake_seen:
+            startup_deadline = time.monotonic() + 30
+            while not marker.exists() and time.monotonic() < startup_deadline:
+                try:
+                    original_wait(process, timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    continue
+                break
+            assert marker.exists(), "child never reached controlled call handshake"
+            handshake_seen.append(time.monotonic())
+        return original_wait(process, timeout=timeout)
+
+    monkeypatch.setattr(subprocess.Popen, "wait", wait_after_handshake)
+    with runner.isolated_coverage_environment() as run:
+        command, environment = _failure_plugin_command(
+            runner, repository, run.failure_sideband, "-p", "no:cacheprovider",
+        )
+        if "PYTEST_HSCONFIG_PROGRESS_BINDING" in run.environment:
+            environment["PYTEST_HSCONFIG_PROGRESS_BINDING"] = run.environment[
+                "PYTEST_HSCONFIG_PROGRESS_BINDING"
+            ]
+        result = runner._run_pytest_bounded(command, cwd=repository, env=environment)
+        assert marker.exists(), "child never reached the controlled call handshake"
+        assert handshake_seen and float(marker.read_text()) <= handshake_seen[0]
+        assert result.timed_out and result.returncode == 2
+        assert run.failure_sideband.read_bytes() == b""
+        assert (run.run_root / "pytest-progress.json").exists()
+        runner._emit_pytest_progress_diagnostic(
+            run, allowed_identities=frozenset({("tests/test_probe.py", None, "test_probe")}),
+        )
+        captured = capsys.readouterr()
+        assert "last recorded checkpoint (incomplete)" in captured.err
+        assert "tests/test_probe.py" in captured.err
+        assert "currently hanging" not in captured.err
+        assert captured.out == ""
+
+
+@pytest.mark.parametrize("attack", ["nonce", "file", "root", "hardlink", "reparse"])
+def test_pytest_progress_checkpoint_rejects_foreign_run_or_replaced_file(
+    tmp_path, monkeypatch, attack,
+):
+    """Catches accepting stale ownership or overwriting a replacement file."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    runner._write_pytest_progress_checkpoint(state, phase="call", identity=identity)
+    allowed = frozenset({("tests/test_probe.py", None, "test_probe")})
+    assert runner._read_pytest_progress_checkpoint(binding, allowed_identities=allowed)
+    if attack == "nonce":
+        binding = replace(binding, run_nonce="0" * 32)
+    elif attack == "file":
+        binding.path.rename(binding.run_root / "original")
+        binding.path.write_text("replacement SECRET")
+    elif attack == "root":
+        binding.run_root.rename(tmp_path / "original-root")
+        binding.run_root.mkdir()
+        binding.path.write_text("replacement SECRET")
+    elif attack == "hardlink":
+        os.link(binding.path, tmp_path / "outside-link")
+    else:
+        monkeypatch.setattr(runner, "_is_reparse", lambda metadata: True)
+    before = binding.path.read_bytes()
+    assert runner._read_pytest_progress_checkpoint(binding, allowed_identities=allowed) is None
+    state.progress_last_write = -float("inf")
+    if attack != "nonce":
+        runner._write_pytest_progress_checkpoint(state, phase="call", identity=identity)
+        assert binding.path.read_bytes() == before
+        assert state.unavailable is False
+
+
+@pytest.mark.parametrize("corruption", [
+    "oversize", "partial", "duplicate", "nan", "bool", "extra", "identity",
+    "parameter", "nonce", "phase", "null_call", "elapsed", "counter", "version",
+])
+def test_pytest_progress_schema_rejects_untrusted_values(tmp_path, corruption):
+    """Catches free values or incomplete/unbounded JSON becoming diagnostics."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    runner._write_pytest_progress_checkpoint(state, phase="call", identity=identity)
+    document = json.loads(binding.path.read_bytes())
+    changes = {
+        "bool": {"completed_tests": True}, "extra": {"SECRET": "SECRET"},
+        "identity": {"identity": {**identity, "function": "test_foreign"}},
+        "parameter": {"identity": {**identity, "parameter": "SECRET"}},
+        "nonce": {"run_nonce": "0" * 32}, "phase": {"phase": ["SECRET"]},
+        "null_call": {"identity": None}, "elapsed": {"elapsed_ms": -1},
+        "counter": {"completed_tests": 10_000_001}, "version": {"schema_version": True},
+    }
+    document.update(changes.get(corruption, {}))
+    raw = json.dumps(document) + "\n"
+    if corruption == "oversize":
+        raw = " " * 8193
+    elif corruption == "partial":
+        raw = raw[:20]
+    elif corruption == "duplicate":
+        raw = raw.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1')
+    elif corruption == "nan":
+        raw = raw.replace('"elapsed_ms": 0', '"elapsed_ms": NaN')
+        document["elapsed_ms"] = float("nan")
+        raw = json.dumps(document) + "\n"
+    binding.path.write_text(raw, encoding="utf-8")
+    assert runner._read_pytest_progress_checkpoint(
+        binding, allowed_identities=frozenset({("tests/test_probe.py", None, "test_probe")}),
+    ) is None
+
+
+def test_pytest_progress_checkpoint_throttles_writes_and_counts_teardown_once(
+    tmp_path, monkeypatch,
+):
+    """Catches per-hook writes or duplicated teardown counting."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    now = [100.0]
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+    state.progress_started = 100.0
+    reporter = runner._BoundPytestFailureReporter(state)
+    item = SimpleNamespace(nodeid="tests/test_probe.py::test_probe[SECRET]")
+    reporter.pytest_runtest_setup(item)
+    first = binding.path.read_bytes()
+    assert json.loads(first)["phase"] == "setup"
+    reporter.pytest_runtest_call(item)
+    assert binding.path.read_bytes() == first
+    now[0] = 101.0
+    reporter.pytest_runtest_call(item)
+    assert json.loads(binding.path.read_bytes())["phase"] == "call"
+    now[0] = 102.0
+    reporter.pytest_runtest_teardown(item, None)
+    assert json.loads(binding.path.read_bytes())["phase"] == "teardown"
+    monkeypatch.setattr(runner, "_bind_pytest_cleanup_for_hook_chain", lambda state: True)
+    for tick in (103.0, 104.0):
+        now[0] = tick
+        hook = reporter.pytest_runtest_makereport(item, None)
+        next(hook)
+        report = SimpleNamespace(nodeid=item.nodeid, when="teardown", failed=False)
+        with pytest.raises(StopIteration):
+            hook.send(SimpleNamespace(get_result=lambda: report))
+    final = json.loads(binding.path.read_bytes())
+    assert final["completed_tests"] == 1
+    assert final["phase"] == "between_tests"
+    assert final["elapsed_ms"] == 4000
+    assert final["identity"] == identity
+
+
+@pytest.mark.parametrize("raw", [
+    "SECRET", " " * 1025, '{"schema_version":NaN}',
+    '{"schema_version":1,"schema_version":1}',
+    '{"schema_version":1,"run_identity":[true,1],"file_identity":[1,2],"run_nonce":"' + "0" * 32 + '"}',
+    '{"schema_version":1,"run_identity":[1,1],"file_identity":[1,2],"run_nonce":"' + "0" * 32 + '","path":"SECRET"}',
+])
+def test_pytest_progress_schema_transport_rejected_before_io(tmp_path, monkeypatch, raw):
+    """Catches invalid optional wire data performing filesystem access."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid transport reached I/O")
+    monkeypatch.setattr(runner.os, "open", forbidden)
+    monkeypatch.setattr(Path, "lstat", forbidden)
+    assert runner._progress_binding_from_environment(
+        tmp_path / "pytest-failures.json", {"PYTEST_HSCONFIG_PROGRESS_BINDING": raw},
+    ) is None
+
+
+@pytest.mark.parametrize("raw", [None, "SECRET malformed", '{"schema_version":NaN}'])
+def test_pytest_progress_checkpoint_invalid_optional_transport_keeps_real_child_success(
+    tmp_path, raw,
+):
+    """Catches malformed optional configuration poisoning the real failure reporter."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    repository = tmp_path / "repository"
+    (repository / "tests").mkdir(parents=True)
+    (repository / "tests" / "test_probe.py").write_text("def test_probe():\n    pass\n")
+    with runner.isolated_coverage_environment() as run:
+        command, environment = _failure_plugin_command(
+            runner, repository, run.failure_sideband, "-p", "no:cacheprovider",
+        )
+        if raw is not None:
+            environment["PYTEST_HSCONFIG_PROGRESS_BINDING"] = raw
+        result = runner._run_pytest_bounded(command, cwd=repository, env=environment)
+        assert result.returncode == 0 and not result.timed_out
+        assert json.loads(run.failure_sideband.read_bytes())["recorder_status"] == "available"
+        assert run.progress_binding.path.read_bytes() == b""
+
+
+def test_pytest_progress_checkpoint_writer_rechecks_opened_file_and_root(tmp_path, monkeypatch):
+    """Catches truncating an attacker file substituted between lstat and open."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    original_open = os.open
+    def replace_before_open(path, flags, *args, **kwargs):
+        if Path(path) == binding.path:
+            binding.path.rename(binding.run_root / "original")
+            binding.path.write_text("SECRET keep")
+        return original_open(path, flags, *args, **kwargs)
+    monkeypatch.setattr(runner.os, "open", replace_before_open)
+    runner._write_pytest_progress_checkpoint(state, phase="call", identity=identity)
+    assert binding.path.read_text() == "SECRET keep"
+    assert state.progress_disabled is True
+    assert state.unavailable is False
+
+
+@pytest.mark.parametrize("attack", ["missing_class", "list_phase"])
+def test_pytest_progress_checkpoint_writer_invalid_state_is_not_authority(tmp_path, attack):
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    if attack == "missing_class":
+        identity = {"path": "tests/test_probe.py", "function": "test_probe", "parameter": None}
+        state.identities_by_nodeid["bad"] = identity
+    runner._write_pytest_progress_checkpoint(
+        state, phase=["SECRET"] if attack == "list_phase" else "call", identity=identity,
+    )
+    assert binding.path.read_bytes() == b""
+    assert state.unavailable is False
+
+
+def test_pytest_progress_checkpoint_writer_rejects_secret_identity(tmp_path):
+    """Catches the writer serializing an uncollected identity or raw parameter label."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    state, binding, identity = _progress_state(runner, tmp_path)
+    runner._write_pytest_progress_checkpoint(state, phase="call", identity={**identity, "parameter": "SECRET"})
+    assert binding.path.read_bytes() == b""
+    state.identities_by_nodeid["bad"] = {**identity, "parameter": "SECRET"}
+    runner._write_pytest_progress_checkpoint(state, phase="call", identity=state.identities_by_nodeid["bad"])
+    assert binding.path.read_bytes() == b""
+
+
+def test_pytest_progress_checkpoint_reports_only_allowlisted_parameter_ordinals(
+    tmp_path, capsys,
+):
+    """Catches raw pytest parameter IDs escaping the actual child hooks."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    repository = tmp_path / "repository"
+    (repository / "tests").mkdir(parents=True)
+    (repository / "tests" / "test_probe.py").write_text(
+        "import pytest\n@pytest.mark.parametrize('value', [1,2], ids=['SECRET_A','SECRET_B'])\n"
+        "def test_probe(value):\n    assert value\n", encoding="utf-8",
+    )
+    with runner.isolated_coverage_environment() as run:
+        command, environment = _failure_plugin_command(
+            runner, repository, run.failure_sideband, "-p", "no:cacheprovider",
+        )
+        environment["PYTEST_HSCONFIG_PROGRESS_BINDING"] = run.environment[
+            "PYTEST_HSCONFIG_PROGRESS_BINDING"
+        ]
+        result = runner._run_pytest_bounded(command, cwd=repository, env=environment)
+        assert result.returncode == 0
+        runner._emit_pytest_progress_diagnostic(
+            run, allowed_identities=frozenset({("tests/test_probe.py", None, "test_probe")}),
+        )
+        emitted = capsys.readouterr()
+        assert "SECRET" not in emitted.err
+        prefix = "last recorded checkpoint (incomplete): "
+        diagnostic = next(line for line in emitted.err.splitlines() if line.startswith(prefix))
+        checkpoint = json.loads(diagnostic.removeprefix(prefix))
+        assert checkpoint["incomplete"] is True
+        identity = checkpoint["identity"]
+        assert type(identity["parameter"]["ordinal"]) is int
+        assert type(identity["parameter"]["total"]) is int
+        assert identity in [
+            {"path": "tests/test_probe.py", "class": None, "function": "test_probe",
+             "parameter": {"ordinal": ordinal, "total": 2}}
+            for ordinal in (1, 2)
+        ]
+        assert b"SECRET" not in run.progress_binding.path.read_bytes()
+
+
+@pytest.mark.parametrize("failure", ["open", "fstat", "serialize", "write"])
+def test_pytest_progress_checkpoint_io_failure_does_not_change_success_exit(
+    tmp_path, monkeypatch, capsys, failure,
+):
+    """Catches optional setup/writer errors becoming success-path gate failures."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+    original_open, original_fstat, original_dumps = os.open, os.fstat, json.dumps
+    descriptors = set()
+
+    def open_probe(path, flags, *args, **kwargs):
+        if Path(path).name == "pytest-progress.json":
+            if failure == "open":
+                raise OSError("SECRET")
+            descriptor = original_open(path, flags, *args, **kwargs)
+            descriptors.add(descriptor)
+            return descriptor
+        return original_open(path, flags, *args, **kwargs)
+
+    def fstat_probe(descriptor):
+        if descriptor in descriptors and failure == "fstat":
+            descriptors.remove(descriptor)
+            raise OSError("SECRET")
+        return original_fstat(descriptor)
+
+    def dumps_probe(document, *args, **kwargs):
+        if failure == "serialize" and isinstance(document, dict) and "run_nonce" in document:
+            raise ValueError("SECRET")
+        return original_dumps(document, *args, **kwargs)
+
+    monkeypatch.setattr(runner.os, "open", open_probe)
+    monkeypatch.setattr(runner.os, "fstat", fstat_probe)
+    monkeypatch.setattr(runner.json, "dumps", dumps_probe)
+    roots = []
+
+    def pytest_probe(command, **kwargs):
+        report = Path(next(arg.removeprefix("--cov-report=json:") for arg in command
+                           if arg.startswith("--cov-report=json:")))
+        roots.append(report.parent)
+        report.write_text("{}")
+        if failure == "write":
+            binding = runner._progress_binding_from_environment(
+                report.parent / runner.PYTEST_FAILURE_SIDEBAND_NAME, kwargs["env"],
+            )
+            state = runner._PytestFailureState(ROOT, report.parent / runner.PYTEST_FAILURE_SIDEBAND_NAME)
+            state.progress_binding = binding
+            with monkeypatch.context() as local:
+                local.setattr(runner.os, "write", lambda *args: (_ for _ in ()).throw(OSError("SECRET")))
+                runner._write_pytest_progress_checkpoint(state, phase="collection", identity=None)
+            assert state.unavailable is False
+        else:
+            assert "PYTEST_HSCONFIG_PROGRESS_BINDING" not in kwargs["env"]
+        return runner._PytestResult(0, False)
+
+    monkeypatch.setattr(runner, "_run_pytest_bounded", pytest_probe)
+    monkeypatch.setattr(runner, "_run_checker_bounded", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, json.dumps(_checker_document(passed=True)) + "\n", ""))
+    assert _run_unit_coverage_main(runner) == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    assert json.loads(captured.out)["passed"] is True
+    assert captured.err == ""
+    assert roots and all(not root.exists() for root in roots)
+
+
+def test_pytest_progress_checkpoint_main_timeout_emits_once_before_cleanup(monkeypatch, capsys):
+    """Catches valid checkpoint diagnostics changing timeout authority or stdout."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner, "_assert_runtime_matches_lock", lambda lock: None)
+    roots = []
+    def timeout_probe(command, **kwargs):
+        sideband = Path(next(arg.split("=", 1)[1] for arg in command
+                             if arg.startswith("--hsconfig-failure-sideband=")))
+        roots.append(sideband.parent)
+        state = runner._PytestFailureState(ROOT, sideband)
+        state.progress_binding = runner._progress_binding_from_environment(sideband, kwargs["env"])
+        identity = {
+            "path": "tests/test_coverage_contract.py", "class": None,
+            "function": "test_pytest_progress_checkpoint_main_timeout_emits_once_before_cleanup",
+            "parameter": None,
+        }
+        state.identities_by_nodeid["controlled"] = identity
+        runner._write_pytest_progress_checkpoint(state, phase="call", identity=identity)
+        return runner._PytestResult(2, True)
+    monkeypatch.setattr(runner, "_run_pytest_bounded", timeout_probe)
+    assert _run_unit_coverage_main(runner) == 2
+    captured = capsys.readouterr()
+    assert captured.out.count("\n") == 1
+    document = json.loads(captured.out)
+    assert document["passed"] is False and document["returncode"] == 2
+    assert document["errors"] == ["pytest coverage execution timed out"]
+    assert captured.err.count("last recorded checkpoint (incomplete)") == 1
+    assert "no trusted pytest progress available" not in captured.err
+    assert roots and all(not root.exists() for root in roots)
+
+
+def test_isolated_coverage_cleanup_removes_progress_checkpoint_without_touching_replacement(
+    tmp_path, monkeypatch,
+):
+    """Catches new checkpoints escaping owned cleanup or deleting replacement roots."""
+    runner = importlib.import_module("scripts.run_coverage_gate")
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(runner, "_windows_pytest_path_within_budget", lambda path: True)
+    monkeypatch.setenv("PYTEST_HSCONFIG_PROGRESS_BINDING", "SECRET inherited")
+    with runner.isolated_coverage_environment() as run:
+        progress = run.progress_binding.path
+        assert progress.exists()
+        assert "SECRET" not in run.environment["PYTEST_HSCONFIG_PROGRESS_BINDING"]
+    assert not progress.exists()
+    with pytest.raises(RuntimeError, match="body-primary"):
+        with runner.isolated_coverage_environment() as run:
+            stolen = tmp_path / "owned-stolen"
+            run.run_root.rename(stolen)
+            run.run_root.mkdir()
+            marker = run.run_root / "marker"
+            marker.write_text("keep")
+            raise RuntimeError("body-primary")
+    assert not stolen.exists()
+    assert marker.read_text() == "keep"
 CHECKER = ROOT / "scripts" / "check_coverage_contract.py"
 CRITICAL_MODULES = [
     "src/hsconfig/atomic_io.py",
@@ -2252,7 +2674,7 @@ def test_coverage_runner_fails_closed_for_excessive_sideband_depth(
 
     assert _run_unit_coverage_main(runner) == 2
     captured = capsys.readouterr()
-    assert captured.err == "pytest failure sideband schema invalid\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure sideband schema invalid\n"
     assert captured.out.count("\n") == 1
     assert json.loads(captured.out) == {
         "critical_modules": [],
@@ -4820,6 +5242,7 @@ def test_coverage_runner_propagates_failure_and_cleans_temp_directory(
     assert json.loads(emitted.out)["errors"] == ["pytest coverage execution failed"]
     assert json.loads(emitted.out)["returncode"] == 1
     assert emitted.err == (
+        "no trusted pytest progress available\n"
         "pytest failure identity: tests/test_coverage_contract.py::"
         "test_coverage_runner_propagates_failure_and_cleans_temp_directory "
         "phase=call\n"
@@ -4863,6 +5286,7 @@ def test_coverage_runner_reports_valid_empty_as_session_level_failure(
     captured = capsys.readouterr()
     assert json.loads(captured.out)["returncode"] == 1
     assert captured.err == (
+        "no trusted pytest progress available\n"
         "pytest failure identity: session-level failure; no node identities\n"
     )
 
@@ -4895,7 +5319,7 @@ def test_coverage_runner_fails_closed_when_failure_recorder_is_unavailable(
     assert _run_unit_coverage_main(runner) == 2
     captured = capsys.readouterr()
     assert json.loads(captured.out)["returncode"] == 2
-    assert captured.err == "pytest failure recorder unavailable\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure recorder unavailable\n"
 
 
 def test_coverage_runner_fails_closed_when_failure_sideband_is_missing(
@@ -4923,7 +5347,7 @@ def test_coverage_runner_fails_closed_when_failure_sideband_is_missing(
     assert _run_unit_coverage_main(runner) == 2
     captured = capsys.readouterr()
     assert json.loads(captured.out)["returncode"] == 2
-    assert captured.err == "pytest failure sideband missing\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure sideband missing\n"
 
 
 def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
@@ -4953,7 +5377,7 @@ def test_coverage_runner_emits_one_failure_json_for_pytest_failure(
         "returncode": 2,
         "target_met": False,
     }
-    assert captured.err == "pytest failure sideband binding invalid\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure sideband binding invalid\n"
 
 
 def test_coverage_runner_emits_distinct_portable_failure_json_for_pytest_timeout(
@@ -4990,7 +5414,7 @@ def test_coverage_runner_emits_distinct_portable_failure_json_for_pytest_timeout
     assert document["passed"] is False
     assert document["returncode"] == 2
     assert document["errors"] == ["pytest coverage execution timed out"]
-    assert captured.err == "pytest failure sideband binding invalid\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure sideband binding invalid\n"
 
 
 def test_real_child_returncode_124_is_not_misclassified_as_pytest_timeout(
@@ -5027,7 +5451,7 @@ def test_real_child_returncode_124_is_not_misclassified_as_pytest_timeout(
     assert document["passed"] is False
     assert document["returncode"] == 2
     assert document["errors"] == ["pytest coverage execution failed"]
-    assert captured.err == "pytest failure sideband binding invalid\n"
+    assert captured.err == "no trusted pytest progress available\npytest failure sideband binding invalid\n"
 
 
 def test_coverage_runner_forwards_checker_failure_as_one_contradiction_free_json(

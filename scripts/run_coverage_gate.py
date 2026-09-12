@@ -301,6 +301,16 @@ class CoverageRun:
     failure_sideband_identity: tuple[int, int]
     environment: dict[str, str]
     locked_test_runtime: _LockedTestRuntimeBinding | None
+    progress_binding: _PytestProgressBinding | None = None
+
+
+@dataclass(frozen=True)
+class _PytestProgressBinding:
+    path: Path
+    run_root: Path
+    run_identity: tuple[int, int]
+    file_identity: tuple[int, int]
+    run_nonce: str
 
 
 @dataclass(frozen=True)
@@ -428,6 +438,13 @@ class _PytestFailureState:
     pytest_basetemp: Path | None = None
     pytest_basetemp_identity: tuple[int, int] | None = None
     pytest_basetemp_parent_identity: tuple[int, int] | None = None
+    progress_binding: _PytestProgressBinding | None = None
+    progress_disabled: bool = False
+    progress_started: float = field(default_factory=time.monotonic)
+    progress_last_write: float = -float("inf")
+    progress_has_identity: bool = False
+    progress_completed: set[str] = field(default_factory=set)
+    progress_completed_tests: int = 0
 
 
 _ACTIVE_PYTEST_FAILURE_STATE: _PytestFailureState | None = None
@@ -454,12 +471,44 @@ class _BoundPytestSecureRmtree:
 class _BoundPytestFailureReporter:
     state: _PytestFailureState
 
+    @hookimpl(tryfirst=True)
+    def pytest_runtest_setup(self, item: Any) -> None:
+        _write_pytest_progress_checkpoint(
+            self.state, phase="setup",
+            identity=self.state.identities_by_nodeid.get(item.nodeid),
+        )
+
+    @hookimpl(tryfirst=True)
+    def pytest_runtest_call(self, item: Any) -> None:
+        _write_pytest_progress_checkpoint(
+            self.state, phase="call",
+            identity=self.state.identities_by_nodeid.get(item.nodeid),
+        )
+
+    @hookimpl(tryfirst=True)
+    def pytest_runtest_teardown(self, item: Any, nextitem: Any) -> None:
+        del nextitem
+        _write_pytest_progress_checkpoint(
+            self.state, phase="teardown",
+            identity=self.state.identities_by_nodeid.get(item.nodeid),
+        )
+
     @hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item: Any, call: Any) -> Iterator[None]:
-        del item, call
+        del call
         outcome = yield
         _bind_pytest_cleanup_for_hook_chain(self.state)
-        _record_pytest_failure(self.state, outcome.get_result())
+        report = outcome.get_result()
+        _record_pytest_failure(self.state, report)
+        if getattr(report, "when", None) == "teardown":
+            nodeid = item.nodeid
+            completed = nodeid not in self.state.progress_completed
+            self.state.progress_completed.add(nodeid)
+            _write_pytest_progress_checkpoint(
+                self.state, phase="between_tests",
+                identity=self.state.identities_by_nodeid.get(nodeid),
+                completed=completed,
+            )
 
     def pytest_collectreport(self, report: Any) -> None:
         _record_pytest_collection_failure(self.state, report)
@@ -946,6 +995,8 @@ def pytest_configure(config: Any) -> None:
             else _pytest_collection_path_allowlist(import_inventory)
         ),
     )
+    state.progress_binding = _progress_binding_from_environment(sideband, os.environ)
+    _write_pytest_progress_checkpoint(state, phase="collection", identity=None)
     reporter = _BoundPytestFailureReporter(state)
     bound_pytest_rmtree = _BoundPytestSecureRmtree(state)
     try:
@@ -1709,6 +1760,241 @@ def _record_pytest_collection_failure(
         state.failures.append(failure)
     else:
         state.truncated = True
+
+
+_PYTEST_PROGRESS_ENV = "PYTEST_HSCONFIG_PROGRESS_BINDING"
+_PYTEST_PROGRESS_NAME = "pytest-progress.json"
+_PYTEST_PROGRESS_PHASES = frozenset(
+    {"collection", "setup", "call", "teardown", "between_tests"}
+)
+
+
+def _progress_transport(binding: _PytestProgressBinding) -> str | None:
+    try:
+        wire = json.dumps(
+            {"schema_version": 1, "run_identity": binding.run_identity,
+             "file_identity": binding.file_identity, "run_nonce": binding.run_nonce},
+            sort_keys=True, separators=(",", ":"), allow_nan=False,
+        )
+        return wire if len(wire.encode("utf-8")) <= 1024 else None
+    except (TypeError, ValueError, UnicodeError):
+        return None
+
+
+def _try_create_pytest_progress_binding(
+    run_root: Path, run_identity: tuple[int, int],
+) -> _PytestProgressBinding | None:
+    """Optional setup only; the existing bound RunRoot owns any partial file."""
+    try:
+        path = run_root / _PYTEST_PROGRESS_NAME
+        flags = (os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                 | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
+        descriptor = os.open(path, flags, 0o600)
+        try:
+            metadata = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        if (not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata)
+                or getattr(metadata, "st_nlink", 1) != 1):
+            return None
+        binding = _PytestProgressBinding(
+            path, run_root, run_identity,
+            (metadata.st_dev, metadata.st_ino), os.urandom(16).hex(),
+        )
+        return binding if _progress_transport(binding) is not None else None
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _progress_binding_from_environment(
+    sideband: Path, environment: Mapping[str, str],
+) -> _PytestProgressBinding | None:
+    try:
+        raw = environment.get(_PYTEST_PROGRESS_ENV)
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > 1024:
+            return None
+        document = json.loads(
+            raw, object_pairs_hook=_closed_object, parse_constant=_reject_constant,
+        )
+        if (not isinstance(document, dict)
+                or set(document) != {"schema_version", "run_identity", "file_identity", "run_nonce"}
+                or type(document["schema_version"]) is not int
+                or document["schema_version"] != 1
+                or not isinstance(document["run_nonce"], str)
+                or re.fullmatch(r"[0-9a-f]{32}", document["run_nonce"]) is None):
+            return None
+        for key in ("run_identity", "file_identity"):
+            pair = document[key]
+            if (not isinstance(pair, list) or len(pair) != 2
+                    or any(type(value) is not int or value < 0 for value in pair)):
+                return None
+        binding = _PytestProgressBinding(
+            sideband.parent / _PYTEST_PROGRESS_NAME, sideband.parent,
+            tuple(document["run_identity"]), tuple(document["file_identity"]),
+            document["run_nonce"],
+        )
+        if _progress_transport(binding) != raw:
+            return None
+        _assert_progress_binding(binding)
+        return binding
+    except (CoverageGateError, OSError, TypeError, ValueError, RecursionError):
+        return None
+
+
+def _assert_progress_binding(binding: _PytestProgressBinding) -> os.stat_result:
+    if (not binding.run_root.is_absolute()
+            or binding.path != binding.run_root / _PYTEST_PROGRESS_NAME
+            or _coverage_directory_identity(binding.run_root) != binding.run_identity):
+        raise CoverageGateError("pytest progress binding differs")
+    metadata = binding.path.lstat()
+    if (not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode)
+            or _is_reparse(metadata) or getattr(metadata, "st_nlink", 1) != 1
+            or (metadata.st_dev, metadata.st_ino) != binding.file_identity):
+        raise CoverageGateError("pytest progress binding differs")
+    return metadata
+
+
+def _safe_progress_identity(
+    identity: object, allowed_identities: frozenset[_PytestTestIdentity],
+) -> bool:
+    if not isinstance(identity, dict) or set(identity) != {"path", "class", "function", "parameter"}:
+        return False
+    path, class_name, function = identity["path"], identity["class"], identity["function"]
+    if (not isinstance(path, str) or len(path) > 240
+            or _SAFE_PYTEST_TEST_PATH.fullmatch(path) is None
+            or not isinstance(function, str) or _SAFE_PYTEST_IDENTIFIER.fullmatch(function) is None
+            or (class_name is not None and (not isinstance(class_name, str)
+                or _SAFE_PYTEST_IDENTIFIER.fullmatch(class_name) is None))
+            or (path, class_name, function) not in allowed_identities):
+        return False
+    parameter = identity["parameter"]
+    return parameter is None or (
+        isinstance(parameter, dict) and set(parameter) == {"ordinal", "total"}
+        and type(parameter["ordinal"]) is int and type(parameter["total"]) is int
+        and 1 <= parameter["ordinal"] <= parameter["total"] <= 1_000_000
+    )
+
+
+def _write_pytest_progress_checkpoint(
+    state: _PytestFailureState, *, phase: str,
+    identity: dict[str, Any] | None, completed: bool = False,
+) -> None:
+    binding = state.progress_binding
+    if binding is None or state.progress_disabled:
+        return
+    if completed:
+        state.progress_completed_tests = min(10_000_000, state.progress_completed_tests + 1)
+    now = time.monotonic()
+    first_identity = identity is not None and not state.progress_has_identity
+    if not first_identity and now - state.progress_last_write < 1:
+        return
+    if identity is not None:
+        # Only collection-produced identities; raw nodeids/parameter labels never serialize.
+        allowed = frozenset(
+            (row["path"], row["class"], row["function"])
+            for row in state.identities_by_nodeid.values()
+            if isinstance(row, dict) and "class" in row
+            and all(isinstance(row.get(key), str) for key in ("path", "function"))
+            and (row.get("class") is None or isinstance(row.get("class"), str))
+        )
+        if identity not in state.identities_by_nodeid.values() or not _safe_progress_identity(identity, allowed):
+            return
+    if (not isinstance(phase, str) or phase not in _PYTEST_PROGRESS_PHASES
+            or (identity is None and phase not in {"collection", "between_tests"})):
+        return
+    document = {
+        "schema_version": 1, "run_nonce": binding.run_nonce, "incomplete": True,
+        "phase": phase, "identity": identity,
+        "completed_tests": state.progress_completed_tests,
+        "elapsed_ms": min((PYTEST_TIMEOUT_SECONDS + 60) * 1000,
+                          max(0, int((now - state.progress_started) * 1000))),
+    }
+    descriptor: int | None = None
+    try:
+        source = (json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+        if len(source) > 8192:
+            state.progress_disabled = True
+            return
+        _assert_progress_binding(binding)
+        flags = os.O_WRONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(binding.path, flags)
+        opened = os.fstat(descriptor)
+        if (not stat.S_ISREG(opened.st_mode) or _is_reparse(opened)
+                or getattr(opened, "st_nlink", 1) != 1
+                or (opened.st_dev, opened.st_ino) != binding.file_identity):
+            raise CoverageGateError("pytest progress binding differs")
+        _assert_progress_binding(binding)
+        os.ftruncate(descriptor, 0)
+        offset = 0
+        while offset < len(source):
+            written = os.write(descriptor, source[offset:])
+            if written <= 0:
+                raise OSError("pytest progress write incomplete")
+            offset += written
+        os.fsync(descriptor)
+        _assert_progress_binding(binding)
+        state.progress_last_write = now
+        state.progress_has_identity |= identity is not None
+    except (CoverageGateError, OSError, TypeError, ValueError):
+        state.progress_disabled = True
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                state.progress_disabled = True
+
+
+def _read_pytest_progress_checkpoint(
+    binding: _PytestProgressBinding, *, allowed_identities: frozenset[_PytestTestIdentity],
+) -> dict[str, Any] | None:
+    try:
+        _assert_progress_binding(binding)
+        source, metadata = _read_bound_regular_file(
+            binding.path, maximum_bytes=8192, error_type=CoverageGateError,
+            label="pytest progress checkpoint",
+        )
+        _assert_progress_binding(binding)
+        if ((metadata.st_dev, metadata.st_ino) != binding.file_identity
+                or not source.endswith(b"\n") or source.count(b"\n") != 1 or b"\r" in source):
+            return None
+        document = json.loads(
+            source.decode("utf-8"), object_pairs_hook=_closed_object, parse_constant=_reject_constant,
+        )
+        if (not isinstance(document, dict)
+                or set(document) != {"schema_version", "run_nonce", "incomplete", "phase", "identity", "completed_tests", "elapsed_ms"}
+                or type(document["schema_version"]) is not int or document["schema_version"] != 1
+                or document["run_nonce"] != binding.run_nonce
+                or document["incomplete"] is not True
+                or not isinstance(document["phase"], str)
+                or document["phase"] not in _PYTEST_PROGRESS_PHASES
+                or type(document["completed_tests"]) is not int
+                or not 0 <= document["completed_tests"] <= 10_000_000
+                or type(document["elapsed_ms"]) is not int
+                or not 0 <= document["elapsed_ms"] <= (PYTEST_TIMEOUT_SECONDS + 60) * 1000):
+            return None
+        if document["identity"] is None:
+            if document["phase"] not in {"collection", "between_tests"}:
+                return None
+        elif not _safe_progress_identity(document["identity"], allowed_identities):
+            return None
+        return document
+    except (CoverageGateError, OSError, TypeError, ValueError, RecursionError):
+        return None
+
+
+def _emit_pytest_progress_diagnostic(
+    run: CoverageRun, *, allowed_identities: frozenset[_PytestTestIdentity],
+) -> None:
+    document = None if run.progress_binding is None else _read_pytest_progress_checkpoint(
+        run.progress_binding, allowed_identities=allowed_identities,
+    )
+    if document is None:
+        print("no trusted pytest progress available", file=sys.stderr)
+    else:
+        print("last recorded checkpoint (incomplete): " + json.dumps(
+            document, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ), file=sys.stderr)
 
 
 def _write_pytest_failure_sideband(state: _PytestFailureState) -> None:
@@ -6082,6 +6368,13 @@ def isolated_coverage_environment(
             sideband_metadata.st_dev,
             sideband_metadata.st_ino,
         )
+        progress_binding = _try_create_pytest_progress_binding(run_root, run_identity)
+        if progress_binding is not None:
+            progress_transport = _progress_transport(progress_binding)
+            if progress_transport is not None:
+                environment[_PYTEST_PROGRESS_ENV] = progress_transport
+            else:
+                progress_binding = None
         pytest_temp_root, pytest_temp_identity = _create_owned_directory(
             pytest_temporary_parent,
             prefix=PYTEST_TEMP_PREFIX,
@@ -6149,6 +6442,7 @@ def isolated_coverage_environment(
             failure_sideband_identity=failure_sideband_identity,
             environment=environment,
             locked_test_runtime=locked_test_runtime,
+            progress_binding=progress_binding,
         )
     except BaseException as exc:
         body_error = exc
@@ -6941,6 +7235,9 @@ def main(
                     _portable_child_returncode(pytest_result.returncode),
                 )
             if pytest_failure is not None:
+                _emit_pytest_progress_diagnostic(
+                    run, allowed_identities=allowed_pytest_identities,
+                )
                 failure_phase = "pytest_failure_identity"
                 pytest_failure_identities = _load_pytest_failure_sideband(
                     run.run_root,
