@@ -75,6 +75,7 @@ MUTATIONS = (
 
 _COPIED_SOURCE_FILES = (
     "src/hsconfig/__init__.py",
+    "src/hsconfig/configuration_mode.py",
     "src/hsconfig/globalvalues_baseline.py",
     "src/hsconfig/io.py",
     "src/hsconfig/package_domain.py",
@@ -88,6 +89,7 @@ _COPIED_TEST_FILES = (
     "tests/mutation/test_owner_policy_mutations.py",
     "tests/mutation/test_runtime_surface_mutations.py",
 )
+MUTATION_TEST_TIMEOUT_SECONDS = 120
 
 
 def _repository_root() -> Path:
@@ -151,7 +153,16 @@ def _run_killing_tests(
         check=False,
         capture_output=True,
         text=True,
+        timeout=MUTATION_TEST_TIMEOUT_SECONDS,
     )
+
+
+def _exception_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(encoding="utf-8", errors="replace")
+    return value
 
 
 def _run_one(source_root: Path, mutation: MutationSpec) -> MutationResult:
@@ -163,6 +174,16 @@ def _run_one(source_root: Path, mutation: MutationSpec) -> MutationResult:
             _copy_isolated_tree(source_root, target_root)
             _apply_mutation(target_root, mutation)
             completed = _run_killing_tests(target_root, mutation)
+    except subprocess.TimeoutExpired as error:
+        return MutationResult(
+            name=mutation.name,
+            status="error",
+            returncode=None,
+            killing_tests=mutation.killing_tests,
+            detail="mutation_timeout",
+            stdout=_exception_output(error.stdout),
+            stderr=_exception_output(error.stderr),
+        )
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         return MutationResult(
             name=mutation.name,
@@ -198,7 +219,74 @@ def run_mutations(
     *,
     source_root: Path | None = None,
 ) -> tuple[MutationResult, ...]:
+    if not mutations:
+        return ()
     root = _repository_root() if source_root is None else Path(source_root)
+    killing_tests = tuple(
+        dict.fromkeys(
+            test_path
+            for mutation in mutations
+            for test_path in mutation.killing_tests
+        )
+    )
+    baseline = MutationSpec(
+        name="baseline",
+        target="",
+        original="",
+        replacement="",
+        killing_tests=killing_tests,
+    )
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="hsconfig-contract-mutation-baseline-"
+        ) as raw_root:
+            target_root = Path(raw_root)
+            _copy_isolated_tree(root, target_root)
+            completed = _run_killing_tests(target_root, baseline)
+    except subprocess.TimeoutExpired as error:
+        return tuple(
+            MutationResult(
+                name=mutation.name,
+                status="error",
+                returncode=None,
+                killing_tests=mutation.killing_tests,
+                detail="baseline_timeout",
+                stdout=_exception_output(error.stdout),
+                stderr=_exception_output(error.stderr),
+            )
+            for mutation in mutations
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return tuple(
+            MutationResult(
+                name=mutation.name,
+                status="error",
+                returncode=None,
+                killing_tests=mutation.killing_tests,
+                detail="baseline_error",
+                stdout="",
+                stderr=str(error),
+            )
+            for mutation in mutations
+        )
+    if completed.returncode != 0:
+        detail = (
+            "baseline_failed"
+            if completed.returncode == 1
+            else "baseline_unexecutable"
+        )
+        return tuple(
+            MutationResult(
+                name=mutation.name,
+                status="error",
+                returncode=completed.returncode,
+                killing_tests=mutation.killing_tests,
+                detail=detail,
+                stdout=completed.stdout,
+                stderr=completed.stderr,
+            )
+            for mutation in mutations
+        )
     return tuple(_run_one(root, mutation) for mutation in mutations)
 
 
