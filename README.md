@@ -9,18 +9,23 @@ Deck name: ShadowPriest
 Deck code: <DeckCode>
 ```
 
-Example successful response:
+Illustrative successful response (not a measured deck result):
 
-ShadowPriest — card coverage: complete — review confidence: high — LIVE_AND_MATCHED
+ShadowPriest — all cards considered — review confidence: high — LIVE_AND_MATCHED
+
+Every card is reviewed; deliberately unchanged cards do not need an unnecessary
+generated rule.
 
 Deck -> Snapshot -> Bounded research -> Candidate -> Independent review -> Live or Preview
 
 Illustrative limited-evidence preview:
 
-ShadowPriest — card coverage: complete — review confidence: limited — PREVIEW_READY
+ShadowPriest — all cards considered — review confidence: limited — PREVIEW_READY
 
-The available guide evidence was insufficient, so assumptions and reduced
-confidence remain visible and no runtime files were written.
+In this example, the user explicitly requested preview. Available guide evidence
+was limited, so assumptions and reduced confidence remain visible; preview means
+no runtime files were written. Limited confidence alone does not prevent an
+authorized live run.
 
 The aim is the best practical evidence-based pre-run configuration, not measured gameplay optimality.
 
@@ -44,12 +49,15 @@ satisfied. Source evidence and diagnostics cannot grant runtime-write authority.
 
 ## Installation
 
+Use Windows with Python 3.11 or newer. From the repository checkout directory,
+with your intended Python environment activated, run:
+
 ```powershell
 python -m pip install -e .
 ```
 
 This installs the Python package, not the Codex skill or a live profile.
-Complete "One-time setup" in `docs/operator/README.md` to install the bundled
+Complete "One-time setup" in [docs/operator/README.md](docs/operator/README.md) to install the bundled
 skill and explicitly authorize the intended runtime/output roots.
 After setup, the normal prompt needs only the deck name and deck code.
 

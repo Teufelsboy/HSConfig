@@ -52,6 +52,7 @@ def test_root_readme_routes_only_to_the_active_public_path() -> None:
 
     assert [link.target for link in document.links] == [
         "docs/operator/README.md",
+        "docs/operator/README.md",
         "docs/architecture/overview.md",
         "docs/contracts/pre-run-contract.md",
         "SECURITY.md",

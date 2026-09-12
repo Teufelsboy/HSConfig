@@ -247,8 +247,29 @@ def test_forbidden_helper_option_reference_is_exact_line_bound() -> None:
     changed = raw.replace(b'"--force"', b'"' + b"TO" + b'DO"', 1)
     assert changed != raw
     assert publishable_tree.publishable_text_violations(relative, changed, public_doc=False) == [
-        f"unallowlisted_source_placeholder:{relative}:163",
+        f"unallowlisted_source_placeholder:{relative}:240",
     ]
+
+
+def test_operator_expert_reference_allows_only_the_exact_bound_explanation() -> None:
+    relative = "docs/operator/README.md"
+    raw = (ROOT / relative).read_bytes()
+    assert publishable_tree.publishable_text_violations(relative, raw, public_doc=True) == []
+    changed = raw.replace(b"only for fixtures", b"also for fixtures", 1)
+    assert changed != raw
+    assert any(
+        row.startswith(f"public_placeholder:{relative}:")
+        for row in publishable_tree.publishable_text_violations(
+            relative, changed, public_doc=True,
+        )
+    )
+    extra = raw + b"\nArbitrary PLACE" + b"HOLDER instruction.\n"
+    assert any(
+        row.startswith(f"public_placeholder:{relative}:")
+        for row in publishable_tree.publishable_text_violations(
+            relative, extra, public_doc=True,
+        )
+    )
 
 
 def test_evaluator_rejects_unsafe_or_unresolved_markdown_links_and_anchors() -> None:

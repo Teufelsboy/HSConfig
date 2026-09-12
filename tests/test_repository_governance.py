@@ -127,7 +127,7 @@ FROZEN_POLICY_TEXT = {
     "SECURITY.md": EXPECTED_SECURITY_TEXT,
 }
 FROZEN_README_PREFIX_SHA256 = (
-    "f02e7e3d2f702c72b5fa7edb06c7f3da954b98149127ff903d697411190e3c46"
+    "97e464b0058c884e8dc2d61229db1edd7353b56de6478fc0ad6dd7d90bd6f305"
 )
 EXPECTED_README_OPTIMIZED_ROUTE_PROSE = (
     "The installed HSConfig skill captures one consistent local data snapshot, "

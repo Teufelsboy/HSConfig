@@ -6,7 +6,9 @@ import inspect
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 from typing import Any
 import unicodedata
 
@@ -143,6 +145,65 @@ def _transaction_residue(parent: Path) -> list[Path]:
         ),
         key=lambda path: path.name,
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="executes the documented Windows recipe")
+def test_documented_powershell_recipe_installs_idempotently_without_profile_or_runtime_writes(
+    tmp_path: Path,
+) -> None:
+    # Execute the human artifact itself: only Read-Host's answer is supplied by
+    # the harness. A broken recipe, path quoting, or unintended write must fail.
+    powershell = shutil.which("powershell")
+    assert powershell is not None
+    controlled = (tmp_path / "controlled setup with spaces").resolve()
+    assert controlled.is_absolute() and controlled.is_relative_to(tmp_path.resolve())
+    parent = controlled / "chosen skill parent"
+    parent.mkdir(parents=True)
+    destination = parent / "hsconfig"
+    state = controlled / "local application data"
+    profile = state / "HSConfig" / "operator-profile.json"
+    profile.parent.mkdir(parents=True)
+    profile.write_bytes(b"controlled existing profile must not change\n")
+    runtime = controlled / "runtime"
+    runtime.mkdir()
+    (runtime / "GlobalValues.json").write_bytes(b'{"controlled":true}\n')
+    protected_before = (_test_tree_aggregate(state), _test_tree_aggregate(runtime))
+    document = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
+    recipe = next(
+        section.split("\n```", 1)[0]
+        for section in document.split("```powershell\n")[1:]
+        if section.startswith("$skillParent = Read-Host ")
+    )
+    environment = {
+        **os.environ,
+        "LOCALAPPDATA": str(state),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"],
+        "HSCONFIG_TEST_SKILL_PARENT": str(parent),
+    }
+    command = (
+        "function Read-Host { param([string]$Prompt) $env:HSCONFIG_TEST_SKILL_PARENT }\n"
+        + recipe
+        + "\nexit $LASTEXITCODE\n"
+    )
+    for expected_status in ("installed", "already_current"):
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+            cwd=ROOT, env=environment, capture_output=True, text=True,
+            encoding="utf-8", timeout=60, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)["status"] == expected_status
+        assert {
+            path.relative_to(destination).as_posix(): path.read_bytes()
+            for path in destination.rglob("*")
+            if path.is_file()
+        } == load_embedded_skill_bundle()
+        assert (_test_tree_aggregate(state), _test_tree_aggregate(runtime)) == protected_before
+        assert _transaction_residue(parent) == []
+        assert {path.name for path in parent.iterdir()} == {
+            "hsconfig", ".hsconfig-skill-install.lock",
+        }
 
 
 def test_embedded_bundle_is_exact_closed_nine_file_contract() -> None:
@@ -1055,6 +1116,7 @@ def test_explicit_installer_rejects_prelock_to_locked_tree_drift(
 
 def test_postcommit_backup_cleanup_interrupt_retains_verified_new_tree(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     parent = tmp_path / "skills"
     destination = parent / "hsconfig"
@@ -1084,12 +1146,49 @@ def test_postcommit_backup_cleanup_interrupt_retains_verified_new_tree(
     assert json.loads(journal.read_text(encoding="utf-8"))["phase"] == "committed"
     assert len(list(parent.glob(".hsconfig-install-*.backup"))) == 1
 
+    # Changing the trusted package must not adopt another bundle's committed
+    # journal. The loader fixture changes test bytes, not their trust provenance.
+    bundle_a = load_embedded_skill_bundle()
+    bundle_b = dict(bundle_a)
+    bundle_b["SKILL.md"] += b"\nControlled bundle B.\n"
+    before = _test_tree_aggregate(parent)
+    current_predecessor = _test_tree_aggregate(destination)
+    with monkeypatch.context() as changed_bundle:
+        changed_bundle.setattr(
+            external_skill_bundle, "load_embedded_skill_bundle", lambda: bundle_b,
+        )
+        with pytest.raises(ValueError, match="^external_skill_committed_journal_invalid$"):
+            install_external_skill(
+                destination,
+                expected_predecessor_aggregate_sha256=current_predecessor,
+            )
+    assert _test_tree_aggregate(parent) == before
+    assert json.loads(journal.read_text(encoding="utf-8"))["phase"] == "committed"
+
     recovered = install_external_skill(
         destination,
-        expected_predecessor_aggregate_sha256=None,
+        expected_predecessor_aggregate_sha256=current_predecessor,
     )
 
     assert recovered["status"] == "already_current"
+    assert _transaction_residue(parent) == []
+    assert _test_tree_aggregate(destination) == current_predecessor
+
+    fresh_predecessor = _test_tree_aggregate(destination)
+    with monkeypatch.context() as changed_bundle:
+        changed_bundle.setattr(
+            external_skill_bundle, "load_embedded_skill_bundle", lambda: bundle_b,
+        )
+        upgraded = install_external_skill(
+            destination,
+            expected_predecessor_aggregate_sha256=fresh_predecessor,
+        )
+    assert upgraded["status"] == "installed"
+    assert {
+        path.relative_to(destination).as_posix(): path.read_bytes()
+        for path in destination.rglob("*")
+        if path.is_file()
+    } == bundle_b
     assert _transaction_residue(parent) == []
 
 

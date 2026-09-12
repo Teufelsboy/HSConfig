@@ -30,6 +30,7 @@ REQUIRED_HEADINGS = (
 )
 EXPECTED_LINKS = (
     "docs/operator/README.md",
+    "docs/operator/README.md",
     "docs/architecture/overview.md",
     "docs/contracts/pre-run-contract.md",
     "SECURITY.md",
@@ -227,7 +228,7 @@ def _readme_contract_errors(root: Path) -> list[str]:
     if targets != list(EXPECTED_LINKS):
         errors.append("readme_link_sequence")
     for target in EXPECTED_LINKS:
-        if targets.count(target) > 1:
+        if targets.count(target) > EXPECTED_LINKS.count(target):
             errors.append(f"readme_duplicate_link:{target}")
     links = set(targets)
     if links != set(EXPECTED_LINKS):
@@ -263,7 +264,7 @@ def test_readme_has_one_copyable_normal_prompt_and_compact_success() -> None:
     introduction = text.split("## License and visibility", 1)[0]
     prompts = re.findall(r"```text\n(.*?)\n```", introduction, flags=re.DOTALL)
     assert prompts == ["Deck name: ShadowPriest\nDeck code: <DeckCode>"]
-    assert "ShadowPriest — card coverage: complete — review confidence: high — LIVE_AND_MATCHED" in introduction
+    assert "ShadowPriest — all cards considered — review confidence: high — LIVE_AND_MATCHED" in introduction
     assert "sha256" not in introduction.casefold()
     assert "revisions/" not in introduction
 
@@ -653,7 +654,9 @@ def test_readme_contract_does_not_count_images_or_escaped_links(
         encoding="utf-8",
     )
 
-    assert "readme_link_set" in _readme_contract_errors(root)
+    errors = _readme_contract_errors(root)
+    assert "readme_link_sequence" in errors
+    assert "readme_link_set" not in errors
 
 
 def test_readme_contract_does_not_count_a_multi_backtick_code_span_link(
@@ -674,7 +677,8 @@ def test_readme_contract_does_not_count_a_multi_backtick_code_span_link(
     )
 
     errors = _readme_contract_errors(root)
-    assert "readme_link_set" in errors
+    assert "readme_link_sequence" in errors
+    assert "readme_link_set" not in errors
     assert "readme_unclosed_code_span" not in errors
 
 

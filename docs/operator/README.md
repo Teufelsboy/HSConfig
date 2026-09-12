@@ -16,22 +16,63 @@ inventory are never apply authority.
 - Give the installed HSConfig skill only the deck name and deck code. Its single candidate workflow is the only normal generation route.
 - A valid enabled profile binds the runtime and output roots and authorizes live operation there. Explicit preview overrides live; no per-run apply confirmation is needed for the enabled profile's scope.
 - The skill captures one consistent local data snapshot, performs bounded Codex discovery, and seals the resulting context before candidate creation. No separate user research or provider setup is part of the normal route.
-- Use one lead strategist to build the strongest practical evidence-based candidate and one independent reviewer to approve the exact validated candidate or request targeted revision. Technical validation and review allow at most two shared revisions.
-- Expect the human deck name, complete card coverage, review confidence `high|limited`, and `LIVE_AND_MATCHED` or verified `ALREADY_LIVE`. Limited confidence stays visible; neither status proves gameplay improvement.
+- The skill uses one lead strategist to build the strongest practical evidence-based candidate and one independent reviewer to approve the exact validated candidate or request targeted revision. Technical validation and review allow at most two shared revisions.
+- Expect the human deck name, all cards considered, review confidence `high|limited`, and `LIVE_AND_MATCHED` or verified `ALREADY_LIVE`. Deliberately unchanged cards need no unnecessary generated rule. Limited confidence stays visible and alone does not prevent an authorized live run; neither status proves gameplay improvement.
 - Use the same session's `resume` after interruption. An invocation receipt or `APPLY_STARTED` makes the rest recovery-only, not a new strategy/review/apply attempt.
 - Use raw `hsconfig configure` only for Conservative CLI Compatibility. Source and diagnostic commands remain explicit expert paths.
 
 ### One-time setup
 
-`python -m pip install -e .` installs the Python package only. Separately install
-the exact bundled Codex skill through
-`hsconfig.external_skill_bundle.install_external_skill`. Its destination must
-be named `hsconfig` inside an existing plain Codex skills directory. Read the
-destination with `external_skill_tree_identity` first and pass its exact
-`aggregate_sha256` as `expected_predecessor_aggregate_sha256`, or `None` when
-absent. This checked installation does not enable live writes.
+On Windows with Python 3.11 or newer, run `python -m pip install -e .` from the
+repository checkout in your activated Python environment. This installs the
+Python package only. From that same directory and environment, install the
+bundled Codex skill with the following PowerShell block. At the prompt, enter
+the absolute path to your deliberately chosen, existing plain Codex skill-parent
+directory (not a link or junction). The destination basename stays `hsconfig`.
 
-For a first profile, explicitly choose existing runtime and output directories:
+This replaces an existing `hsconfig` skill at that destination. Separately back
+up any manual changes first, and run this only for the target you intend to
+replace. The installer reads the current tree identity and uses it as an exact
+predecessor check; intervening changes are refused (compare-and-swap, or CAS).
+
+```powershell
+$skillParent = Read-Host 'Existing absolute Codex skill-parent directory'
+$skillDestination = Join-Path -Path $skillParent -ChildPath 'hsconfig'
+@'
+import json
+import sys
+from pathlib import Path
+from hsconfig.external_skill_bundle import external_skill_tree_identity, install_external_skill
+
+destination = Path(sys.argv[1])
+identity = external_skill_tree_identity(destination)
+result = install_external_skill(
+    destination,
+    expected_predecessor_aggregate_sha256=identity['aggregate_sha256'],
+)
+print(json.dumps(result, sort_keys=True))
+'@ | python - $skillDestination
+```
+
+Check that the command succeeds (`installed` or `already_current`). Installation
+does not enable live writes and is not repeated for each deck. Next inspect the
+profile, without changing it:
+
+```powershell
+hsconfig live-policy status --json
+```
+
+- `absent`: expected on first setup; no profile exists.
+- `enabled` or `disabled`: the validated `content_sha256` is the observed
+  predecessor for an explicit policy change.
+- `invalid`: inspect the reported cause and environment first; never force
+  `--expected-absent` to overwrite or bypass an invalid profile.
+
+Status is a read-only snapshot, not a lease or permission to write. A later
+change must still pass the exact predecessor check.
+
+Enabling live is a separate, explicit decision. For a first profile, choose
+existing runtime and output directories:
 
 Use a separate personal output base, for example
 `%LOCALAPPDATA%\HSConfigOutputs`. Create it as part of the explicitly authorized
@@ -49,6 +90,42 @@ Enabling authorizes live operation only within those bound roots. Use
 `--expected-predecessor-sha256 <exact-current-profile-digest>` instead. The same
 exact-predecessor flag is required by `hsconfig live-policy disable`.
 These are one-time setup or explicit policy changes, not per-deck questions.
+
+### Setup recovery
+
+A generic journal error such as `external_skill_committed_journal_invalid`
+means the installer cannot safely reconcile the preserved transaction. A
+package-version change is one possible cause, not something the message alone
+proves. Do not delete, edit, or adopt the journal, backup, or destination.
+Package A means the trusted package matching the interrupted installation;
+package B is the desired new package. Only if A is available, use A's installer
+to finish its recovery first. Then install B separately, reading the fresh
+exact predecessor identity again. A hash does not identify a safe
+version or download source by itself. Without a trusted matching package,
+stop and retain the preserved state for inspection.
+
+### When a run stops
+
+Use the returned error code and next action; do not automatically retry. Before
+a session exists, there is no session directory to resume or invent.
+
+| Code or terminal action | Next step |
+| --- | --- |
+| `card_snapshot_unavailable` | Check the connection and card-data source; make a new normal request only after the acquisition problem is resolved. |
+| `card_snapshot_invalid` | Check the card-data source for an invalid response; make a new normal request only after it is corrected. |
+| `runtime_baseline_unavailable` | Inspect the selected runtime and its GlobalValues baseline before another request. |
+| `deck_or_input_invalid` | Correct the deck name and deck code before another request. |
+| `input_snapshot_invalid` | Inspect the supplied deck/input data for the reported inconsistency before another request. |
+| `operator_profile_required` / `PROFILE_REQUIRED` | Run `hsconfig live-policy status --json` and resolve the profile state as described above. |
+| `operator_profile_changed` | Read profile status again and inspect the intervening change before another request. |
+| `inspect_preserved_review_finding` | Inspect the preserved candidate/review finding; a terminal failure is not permission to start another revision. |
+| `inspect_preserved_failure` | Inspect the preserved failure and its reported cause. |
+| `inspect_preserved_preview` | Inspect the preserved preview; it has not written runtime files. |
+| `resume_existing_recovery` | Resume only the existing returned session through the installed skill's `resume` phase. |
+
+After an apply invocation or `APPLY_STARTED`, use only the existing session's
+resume/recovery path. Do not create a replacement session or blindly retry
+apply. The summary explains the result; it does not replace apply authority.
 
 ### LLM-optimized start workflow
 
@@ -753,7 +830,7 @@ matrix diagnostic. Row fields such as `apply_gate_allowed`,
 `runtime_apply_mode`, and `validation_status` explain why a package passed or
 failed, but they do not override `status` or `matrix_row_status`.
 
-Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply path. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
+Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply path. Normal deck configuration starts with the installed HSConfig skill, and `reports/operator_summary.json` remains the apply authority.
 
 ## Optional Source Closure Optimizer
 
@@ -762,11 +839,14 @@ prepared when you want a compact source-depth and research freshness diagnostic.
 
 ```powershell
 python -m hsconfig.cli source-closure-optimizer `
-  --package outputs\latest\ShadowPriest\04_package `
-  --research-results-dir <external-research-results-dir> `
-  --out outputs\diagnostics\source_closure_optimizer.json `
-  --markdown-out outputs\diagnostics\source_closure_optimizer.md
+  --package "<SelectedPackage>" `
+  --research-results-dir "<external-research-results-dir>" `
+  --out "<DiagnosticDirectory>\source_closure_optimizer.json" `
+  --markdown-out "<DiagnosticDirectory>\source_closure_optimizer.md"
 ```
+
+Resolve the selected package first and choose a diagnostic directory outside
+the repository's reserved `outputs/` catalog.
 
 Use the research relation fields to refresh stale research snapshots; do not
 use them to override `operator_summary.json` or to block a valid load-safe
@@ -782,8 +862,8 @@ python scripts\check_contract_guardrails.py
 ```
 
 The command checks `hsconfig contract-spine-sentinel --json` and the focused
-boundary tests. It is diagnostic only. Normal deck configuration still starts
-with `hsconfig configure`, and `reports/operator_summary.json` remains the only
+boundary tests. It is diagnostic only. Normal deck configuration starts
+with the installed HSConfig skill, and `reports/operator_summary.json` remains the only
 normal apply authority. The lower-level `hsconfig contract-preflight --json`
 exposes the same contract boundary in its JSON payload for quick operator
 checks without creating another gate.

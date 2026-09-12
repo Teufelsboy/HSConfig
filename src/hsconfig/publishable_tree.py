@@ -306,7 +306,7 @@ _MAX_YAML_ALIASES = 1_024
 SOURCE_TODO_ALLOWLIST: tuple[Mapping[str, Any], ...] = ()
 EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
     "docs/operator/README.md": {
-        802: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
+        906: "d0997da82e0ae641345085fcd2f3a0588c763e75f1c909f1a3826100f82da77b"
     },
     "src/hsconfig/cli_parser.py": {
         66: "6eea5855f7b68a28d9837b43338ef1c9c64370e9f3dae6d583509dfb8dcdcbac",
@@ -338,7 +338,7 @@ EXACT_PLACEHOLDER_REFERENCE_SHA256: Mapping[str, Mapping[int, str]] = {
         36: "b9666c82127a7fa00fc8c7c9806f7b4e258fa1917994dd58ab4b7fcee842a4cd"
     },
     "tests/test_optimized_skill_workflow.py": {
-        163: "4e0c35ca64d1d5706cc2b6cdca0ac4fe7c582f90401a13a50e1bbb51efc3948f"
+        240: "4e0c35ca64d1d5706cc2b6cdca0ac4fe7c582f90401a13a50e1bbb51efc3948f"
     },
 }
 
