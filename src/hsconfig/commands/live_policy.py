@@ -1,4 +1,4 @@
-"""Thin CLI adapter for explicit operator-profile mutations."""
+"""Thin CLI adapter for read-only status and explicit profile mutations."""
 
 from __future__ import annotations
 
@@ -9,8 +9,10 @@ from typing import Any
 from hsconfig.commands.common import run_payload_command
 from hsconfig.operator_profile import (
     OperatorProfile,
+    OperatorProfileEnvironmentError,
     disable_operator_profile,
     enable_operator_profile,
+    load_operator_profile_if_present,
 )
 
 
@@ -19,6 +21,8 @@ def run_live_policy_command(args: argparse.Namespace) -> int:
 
 
 def _live_policy_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    if args.live_policy_action == "status":
+        return _status_payload()
     if args.live_policy_action == "enable":
         expected_predecessor = (
             None
@@ -37,6 +41,33 @@ def _live_policy_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         )
         return _profile_payload(profile, status="disabled", as_json=args.json), 0
     raise ValueError("live_policy_action_invalid")
+
+
+def _status_payload() -> tuple[dict[str, Any], int]:
+    payload: dict[str, Any] = {
+        "status": "invalid",
+        "diagnostic_only": True,
+        "runtime_write_performed": False,
+    }
+    try:
+        profile = load_operator_profile_if_present()
+    except OperatorProfileEnvironmentError:
+        payload["error_code"] = "operator_profile_environment_invalid"
+        return payload, 1
+    except (OSError, RuntimeError, ValueError):
+        payload["error_code"] = "operator_profile_invalid"
+        return payload, 1
+    if profile is None:
+        payload["status"] = "absent"
+    else:
+        payload.update(
+            _profile_payload(
+                profile,
+                status="enabled" if profile.live_by_default else "disabled",
+                as_json=True,
+            )
+        )
+    return payload, 0
 
 
 def _profile_payload(

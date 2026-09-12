@@ -93,6 +93,10 @@ class OperatorProfile:
     content_sha256: str
 
 
+class OperatorProfileEnvironmentError(ValueError):
+    """Invalid LOCALAPPDATA environment before any profile-state access."""
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class OperatorProfileLockToken:
     """Opaque process-local capability for one held profile lock."""
@@ -350,6 +354,51 @@ def load_operator_profile() -> OperatorProfile:
         state_root / OPERATOR_PROFILE_NAME,
         expected_parent_identity=state_root_identity,
     ).profile
+
+
+def load_operator_profile_if_present() -> OperatorProfile | None:
+    """Read a validated snapshot, confirming absence without creating state."""
+
+    try:
+        local_app_data = _validated_plain_root(operator_profile_path().parent.parent)
+    except (OSError, RuntimeError, ValueError):
+        raise OperatorProfileEnvironmentError(
+            "operator_profile_environment_invalid"
+        ) from None
+
+    local_identity = path_identity(local_app_data)
+    state_root = local_app_data / "HSConfig"
+    ancestor_guard = capture_plain_ancestor_guard(state_root)
+    with hold_plain_directory(
+        local_app_data, expected_identity=local_identity
+    ) as local_guard:
+        try:
+            state_status = local_guard.child_status("HSConfig")
+        except FileNotFoundError:
+            local_guard.validate()
+            ancestor_guard.validate()
+            return None
+        _require_physical_identity_lexical_bound(state_root)
+        _require_canonical_plain_directory(state_root)
+        state_identity = path_identity_from_status(state_status)
+        with local_guard.hold_child_directory(
+            "HSConfig", expected_identity=state_identity
+        ) as state_guard:
+            try:
+                state_guard.child_status(OPERATOR_PROFILE_NAME)
+            except FileNotFoundError:
+                state_guard.validate()
+                local_guard.validate()
+                ancestor_guard.validate()
+                return None
+            observation = _read_observation(
+                state_root / OPERATOR_PROFILE_NAME,
+                expected_parent_identity=state_identity,
+            )
+            state_guard.validate()
+            local_guard.validate()
+            ancestor_guard.validate()
+            return observation.profile
 
 
 def revalidate_operator_profile(profile: OperatorProfile) -> OperatorProfile:
@@ -1127,6 +1176,7 @@ __all__ = (
     "OPERATOR_PROFILE_MAX_BYTES",
     "OPERATOR_PROFILE_SCHEMA_VERSION",
     "OperatorProfile",
+    "OperatorProfileEnvironmentError",
     "OperatorProfileLease",
     "OperatorProfileLockToken",
     "derive_deck_output_binding",
@@ -1134,6 +1184,7 @@ __all__ = (
     "enable_operator_profile",
     "lease_operator_profile",
     "load_operator_profile",
+    "load_operator_profile_if_present",
     "operator_profile_path",
     "revalidate_operator_profile",
     "revalidate_operator_profile_lease",

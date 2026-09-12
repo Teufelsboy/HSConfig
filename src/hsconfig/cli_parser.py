@@ -441,9 +441,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     live_policy = subparsers.add_parser(
         "live-policy",
-        help="explicitly enable or disable the canonical live operator policy",
+        help="read-only status or explicit enable/disable of the live operator policy",
         description=(
-            "Explicitly mutate the one-time live operator policy. "
+            "Read-only status or explicit mutations of the one-time live operator policy. "
             "Every mutation requires an absent or exact predecessor assertion."
         ),
     )
@@ -451,6 +451,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="live_policy_action",
         required=True,
     )
+    live_policy_status = live_policy_actions.add_parser(
+        "status",
+        help="read a validated profile snapshot without locks or writes",
+        description="Read-only diagnostic snapshot; not a lease or live authorization.",
+    )
+    live_policy_status.add_argument("--json", action="store_true")
     live_policy_enable = live_policy_actions.add_parser(
         "enable",
         help="enable or explicitly rebind live-by-default roots",

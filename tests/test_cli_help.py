@@ -184,7 +184,7 @@ def test_contract_spine_sentinel_help_is_diagnostic_only(capsys):
     assert "--json" in help_text
 
 
-def test_live_policy_help_exposes_only_explicit_profile_mutations(capsys):
+def test_live_policy_help_preserves_explicit_profile_mutations(capsys):
     root_help = _subcommand_help("live-policy", capsys)
     assert "enable" in root_help
     assert "disable" in root_help
@@ -207,3 +207,14 @@ def test_live_policy_help_exposes_only_explicit_profile_mutations(capsys):
     assert "--expected-absent" not in disable_help
     assert "--runtime-root" not in disable_help
     assert "--output-base-root" not in disable_help
+
+
+@pytest.mark.parametrize("options, as_json", [([], False), (["--json"], True)])
+def test_live_policy_status_accepts_only_optional_json_without_mutation_requirements(
+    options, as_json
+):
+    args = _build_parser().parse_args(["live-policy", "status", *options])
+    assert args.live_policy_action == "status"
+    assert args.json is as_json
+    assert not hasattr(args, "expected_absent")
+    assert not hasattr(args, "expected_predecessor_sha256")

@@ -24,6 +24,7 @@ from hsconfig.operator_profile import (
     enable_operator_profile,
     lease_operator_profile,
     load_operator_profile,
+    load_operator_profile_if_present,
     operator_profile_path,
     revalidate_operator_profile,
     revalidate_operator_profile_lease,
@@ -268,6 +269,97 @@ def test_disable_preserves_bound_roots_and_only_changes_live_flag(
     }
     assert disabled.content_sha256 != enabled.content_sha256
     assert load_operator_profile() == disabled
+
+
+@pytest.mark.parametrize("state_exists", [False, True])
+def test_optional_load_revalidates_guards_before_confirming_absence(
+    tmp_path, monkeypatch, state_exists
+):
+    local_app_data, _runtime, _output = _layout(tmp_path, monkeypatch)
+    if state_exists:
+        operator_profile_path().parent.mkdir()
+    guard_type = package_io.PlainDirectoryMutationGuard
+    original_status = guard_type.child_status
+    original_validate = guard_type.validate
+    probed_absent = False
+
+    def child_status(guard, name):
+        nonlocal probed_absent
+        try:
+            return original_status(guard, name)
+        except FileNotFoundError:
+            probed_absent = True
+            raise
+
+    def validate(guard):
+        original_validate(guard)
+        if probed_absent:
+            raise ValueError("filesystem_path_identity_changed")
+
+    # Windows guards prevent real renames while held; inject the equivalent
+    # identity-validation failure only after the real missing-child probe.
+    monkeypatch.setattr(guard_type, "child_status", child_status)
+    monkeypatch.setattr(guard_type, "validate", validate)
+    with pytest.raises(ValueError, match="filesystem_path_identity_changed"):
+        load_operator_profile_if_present()
+    assert set(local_app_data.iterdir()) == (
+        {operator_profile_path().parent} if state_exists else set()
+    )
+
+
+def test_optional_load_does_not_turn_late_read_disappearance_into_absence(
+    tmp_path, monkeypatch
+):
+    _local, runtime, output = _layout(tmp_path, monkeypatch)
+    _enable(runtime, output)
+
+    original_status = package_io.PlainDirectoryMutationGuard.child_status
+
+    def disappeared(guard, name):
+        status = original_status(guard, name)
+        if name == operator_profile.OPERATOR_PROFILE_NAME:
+            operator_profile_path().unlink()
+        return status
+
+    monkeypatch.setattr(package_io.PlainDirectoryMutationGuard, "child_status", disappeared)
+    with pytest.raises(FileNotFoundError):
+        load_operator_profile_if_present()
+
+
+def test_optional_load_rejects_state_replaced_after_child_probe(tmp_path, monkeypatch):
+    local, _runtime, _output = _layout(tmp_path, monkeypatch)
+    state_root = local / "HSConfig"
+    state_root.mkdir()
+    original_status = package_io.PlainDirectoryMutationGuard.child_status
+    swapped = False
+
+    def replaced(guard, name):
+        nonlocal swapped
+        status = original_status(guard, name)
+        if name == "HSConfig" and not swapped:
+            swapped = True
+            state_root.rename(local / "previous-state")
+            state_root.mkdir()
+        return status
+
+    monkeypatch.setattr(package_io.PlainDirectoryMutationGuard, "child_status", replaced)
+    with pytest.raises(ValueError, match="identity_changed"):
+        load_operator_profile_if_present()
+
+
+def test_optional_load_environment_error_is_not_used_for_bound_root_failure(
+    tmp_path, monkeypatch
+):
+    _local, runtime, output = _layout(tmp_path, monkeypatch)
+    _enable(runtime, output)
+    runtime.rmdir()
+    with pytest.raises((OSError, ValueError)) as failure:
+        load_operator_profile_if_present()
+    assert not isinstance(failure.value, operator_profile.OperatorProfileEnvironmentError)
+    monkeypatch.setenv("LOCALAPPDATA", "private-relative-root")
+    with pytest.raises(operator_profile.OperatorProfileEnvironmentError) as failure:
+        load_operator_profile_if_present()
+    assert str(failure.value) == "operator_profile_environment_invalid"
 
 
 def test_normal_load_is_read_only_and_detects_self_digest_or_identity_drift(
