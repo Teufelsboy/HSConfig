@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,139 @@ from tests.test_live_start_controller import _frozen_live_start_inputs
 
 DECK_CODE = "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA="
 PRIVATE_CAUSE = "private raw acquisition log " * 2000
+
+
+_LEGACY_FAILURE_BYTES = b'{"apply_attempt_id":null,"candidate_revision":1,"configured_cards":null,"content_sha256":"sha256:50e3d6433542e622a3161bfd2d1a99998e711d154d56b04fe928577d081108fb","deck_config_ini_sha256":null,"deck_name":"ShadowPriest","deliberately_unconfigured_cards":null,"error_code":"deck_or_input_invalid","intent_kind":"live_start_result_intent","last_apply_receipt_sha256":null,"package_root_sha256":null,"physical_disposition":null,"publication_content_root_sha256":null,"publication_revision":null,"raw_apply_status":null,"retained_attempt_record_identity":null,"retained_attempt_record_path":null,"retained_attempt_record_sha256":null,"retained_candidate_identity":null,"retained_journal_identity":null,"retained_journal_path":null,"retained_journal_sha256":null,"retained_safe_state":"NO_PUBLICATION_OR_RUNTIME_WRITE","retained_target_owner_journal_identity":null,"retained_target_owner_journal_path":null,"retained_target_owner_journal_sha256":null,"review_confidence":null,"run_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","runtime_admission_identity":null,"runtime_admission_parent_identity":null,"runtime_admission_path":null,"runtime_admission_sha256":null,"runtime_match_sha256":null,"runtime_match_status":"not_run","runtime_state_sha256":null,"schema_version":1,"terminal_status":"FAILED_PRESERVED","unique_main_deck_cards":2,"visible_limitations":[]}'
+
+
+def _assert_valid_intent(intent):
+    value = dict(intent)
+    digest = value.pop("content_sha256")
+    checked = session.seal_embedded_document("result_intent", value)
+    assert checked["content_sha256"] == digest
+
+
+@pytest.mark.parametrize("schema,with_context", [(1, False), (1, True), (2, False), (2, True)])
+def test_failure_constructor_preserves_legacy_bytes_and_frozen_quality(schema, with_context):
+    current = SimpleNamespace(schema_version=schema, publication_binding=None, run_id="a" * 32,
+        deck_name="ShadowPriest", candidate_revision=1,
+        input_snapshot_manifest_sha256="sha256:" + "1" * 64,
+        research_binding={"request_sha256": "sha256:" + "2" * 64})
+    limitations = ["discovery_unavailable", "no_useful_observations", "source_context_incomplete"]
+    frozen = SimpleNamespace(
+        deck=FrozenJsonDocument.from_value({"deck_identity": {"cards": [{}, {}]}}),
+        manifest=SimpleNamespace(document=SimpleNamespace(content_sha256=current.input_snapshot_manifest_sha256)),
+        quality_inputs=FrozenJsonDocument.from_value({"research_request_sha256": current.research_binding["request_sha256"],
+                                                     "research_result": {"limitations": limitations}}))
+    context = None if not with_context else SimpleNamespace(document=FrozenJsonDocument.from_value({
+        "schema_version": 3 if schema == 2 else 2, "cards": [{}, {}],
+        "source_evidence": {"guide_builder_receipt": {"source_depth_status": "source_backed"},
+                            "guide_sources_summary": {"source_depth_status": "source_backed"}},
+        "research_evidence": {"limitations": limitations}}))
+    intent = controller._failure_result_intent(current=current, context=context, candidate=None,
+                                              error_code="deck_or_input_invalid", frozen=frozen)
+    _assert_valid_intent(intent)
+    if schema == 1:
+        assert FrozenJsonDocument.from_value(dict(intent)).canonical_json == _LEGACY_FAILURE_BYTES
+    else:
+        assert list(intent["visible_limitations"]) == sorted([
+            "Guide discovery was unavailable.", "No useful card-specific guide observations were retained.",
+            "Some selected guide excerpts omit adjacent context; review the limitation before relying on them.",
+        ])
+
+
+@pytest.mark.parametrize("defect", ["missing", "manifest", "request"])
+def test_contextless_quality_failure_rejects_missing_or_mismatched_frozen_quality(defect):
+    current = SimpleNamespace(schema_version=2, publication_binding=None, run_id="a" * 32,
+        deck_name="ShadowPriest", candidate_revision=1, input_snapshot_manifest_sha256="sha256:" + "1" * 64,
+        research_binding={"request_sha256": "sha256:" + "2" * 64})
+    frozen = SimpleNamespace(
+        deck=FrozenJsonDocument.from_value({"deck_identity": {"cards": [{}, {}]}}),
+        manifest=SimpleNamespace(document=SimpleNamespace(content_sha256="sha256:" + ("0" if defect == "manifest" else "1") * 64)),
+        quality_inputs=None if defect == "missing" else FrozenJsonDocument.from_value({
+            "research_request_sha256": "sha256:" + ("0" if defect == "request" else "2") * 64,
+            "research_result": {"limitations": []}}))
+    with pytest.raises(controller.SessionConflictError):
+        controller._failure_result_intent(current=current, context=None, candidate=None,
+                                         error_code="deck_or_input_invalid", frozen=frozen)
+
+
+class _CapturedFailureIntent(Exception):
+    pass
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+def test_contextless_quality_failure_preserves_frozen_research_at_actual_terminalize_seam(
+    tmp_path, local_state, monkeypatch, schema
+):
+    if schema == 2:
+        from tests.test_quality_live_start_controller import quality_request
+        from tests.test_quality_start_summary import _frozen_quality
+        request = quality_request.__wrapped__(tmp_path, monkeypatch)
+        prepared = _frozen_quality(request, tmp_path)
+    else:
+        code, frozen = _frozen_live_start_inputs(tmp_path)
+        monkeypatch.setattr(controller, "_capture_live_start_inputs", lambda *_: frozen)
+        prepared = controller._prepare_legacy_live_start(_request(deck_code=code))
+    root = prepared.run_root
+    current = load_live_start_session(root)
+    before = {p.name: p.read_bytes() for p in (root / "inputs").glob("*.json")}
+    captured = []
+
+    def stop(**kwargs):
+        captured.append(kwargs["changes"]["result_intent"])
+        raise _CapturedFailureIntent
+
+    monkeypatch.setattr(session, "_transition_receipt_authorized_under_lock", stop)
+    monkeypatch.setattr(controller, "_materialize_starter_context", lambda **_: pytest.fail("materialization"))
+    monkeypatch.setattr(controller, "fetch_card_snapshot", lambda **_: pytest.fail("acquisition"))
+    monkeypatch.setattr(controller, "plan_apply_package", lambda **_: pytest.fail("runtime"))
+    with session.lease_live_start_session(root) as lease:
+        with pytest.raises(_CapturedFailureIntent):
+            controller._terminalize_preapply_failure_under_lock(
+                session_lease=lease, current=current, context=None, candidate=None,
+                error_code="deck_or_input_invalid")
+    intent = captured[0]
+    _assert_valid_intent(intent)
+    assert intent["unique_main_deck_cards"] == 16
+    assert intent["configured_cards"] is None
+    assert intent["runtime_match_status"] == "not_run"
+    assert {p.name: p.read_bytes() for p in (root / "inputs").glob("*.json")} == before
+    if schema == 2:
+        assert list(intent["visible_limitations"]) == sorted([
+            "Guide discovery was unavailable.", "No useful card-specific guide observations were retained.",
+            "No retained observation has verified exact-deck guide identity.",
+        ])
+    else:
+        expected = FrozenJsonDocument.from_json_bytes(_LEGACY_FAILURE_BYTES).to_value()
+        expected.update(run_id=current.run_id, unique_main_deck_cards=16)
+        expected.pop("content_sha256")
+        expected["content_sha256"] = "sha256:" + sha256(session._canonical_json(expected)).hexdigest()
+        assert FrozenJsonDocument.from_value(dict(intent)).canonical_json == FrozenJsonDocument.from_value(expected).canonical_json
+
+
+@pytest.mark.parametrize("defect", ["missing", "request"])
+def test_contextless_quality_failure_invalid_frozen_input_stops_before_intent_capture(
+    tmp_path, monkeypatch, defect
+):
+    from tests.test_quality_live_start_controller import quality_request
+    from tests.test_quality_start_summary import _frozen_quality
+    request = quality_request.__wrapped__(tmp_path, monkeypatch)
+    prepared = _frozen_quality(request, tmp_path)
+    current = load_live_start_session(prepared.run_root)
+    path = prepared.run_root / "inputs/quality.json"
+    if defect == "missing":
+        path.unlink()
+    else:
+        quality = FrozenJsonDocument.from_json_bytes(path.read_bytes()).to_value()
+        quality["research_request_sha256"] = "sha256:" + "0" * 64
+        path.write_bytes(FrozenJsonDocument.from_value(quality).canonical_json)
+    monkeypatch.setattr(session, "_transition_receipt_authorized_under_lock", lambda **_: pytest.fail("invalid quality reached intent capture"))
+    with session.lease_live_start_session(prepared.run_root) as lease:
+        with pytest.raises((controller.SessionConflictError, OSError)):
+            controller._terminalize_preapply_failure_under_lock(
+                session_lease=lease, current=current, context=None, candidate=None,
+                error_code="deck_or_input_invalid")
 
 
 @pytest.fixture

@@ -499,15 +499,15 @@ def _observations(acquired: dict, metadata: dict) -> list[dict]:
     return rows[:12]
 
 
-def build_research_result(
+def validate_research_attempts(
     *,
     acquired: dict,
     discovery_outcome: str,
     attempts: list[dict],
     deadline_utc: float | None,
-    card_metadata: dict,
     acquisition_budget_exhausted: bool = False,
-) -> FrozenJsonDocument:
+) -> None:
+    """Validate persisted attempts without extracting observations or sealing a result."""
     if (
         discovery_outcome not in _OUTCOMES
         or type(attempts) is not list
@@ -559,6 +559,27 @@ def build_research_result(
         _public_url(row["url"]) for row in attempts if row["state"] == "completed"
     }:
         raise ValueError("research_attempt_record_mismatch")
+    # Preserve record-only, empty-metadata validation from the old extractor.
+    # Sparse records remain valid; these checks grant no source authority.
+    for record in records[:3]:
+        hash(record["evidence_id"])
+        if not isinstance(record.get("normalized_text", ""), str):
+            raise TypeError("research_source_normalized_text_invalid")
+
+
+def build_research_result(
+    *,
+    acquired: dict,
+    discovery_outcome: str,
+    attempts: list[dict],
+    deadline_utc: float | None,
+    card_metadata: dict,
+    acquisition_budget_exhausted: bool = False,
+) -> FrozenJsonDocument:
+    validate_research_attempts(
+        acquired=acquired, discovery_outcome=discovery_outcome, attempts=attempts,
+        deadline_utc=deadline_utc, acquisition_budget_exhausted=acquisition_budget_exhausted,
+    )
     observations = _observations(acquired, card_metadata)
     limitations = []
     if discovery_outcome != "completed":

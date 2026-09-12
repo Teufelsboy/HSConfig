@@ -8,6 +8,7 @@ from datetime import date
 import time
 import json
 import os
+import re
 import secrets
 import stat
 from collections.abc import Iterator, Mapping
@@ -3712,8 +3713,65 @@ def _materialize_starter_context(
     return path
 
 
-def _starter_context_limitations(context_value: Mapping[str, Any]) -> tuple[str, ...]:
+_RESEARCH_VISIBLE_MESSAGES = {
+    "discovery_unavailable": "Guide discovery was unavailable.",
+    "discovery_budget_exhausted": "The guide search budget was exhausted.",
+    "no_useful_observations": "No useful card-specific guide observations were retained.",
+    "no_verified_exact_guide_observations": "No retained observation has verified exact-deck guide identity.",
+    "acquisition_research_budget_exhausted": "The shared page-acquisition deadline was exhausted.",
+    "source_context_incomplete": "Some selected guide excerpts omit adjacent context; review the limitation before relying on them.",
+    "acquisition_failed": "A guide page could not be acquired.",
+    "acquisition_interrupted": "A guide page acquisition was interrupted.",
+    "acquisition_started": "A guide page acquisition has no completed result.",
+    "acquisition_source_body_too_large": "A guide page exceeded the permitted acquisition size.",
+    "acquisition_TimeoutError": "A guide page request timed out.",
+}
+_UNKNOWN_RESEARCH_LIMITATION = "Additional research limitations are present in the preserved evidence."
+_LIMITED_REVIEW_MESSAGE = "Independent reviewer confidence is limited."
+
+
+def _visible_research_limitations(
+    codes: object, *, review: ValidatedStarterReview | None = None
+) -> tuple[str, ...]:
+    if not isinstance(codes, (list, tuple)):
+        raise SessionConflictError("live_start_quality_limitations_invalid")
+    messages = set()
+    for code in codes:
+        if not isinstance(code, str):
+            raise SessionConflictError("live_start_quality_limitations_invalid")
+        if code in _RESEARCH_VISIBLE_MESSAGES:
+            messages.add(_RESEARCH_VISIBLE_MESSAGES[code])
+        elif re.fullmatch(r"acquisition_http_status_[1-5][0-9]{2}", code):
+            messages.add("A guide page returned an unsuccessful HTTP response.")
+        else:
+            messages.add(_UNKNOWN_RESEARCH_LIMITATION)
+    if review is not None and review.confidence == "limited":
+        messages.add(_LIMITED_REVIEW_MESSAGE)
+        messages.add("See the preserved review rationale bound to " + review.document.content_sha256 + ".")
+    result = tuple(sorted(messages))
+    if len(result) > 32 or any(
+        not message or len(message) > 256 or any(ord(c) < 32 for c in message)
+        for message in result
+    ):
+        raise SessionConflictError("live_start_quality_limitations_invalid")
+    return result
+
+
+def _starter_context_limitations(
+    context_value: Mapping[str, Any], *, review: ValidatedStarterReview | None = None
+) -> tuple[str, ...]:
     source_evidence = context_value.get("source_evidence")
+    if context_value.get("schema_version") == 3:
+        research = context_value.get("research_evidence")
+        receipt = source_evidence.get("guide_builder_receipt") if isinstance(source_evidence, Mapping) else None
+        depth = receipt.get("source_depth_status") if isinstance(receipt, Mapping) else None
+        if (not isinstance(research, Mapping) or "limitations" not in research
+            or not isinstance(depth, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", depth)):
+            raise SessionConflictError("live_start_quality_limitations_invalid")
+        messages = set(_visible_research_limitations(research["limitations"], review=review))
+        if depth != "source_backed":
+            messages.add("Guide depth is limited; static card semantics remain visible.")
+        return tuple(sorted(messages))
     summary = (
         source_evidence.get("guide_sources_summary")
         if isinstance(source_evidence, Mapping)
@@ -4283,7 +4341,10 @@ def _failure_result_intent(
     candidate: ValidatedStarterCandidate | None,
     error_code: str,
     frozen: FrozenCompilerInputs | None = None,
+    incoming_review: ValidatedStarterReview | None = None,
 ) -> Mapping[str, Any]:
+    if isinstance(getattr(current, "result_intent", None), Mapping):
+        return current.result_intent
     unique, configured, unconfigured = _candidate_counts(
         context=context,
         candidate=candidate,
@@ -4298,6 +4359,28 @@ def _failure_result_intent(
         publication_revision = None
         publication_sha256 = None
         retained_safe_state = "NO_PUBLICATION_OR_RUNTIME_WRITE"
+    limitations = _starter_context_limitations(context.document.to_value()) if context is not None else ()
+    confidence = None
+    if current.schema_version == 2:
+        if context is None:
+            if (frozen is None or frozen.quality_inputs is None
+                or frozen.manifest.document.content_sha256 != current.input_snapshot_manifest_sha256):
+                raise SessionConflictError("live_start_quality_failure_input_missing")
+            quality = frozen.quality_inputs.to_value()
+            if quality["research_request_sha256"] != current.research_binding["request_sha256"]:
+                raise SessionConflictError("live_start_quality_failure_input_changed")
+            limitations = _visible_research_limitations(quality["research_result"]["limitations"])
+        if incoming_review is not None:
+            if (context is None or candidate is None
+                or incoming_review.starter_context_sha256 != context.document.content_sha256
+                or incoming_review.candidate_sha256 != candidate.document.content_sha256
+                or incoming_review.candidate_revision != candidate.candidate_revision
+                or candidate.candidate_revision != current.candidate_revision):
+                raise SessionConflictError("live_start_quality_failure_review_changed")
+            confidence = incoming_review.confidence
+            if confidence == "limited":
+                # Incoming exhausted-budget feedback was validated, not installed.
+                limitations = tuple(sorted({*limitations, _LIMITED_REVIEW_MESSAGE}))
     return _session.seal_embedded_document(
         "result_intent",
         {
@@ -4310,11 +4393,8 @@ def _failure_result_intent(
             "unique_main_deck_cards": unique,
             "configured_cards": configured,
             "deliberately_unconfigured_cards": unconfigured,
-            "review_confidence": None,
-            "visible_limitations": list(
-                _starter_context_limitations(context.document.to_value())
-                if context is not None else ()
-            ),
+            "review_confidence": confidence,
+            "visible_limitations": list(limitations),
             "apply_attempt_id": None,
             "publication_revision": publication_revision,
             "publication_content_root_sha256": publication_sha256,
@@ -4372,6 +4452,7 @@ def _terminalize_preapply_failure_under_lock(
     context: StarterContext | None,
     candidate: ValidatedStarterCandidate | None,
     error_code: str,
+    incoming_review: ValidatedStarterReview | None = None,
 ) -> LiveStartResult:
     frozen = None
     if context is None:
@@ -4389,6 +4470,7 @@ def _terminalize_preapply_failure_under_lock(
         candidate=candidate,
         error_code=error_code,
         frozen=frozen,
+        incoming_review=incoming_review,
     )
     intent_cursor = _session._transition_receipt_authorized_under_lock(
         session_lease=session_lease,
@@ -4433,7 +4515,7 @@ def _quality_summary_progress(
     *, run_root: Path, current: LiveStartSession
 ) -> Mapping[str, Any]:
     from hsconfig.live_start_research import (
-        build_research_result,
+        validate_research_attempts,
         validate_research_draft,
     )
 
@@ -4507,14 +4589,144 @@ def _quality_summary_progress(
             if isinstance(attempt, Mapping)
         ):
             raise SessionConflictError("live_start_quality_progress_invalid")
-        build_research_result(
+        validate_research_attempts(
             acquired={"source_records": progress["source_records"]},
             discovery_outcome=draft["discovery_outcome"],
             attempts=progress["attempts"],
             deadline_utc=progress["deadline_utc"],
-            card_metadata={},
         )
     return progress
+
+
+def _read_quality_bound_document(
+    *, run_root: Path, current: LiveStartSession, logical: str, maximum_size: int
+) -> FrozenJsonDocument | None:
+    expected = current.artifact_bindings.get(logical)
+    if expected is None:
+        return None
+    raw = _read_plain_bytes(run_root / logical, maximum_size=maximum_size)
+    if _sha256_bytes(raw) != expected:
+        raise SessionConflictError("live_start_quality_input_changed")
+    document = FrozenJsonDocument.from_json_bytes(raw)
+    if document.canonical_json != raw:
+        raise SessionConflictError("live_start_quality_input_noncanonical")
+    return document
+
+
+def _quality_starter_document(document: FrozenJsonDocument) -> StarterDocument:
+    value = document.to_value()
+    if not isinstance(value, dict):
+        raise SessionConflictError("live_start_quality_starter_document_invalid")
+    return StarterDocument(document=document, content_sha256=value.get("content_sha256"))
+
+
+def _quality_bound_review(
+    *, run_root: Path, current: LiveStartSession, context: StarterContext
+) -> ValidatedStarterReview | None:
+    review_logical = "starter/starter_config_review.json"
+    if review_logical not in current.artifact_bindings:
+        return None
+    # Feedback is Session-canonical (with LF), unlike installed approvals.
+    # Inspect only captured-bound bytes; never re-open the session or old receipt.
+    feedback_phase = current.phase in {
+        LiveStartPhase.CANDIDATE_DRAFTED, LiveStartPhase.CANDIDATE_VALIDATED
+    } and current.revisions_used > 0
+    if feedback_phase:
+        raw = _read_plain_bytes(run_root / review_logical, maximum_size=STARTER_REVIEW_MAX_BYTES + 1)
+        if _sha256_bytes(raw) != current.artifact_bindings[review_logical]:
+            raise SessionConflictError("live_start_quality_input_changed")
+        if raw.endswith(b"\n"):
+            value = _session._decode_canonical_json(raw)
+            document = _quality_starter_document(FrozenJsonDocument.from_value(value))
+            unsigned = dict(value)
+            unsigned.pop("content_sha256", None)
+            revision = value.get("candidate_revision")
+            if (set(value) != QUALITY_STARTER_REVIEW_FIELDS
+                or type(value.get("schema_version")) is not int or value["schema_version"] != 3
+                or document.content_sha256 != _sha256_bytes(FrozenJsonDocument.from_value(unsigned).canonical_json)
+                or value.get("review_status") != "revision_requested"
+                or type(revision) is not int or not 1 <= revision <= current.revisions_used
+                or revision > current.candidate_revision
+                or (revision == current.candidate_revision and current.phase is not LiveStartPhase.CANDIDATE_DRAFTED)):
+                raise SessionConflictError("live_start_quality_review_binding_invalid")
+            return None
+    review_doc = _read_quality_bound_document(
+        run_root=run_root, current=current, logical=review_logical,
+        maximum_size=STARTER_REVIEW_MAX_BYTES,
+    )
+    candidate_doc = _read_quality_bound_document(
+        run_root=run_root, current=current, logical="starter/starter_config_candidate.json",
+        maximum_size=STARTER_CANDIDATE_MAX_BYTES,
+    )
+    if candidate_doc is None or "receipts/candidate_validation.json" not in current.artifact_bindings:
+        return None
+    candidate = validate_starter_candidate(_quality_starter_document(candidate_doc), context=context)
+    if candidate.candidate_revision != current.candidate_revision:
+        raise SessionConflictError("live_start_quality_candidate_revision_changed")
+    receipt = _load_quality_candidate_receipt(root=run_root, current=current)
+    review = validate_starter_review(
+        _quality_starter_document(review_doc), context=context, candidate=candidate,
+        validation_receipt=receipt,
+    )
+    if review.review_status != "approved":
+        raise SessionConflictError("live_start_quality_review_binding_invalid")
+    return review
+
+
+def _quality_available_limitations(
+    *, run_root: Path, current: LiveStartSession, progress: Mapping[str, Any]
+) -> tuple[str, ...]:
+    from hsconfig.input_snapshot_manifest import (
+        QUALITY_INPUT_FIELDS, validate_input_snapshot_manifest_document, validate_research_result,
+    )
+
+    if isinstance(current.result_intent, Mapping):
+        return tuple(current.result_intent["visible_limitations"])
+    if current.phase is LiveStartPhase.DISCOVERY_REQUIRED:
+        codes = []
+        draft = progress["draft"]
+        if draft is not None and draft["discovery_outcome"] != "completed":
+            codes.append("discovery_" + draft["discovery_outcome"])
+        codes.extend("acquisition_" + str(row["error"] or row["state"])
+                     for row in progress["attempts"] if row["state"] != "completed")
+        return tuple(sorted({"Guide research is not complete.", *_visible_research_limitations(codes)}))
+    manifest_logical = "inputs/input_snapshot_manifest.json"
+    quality_logical = "inputs/quality.json"
+    if any(logical not in current.artifact_bindings for logical in (manifest_logical, quality_logical)):
+        return ("Frozen research qualifications are not yet available.",)
+    manifest_doc = _read_quality_bound_document(
+        run_root=run_root, current=current, logical=manifest_logical,
+        maximum_size=_session.QUALITY_FILE_LIMITS[manifest_logical],
+    )
+    quality_doc = _read_quality_bound_document(
+        run_root=run_root, current=current, logical=quality_logical,
+        maximum_size=_session.QUALITY_FILE_LIMITS[quality_logical],
+    )
+    manifest = validate_input_snapshot_manifest_document(manifest_doc)
+    if manifest.document.content_sha256 != current.input_snapshot_manifest_sha256:
+        raise SessionConflictError("live_start_manifest_binding_changed")
+    quality = quality_doc.to_value()
+    binding = next((row for row in manifest.blobs if row.name == "quality_inputs"), None)
+    if (not isinstance(quality, dict) or set(quality) != QUALITY_INPUT_FIELDS
+        or binding is None or binding.sha256 != _sha256_bytes(quality_doc.canonical_json)
+        or binding.size_bytes != len(quality_doc.canonical_json) or binding.record_count != 1
+        or quality["research_request_sha256"] != current.research_binding["request_sha256"]):
+        raise SessionConflictError("live_start_quality_input_changed")
+    research = validate_research_result(quality["research_result"], card_ids=None)
+    context_doc = _read_quality_bound_document(
+        run_root=run_root, current=current, logical="starter/starter_context.json",
+        maximum_size=STARTER_CONTEXT_MAX_BYTES,
+    )
+    if context_doc is None:
+        return _visible_research_limitations(research["limitations"])
+    context = validate_starter_context_document(_quality_starter_document(context_doc))
+    value = context.document.to_value()
+    if (value["input_snapshot_manifest_sha256"] != manifest.document.content_sha256
+        or FrozenJsonDocument.from_value(value["research_evidence"]).canonical_json
+        != FrozenJsonDocument.from_value(research).canonical_json):
+        raise SessionConflictError("live_start_quality_context_binding_changed")
+    review = _quality_bound_review(run_root=run_root, current=current, context=context)
+    return _starter_context_limitations(value, review=review)
 
 
 def _quality_summary_runtime_write_state(current: LiveStartSession) -> str:
@@ -4670,12 +4882,7 @@ def quality_start_summary(*, run_root: Path) -> FrozenJsonDocument:
     draft = progress["draft"]
     urls = [] if draft is None else draft["urls"]
     source_records = progress["source_records"]
-    intent = current.result_intent
-    limitations = (
-        list(intent.get("visible_limitations", []))
-        if isinstance(intent, Mapping)
-        else []
-    )
+    limitations = list(_quality_available_limitations(run_root=root, current=current, progress=progress))
     return _sealed_diagnostic(
         {
             "schema_version": 2,
@@ -4879,7 +5086,7 @@ def _load_quality_state(*, root, current, profile):
     from hsconfig.card_snapshot import validated_card_snapshot
     from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
     from hsconfig.live_start_research import (
-        build_research_result,
+        validate_research_attempts,
         validate_research_draft,
         validate_research_request,
     )
@@ -5003,14 +5210,13 @@ def _load_quality_state(*, root, current, profile):
         or progress["deadline_utc"] is not None
     ):
         raise SessionConflictError("live_start_quality_attempt_before_draft")
-    build_research_result(
+    validate_research_attempts(
         acquired={"source_records": progress["source_records"]},
         discovery_outcome=(progress["draft"] or {}).get(
             "discovery_outcome", "unavailable"
         ),
         attempts=progress["attempts"],
         deadline_utc=progress["deadline_utc"],
-        card_metadata={},
     )
     return seed, deck, cards, snapshot, request, progress, output
 
@@ -5028,7 +5234,7 @@ def _quality_preparation(*, root):
         run_root=root,
         starter_context_path=path,
         candidate_revision=1,
-        visible_limitations=tuple(value["research_evidence"]["limitations"]),
+        visible_limitations=_starter_context_limitations(value),
     )
 
 
@@ -6074,6 +6280,7 @@ def validate_live_start_review(
                     context=context,
                     candidate=candidate,
                     error_code="revision_budget_exhausted",
+                    incoming_review=review,
                 ).summary
             source_path = _write_external_authority_source(
                 session_root=session_lease.session_root,
@@ -6301,10 +6508,15 @@ def _complete_held_live_result(
                 session_lease=session_lease, held=held
             ))
             intent.pop("content_sha256")
-            context = _load_bound_starter_context(session_root=session_lease.session_root)
-            intent["visible_limitations"] = list(_starter_context_limitations(context.document.to_value()))
-            if intent["review_confidence"] == "limited" and not intent["visible_limitations"]:
-                intent["visible_limitations"] = ["Independent reviewer confidence is limited."]
+            if current.schema_version == 2:
+                intent["visible_limitations"] = list(_quality_available_limitations(
+                    run_root=session_lease.session_root, current=current, progress={},
+                ))
+            else:
+                context = _load_bound_starter_context(session_root=session_lease.session_root)
+                intent["visible_limitations"] = list(_starter_context_limitations(context.document.to_value()))
+                if intent["review_confidence"] == "limited" and not intent["visible_limitations"]:
+                    intent["visible_limitations"] = ["Independent reviewer confidence is limited."]
             evidence = held.acknowledgement_evidence
             acknowledgement = (
                 None if evidence is None else _published_apply._sealed_attempt_acknowledgement(
@@ -6536,6 +6748,9 @@ def _continue_live_start_under_lock(
                         intent.update(
                             terminal_status="PREVIEW_READY",
                             review_confidence=approval.review.confidence,
+                            visible_limitations=list(_starter_context_limitations(
+                                approval.context.document.to_value(), review=approval.review,
+                            )),
                             error_code=None,
                             retained_safe_state="PUBLISHED_PREVIEW_RUNTIME_UNCHANGED",
                         )

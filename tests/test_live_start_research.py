@@ -503,6 +503,88 @@ def completed_attempts(acquired):
     ]
 
 
+@pytest.mark.parametrize("record,error", [
+    ({"source_url": "https://example.test/guide"}, KeyError),
+    *[({"source_url": "https://example.test/guide", "evidence_id": "e1", "normalized_text": text}, TypeError)
+      for text in (123, None, [], {})],
+    *[({"source_url": "https://example.test/guide", "evidence_id": evidence}, TypeError)
+      for evidence in ([], {})],
+    *[({"source_url": "https://example.test/guide", "evidence_id": evidence, **text}, None)
+      for evidence in ("e1", None, 123)
+      for text in ({}, {"normalized_text": ""}, {"normalized_text": "plain source text"})],
+])
+def test_persisted_attempt_validation_preserves_record_structure(record, error):
+    # Independent literal outcomes captured from old builder at aae2eb7 before
+    # this factoring: 7 KeyError/TypeError rejections and 9 sparse acceptances.
+    import hsconfig.live_start_research as research_module
+    acquired = {"source_records": [record]}
+    kwargs = dict(acquired=acquired, discovery_outcome="completed",
+                  attempts=completed_attempts(acquired), deadline_utc=100.0)
+    for validate in (
+        research_module.validate_research_attempts,
+        lambda **values: research_module.build_research_result(**values, card_metadata={}),
+    ):
+        if error:
+            with pytest.raises(error):
+                validate(**kwargs)
+        else:
+            validate(**kwargs)
+
+
+@pytest.mark.parametrize("defect", [
+    "outcome", "count", "state", "fields", "boolean_deadline", "infinite_deadline",
+    "nan_deadline", "missing_deadline", "pages", "duplicate_url", "orphan_record",
+    "completed_digest", "completed_error", "noncompleted_digest", "noncompleted_error",
+    "budget_type",
+])
+def test_persisted_attempt_validation_rejects_same_invalid_attempts(defect):
+    import hsconfig.live_start_research as research_module
+    record = {"source_url": "https://example.test/guide", "evidence_id": "e1"}
+    acquired = {"source_records": [record]}
+    kwargs = dict(acquired=acquired, discovery_outcome="completed",
+                  attempts=completed_attempts(acquired), deadline_utc=100.0)
+    attempt = kwargs["attempts"][0]
+    if defect == "outcome":
+        kwargs["discovery_outcome"] = "invented"
+    elif defect == "count":
+        kwargs["attempts"] *= 4
+    elif defect == "state":
+        attempt["state"] = "invented"
+    elif defect == "fields":
+        attempt["extra"] = None
+    elif defect == "boolean_deadline":
+        kwargs["deadline_utc"] = True
+    elif defect == "infinite_deadline":
+        kwargs["deadline_utc"] = float("inf")
+    elif defect == "nan_deadline":
+        kwargs["deadline_utc"] = float("nan")
+    elif defect == "missing_deadline":
+        kwargs["deadline_utc"] = None
+    elif defect == "pages":
+        acquired["source_records"] *= 4
+    elif defect == "duplicate_url":
+        kwargs["attempts"] *= 2
+    elif defect == "orphan_record":
+        kwargs["attempts"] = []
+    elif defect == "completed_digest":
+        attempt["record_sha256"] = "sha256:" + "0" * 64
+    elif defect == "completed_error":
+        attempt["error"] = "failed"
+    elif defect.startswith("noncompleted"):
+        acquired["source_records"] = []
+        attempt["state"] = "failed"
+        if defect == "noncompleted_error":
+            attempt.update(record_sha256=None, error=123)
+    else:
+        kwargs["acquisition_budget_exhausted"] = 1
+    for validate in (
+        research_module.validate_research_attempts,
+        lambda **values: research_module.build_research_result(**values, card_metadata={}),
+    ):
+        with pytest.raises(ValueError):
+            validate(**kwargs)
+
+
 def synthetic_source_record(text, *, index=1, conflicts=(), source_url=None):
     return {
         "source_url": source_url or f"https://example.test/guide-{index}",

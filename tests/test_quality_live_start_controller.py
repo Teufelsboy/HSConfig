@@ -847,6 +847,20 @@ def test_quality_approved_preview_has_full_receipt_and_strict_derivation(
     )
     result = controller.finalize_live_start(session_root=prepared.run_root)
     assert result.status == "PREVIEW_READY"
+    limits = result.summary.to_value()["visible_limitations"]
+    assert "Guide discovery was unavailable." in limits
+    assert "No useful card-specific guide observations were retained." in limits
+    assert "Independent reviewer confidence is limited." in limits
+    assert "See the preserved review rationale bound to " + review.content_sha256 + "." in limits
+    intent_before = load_live_start_session(prepared.run_root).result_intent
+    with monkeypatch.context() as preserved:
+        from tests.test_quality_start_summary import _no_research_generation
+        _no_research_generation(preserved)
+        preserved.setattr(controller, "_read_quality_bound_document", lambda **_: pytest.fail("existing intent read new qualifications"))
+        preserved.setattr(controller, "_quality_bound_review", lambda **_: pytest.fail("existing intent read new review"))
+        projected = controller.quality_start_summary(run_root=prepared.run_root).to_value()
+    assert projected["visible_limitations"] == list(intent_before["visible_limitations"])
+    assert load_live_start_session(prepared.run_root).result_intent == intent_before
     from pathlib import Path
     from hsconfig.visionai_registry import (
         optimized_start_report_paths_for_manifest,
@@ -970,3 +984,87 @@ def test_quality_revision_resume_requires_original_receipt(
             controller.resume_live_start(session_root=prepared.run_root)
     after = load_live_start_session(prepared.run_root)
     assert (after.candidate_revision, after.revisions_used) == (1, 1)
+
+
+@pytest.mark.parametrize("confidence", ["limited", "high", None])
+def test_exhausted_review_budget_retains_only_current_incoming_confidence(
+    quality_request, tmp_path, monkeypatch, confidence
+):
+    from tests.test_quality_start_summary import _approved_quality
+    from tests.test_quality_starter_candidate import quality_draft, seal_quality_candidate
+    from tests.test_quality_starter_review import quality_review
+    import hsconfig.live_start_session as session
+    import hsconfig.runtime_apply as runtime
+
+    prepared, context, candidate, receipt, _ = _approved_quality(quality_request, tmp_path, install_review=False)
+    review_path = tmp_path / "revision-review.json"
+    candidate_path = tmp_path / "next-candidate.json"
+
+    def feedback(current_confidence):
+        return quality_review(context, candidate, receipt, mutate=lambda value: value.update(
+            confidence=current_confidence, review_status="revision_requested", revision_requests=[{
+                "code": "tighten-mulligan", "target": "mulligan", "message": "Keep only the strongest opener."
+            }]))
+
+    previous = None
+    for revision in (1, 2):
+        previous = feedback("high" if confidence == "limited" else "limited")
+        value = previous.to_value()
+        value.pop("content_sha256")
+        review_path.write_bytes(FrozenJsonDocument.from_value(value).canonical_json)
+        controller.validate_live_start_review(session_root=prepared.run_root, draft_path=review_path)
+        draft = quality_draft(context)
+        draft["candidate_revision"] = revision + 1
+        candidate_path.write_bytes(FrozenJsonDocument.from_value(draft).canonical_json)
+        if revision == 2 and confidence is None:
+            break
+        receipt = controller.validate_live_start_candidate(session_root=prepared.run_root, draft_path=candidate_path)
+        candidate = controller.validate_starter_candidate(seal_quality_candidate(draft), context=context)
+
+    external = prepared.run_root.parent.parent / "contexts" / prepared.run_root.name / "review-revision-r2-u1.json"
+    before_review = external.read_bytes()
+    assert before_review == session._canonical_json(previous.to_value())
+    if confidence is not None:
+        assert not (prepared.run_root / "starter/starter_config_review.json").exists()
+        assert "starter/starter_config_review.json" not in load_live_start_session(prepared.run_root).artifact_bindings
+    intents = []
+
+    class Stop(Exception):
+        pass
+
+    def stop(**kwargs):
+        if "result_intent" in kwargs.get("changes", {}):
+            intents.append(kwargs["changes"]["result_intent"])
+            raise Stop
+        return transition(**kwargs)
+
+    transition = session._transition_receipt_authorized_under_lock
+    monkeypatch.setattr(session, "_transition_receipt_authorized_under_lock", stop)
+    monkeypatch.setattr(runtime, "apply_package", lambda **_: pytest.fail("runtime write"))
+    monkeypatch.setattr(runtime, "install_runtime_package", lambda **_: pytest.fail("runtime write"))
+    if confidence is None:
+        # Third technically invalid candidate consumes no incoming review confidence.
+        draft["card_dispositions"] = []
+        candidate_path.write_bytes(FrozenJsonDocument.from_value(draft).canonical_json)
+        with pytest.raises(Stop):
+            controller.validate_live_start_candidate(session_root=prepared.run_root, draft_path=candidate_path)
+    else:
+        current = load_live_start_session(prepared.run_root)
+        assert current.phase is session.LiveStartPhase.CANDIDATE_VALIDATED
+        assert current.candidate_revision == 3 and current.revisions_used == 2
+        incoming = feedback(confidence)
+        value = incoming.to_value()
+        value.pop("content_sha256")
+        review_path.write_bytes(FrozenJsonDocument.from_value(value).canonical_json)
+        with pytest.raises(Stop):
+            controller.validate_live_start_review(session_root=prepared.run_root, draft_path=review_path)
+    intent = intents[0]
+    assert intent["terminal_status"] == "FAILED_PRESERVED"
+    assert intent["error_code"] == "revision_budget_exhausted"
+    assert intent["review_confidence"] == confidence
+    assert ("Independent reviewer confidence is limited." in intent["visible_limitations"]) == (confidence == "limited")
+    assert not any("rationale" in row for row in intent["visible_limitations"])
+    assert external.read_bytes() == before_review
+    assert not (prepared.run_root / "starter/starter_config_review.json").exists()
+    assert "starter/starter_config_review.json" not in load_live_start_session(prepared.run_root).artifact_bindings
+    assert intent["runtime_match_status"] == "not_run"
