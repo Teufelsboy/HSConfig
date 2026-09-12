@@ -16,6 +16,8 @@ from hsconfig.starter_candidate import (
     _quality_globalvalues_semantic_projection,
     _validate_mulligan_rows,
     changed_globalvalue_keys,
+    changed_semantic_globalvalue_keys,
+    semantic_globalvalues_projection,
     validate_starter_candidate,
 )
 from hsconfig.starter_context import (
@@ -29,6 +31,7 @@ from hsconfig.starter_contract import (
     REVIEW_CONFIDENCE,
     REVIEW_STATUSES,
     REVIEW_TARGETS,
+    SEMANTIC_STARTER_SCHEMA_VERSION,
     SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION,
     STARTER_REVIEW_FIELDS,
     STARTER_REVIEW_ID_MAX_CHARS,
@@ -37,9 +40,12 @@ from hsconfig.starter_contract import (
     STARTER_REVIEW_REQUEST_CODE_MAX_CHARS,
     STARTER_REVIEW_REQUEST_MESSAGE_MAX_CHARS,
     STARTER_REVIEW_SUMMARY_MAX_CHARS,
+    live_contract_for_context_version,
+    require_live_starter_contract,
     validate_candidate_revision,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
+from hsconfig.starter_semantics import semantic_selector
 
 
 _REVIEW_REQUEST_FIELDS = frozenset({"code", "target", "message"})
@@ -51,6 +57,7 @@ _REVIEW_FACTS_FIELDS = frozenset(
         "runtime_authorized", "content_sha256",
     }
 )
+_SEMANTIC_REVIEW_FACTS_FIELDS = _REVIEW_FACTS_FIELDS | {"validation_scope"}
 _CLOSED_IDENTIFIER_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 _CONTENT_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _WINDOWS_DRIVE_PATH_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]")
@@ -153,7 +160,7 @@ def validate_starter_review(
     )
     if candidate_sha256 != fresh_candidate.document.content_sha256:
         raise ValueError("starter_review_candidate_sha256_invalid")
-    if value["schema_version"] == QUALITY_STARTER_SCHEMA_VERSION:
+    if value["schema_version"] in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}:
         _validate_quality_receipt(
             validation_receipt,
             context=fresh_context,
@@ -195,6 +202,8 @@ def build_candidate_review_facts(
     context = _fresh_context(context)
     candidate = _fresh_candidate(candidate, context=context)
     context_value = context.document.to_value()
+    if context_value["schema_version"] == SEMANTIC_STARTER_SCHEMA_VERSION:
+        return _build_semantic_review_facts(context=context, candidate=candidate)
     if context_value["schema_version"] != QUALITY_STARTER_SCHEMA_VERSION:
         raise ValueError("starter_review_context_invalid")
     value = candidate.document.to_value()
@@ -302,6 +311,107 @@ def build_candidate_review_facts(
     )
 
 
+def _build_semantic_review_facts(
+    *, context: StarterContext, candidate: ValidatedStarterCandidate,
+) -> FrozenJsonDocument:
+    """Project freshly reconstructed semantic decisions without reordering execution."""
+    context_value = context.document.to_value()
+    value = candidate.document.to_value()
+    baseline = context_value["globalvalues_baseline"]["values"]
+    desired = candidate.globalvalues.to_value()
+    before = semantic_globalvalues_projection(baseline)
+    after = semantic_globalvalues_projection(desired)
+    changes = {
+        key: {"before": before[key], "after": after[key],
+              "justification": value["globalvalues_justifications"][key]}
+        for key in changed_semantic_globalvalue_keys(baseline, desired)
+    }
+    physical_cards = {row["card_id"]: row["count"] for row in context_value["cards"]}
+    rules = []
+    # Runtime indices belong to accepted decisions, before physical-card coverage.
+    for index, (rule, row) in enumerate(
+        zip(candidate.mulligan_plan.rules, value["mulligan"], strict=True), start=1,
+    ):
+        selector = semantic_selector(
+            {"selector": json.loads(rule.selector_canonical_json),
+             "selector_kind": rule.selector_kind}, physical_cards,
+        )
+        for card_id in selector["selector_cards"]:
+            rules.append({
+                "rule_id": row["rule_id"], "runtime_card_id": card_id,
+                "source_card_ids": list(selector["selector_cards"]), "surface": "Mulligan",
+                "condition": json.loads(rule.condition_canonical_json), "action": rule.action,
+                "selector_kind": selector["selector_kind"],
+                "normalized_selector": selector["selector"],
+                "selector_multiset": selector["selector_multiset"],
+                "evaluation_index": index,
+                "rationale": value["rule_rationales"][row["rule_id"]],
+                "rule_justification": value["rule_justifications"][row["rule_id"]],
+            })
+    owner_indices: dict[tuple[str, str], int] = {}
+    for document in candidate.card_behavior_rows:
+        row = document.to_value()
+        owner = (row["runtime_card_id"], row["behavior_block"])
+        owner_indices[owner] = owner_indices.get(owner, 0) + 1
+        rule_id = row["rule_id_suffix"]
+        rules.append({
+            "rule_id": rule_id, "runtime_card_id": row["runtime_card_id"],
+            "source_card_ids": [row["source_card_id"]], "surface": row["behavior_block"],
+            "condition": row["condition"], "value": row["value"], "link_kind": row["link_kind"],
+            "evaluation_index": owner_indices[owner],
+            "rationale": value["rule_rationales"][rule_id],
+            "rule_justification": value["rule_justifications"][rule_id],
+        })
+    for index, decision in enumerate(candidate.combo_plan.decisions, start=1):
+        row = value["combo"]
+        for card_id in decision.cards:
+            rules.append({
+                "rule_id": row["rule_id"], "runtime_card_id": card_id,
+                "source_card_ids": list(decision.cards), "surface": "Combo",
+                "condition": decision.condition, "timing": row["timing"],
+                "values": list(decision.values), "evaluation_index": index,
+                "rationale": value["rule_rationales"][row["rule_id"]],
+                "rule_justification": value["rule_justifications"][row["rule_id"]],
+            })
+    known_refs = _known_evidence_references(context_value)
+    refs = {
+        ref for change in changes.values()
+        for ref in change["justification"]["evidence_refs"]
+    } | {
+        ref for basis in value["rule_justifications"].values()
+        for ref in basis["evidence_refs"]
+    }
+    research_conflicts = [
+        {"observation_id": row["observation_id"], "conflict": conflict}
+        for row in context_value["research_evidence"]["observations"]
+        for conflict in row["conflicts"]
+    ]
+    facts = {
+        "schema_version": 2,
+        "starter_context_sha256": context.document.content_sha256,
+        "candidate_sha256": candidate.document.content_sha256,
+        "candidate_id": candidate.candidate_id, "candidate_revision": candidate.candidate_revision,
+        "globalvalues_changes": changes,
+        "card_dispositions": sorted(value["card_dispositions"], key=lambda row: row["card_id"]),
+        "rules_by_runtime_owner": sorted(
+            rules, key=lambda row: (row["runtime_card_id"], row["surface"], row["evaluation_index"], row["rule_id"]),
+        ),
+        "evidence_references": [{"reference_id": ref, "kind": known_refs[ref]} for ref in sorted(refs)],
+        "assumptions": value["assumptions"],
+        "findings": {"runtime_duplicates": [], "runtime_conflicts": [],
+                     "research_conflicts": sorted(research_conflicts, key=_canonical_json_bytes)},
+        "runtime_authorized": False,
+        "validation_scope": {
+            "structural_checks": ["exact_duplicate", "identical_condition_conflict",
+                                  "owner_surface", "condition_context", "opening_copy_count"],
+            "semantic_coherence": "independent_review_required", "overlap_analysis": "not_exhaustive",
+        },
+    }
+    return FrozenJsonDocument.from_value(seal_starter_document(
+        facts, expected_fields=_SEMANTIC_REVIEW_FACTS_FIELDS, schema_version=2,
+    ).to_value())
+
+
 def _validate_quality_receipt(
     receipt: FrozenJsonDocument | None,
     *,
@@ -313,6 +423,9 @@ def _validate_quality_receipt(
     if type(receipt) is not FrozenJsonDocument:
         raise ValueError(error)
     try:
+        contract = require_live_starter_contract(live_contract_for_context_version(
+            context.document.to_value()["schema_version"],
+        ))
         value = receipt.to_value()
         if set(value) != QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS:
             raise ValueError(error)
@@ -321,11 +434,11 @@ def _validate_quality_receipt(
         sealed = seal_starter_document(
             unsigned,
             expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS,
-            schema_version=2,
+            schema_version=contract.validation_receipt,
         )
         if (
             type(value["schema_version"]) is not int
-            or value["schema_version"] != 2
+            or value["schema_version"] != contract.validation_receipt
             or value["receipt_kind"] != "candidate_validation"
             or type(value["run_id"]) is not str
             or re.fullmatch(r"[0-9a-f]{32}", value["run_id"]) is None
@@ -363,7 +476,8 @@ def _fresh_context(context: StarterContext) -> StarterContext:
         raise ValueError("starter_review_context_invalid")
     if (
         fresh.document.to_value().get("schema_version")
-        not in {SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION, QUALITY_STARTER_SCHEMA_VERSION}
+        not in {SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION, QUALITY_STARTER_SCHEMA_VERSION,
+                SEMANTIC_STARTER_SCHEMA_VERSION}
     ):
         raise ValueError("starter_review_context_invalid")
     return fresh
@@ -404,12 +518,13 @@ def _validated_review_document_value(
         type(schema_version) is not int
         or schema_version not in {
             SINGLE_CANDIDATE_STARTER_SCHEMA_VERSION, QUALITY_STARTER_SCHEMA_VERSION,
+            SEMANTIC_STARTER_SCHEMA_VERSION,
         }
     ):
         raise ValueError("starter_review_schema_version_invalid")
     fields = (
         QUALITY_STARTER_REVIEW_FIELDS
-        if schema_version == QUALITY_STARTER_SCHEMA_VERSION
+        if schema_version in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}
         else STARTER_REVIEW_FIELDS
     )
     if set(value) != fields:

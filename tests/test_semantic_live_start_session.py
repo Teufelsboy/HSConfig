@@ -516,3 +516,139 @@ def test_rebuilt_semantic_facts_header_rejects_old_or_bool(bad):
         sessions._require_semantic_facts_version(
             {"schema_version": bad}, contract=SEMANTIC_LIVE_CONTRACT
         )
+
+
+def _completed_semantic_facts_fixture(tmp_path, monkeypatch):
+    """Real schema4 validators and facts2; no future controller producer stub."""
+    from hsconfig.starter_context import build_semantic_starter_context
+    from tests.test_semantic_starter_candidate import semantic_draft, validate
+    from tests.test_semantic_starter_review import semantic_receipt
+
+    root, current, frozen, documents = _bootstrap_frozen(tmp_path, monkeypatch)
+    current = _finish_freeze(root, current, documents)
+    context = build_semantic_starter_context(frozen)
+    candidate = validate(semantic_draft(context), context)
+    receipt = semantic_receipt(context, candidate, run_id=current.run_id)
+    assert context.document.to_value()["schema_version"] == 4
+    assert candidate.document.to_value()["schema_version"] == 4
+    assert receipt.to_value()["review_facts"]["schema_version"] == 2
+    value = current.to_value()
+    for logical, raw in {
+        "starter/starter_context.json": context.document.canonical_json,
+        "starter/starter_config_candidate.json": candidate.document.canonical_json,
+    }.items():
+        path = root / logical
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(raw)
+        value["artifact_bindings"][logical] = sessions._bytes_sha256(raw)
+    return root, _install_semantic_facts_receipt(root, value, receipt), receipt
+
+
+def _install_semantic_facts_receipt(root, value, receipt):
+    # Embedded digest seals no-LF canonical JSON; session binds these LF bytes.
+    raw = receipt.canonical_json + b"\n"
+    assert len(raw) <= 256 * 1024
+    sessions.validate_validation_receipt(
+        receipt_kind="candidate_validation", value=receipt.to_value(),
+        run_id=value["run_id"], candidate_revision=1,
+    )
+    (root / "receipts").mkdir(exist_ok=True)
+    (root / "receipts/candidate_validation.json").write_bytes(raw)
+    value["artifact_bindings"]["receipts/candidate_validation.json"] = sessions._bytes_sha256(raw)
+    value["phase"] = "CANDIDATE_VALIDATED"
+    value.pop("content_sha256", None)
+    sealed = sessions._seal_session_value(value, session_identity=None)
+    (root / "session.json").write_bytes(sealed.canonical_json)
+    return sessions.load_live_start_session(root)
+
+
+def _semantic_completed_consumer_outcomes(root, current, receipt):
+    """Observe both real consumers even when the first unexpectedly admits facts."""
+    outcomes = []
+    try:
+        sessions._require_completed_receipt_binding(
+            session=current, session_root=root, receipt_kind="candidate_validation",
+            receipt=receipt.to_value(),
+            receipt_bytes_sha256=sessions._bytes_sha256(receipt.canonical_json + b"\n"),
+            receipt_logical_path="receipts/candidate_validation.json",
+        )
+    except sessions.SessionConflictError as error:
+        outcomes.append(str(error))
+    else:
+        outcomes.append(None)
+    try:
+        with sessions.lease_live_start_session(root) as lease:
+            resumed = sessions.validate_resume_under_lock(
+                session_lease=lease, expected_deck_code_sha256=current.deck_code_sha256,
+                expected_input_snapshot_manifest_sha256=current.input_snapshot_manifest_sha256,
+            )
+            assert resumed.phase == current.phase
+    except sessions.SessionConflictError as error:
+        outcomes.append(str(error))
+    else:
+        outcomes.append(None)
+    return outcomes
+
+
+def test_semantic_completed_facts_accept_direct_and_resume(tmp_path, monkeypatch):
+    """Break: valid real semantic facts cannot reach completed receipt/resume authority."""
+    root, current, receipt = _completed_semantic_facts_fixture(tmp_path, monkeypatch)
+    assert _semantic_completed_consumer_outcomes(root, current, receipt) == [None, None]
+
+
+@pytest.mark.parametrize("field", ["evaluation_index", "count"])
+@pytest.mark.parametrize("substitution", [True, 1.0], ids=["bool", "float"])
+def test_semantic_completed_facts_reject_numeric_type_substitution(
+    tmp_path, monkeypatch, field, substitution,
+):
+    """Break: Python nested equality equates int1 with boolTrue or float1.0."""
+    from hsconfig.starter_contract import QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS
+    from hsconfig.starter_document import seal_starter_document
+
+    root, current, original = _completed_semantic_facts_fixture(tmp_path, monkeypatch)
+    assert _semantic_completed_consumer_outcomes(root, current, original) == [None, None]
+    value = original.to_value()
+    facts = value["review_facts"]
+    original_inner_digest = facts["content_sha256"]
+    row = next(r for r in facts["rules_by_runtime_owner"] if r["surface"] == "Mulligan")
+    target = row if field == "evaluation_index" else row["selector_multiset"][0]
+    assert type(target[field]) is int and target[field] == 1
+    target[field] = substitution
+    assert facts["content_sha256"] == original_inner_digest
+    assert facts == original.to_value()["review_facts"]  # The old lossy comparison admits it.
+    assert FrozenJsonDocument.from_value(facts).canonical_json != FrozenJsonDocument.from_value(original.to_value()["review_facts"]).canonical_json
+    value.pop("content_sha256")
+    tampered = FrozenJsonDocument.from_value(seal_starter_document(
+        value, expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS, schema_version=3,
+    ).to_value())
+    context_binding = current.artifact_bindings["starter/starter_context.json"]
+    candidate_binding = current.artifact_bindings["starter/starter_config_candidate.json"]
+    current = _install_semantic_facts_receipt(root, current.to_value(), tampered)
+    assert current.artifact_bindings["starter/starter_context.json"] == context_binding
+    assert current.artifact_bindings["starter/starter_config_candidate.json"] == candidate_binding
+    assert _semantic_completed_consumer_outcomes(root, current, tampered) == [
+        "live_start_candidate_review_facts_changed", "live_start_candidate_review_facts_changed",
+    ], "Direct or resume DID NOT RAISE the exact fresh-facts mismatch"
+
+
+def test_semantic_completed_facts_reject_resealed_inner_mutation(tmp_path, monkeypatch):
+    """Control: a resealed inner mutation already differs by its inner digest."""
+    from hsconfig.starter_contract import QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS
+    from hsconfig.starter_document import seal_starter_document
+
+    root, current, original = _completed_semantic_facts_fixture(tmp_path, monkeypatch)
+    value = original.to_value()
+    facts = value["review_facts"]
+    fields = frozenset(facts)
+    facts.pop("content_sha256")
+    facts["rules_by_runtime_owner"][0]["evaluation_index"] = 99
+    value["review_facts"] = seal_starter_document(facts, expected_fields=fields, schema_version=2).to_value()
+    assert value["review_facts"]["content_sha256"] != original.to_value()["review_facts"]["content_sha256"]
+    value.pop("content_sha256")
+    tampered = FrozenJsonDocument.from_value(seal_starter_document(
+        value, expected_fields=QUALITY_CANDIDATE_VALIDATION_RECEIPT_FIELDS, schema_version=3,
+    ).to_value())
+    current = _install_semantic_facts_receipt(root, current.to_value(), tampered)
+    assert _semantic_completed_consumer_outcomes(root, current, tampered) == [
+        "live_start_candidate_review_facts_changed", "live_start_candidate_review_facts_changed",
+    ]

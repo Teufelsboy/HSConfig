@@ -12596,10 +12596,14 @@ def _require_completed_receipt_binding(
                     "candidate_sha256": candidate.document.content_sha256,
                 }
             )
-            rebuilt_facts = build_candidate_review_facts(context=context, candidate=candidate).to_value()
+            rebuilt_document = build_candidate_review_facts(context=context, candidate=candidate)
+            rebuilt_facts = rebuilt_document.to_value()
             if contract is SEMANTIC_LIVE_CONTRACT:
                 _require_semantic_facts_version(rebuilt_facts, contract=contract)
-            if _thaw(receipt["review_facts"]) != rebuilt_facts:
+                if (FrozenJsonDocument.from_value(_thaw(receipt["review_facts"])).canonical_json
+                        != rebuilt_document.canonical_json):
+                    raise SessionConflictError("live_start_candidate_review_facts_changed")
+            elif _thaw(receipt["review_facts"]) != rebuilt_facts:
                 raise SessionConflictError("live_start_candidate_review_facts_changed")
     if receipt_kind in {"review_validation", "package_validation"}:
         expected["review_sha256"] = bindings.get(
