@@ -265,6 +265,160 @@ def completed_attempts(acquired):
     ]
 
 
+def synthetic_source_record(text, *, index=1, conflicts=(), source_url=None):
+    return {
+        "source_url": source_url or f"https://example.test/guide-{index}",
+        "evidence_id": f"guide-{index}",
+        "content_sha256": f"{index:064x}",
+        "retrieved_at": "2026-09-09T00:00:00Z",
+        "normalized_text": text,
+        "conflicts": list(conflicts),
+    }
+
+
+def projected_observations(*records):
+    acquired = {"source_records": list(records)}
+    return (
+        research()
+        .build_research_result(
+            acquired=acquired,
+            discovery_outcome="completed",
+            attempts=completed_attempts(acquired),
+            deadline_utc=100.0,
+            card_metadata=METADATA,
+        )
+        .to_value()["observations"]
+    )
+
+
+def test_late_opening_decision_displaces_named_boilerplate():
+    navigation = [f"Alpha Mage archive {index}." for index in range(4)]
+    decision = "Mulligan: keep Alpha Mage."
+
+    observations = projected_observations(
+        synthetic_source_record(" ".join([*navigation, decision]))
+    )
+
+    assert len(observations) == 4
+    assert observations[-1]["supporting_text"] == decision
+
+
+def test_selected_six_hundred_character_excerpt_is_not_rewritten():
+    prefix = "Mulligan: never keep Alpha Mage unless Beta Spell is present "
+    decision = prefix + "x" * (600 - len(prefix))
+    navigation = [f"Alpha Mage archive {index}." for index in range(4)]
+
+    observations = projected_observations(
+        synthetic_source_record("\n".join([*navigation, decision]))
+    )
+
+    assert observations[-1]["supporting_text"] == decision
+    assert len(observations[-1]["supporting_text"]) == 600
+
+
+def test_selected_excerpt_keeps_negation_and_condition():
+    prefix = "Mulligan: never keep Alpha Mage unless Beta Spell is present "
+    decision = prefix + "x" * (600 - len(prefix))
+    navigation = [f"Alpha Mage archive {index}." for index in range(4)]
+
+    result = research()._select_observation_snippets(navigation + [decision])
+
+    assert len(result) == 4
+    assert result[-1] == decision
+    assert len(result[-1]) == 600
+
+
+def test_opposing_opening_excerpts_keep_source_order_and_conflicts():
+    navigation = [f"Alpha Mage archive {index}." for index in range(4)]
+    keep = "Mulligan: keep Alpha Mage."
+    discard = "Mulligan: never keep Alpha Mage."
+
+    observations = projected_observations(
+        synthetic_source_record(
+            " ".join([*navigation, keep, discard]),
+            conflicts=("existing-conflict",),
+        )
+    )
+
+    opposing = [
+        row for row in observations if row["supporting_text"] in {keep, discard}
+    ]
+    assert [row["supporting_text"] for row in opposing] == [keep, discard]
+    assert all(row["conflicts"] == ["existing-conflict"] for row in opposing)
+
+
+def test_separate_exception_and_opening_rule_are_both_retained():
+    keep = "Mulligan: keep Alpha Mage."
+    exception = "Exception: Alpha Mage is too slow against control."
+    later = [f"Opening hand: keep Alpha Mage in matchup {index}." for index in range(3)]
+
+    selected = research()._select_observation_snippets([keep, exception, *later])
+
+    assert len(selected) == 4
+    assert selected[:2] == [keep, exception]
+
+
+def test_hint_matching_is_word_bounded_and_not_keyword_counted():
+    bounded = [
+        "Alpha Mage mulliganly keeper.",
+        "Mulligan: Alpha Mage.",
+        "Keep Alpha Mage.",
+        "Opening hand: keep Alpha Mage.",
+        "Exception: Alpha Mage.",
+    ]
+    qualifiers = [
+        "Exception: Alpha Mage.",
+        "Except unless however: Alpha Mage one.",
+        "Except unless however: Alpha Mage two.",
+        "Except unless however: Alpha Mage three.",
+        "Except unless however: Alpha Mage four.",
+    ]
+
+    assert research()._select_observation_snippets(bounded) == bounded[1:]
+    assert research()._select_observation_snippets(qualifiers) == qualifiers[:4]
+
+
+def test_unrecognized_language_and_plain_card_facts_remain_stable_fallback():
+    snippets = [
+        "Alpha Mage bleibt auf der Starthand.",
+        "Alpha Mage costs three mana.",
+        "Beta Spell gehört zum Kern des Decks.",
+        "Alpha Mage is a minion.",
+        "Beta Spell ist ein Zauber.",
+    ]
+
+    assert research()._select_observation_snippets(snippets) == snippets[:4]
+
+
+def test_ranking_preserves_source_bindings_limits_and_determinism():
+    records = [
+        synthetic_source_record(
+            " ".join(
+                [
+                    *(f"Alpha Mage archive {index}." for index in range(4)),
+                    f"Mulligan: keep Alpha Mage for source {source_index}.",
+                ]
+            ),
+            index=source_index,
+        )
+        for source_index in range(1, 4)
+    ]
+
+    first = projected_observations(*records)
+    second = projected_observations(*records)
+
+    assert first == second
+    assert len(first) == 12
+    for source_index, record in enumerate(records):
+        rows = first[source_index * 4 : (source_index + 1) * 4]
+        assert len(rows) == 4
+        assert {row["evidence_id"] for row in rows} == {record["evidence_id"]}
+        assert {row["source_url"] for row in rows} == {record["source_url"]}
+        assert rows[-1]["supporting_text"] == (
+            f"Mulligan: keep Alpha Mage for source {source_index + 1}."
+        )
+
+
 @pytest.mark.parametrize("diagnostic", [False, True])
 def test_canonical_pipeline_retains_authority_and_relevant_observations(
     monkeypatch, diagnostic

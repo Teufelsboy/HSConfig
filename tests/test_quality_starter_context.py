@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import replace
+from hashlib import sha256
 
 import pytest
 
@@ -217,6 +218,103 @@ def test_quality_context_and_physical_manifest_round_trip(tmp_path, monkeypatch)
         build_quality_starter_context(loaded).document.canonical_json
         == context.document.canonical_json
     )
+
+
+def test_historical_sealed_context_does_not_depend_on_current_observation_ranking(
+    tmp_path, monkeypatch
+):
+    from tests.helpers.quality_start import quality_frozen_inputs
+    from hsconfig import live_start_research
+    from hsconfig.input_snapshot_manifest import validate_research_result
+    from hsconfig.starter_context import (
+        build_quality_starter_context,
+        validate_starter_context_document,
+    )
+    from hsconfig.starter_contract import (
+        QUALITY_STARTER_CONTEXT_FIELDS,
+        QUALITY_STARTER_SCHEMA_VERSION,
+    )
+    from hsconfig.starter_document import seal_starter_document
+
+    context = build_quality_starter_context(
+        quality_frozen_inputs(tmp_path, monkeypatch)
+    )
+    context_value = context.document.to_value()
+    card_id = next(iter(context_value["card_metadata"]))
+    source_url = "https://example.org/historical-guide"
+    old_supporting_text = [
+        f"{context_value['card_metadata'][card_id]['name']} archive {index}."
+        for index in range(4)
+    ]
+    observations = [
+        {
+            "observation_id": "sha256:" + f"{index + 1:064x}",
+            "evidence_id": "historical-guide",
+            "source_url": source_url,
+            "content_sha256": "a" * 64,
+            "retrieved_at": "2026-09-09T00:00:00Z",
+            "source_updated_at": None,
+            "supporting_text": text,
+            "card_ids": [card_id],
+            "applicability": "card_only",
+            "limitations": [
+                "context_only_not_runtime_authority",
+                "strategic_conflicts_require_review",
+            ],
+            "conflicts": [],
+        }
+        for index, text in enumerate(old_supporting_text)
+    ]
+    research_unsigned = {
+        "schema_version": 1,
+        "discovery_outcome": "completed",
+        "attempts": [
+            {
+                "url": source_url,
+                "state": "completed",
+                "record_sha256": "sha256:" + "b" * 64,
+                "error": None,
+            }
+        ],
+        "deadline_utc": 100.0,
+        "observations": observations,
+        "limitations": ["no_verified_exact_guide_observations"],
+    }
+    research_value = {
+        **research_unsigned,
+        "content_sha256": "sha256:"
+        + sha256(
+            FrozenJsonDocument.from_value(research_unsigned).canonical_json
+        ).hexdigest(),
+    }
+    context_draft = dict(context_value)
+    context_draft.pop("content_sha256")
+    context_draft["research_evidence"] = research_value
+    historical = seal_starter_document(
+        context_draft,
+        expected_fields=QUALITY_STARTER_CONTEXT_FIELDS,
+        schema_version=QUALITY_STARTER_SCHEMA_VERSION,
+    )
+    expected_digest = historical.content_sha256
+    expected_bytes = historical.canonical_json
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("historical validation must not rerun observation ranking")
+
+    monkeypatch.setattr(live_start_research, "_observations", forbidden)
+    monkeypatch.setattr(live_start_research, "_select_observation_snippets", forbidden)
+
+    validated_research = validate_research_result(
+        research_value, card_ids=set(context_value["card_metadata"])
+    )
+    validated_context = validate_starter_context_document(historical)
+    assert [row["supporting_text"] for row in validated_research["observations"]] == (
+        old_supporting_text
+    )
+    assert historical.content_sha256 == expected_digest
+    assert historical.canonical_json == expected_bytes
+    assert validated_context.document.content_sha256 == expected_digest
+    assert validated_context.document.canonical_json == expected_bytes
 
 
 @pytest.mark.parametrize("defect", ["digest", "collectible", "extra", "research_extra"])

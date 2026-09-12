@@ -27,6 +27,17 @@ from hsconfig.source_claim_conflicts import build_claim_conflict_report
 
 _OUTCOMES = {"completed", "unavailable", "budget_exhausted"}
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_OPENING_HINT = re.compile(
+    r"(?<!\w)(?:mulligan|opening\s+hand|starting\s+hand)(?!\w)", re.IGNORECASE
+)
+_DECISION_HINT = re.compile(
+    r"(?<!\w)(?:keep|kept|discard|throw\s+back|save|target|prioriti[sz]e|avoid|trade)(?!\w)",
+    re.IGNORECASE,
+)
+_QUALIFICATION_HINT = re.compile(
+    r"(?<!\w)(?:exception|except|unless|however|instead|only\s+if|never|do\s+not|don't)(?!\w)",
+    re.IGNORECASE,
+)
 _RETAINED_FIELDS = (
     "evidence_id",
     "source_id",
@@ -234,6 +245,28 @@ def _mentioned_cards(text: str, metadata: dict) -> list[str]:
     )
 
 
+def _select_observation_snippets(snippets: list[str]) -> list[str]:
+    def rank(index: int) -> tuple[int, int]:
+        decision = bool(_DECISION_HINT.search(snippets[index]))
+        opening = bool(_OPENING_HINT.search(snippets[index]))
+        qualification = bool(_QUALIFICATION_HINT.search(snippets[index]))
+        score = (
+            4
+            if qualification
+            else 3
+            if decision and opening
+            else 2
+            if decision
+            else 1
+            if opening
+            else 0
+        )
+        return -score, index
+
+    selected = sorted(range(len(snippets)), key=rank)[:4]
+    return [snippets[index] for index in sorted(selected)]
+
+
 def _observations(acquired: dict, metadata: dict) -> list[dict]:
     rows: list[dict] = []
     ranked = {
@@ -270,7 +303,7 @@ def _observations(acquired: dict, metadata: dict) -> list[dict]:
                 snippet = match.group().strip()
                 if _mentioned_cards(snippet, metadata) and snippet not in snippets:
                     snippets.append(snippet)
-        for snippet in snippets[:4]:
+        for snippet in _select_observation_snippets(snippets):
             limitations = [
                 "context_only_not_runtime_authority",
                 "strategic_conflicts_require_review",
