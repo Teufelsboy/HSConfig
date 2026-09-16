@@ -7,7 +7,10 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock, get_ident
-from typing import Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Iterator, Literal
+
+if TYPE_CHECKING:
+    from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
 
 from hsconfig.apply_invocation import (
     ApplyInvocation,
@@ -565,6 +568,7 @@ def plan_apply_package(
     runtime_root: str | Path,
     config_dir: str | None = None,
     apply_gate: dict[str, Any] | None = None,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> dict[str, Any]:
     with lease_package_input(Path(package_root)) as lease:
         package = lease.package_root
@@ -573,6 +577,7 @@ def plan_apply_package(
             package=package,
             apply_gate=apply_gate,
             allow_source_informed=False,
+            frozen_compiler_inputs=frozen_compiler_inputs,
         )
         logical_config_dir = _logical_config_dir(package, config_dir)
         return build_fake_apply_receipt(
@@ -831,9 +836,13 @@ def _resolve_allowed_apply_gate(
     package: Path,
     apply_gate: dict[str, Any] | None,
     allow_source_informed: bool,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> dict[str, Any]:
     del allow_source_informed
-    evaluated = evaluate_apply_gate(package)
+    evaluated = evaluate_apply_gate(
+        package, **({"frozen_compiler_inputs": frozen_compiler_inputs}
+                    if frozen_compiler_inputs is not None else {}),
+    )
     if apply_gate is not None and apply_gate != evaluated:
         reason = _first_gate_reason(evaluated)
         raise ValueError(

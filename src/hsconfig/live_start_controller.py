@@ -317,6 +317,17 @@ def _lease_validated_prepublication(
     ):
         raise ValueError("live_start_runtime_root_identity_changed")
 
+    quality_frozen = None
+    if current.schema_version == 2:
+        quality_frozen = _load_frozen_compiler_inputs(
+            session_lease.session_root, rebind_operator=False,
+        )
+        if (
+            quality_frozen.manifest.document.content_sha256
+            != current.input_snapshot_manifest_sha256
+        ):
+            raise SessionConflictError("live_start_input_snapshot_mismatch")
+
     rendered = render_configure_run_model(run_model)
     _emit_pipeline_event("rendered")
     current, work_root, work_identity, work_binding = _materialize_work_run(
@@ -334,6 +345,7 @@ def _lease_validated_prepublication(
         session_lease=session_lease,
         current=current,
         fault_hook=fault_hook,
+        frozen_compiler_inputs=quality_frozen,
     )
     current = package_receipt[0]
     package_document = package_receipt[1]
@@ -347,6 +359,7 @@ def _lease_validated_prepublication(
         session_lease=session_lease,
         current=current,
         fault_hook=fault_hook,
+        frozen_compiler_inputs=quality_frozen,
     )
     current, diagnostic_document = diagnostic
     if (
@@ -769,6 +782,7 @@ def _validate_and_install_package_receipt(
     session_lease: LiveStartSessionLease,
     current: LiveStartSession,
     fault_hook: LiveStartFaultHook,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> tuple[LiveStartSession, FrozenJsonDocument]:
     run_view = snapshot_bounded_filesystem_package(work_root)
     strict = validate_complete_configure_run_from_view(run_view)
@@ -789,7 +803,10 @@ def _validate_and_install_package_receipt(
     if build_operator_summary_from_inputs(operator_inputs) != stored_operator:
         raise ValueError("live_start_operator_summary_parity_invalid")
     _emit_pipeline_event("operator_summary_recomputed")
-    gate = evaluate_apply_gate(package_root)
+    gate = evaluate_apply_gate(
+        package_root, **({"frozen_compiler_inputs": frozen_compiler_inputs}
+                         if frozen_compiler_inputs is not None else {}),
+    )
     if gate.get("status") != "allowed":
         raise ValueError("live_start_apply_gate_blocked")
     package_digest = "sha256:" + rendered.model.package.compiled.deck_fingerprint
@@ -874,11 +891,14 @@ def _plan_and_install_prepublication_receipt(
     session_lease: LiveStartSessionLease,
     current: LiveStartSession,
     fault_hook: LiveStartFaultHook,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> tuple[LiveStartSession, FrozenJsonDocument]:
     if current.phase is LiveStartPhase.PACKAGE_VALIDATED:
         planned = plan_apply_package(
             package_root=package_root,
             runtime_root=runtime_root,
+            **({"frozen_compiler_inputs": frozen_compiler_inputs}
+               if frozen_compiler_inputs is not None else {}),
         )
         planned["created_at_utc"] = f"{bound_date}T00:00:00+00:00"
         planned["diagnostic_only"] = True

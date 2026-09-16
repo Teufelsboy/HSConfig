@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hsconfig.configuration_mode import (
     LLM_OPTIMIZED_START,
@@ -16,7 +16,7 @@ from hsconfig.apply_decision import (
     apply_decision_summary_projection,
     build_apply_decision,
 )
-from hsconfig.deck_input_verification import verify_deck_input
+from hsconfig.deck_input_verification import verify_deck_input, verify_frozen_deck_input
 from hsconfig.io import read_json
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
@@ -44,11 +44,15 @@ from hsconfig.visionai_registry import (
     REQUIRED_RUNTIME_SURFACES,
 )
 
+if TYPE_CHECKING:
+    from hsconfig.input_snapshot_manifest import FrozenCompilerInputs
+
 
 def evaluate_apply_gate(
     package_root: str | Path,
     *,
     allow_source_informed: bool = False,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> dict[str, Any]:
     # Backward-compatible no-op; there is one recomputed decision path.
     del allow_source_informed
@@ -102,6 +106,7 @@ def evaluate_apply_gate(
         package,
         summary,
         enforce_summary_core_fields=True,
+        frozen_compiler_inputs=frozen_compiler_inputs,
     )
     return _decision_gate(operator_path, decision)
 
@@ -111,6 +116,7 @@ def recompute_apply_decision(
     summary: dict[str, Any],
     *,
     enforce_summary_core_fields: bool,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> tuple[ApplyDecision, ApplyFacts]:
     package = Path(package_root)
     required_structure_reasons = _required_package_structure_reasons(
@@ -183,7 +189,9 @@ def recompute_apply_decision(
         package,
         configuration_mode=configuration_mode,
     )
-    deck_input_reasons = _deck_input_verification_reasons(package, summary)
+    deck_input_reasons = _deck_input_verification_reasons(
+        package, summary, frozen_compiler_inputs=frozen_compiler_inputs,
+    )
     source_receipt_reasons = source_authority_reasons(package)
     source_acquisition_reasons = source_apply_eligibility_reasons(package)
     derivation_reasons = _package_derivation_reasons(
@@ -278,6 +286,8 @@ def _finalize_recomputed_decision(
 def _deck_input_verification_reasons(
     package: Path,
     summary: dict[str, Any],
+    *,
+    frozen_compiler_inputs: FrozenCompilerInputs | None = None,
 ) -> list[dict[str, str]]:
     existing_reasons = deck_input_apply_eligibility_reasons(package)
     if existing_reasons:
@@ -290,11 +300,33 @@ def _deck_input_verification_reasons(
         cards = deck_identity.get("cards")
         if not isinstance(cards, list):
             raise ValueError("deck identity cards must be a list")
-        recomputed = verify_deck_input(
-            deck_code=manifest.get("deck_code"),
-            cards=cards,
-            source=str(manifest.get("card_source") or ""),
-        )
+        if frozen_compiler_inputs is None:
+            recomputed = verify_deck_input(
+                deck_code=manifest.get("deck_code"),
+                cards=cards,
+                source=str(manifest.get("card_source") or ""),
+            )
+        else:
+            from hsconfig.optimized_start_authority import load_optimized_start_authority
+            from hsconfig.package_request import _validate_single_candidate_request_authority
+
+            if (
+                configuration_mode_from_manifest(manifest) != LLM_OPTIMIZED_START
+                or optimized_start_authority_schema_from_manifest(manifest)
+                != "single_candidate_review_v2"
+            ):
+                raise ValueError("quality_deck_input_authority_required")
+            approval = load_optimized_start_authority(
+                report_root=package / "reports" / "optimized_start", manifest=manifest,
+            )
+            _validate_single_candidate_request_authority(
+                approval=approval, frozen_compiler_inputs=frozen_compiler_inputs,
+            )
+            recomputed = verify_frozen_deck_input(
+                deck_code=manifest.get("deck_code"), deck_identity=deck_identity,
+                source=str(manifest.get("card_source") or ""),
+                frozen_compiler_inputs=frozen_compiler_inputs,
+            )
     except (OSError, TypeError, ValueError) as error:
         return [_deck_input_not_verified_reason(str(error))]
 
