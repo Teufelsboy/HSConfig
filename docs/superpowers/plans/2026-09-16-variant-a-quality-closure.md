@@ -42,13 +42,14 @@
 
 ## Task 3: Cover all supplied decks through quality validation
 
-**Own:** new `tests/test_quality_deck_catalog.py`, shared helpers under `tests/` only if genuinely needed, existing quality tests only for fixture reuse. Do not modify production code unless a concrete failure is returned to the controller.
+**Own:** new `tests/test_quality_deck_catalog.py`, shared helpers under `tests/` only if genuinely needed, existing quality tests only for fixture reuse. The independently reviewed Boarlock/PirateDH counter-text defect additionally permits a narrow `src/hsconfig/starter_context.py` card-text-only validation fix and focused context tests; no other production changes.
 
 1. Use all eleven `matrix_role=representative` entries in `docs/operator/audited-deck-catalog.json`, with the pinned source snapshot used by audited-deck acceptance. Preserve CuteWarrior as the separate twelfth catalog deck.
 2. Build actual schema-3 contexts and valid single candidates, validate and compile through production code. Verify exact deck/HS/HDT identity, 30 main cards, no missing source IDs, every-card disposition and all 38 GlobalValues decisions.
 3. Explicitly verify MechPala's owner `TOY_330` and sideboard `TOY_330t95`, `TOY_330t98`, `TOY_330t11`; do not substitute an E.T.C. fixture. Verify Kingslayer is not treated as Kingsbane. Preserve warnings/unsupported mechanics as honest limitations.
 4. Include a non-30-card supported deck and class/name boundary cases only where existing tests leave a meaningful gap. Keep tests contract-level and fast; do not perform eleven full installation transactions or network research.
 5. Ensure negative expectations would catch missing identity/disposition/sideboard protection rather than mirroring implementation. Run focused tests, self-review, and commit.
+6. Preserve literal source card text such as SW_075 `(@/10)` and AV_204 `@/4`. In schema-3 metadata text only, recognize complete positive-integer counter tokens bounded by start/whitespace/`(` on the left and end/whitespace/`)` on the right during path inspection. Keep names/general prose, path traversal, true absolute paths, URI/transport checks, original length/control/markup limits, and emitted text unchanged. Add a real failing deck regression before the fix plus malicious near-token negative cases. Do not globally weaken path detection or alter the pinned source fixture.
 
 ## Task 4: Strengthen the existing skill review without workflow expansion
 
