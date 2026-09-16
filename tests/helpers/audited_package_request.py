@@ -55,6 +55,7 @@ def audited_request_with_frozen_input_projections(
     deck_name: str,
     *,
     fixture_paths: bool = False,
+    include_source_documents: bool = True,
 ) -> tuple[ResolvedPackageRequest, dict[str, object]]:
     """Build a request and return its same-observation compiler inputs."""
 
@@ -65,9 +66,9 @@ def audited_request_with_frozen_input_projections(
     )
     deck_cards, offline_cards, card_database = _offline_build_inputs()
     del deck_cards
-    source_documents = _materialize_source_documents(
-        deck_name,
-        root=tmp_path,
+    source_documents = (
+        _materialize_source_documents(deck_name, root=tmp_path)
+        if include_source_documents else None
     )
     current_date = date(2026, 7, 29)
     args = argparse.Namespace(
@@ -85,7 +86,7 @@ def audited_request_with_frozen_input_projections(
             else str(tmp_path / "runtime-write-fence")
         ),
         guide_sources_json=None,
-        source_documents_json=str(source_documents),
+        source_documents_json=str(source_documents) if source_documents else None,
         auto_research_fallback=False,
         json=True,
         cards_json=None,

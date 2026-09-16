@@ -1116,7 +1116,10 @@ def _validated_starter_context_document(
         for card in value["card_metadata"].values():
             for field in ("name", "text"):
                 if card[field] is not None:
-                    _validated_context_prose(card[field], allow_empty=field == "text")
+                    if field == "text":
+                        _validated_card_text(card[field])
+                    else:
+                        _validated_context_prose(card[field])
         _task2_inputs.validate_research_result(
             value["research_evidence"], card_ids=set(value["card_metadata"])
         )
@@ -1282,6 +1285,39 @@ def _validated_context_linked_entities(value: object) -> list[dict[str, Any]]:
     if entities != sorted(entities, key=_canonical_bytes):
         raise ValueError("starter_context_document_invalid")
     return entities
+
+
+_CARD_TEXT_COUNTER_RE = re.compile(r"(?<![^\s(])@/[1-9][0-9]*(?=$|[\s)])")
+
+
+def _validated_card_text(value: object) -> str:
+    """Recognize source numeric placeholders, never normalize persisted text."""
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_CLAIM_TEXT_CHARS
+        or _contains_unsafe_control(value)
+    ):
+        raise ValueError("starter_context_document_invalid")
+    inspected = _CARD_TEXT_COUNTER_RE.sub(
+        lambda match: match.group().replace("/", "_"),
+        value,
+    )
+    if inspected != value:
+        original = " ".join(
+            _strip_paired_presentation_tags(
+                value, error="starter_context_document_invalid",
+            ).split()
+        )
+        if (
+            _canonical_transport_value(original)
+            or _URI_SCHEME_TOKEN_RE.search(original)
+        ):
+            raise ValueError("starter_context_document_invalid")
+    # Substitution changes only a counter slash, at equal length: original
+    # size/control/markup checks are retained; URI/transport inspect originals.
+    # Thus only the path scan gains the narrowly scoped card-text exception.
+    _validated_context_prose(inspected, allow_empty=True)
+    return value
 
 
 def _validated_context_prose(value: object, *, allow_empty: bool = False) -> str:

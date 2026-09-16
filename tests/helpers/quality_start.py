@@ -21,9 +21,14 @@ from tests.helpers.audited_package_request import (
 )
 
 
-def quality_frozen_inputs(tmp_path, monkeypatch):
+def quality_frozen_inputs(
+    tmp_path, monkeypatch, *, deck_name="ShadowPriest",
+    captured_at="2026-09-09T00:00:00Z", upstream_version=None,
+    include_source_documents=True,
+    bind_deck_code=False,
+):
     request, projections = audited_request_with_frozen_input_projections(
-        tmp_path, "ShadowPriest"
+        tmp_path, deck_name, include_source_documents=include_source_documents,
     )
     main_ids = {row["card_id"] for row in projections["deck"]["deck_identity"]["cards"]}
     snapshot = build_card_snapshot(
@@ -31,11 +36,17 @@ def quality_frozen_inputs(tmp_path, monkeypatch):
             {**row, "collectible": row["id"] in main_ids}
             for row in projections["full_cards"]
         ],
-        captured_at="2026-09-09T00:00:00Z",
+        captured_at=captured_at,
+        upstream_version=upstream_version,
     ).to_value()
     projections["full_cards"] = snapshot["full_cards"]
     projections["collectible_cards"] = snapshot["collectible_cards"]
     preconfig = request.snapshot.general_preconfig.to_value()
+    if bind_deck_code:
+        # Normal live intake binds the raw code; legacy audited requests carry
+        # it only in their invocation. Preserve the old fixture default.
+        preconfig["cards_payload"]["deck_code"] = request.invocation.deck_code
+        projections["deck"]["cards_payload"]["deck_code"] = request.invocation.deck_code
     projections["source_acquisition"] = {
         **projections["source_acquisition"],
         "policy_profile": preconfig["policy_profile"],
@@ -86,11 +97,11 @@ def quality_frozen_inputs(tmp_path, monkeypatch):
     return freeze_compiler_inputs(
         snapshot=captured,
         **projections,
-        bound_date="2026-09-09",
+        bound_date=captured_at[:10],
         runtime_grammar_version="visionai-runtime-v1",
         compiler_contract_id="hsconfig-live-start-v2",
         operator_profile=profile,
-        deck_output_binding=derive_deck_output_binding(profile, "ShadowPriest"),
+        deck_output_binding=derive_deck_output_binding(profile, deck_name),
         quality_inputs=quality,
     )
 
