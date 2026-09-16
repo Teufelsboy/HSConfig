@@ -18,7 +18,7 @@
 - Do not weaken gates, count timeouts as passes, rewrite history, delete unrelated work, or create release-readiness claims.
 - Use `apply_patch` for edits. Run focused tests while iterating; coordinate heavy runs through the controller.
 - The controller owns Git integration and final push. Implementers commit only their owned, reviewed scope; never push or spawn agents.
-- Work in `C:\Users\darbo\Documents\HSConfig` on the task branch. Known test Python: `C:\Users\darbo\AppData\Local\Programs\Python\Python311\python.exe`.
+- Work in the existing HSConfig checkout on the task branch. Resolve the checkout root and configured Python 3.11 interpreter from the local environment; do not embed operator paths in implementation code.
 
 ## Task 1: Observe the integration timeout
 
@@ -62,12 +62,14 @@
 
 ## Task 5: Repair the measured completion failure and integrate regressions
 
-**Own:** only files causally identified by Task 1, plus covering tests. Exact ownership must be recorded before dispatch; if Task 1 completes cleanly, retain its evidence and do not invent a fix.
+**Own:** `src/hsconfig/live_start_controller.py` (prepublication gate and fake-plan calls only), `src/hsconfig/apply_gate.py`, `src/hsconfig/deck_input_verification.py`, `src/hsconfig/runtime_apply.py` (optional carrier forwarding in `plan_apply_package` / `_resolve_allowed_apply_gate` only), new `tests/test_quality_apply_snapshot.py` and directly affected verifier/gate tests. No runtime writer, recovery or schema changes.
 
-1. Reproduce the measured failure with a focused regression before a code change. Preserve process caps and meaningful gate coverage.
-2. Implement the smallest cause-based repair. A pytest cleanup/environment issue must not become a runtime-controller rewrite; a controller issue must not be hidden by disabling cleanup/plugins.
-3. Run the unchanged guarded install/match/resume test to clean process completion, plus the new semantic/catalog tests and existing affected authority tests.
-4. Reconcile CI risks already fixed by unpublished commits without duplicating their changes. Self-review and commit only if a change was necessary.
+1. Task 1 observed a genuine secondary legacy cardxml web bootstrap inside quality finalization. RED: a real quality apply-gate evaluation with the legacy decoder forbidden must currently fail; do not mock away the production defect. Use genuine validated frozen inputs and a real compiled quality package.
+2. The controller's prepublication gate has an active lease/current session. For quality only, pass the physically loaded `FrozenCompilerInputs`, checking its manifest digest against the session-bound expected manifest. Do not derive a session path from package JSON or treat `ValidatedInputSnapshotManifest` as full snapshot bytes.
+3. Add an optional internal frozen-input argument to the shared gate. When present, require the exact quality authority and validate the package approval against the frozen carrier using existing `_validate_single_candidate_request_authority` (which rebuilds the sealed context). Failed binding returns `deck_input_not_verified`, with no fallback. Reconstruct the validated card snapshot from frozen `full_cards`, `collectible_cards`, `quality_inputs`; use `decode_deck_code_from_snapshot` to recompute exact deck identity. Keep existing persisted-manifest/summary/recomputed parity and every other strict/derivation/source/runtime gate.
+4. When the optional argument is absent, retain the existing legacy/expert verifier unchanged. The normal controller reaches the gate both directly and through `_plan_and_install_prepublication_receipt -> plan_apply_package -> _resolve_allowed_apply_gate`; pass the same bound carrier through that fake-plan path. Do not broaden the actual writer or lease APIs. Test both paths with legacy decoding forbidden.
+5. Focused negatives: changed deck code/main count/DBF/CardID; missing/conflicting snapshot mapping or altered blob/hash; resealed package context with wrong DBF mapping but unchanged frozen carrier; crossed session/manifest/context/candidate binding; persisted/summary parity mismatch; route-label crossing. Preserve hero/cardinality and real sideboard identity checks. Assert no legacy fallback on binding failure and unchanged legacy invocation when the carrier is absent.
+6. Run focused gate/authority tests and then the unchanged guarded install/match/resume target once under its existing 300-second cap. Observe phases/stacks as needed. Do not claim the secondary-data repair cures the later guarded-validation cost or remote CI timeout unless measured. No blind timeout increases, plugin disabling, cleanup shortcuts or gate removal. Self-review and commit; report remaining measured latency honestly.
 
 ## Task 6: Review, install, publish and reconcile
 
