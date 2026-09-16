@@ -53,10 +53,6 @@ from hsconfig.source_semantic_qualifiers import (
     normalize_semantic_qualifiers,
 )
 from hsconfig.starter_contract import (
-    QUALITY_LIVE_CONTRACT,
-    SEMANTIC_LIVE_CONTRACT,
-    SEMANTIC_STARTER_CONTEXT_FIELDS,
-    SEMANTIC_STARTER_SCHEMA_VERSION,
     QUALITY_STARTER_CONTEXT_FIELDS,
     QUALITY_STARTER_SCHEMA_VERSION,
     LEGACY_STARTER_CONTEXT_FIELDS,
@@ -66,7 +62,6 @@ from hsconfig.starter_contract import (
     STARTER_CONTEXT_MAX_BYTES,
     STARTER_CONTEXT_FIELDS,
     STARTER_SCHEMA_VERSION,
-    require_live_starter_contract,
 )
 from hsconfig.starter_document import StarterDocument, seal_starter_document
 from hsconfig.visionai_registry import (
@@ -592,60 +587,6 @@ def build_quality_starter_context(inputs: FrozenCompilerInputs) -> StarterContex
     return validate_starter_context_document(document)
 
 
-def build_semantic_starter_context(inputs: FrozenCompilerInputs) -> StarterContext:
-    """Derive schema4 solely from a revalidated semantic frozen-input carrier."""
-    from hsconfig.starter_card_facts import project_card_facts
-
-    contract = require_live_starter_contract(SEMANTIC_LIVE_CONTRACT)
-    frozen = _validated_frozen_compiler_inputs(inputs)
-    manifest = frozen.manifest.document.to_value()
-    if (
-        manifest["schema_version"] != contract.manifest
-        or manifest["compiler_inputs"]["compiler_contract_id"] != contract.compiler
-        or frozen.quality_inputs is None
-    ):
-        raise ValueError("starter_context_semantic_inputs_required")
-    quality = frozen.quality_inputs.to_value()
-    deck = frozen.deck.to_value()["deck_identity"]
-    facts = project_card_facts(deck, frozen.full_cards.to_value())
-    cards = quality_main_card_rows(facts)
-    identity = _single_candidate_deck_identity(deck, cards=cards)
-    baseline = frozen.globalvalues_baseline.to_value()
-    _validate_globalvalues_baseline(baseline)
-    source_evidence, existing_claims = _single_candidate_source_projection(
-        frozen, identity=identity, cards=cards,
-    )
-    draft = {
-        "schema_version": contract.context,
-        "input_snapshot_manifest_sha256": frozen.manifest.document.content_sha256,
-        "deck_identity": identity,
-        **facts,
-        "research_evidence": quality["research_result"],
-        "temporal_provenance": {
-            "snapshot_dataset_sha256": quality["card_snapshot_sha256"],
-            "snapshot_captured_at": quality["card_snapshot_captured_at"],
-            "snapshot_upstream_version": quality["card_snapshot_upstream_version"],
-            "evaluation_date": manifest["compiler_inputs"]["bound_date"],
-            "patch_compatibility": "unknown",
-        },
-        "deck_shape": _deck_shape(cards),
-        "supported_runtime_contract": _semantic_runtime_contract(),
-        "globalvalues_baseline": {
-            "content_sha256": canonical_globalvalues_baseline_sha256(baseline),
-            "key_count": len(baseline),
-            "values": baseline,
-        },
-        "source_evidence": source_evidence,
-        "existing_claims": existing_claims,
-        "known_safety_boundaries": _known_safety_boundaries(cards),
-    }
-    document = seal_starter_document(
-        draft, expected_fields=SEMANTIC_STARTER_CONTEXT_FIELDS,
-        schema_version=contract.context,
-    )
-    return validate_starter_context_document(document)
-
-
 def _validated_frozen_compiler_inputs(
     inputs: FrozenCompilerInputs,
 ) -> FrozenCompilerInputs:
@@ -830,14 +771,11 @@ def _single_candidate_source_projection(
         "single_candidate_source_acquisition",
     )
     expected_fields = {"guide_builder_receipt", "source_evidence_report"}
-    rich_source = inputs.manifest.document.to_value()["schema_version"] in {
-        QUALITY_LIVE_CONTRACT.manifest, SEMANTIC_LIVE_CONTRACT.manifest,
-    }
-    if rich_source:
+    if inputs.manifest.document.to_value()["schema_version"] == 2:
         expected_fields.add("policy_profile")
     if set(acquisition) != expected_fields:
         raise ValueError("starter_context_source_evidence_invalid")
-    if rich_source:
+    if inputs.manifest.document.to_value()["schema_version"] == 2:
         from hsconfig.evidence_contract import policy_profile_from_mapping
 
         policy_profile_from_mapping(acquisition["policy_profile"])
@@ -1147,9 +1085,6 @@ def _validated_starter_context_document(
         expected_fields = SINGLE_CANDIDATE_STARTER_CONTEXT_FIELDS
     elif schema_version == QUALITY_STARTER_SCHEMA_VERSION:
         expected_fields = QUALITY_STARTER_CONTEXT_FIELDS
-    elif schema_version == SEMANTIC_STARTER_SCHEMA_VERSION:
-        require_live_starter_contract(SEMANTIC_LIVE_CONTRACT)
-        expected_fields = SEMANTIC_STARTER_CONTEXT_FIELDS
     else:
         raise ValueError("starter_context_document_invalid")
     if set(value) != expected_fields:
@@ -1169,7 +1104,7 @@ def _validated_starter_context_document(
         raise ValueError("starter_context_document_invalid")
     _enforce_starter_context_max_bytes(document.canonical_json)
 
-    if schema_version in {QUALITY_STARTER_SCHEMA_VERSION, SEMANTIC_STARTER_SCHEMA_VERSION}:
+    if schema_version == QUALITY_STARTER_SCHEMA_VERSION:
         from hsconfig.starter_card_facts import validate_card_facts
 
         validate_card_facts(
@@ -1202,11 +1137,9 @@ def _validated_starter_context_document(
         )
     if _canonical_bytes(value["deck_shape"]) != _canonical_bytes(_deck_shape(cards)):
         raise ValueError("starter_context_document_invalid")
-    runtime_contract = _runtime_contract()
-    if schema_version == SEMANTIC_STARTER_SCHEMA_VERSION:
-        _validate_temporal_provenance(value["temporal_provenance"])
-        runtime_contract = _semantic_runtime_contract()
-    if _canonical_bytes(value["supported_runtime_contract"]) != _canonical_bytes(runtime_contract):
+    if _canonical_bytes(value["supported_runtime_contract"]) != _canonical_bytes(
+        _runtime_contract()
+    ):
         raise ValueError("starter_context_document_invalid")
     if schema_version == LEGACY_STARTER_SCHEMA_VERSION:
         baseline_sha256 = _validated_context_baseline(
@@ -2089,36 +2022,6 @@ def _deck_shape(cards: list[dict[str, Any]]) -> dict[str, Any]:
         "type_counts": dict(sorted(card_types.items())),
         "unique_card_count": len(cards),
     }
-
-
-def _validate_temporal_provenance(value: object) -> None:
-    """Check shape only; frozen-source equality belongs to reconstruction."""
-    error = "starter_context_document_invalid"
-    if not isinstance(value, Mapping) or set(value) != {
-        "snapshot_dataset_sha256", "snapshot_captured_at",
-        "snapshot_upstream_version", "evaluation_date", "patch_compatibility",
-    }:
-        raise ValueError(error)
-    digest = value["snapshot_dataset_sha256"]
-    captured = value["snapshot_captured_at"]
-    upstream = value["snapshot_upstream_version"]
-    evaluation = value["evaluation_date"]
-    if (
-        type(digest) is not str or _CONTENT_SHA256_RE.fullmatch(digest) is None
-        or type(captured) is not str or not captured.strip()
-        or (upstream is not None and (type(upstream) is not str or not upstream.strip()))
-        or type(evaluation) is not str
-        or _CANONICAL_ISO_DATE_RE.fullmatch(evaluation) is None
-        or date.fromisoformat(evaluation).isoformat() != evaluation
-        or value["patch_compatibility"] != "unknown"
-    ):
-        raise ValueError(error)
-
-
-def _semantic_runtime_contract() -> dict[str, Any]:
-    from hsconfig.starter_semantics import semantic_runtime_policy
-
-    return {**_runtime_contract(), "semantic_policy": semantic_runtime_policy()}
 
 
 def _runtime_contract() -> dict[str, Any]:
@@ -3226,7 +3129,6 @@ def _canonical_bytes(value: object) -> bytes:
 __all__ = (
     "StarterContext",
     "build_quality_starter_context",
-    "build_semantic_starter_context",
     "build_single_candidate_starter_context",
     "build_starter_context",
     "quality_main_card_rows",

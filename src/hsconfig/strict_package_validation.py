@@ -368,7 +368,9 @@ def validated_optimized_start_authority_from_view(
     if schema == "legacy_five_doc":
         return _legacy_optimized_start_authority_from_view(package)
     if schema in {"single_candidate_review_v1", "single_candidate_review_v2"}:
-        return _single_candidate_review_authority_from_view(package)
+        return _single_candidate_review_authority_from_view(
+            package, quality=schema == "single_candidate_review_v2",
+        )
     raise ValueError("optimized_start_authority_not_enabled")
 
 
@@ -427,14 +429,10 @@ def _legacy_optimized_start_authority_from_view(
 
 def _single_candidate_review_authority_from_view(
     package: PackageView,
+    *,
+    quality: bool,
 ) -> ValidatedSingleStarterApproval:
     root = "reports/optimized_start"
-    schema = optimized_start_authority_schema_from_manifest(
-        package.read_json("reports/input_manifest.json")
-    )
-    if schema not in {"single_candidate_review_v1", "single_candidate_review_v2"}:
-        raise ValueError("optimized_start_authority_schema_invalid")
-    quality = schema == "single_candidate_review_v2"
     version = 3 if quality else 2
     snapshot_document = _starter_document_from_view(
         package,

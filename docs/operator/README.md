@@ -13,6 +13,12 @@ inventory are never apply authority.
 
 ## Quick Start
 
+For everyday use, provide just the deck name and deck code. After one-time setup,
+the skill handles research, one candidate, one independent review, and checked
+installation. Full CI runs, release certification, and performance investigations
+are not part of a normal deck request. Package validation and the guarded write
+and recovery checks still run; a real failure in that path is reported, not bypassed.
+
 - Give the installed HSConfig skill only the deck name and deck code. Its single candidate workflow is the only normal generation route.
 - A valid enabled profile binds the runtime and output roots and authorizes live operation there. Explicit preview overrides live; no per-run apply confirmation is needed for the enabled profile's scope.
 - The skill captures one consistent local data snapshot, performs bounded Codex discovery, and seals the resulting context before candidate creation. No separate user research or provider setup is part of the normal route.

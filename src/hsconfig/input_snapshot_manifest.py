@@ -34,12 +34,10 @@ from hsconfig.starter_document import (
     StarterDocument,
     seal_starter_document,
 )
-from hsconfig.starter_contract import QUALITY_LIVE_CONTRACT, SEMANTIC_LIVE_CONTRACT
 
 
 INPUT_SNAPSHOT_SCHEMA_VERSION = 1
 QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION = 2
-SEMANTIC_INPUT_SNAPSHOT_SCHEMA_VERSION = 3
 QUALITY_INPUT_ENVELOPE_MAX_BYTES = 512 * 1024
 INPUT_SNAPSHOT_MAX_BYTES = 256 * 1024
 INPUT_BLOB_MAX_BYTES = 134_217_728
@@ -208,18 +206,12 @@ def freeze_compiler_inputs(
         ),
     }
     schema_version = INPUT_SNAPSHOT_SCHEMA_VERSION
-    if compiler_contract_id == SEMANTIC_LIVE_CONTRACT.compiler and quality_inputs is None:
-        raise ValueError("input_snapshot_semantic_quality_required")
     if quality_inputs is not None:
         documents["quality_inputs"] = _freeze_supplied_blob(quality_inputs, "quality_inputs")
         validate_quality_inputs(documents["quality_inputs"],
                                 full_cards=documents["full_cards"].to_value(),
                                 collectible_cards=documents["collectible_cards"].to_value())
-        schema_version = (
-            SEMANTIC_INPUT_SNAPSHOT_SCHEMA_VERSION
-            if compiler_contract_id == SEMANTIC_LIVE_CONTRACT.compiler
-            else QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION
-        )
+        schema_version = QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION
     if documents["deck"].canonical_json != expected_deck.canonical_json:
         raise ValueError("input_snapshot_deck_projection_mismatch")
     expected_baseline = FrozenJsonDocument.from_value(
@@ -344,7 +336,7 @@ def validate_input_snapshot_manifest_document(
         raise ValueError("input_snapshot_manifest_fields_invalid")
     if (
         type(value["schema_version"]) is not int
-        or value["schema_version"] not in {INPUT_SNAPSHOT_SCHEMA_VERSION, QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION, SEMANTIC_INPUT_SNAPSHOT_SCHEMA_VERSION}
+        or value["schema_version"] not in {INPUT_SNAPSHOT_SCHEMA_VERSION, QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION}
     ):
         raise ValueError("input_snapshot_manifest_schema_version_invalid")
     embedded_digest = _require_standard_digest(
@@ -388,14 +380,11 @@ def validate_input_snapshot_manifest_document(
         "compiler_contract_id",
     )
     blobs = _validate_blob_bindings(compiler_value["blobs"], schema_version=value["schema_version"])
-    if _has_quality_inputs(value["schema_version"]):
-        contract = (
-            SEMANTIC_LIVE_CONTRACT if value["schema_version"] == SEMANTIC_INPUT_SNAPSHOT_SCHEMA_VERSION
-            else QUALITY_LIVE_CONTRACT
-        )
-        if (compiler_value["compiler_contract_id"] != contract.compiler
-                or compiler_value["runtime_grammar_version"] != "visionai-runtime-v1"):
-            raise ValueError("input_snapshot_quality_contract_invalid")
+    if value["schema_version"] == QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION and (
+        compiler_value["compiler_contract_id"] != "hsconfig-live-start-v2"
+        or compiler_value["runtime_grammar_version"] != "visionai-runtime-v1"
+    ):
+        raise ValueError("input_snapshot_quality_contract_invalid")
 
     operator_value = _require_mapping(
         value["operator_bindings"],
@@ -445,7 +434,7 @@ def _load_frozen_compiler_inputs(
     )
     manifest = validate_input_snapshot_manifest_document(manifest_document)
     quality = None
-    if _has_quality_inputs(manifest.document.to_value()["schema_version"]):
+    if manifest.document.to_value()["schema_version"] == QUALITY_INPUT_SNAPSHOT_SCHEMA_VERSION:
         quality = _canonical_physical_document(_read_input_file_once(
             inputs / "quality.json", maximum_bytes=QUALITY_INPUT_ENVELOPE_MAX_BYTES,
             expected_parent_identity=inputs_binding.identity,
@@ -595,14 +584,8 @@ def _binding_for_document(
     )
 
 
-def _has_quality_inputs(schema_version: object) -> bool:
-    return type(schema_version) is int and schema_version in {
-        QUALITY_LIVE_CONTRACT.manifest, SEMANTIC_LIVE_CONTRACT.manifest,
-    }
-
-
 def _validate_blob_bindings(value: Any, *, schema_version: int = 1) -> tuple[InputBlobBinding, ...]:
-    order = _QUALITY_BLOB_ORDER if _has_quality_inputs(schema_version) else _BLOB_ORDER
+    order = _QUALITY_BLOB_ORDER if schema_version == 2 else _BLOB_ORDER
     if not isinstance(value, list) or len(value) != len(order):
         raise ValueError("input_snapshot_blobs_invalid")
     bindings: list[InputBlobBinding] = []
@@ -1592,7 +1575,7 @@ def _validate_loaded_compiler_binding(result: FrozenCompilerInputs) -> None:
 
 def _require_manifest_blob_match(result: FrozenCompilerInputs) -> None:
     by_name = {binding.name: binding for binding in result.manifest.blobs}
-    quality_version = _has_quality_inputs(result.manifest.document.to_value()["schema_version"])
+    quality_version = result.manifest.document.to_value()["schema_version"] == 2
     if quality_version != (result.quality_inputs is not None):
         raise ValueError("input_snapshot_quality_binding_mismatch")
     for name in (_QUALITY_BLOB_ORDER if quality_version else _BLOB_ORDER):

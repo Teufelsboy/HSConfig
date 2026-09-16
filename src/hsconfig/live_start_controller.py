@@ -3530,7 +3530,8 @@ def _validate_live_start_request(request: LiveStartRequest) -> None:
     except Exception as error:
         raise ValueError("live_start_deck_code_invalid") from error
     cards = getattr(parsed, "cards", parsed[0] if isinstance(parsed, tuple) else None)
-    if not cards:
+    heroes = getattr(parsed, "heroes", parsed[1] if isinstance(parsed, tuple) else None)
+    if not cards or not heroes or len(heroes) != 1:
         raise ValueError("live_start_deck_code_invalid")
 
 
@@ -5598,6 +5599,8 @@ def prepare_quality_live_start(
             captured = validated_card_snapshot(snapshot)
             failure_code = "deck_or_input_invalid"
             decoded = decode_deck_code_from_snapshot(request.deck_code, snapshot)
+            if decoded["hero"]["type"] != "HERO":
+                raise ValueError("live_start_deck_code_invalid")
             payload = {
                 key: decoded[key]
                 for key in (

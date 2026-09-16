@@ -5,6 +5,15 @@ paths from the checkout root instead of embedding a local profile path.
 
 HSConfig is a lean deck-to-HearthRanger-config generator. Keep it separate from HSTuner.
 
+For an ordinary deck request, use the installed skill's existing single-candidate
+workflow: deck name/code, bounded research, one candidate, one independent review,
+then controller validation and guarded live/preview completion. Keep the normal
+quality route; do not introduce another schema, candidate tournament, or migration
+project as part of generating a deck. Full CI, release certification, broad audits,
+and performance investigations are development work, not per-deck prerequisites.
+If the actual generation or write path fails, preserve its state and address that
+specific failure; do not bypass its validators, authority checks, or recovery.
+
 Before implementing plans, generating deck packages, or applying runtime-facing changes, refresh repository state first:
 
 - run `git fetch --all --prune --tags`
