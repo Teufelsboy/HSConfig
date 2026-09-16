@@ -8,7 +8,7 @@
 
 **Tech stack:** Python 3.11, pytest, existing HSConfig compiler/controller, Git/GitHub Actions.
 
-**Spec:** `docs/superpowers/specs/2026-09-16-variant-a-quality-closure.md`.
+**Spec:** `docs/architecture/2026-09-16-variant-a-quality-closure-design.md`.
 
 ## Global Constraints
 

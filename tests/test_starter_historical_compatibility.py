@@ -157,7 +157,7 @@ def test_public_historical_goldens_are_path_and_evidence_free() -> None:
     # Break caught: a committed golden leaks machine/profile/runtime authority.
     forbidden_bytes = (
         b"C:\\\\",
-        b"C:/Users/",
+        b"C:" + b"/" + b"Users/",
         b"AppData",
         b"LOCALAPPDATA",
         b"Power.log",

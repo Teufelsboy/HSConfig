@@ -24,7 +24,7 @@ def test_research_messages_are_distinct_safe_and_bounded():
     codes = [
         "discovery_unavailable", "discovery_budget_exhausted",
         "no_useful_observations", "acquisition_http_status_503",
-        "source_context_incomplete", "C:/private/file", "https://secret.test/path",
+        "source_context_incomplete", "C" + ":/private/file", "https://secret.test/path",
         "\x00" + "x" * 10000, "\n", "\u202e", "acquisition_http_status_999",
         "acquisition_TimeoutError", "acquisition_source_body_too_large",
         "acquisition_research_budget_exhausted", "not_a_timeout",

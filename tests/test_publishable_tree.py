@@ -272,6 +272,37 @@ def test_operator_expert_reference_allows_only_the_exact_bound_explanation() -> 
     )
 
 
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "src/hsconfig/deck_input_verification.py",
+        "hsconfig-1.0.0-py3-none-any.whl!hsconfig/deck_input_verification.py",
+        "hsconfig-1.0.0.tar.gz!hsconfig-1.0.0/src/hsconfig/deck_input_verification.py",
+    ),
+)
+def test_deck_input_placeholder_reference_is_line_content_and_archive_bound(
+    relative: str,
+) -> None:
+    source = ROOT / "src/hsconfig/deck_input_verification.py"
+    raw = source.read_bytes()
+
+    assert publishable_tree.publishable_text_violations(
+        relative, raw, public_doc=False,
+    ) == []
+
+    shifted = b"\n" + raw
+    assert publishable_tree.publishable_text_violations(
+        relative, shifted, public_doc=False,
+    ) == [f"unallowlisted_source_placeholder:{relative}:39"]
+
+    marker = b'elif source == "place' + b'holder":'
+    changed = raw.replace(marker, marker.replace(b'":', b'-edited":'), 1)
+    assert changed != raw
+    assert publishable_tree.publishable_text_violations(
+        relative, changed, public_doc=False,
+    ) == [f"unallowlisted_source_placeholder:{relative}:38"]
+
+
 def test_evaluator_rejects_unsafe_or_unresolved_markdown_links_and_anchors() -> None:
     rows = tuple(sorted((
         _row(

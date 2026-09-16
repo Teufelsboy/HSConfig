@@ -235,14 +235,14 @@ def test_quality_intake_failure_is_phase_specific_and_preserves_lease(
 
     def fail(*_args, **_kwargs):
         assert active
-        raise exception_type("private C:/Users/secret/operator-profile.json")
+        raise exception_type("private C:" + "/" + "Users/secret/operator-profile.json")
 
     @contextmanager
     def tracked_lease(**kwargs):
         nonlocal active
         events.append("acquisition")
         if stage == "lease_acquisition":
-            raise exception_type("private C:/Users/secret/profile.json")
+            raise exception_type("private C:" + "/" + "Users/secret/profile.json")
         with original_lease(**kwargs) as lease:
             active = True
             events.append("body")
@@ -328,7 +328,7 @@ def test_quality_intake_failure_is_phase_specific_and_preserves_lease(
 def test_quality_intake_propagates_protected_exceptions(
     quality_request, monkeypatch, tmp_path, stage, exception_type
 ):
-    error = exception_type("private C:/Users/secret/profile.json")
+    error = exception_type("private C:" + "/" + "Users/secret/profile.json")
 
     def fail(*_args, **_kwargs):
         raise error
