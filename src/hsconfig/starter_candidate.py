@@ -15,7 +15,7 @@ from hsconfig.compile_globalvalues import (
     _numeric_value,
     validate_globalvalues_overlay_value,
 )
-from hsconfig.condition_format import classify_runtime_condition
+from hsconfig.condition_format import classify_runtime_condition, required_condition_domains
 from hsconfig.globalvalues_decisions import (
     canonical_globalvalues_baseline_sha256,
 )
@@ -81,6 +81,11 @@ _MAX_ASSUMPTIONS = 32
 
 # Only these stable validator codes may become public revision feedback.
 STARTER_CANDIDATE_FINDING_CODES = frozenset({
+    "starter_candidate_condition_impossible",
+    "starter_candidate_condition_precedence_ambiguous",
+    "starter_candidate_card_surface_type_invalid",
+    "starter_candidate_card_order_ambiguous",
+    "starter_candidate_globalvalue_order_ambiguous",
     "starter_candidate_assumptions_invalid",
     "starter_candidate_behavior_block_invalid",
     "starter_candidate_card_dispositions_invalid",
@@ -596,6 +601,19 @@ def _validate_mulligan_rows(
 
 
 def _mulligan_conditions_overlap(left: str, right: str) -> bool:
+    if not _historical_mulligan_conditions_overlap(left, right):
+        return False
+    left_classes = required_condition_domains(left).get("opponent_class")
+    right_classes = required_condition_domains(right).get("opponent_class")
+    # Monotonic relaxation only: accepted historical plans retain their bytes.
+    return not (
+        left_classes is not None
+        and right_classes is not None
+        and not (left_classes & right_classes)
+    )
+
+
+def _historical_mulligan_conditions_overlap(left: str, right: str) -> bool:
     if "*" in {left, right}:
         return True
     left_atoms = _required_mulligan_condition_atoms(left)
@@ -610,6 +628,29 @@ def _required_mulligan_condition_atoms(condition: str) -> frozenset[str]:
     if " OR " in condition:
         return frozenset()
     return frozenset(condition.split(" AND "))
+
+
+def historical_mulligan_conflict_finding(
+    candidate: ValidatedStarterCandidate,
+) -> str | None:
+    """Reconstruct a charged old rejection, never authorize a new candidate.
+
+    Only the controller's already-charged rejection state consumes this result.
+    The class-disjointness relaxation cannot mint authority or refund that state.
+    """
+    by_card: dict[str, list[tuple[str, str]]] = {}
+    for row in candidate.document.to_value()["mulligan"]:
+        condition = _runtime_condition(row["condition"])
+        for card_id in normalize_mulligan_selector(row)["selector_cards"]:
+            previous = by_card.setdefault(card_id, [])
+            if any(
+                action != row["action"]
+                and _historical_mulligan_conditions_overlap(prior_condition, condition)
+                for prior_condition, action in previous
+            ):
+                return "starter_candidate_mulligan_conflict"
+            previous.append((condition, row["action"]))
+    return None
 
 
 def _validate_globalvalues(

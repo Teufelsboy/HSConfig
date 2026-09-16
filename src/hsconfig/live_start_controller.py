@@ -5965,7 +5965,11 @@ def _candidate_validation_finding(*, session_root: Path) -> str | None:
 
     try:
         context = _load_bound_starter_context(session_root=session_root)
-        _load_bound_candidate(session_root=session_root, context=context)
+        candidate = _load_bound_candidate(session_root=session_root, context=context)
+        if context.document.to_value()["schema_version"] == 3:
+            from hsconfig.quality_candidate_admission import validate_quality_candidate_admission
+
+            validate_quality_candidate_admission(candidate, context)
     except (TypeError, ValueError) as error:
         code = str(error)
         return code if code in STARTER_CANDIDATE_FINDING_CODES else "candidate_semantics_invalid"
@@ -6602,6 +6606,13 @@ def _resume_starter_intake_under_lock(
             )
             return current, _review_revision_diagnostic(current=current, review=review)
         finding = _candidate_validation_finding(session_root=session_lease.session_root)
+        if finding is None:
+            from hsconfig.starter_candidate import historical_mulligan_conflict_finding
+
+            bound_context = _load_bound_starter_context(session_root=session_lease.session_root)
+            finding = historical_mulligan_conflict_finding(_load_bound_candidate(
+                session_root=session_lease.session_root, context=bound_context,
+            ))
         if finding is None:
             raise SessionConflictError("live_start_rejected_candidate_now_valid")
         return current, _candidate_revision_diagnostic(current=current, finding=finding)

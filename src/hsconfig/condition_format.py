@@ -206,3 +206,49 @@ def _is_runtime_safe(condition: str) -> bool:
 
 def _is_atom_safe(condition: str) -> bool:
     return any(pattern.match(condition) for pattern in ALLOWED_ATOM_PATTERNS)
+
+
+def required_condition_domains(condition: str) -> dict[str, frozenset[str]]:
+    """Necessary domains for simple conjunctions, not a general Boolean solver.
+
+    Disjunctions (including mixed operators) deliberately provide no proof.
+    Unmodelled atoms, such as different cards in hand, impose no exclusion.
+    This helper does not change historical condition classification/lowering.
+    """
+    if " OR " in condition:
+        return {}
+    domains: dict[str, frozenset[str]] = {}
+    for atom in condition.split(" AND "):
+        domain: tuple[str, frozenset[str]] | None = None
+        if atom in {"coin", "nocoin"}:
+            domain = ("coin", frozenset({atom}))
+        elif match := re.fullmatch(r"my_hand\(count\(\)\)\s*==\s*(\d+)", atom):
+            domain = ("hand_count", frozenset({str(int(match[1]))}))
+        elif match := re.fullmatch(
+            rf"opp_hero\(count\(\),({CLASS_PATTERN})=true\)\s*>\s*0", atom
+        ):
+            domain = ("opponent_class", frozenset({match[1]}))
+        elif match := re.fullmatch(
+            rf"opp_hero\(count\(\),\s*hero_class\s*=\s*({CLASS_LIST_PATTERN})\s*\)\s*>\s*0",
+            atom,
+        ):
+            domain = (
+                "opponent_class", frozenset(item.strip() for item in match[1].split("|"))
+            )
+        if domain is not None:
+            key, allowed = domain
+            domains[key] = domains.get(key, allowed) & allowed
+    return domains
+
+
+def runtime_condition_is_provably_impossible(condition: str) -> bool:
+    return any(not allowed for allowed in required_condition_domains(condition).values())
+
+
+def runtime_conditions_are_provably_disjoint(left: str, right: str) -> bool:
+    left_domains = required_condition_domains(left)
+    right_domains = required_condition_domains(right)
+    return any(
+        not (left_domains[key] & right_domains[key])
+        for key in left_domains.keys() & right_domains.keys()
+    )
