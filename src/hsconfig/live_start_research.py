@@ -155,13 +155,14 @@ def build_research_request(
         if len(names) == 3:
             break
     format_name = _research_format(deck_identity.get("format"))
+    query_prefix = format_name if format_name == "Hearthstone" else f"{format_name} Hearthstone"
     if not names:
         raise ValueError("research_request_signature_cards_missing")
     factual_query = " ".join(
-        [format_name, card_class, *names, "guide mulligan"]
+        [query_prefix, card_class, *names, "guide mulligan"]
     ).strip()
     label_query = " ".join(
-        [format_name, card_class, label, "guide strategy"]
+        [query_prefix, card_class, label, "guide strategy"]
     ).strip()
     choices = [*queries, factual_query, label_query]
     selected = list(dict.fromkeys(" ".join(query.split()) for query in choices))[:2]

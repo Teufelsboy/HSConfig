@@ -38,7 +38,7 @@ def test_query_selects_named_signature_and_class_cards_instead_of_roster_prefix(
     original = deepcopy(identity)
     value = request(identity)
     assert value["queries"][0] == (
-        "Wild MAGE Dragon Engine Frost Anchor Arcane Focus guide mulligan"
+        "Wild Hearthstone MAGE Dragon Engine Frost Anchor Arcane Focus guide mulligan"
     )
     assert identity == original
     assert value["deck_identity"] == original
@@ -53,7 +53,7 @@ def test_query_deduplicates_names_and_uses_stable_ids_when_optional_facts_missin
         {"card_id": "B", "name": "Second Card"},
     ]}
     assert request(identity)["queries"][0] == (
-        "Wild MAGE First Card Second Card Same Card guide mulligan"
+        "Wild Hearthstone MAGE First Card Second Card Same Card guide mulligan"
     )
 
 
@@ -65,7 +65,7 @@ def test_query_ignores_missing_names_and_case_duplicate_aliases():
         {"card_id": "D", "name": "real card"},
         {"card_id": "E"},
     ]}
-    assert request(identity)["queries"][0] == "Wild MAGE Real Card guide mulligan"
+    assert request(identity)["queries"][0] == "Wild Hearthstone MAGE Real Card guide mulligan"
 
 
 def test_explicit_queries_and_historical_request_do_not_follow_new_selection():
@@ -77,6 +77,13 @@ def test_explicit_queries_and_historical_request_do_not_follow_new_selection():
         value, run_id="quality-query", deck_identity=IDENTITY,
         captured_input_sha256=DIGEST,
     ).to_value() == value
+
+
+@pytest.mark.parametrize("format_value", [1, 2, 3, 4, None, "unknown"])
+def test_generated_queries_disambiguate_hearthstone_once_in_both_templates(format_value):
+    value = request({**IDENTITY, "format": format_value, "deck_name": "ShadowPriest"})
+    assert len(value["queries"]) == 2
+    assert all(query.split().count("Hearthstone") == 1 for query in value["queries"])
 
 
 @pytest.mark.parametrize("reverse", [False, True])
