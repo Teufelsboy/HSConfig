@@ -97,6 +97,10 @@ class OperatorProfileEnvironmentError(ValueError):
     """Invalid LOCALAPPDATA environment before any profile-state access."""
 
 
+class OperatorProfileIdentityEncodingError(ValueError):
+    """A rejected root identity resembles Windows' 32/64-bit device encoding."""
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class OperatorProfileLockToken:
     """Opaque process-local capability for one held profile lock."""
@@ -709,6 +713,15 @@ def _load_canonical_document(raw: bytes) -> dict[str, Any]:
     return value
 
 
+def _has_device_encoding_difference(stored: PathIdentity, current: PathIdentity) -> bool:
+    """Recognize a width-only device mismatch, never identity equivalence."""
+    return (
+        stored[1:] == current[1:]
+        and max(stored[0], current[0]) > 0xFFFFFFFF
+        and min(stored[0], current[0]) == (max(stored[0], current[0]) & 0xFFFFFFFF)
+    )
+
+
 def _parse_profile_document(
     document: dict[str, Any], *, state_root: Path
 ) -> OperatorProfile:
@@ -736,9 +749,25 @@ def _parse_profile_document(
     output_identity = _identity(
         document["output_base_root_identity"], "output_base_root"
     )
-    if path_identity(runtime_root) != runtime_identity:
+    current_runtime_identity = path_identity(runtime_root)
+    current_output_identity = path_identity(output_base_root)
+    pairs = (
+        (runtime_identity, current_runtime_identity),
+        (output_identity, current_output_identity),
+    )
+    mismatches = [(stored, current) for stored, current in pairs if stored != current]
+    # Diagnostic only: never normalize, accept, or rewrite a different identity.
+    # Even this precise pattern can be a real change; keep the profile rejected.
+    if os.name == "nt" and mismatches and all(
+        _has_device_encoding_difference(stored, current)
+        for stored, current in mismatches
+    ):
+        raise OperatorProfileIdentityEncodingError(
+            "operator_profile_identity_encoding_mismatch"
+        )
+    if current_runtime_identity != runtime_identity:
         raise ValueError("operator_profile_runtime_root_identity_changed")
-    if path_identity(output_base_root) != output_identity:
+    if current_output_identity != output_identity:
         raise ValueError("operator_profile_output_base_root_identity_changed")
     return OperatorProfile(
         schema_version=OPERATOR_PROFILE_SCHEMA_VERSION,
@@ -1177,6 +1206,7 @@ __all__ = (
     "OPERATOR_PROFILE_SCHEMA_VERSION",
     "OperatorProfile",
     "OperatorProfileEnvironmentError",
+    "OperatorProfileIdentityEncodingError",
     "OperatorProfileLease",
     "OperatorProfileLockToken",
     "derive_deck_output_binding",

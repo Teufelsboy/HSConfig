@@ -73,6 +73,7 @@ from hsconfig.live_start_session import (
 from hsconfig.operator_profile import (
     DeckOutputBinding,
     OperatorProfile,
+    OperatorProfileIdentityEncodingError,
     OperatorProfileLease,
     derive_deck_output_binding,
     load_operator_profile,
@@ -5595,6 +5596,12 @@ def prepare_quality_live_start(
         if not profile.live_by_default and not request.preview_requested:
             raise ValueError("operator_profile_live_disabled")
         output = derive_deck_output_binding(profile, request.deck_name)
+    except OperatorProfileIdentityEncodingError:
+        return _pre_session_result(
+            status="PROFILE_REQUIRED",
+            deck_name=request.deck_name,
+            error_code="operator_profile_identity_encoding_mismatch",
+        )
     except (FileNotFoundError, OSError, RuntimeError, ValueError):
         return _pre_session_result(
             status="PROFILE_REQUIRED",

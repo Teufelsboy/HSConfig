@@ -97,6 +97,32 @@ Enabling authorizes live operation only within those bound roots. Use
 exact-predecessor flag is required by `hsconfig live-policy disable`.
 These are one-time setup or explicit policy changes, not per-deck questions.
 
+### Keep the operator Python bound
+
+The installed skill selects the unique profile-valid installed interpreter,
+not whichever `python` an activated development environment puts first on PATH.
+On Windows, inspect the absolute applications returned by
+`Get-Command hsconfig -CommandType Application -All` with:
+
+```powershell
+& "<absolute hsconfig application>" live-policy status --runtime-info --json
+```
+
+The read-only `runtime_info` reports `python_executable`, `python_version`, and
+`package_root`. The skill requires one distinct existing absolute executable
+whose profile is enabled (enabled or disabled for explicit preview) and whose
+package root is this checkout's `src/hsconfig`. It then uses that exact Python
+for currentness and every installed-skill helper phase, including resume.
+No matching interpreter, or several different matching interpreters, is a setup
+ambiguity to resolve before starting; it is not permission to recreate a profile.
+
+Python 3.11 and 3.12 can represent Windows device identities differently.
+`operator_profile_identity_encoding_mismatch` reports that possible conflict
+while still rejecting the profile. Keep the original interpreter; do not edit
+identity numbers, re-enable the profile, or weaken validation. Retain the bound
+Python path with the session root for interrupted runs. This diagnostic is not
+proof that the underlying directories are unchanged.
+
 ### Setup recovery
 
 A generic journal error such as `external_skill_committed_journal_invalid`
@@ -123,6 +149,7 @@ a session exists, there is no session directory to resume or invent.
 | `deck_or_input_invalid` | Correct the deck name and deck code before another request. |
 | `input_snapshot_invalid` | Inspect the supplied deck/input data for the reported inconsistency before another request. |
 | `operator_profile_required` / `PROFILE_REQUIRED` | Run `hsconfig live-policy status --json` and resolve the profile state as described above. |
+| `operator_profile_identity_encoding_mismatch` | Use the bound operator interpreter and inspect `live-policy status --runtime-info --json`; a development virtual environment may encode Windows identities differently. Do not rewrite the profile. |
 | `operator_profile_changed` | Read profile status again and inspect the intervening change before another request. |
 | `inspect_preserved_review_finding` | Inspect the preserved candidate/review finding; a terminal failure is not permission to start another revision. |
 | `inspect_preserved_failure` | Inspect the preserved failure and its reported cause. |

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Any
 
 from hsconfig.commands.common import run_payload_command
 from hsconfig.operator_profile import (
     OperatorProfile,
     OperatorProfileEnvironmentError,
+    OperatorProfileIdentityEncodingError,
     disable_operator_profile,
     enable_operator_profile,
     load_operator_profile_if_present,
@@ -22,7 +24,14 @@ def run_live_policy_command(args: argparse.Namespace) -> int:
 
 def _live_policy_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.live_policy_action == "status":
-        return _status_payload()
+        payload, code = _status_payload(runtime_info=getattr(args, "runtime_info", False))
+        if getattr(args, "runtime_info", False):
+            payload["runtime_info"] = {
+                "python_executable": sys.executable,
+                "python_version": list(sys.version_info[:3]),
+                "package_root": str(Path(__file__).resolve().parent.parent),
+            }
+        return payload, code
     if args.live_policy_action == "enable":
         expected_predecessor = (
             None
@@ -43,7 +52,7 @@ def _live_policy_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]
     raise ValueError("live_policy_action_invalid")
 
 
-def _status_payload() -> tuple[dict[str, Any], int]:
+def _status_payload(*, runtime_info: bool = False) -> tuple[dict[str, Any], int]:
     payload: dict[str, Any] = {
         "status": "invalid",
         "diagnostic_only": True,
@@ -53,6 +62,12 @@ def _status_payload() -> tuple[dict[str, Any], int]:
         profile = load_operator_profile_if_present()
     except OperatorProfileEnvironmentError:
         payload["error_code"] = "operator_profile_environment_invalid"
+        return payload, 1
+    except OperatorProfileIdentityEncodingError:
+        payload["error_code"] = (
+            "operator_profile_identity_encoding_mismatch"
+            if runtime_info else "operator_profile_invalid"
+        )
         return payload, 1
     except (OSError, RuntimeError, ValueError):
         payload["error_code"] = "operator_profile_invalid"

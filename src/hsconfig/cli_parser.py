@@ -457,6 +457,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Read-only diagnostic snapshot; not a lease or live authorization.",
     )
     live_policy_status.add_argument("--json", action="store_true")
+    live_policy_status.add_argument(
+        "--runtime-info", action="store_true",
+        help="include the exact executing Python and package location (read-only)",
+    )
     live_policy_enable = live_policy_actions.add_parser(
         "enable",
         help="enable or explicitly rebind live-by-default roots",
