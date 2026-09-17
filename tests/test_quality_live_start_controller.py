@@ -59,6 +59,68 @@ def quality_request(tmp_path, monkeypatch):
     )
 
 
+def test_research_validates_snapshot_once_across_pages_and_decoder_workers(
+    quality_request, monkeypatch, tmp_path
+):
+    from functools import partial
+    import hsconfig.card_snapshot as snapshots
+    import hsconfig.source_acquisition as acquisition
+
+    discovery = controller.prepare_quality_live_start(quality_request)
+    card_count = len(controller.fetch_card_snapshot().to_value()["full_cards"])
+    urls = [f"https://example.test/guide-{index}" for index in range(3)]
+    draft = tmp_path / "shortlist.json"
+    draft.write_bytes(FrozenJsonDocument.from_value({
+        "acquisition_request_sha256": discovery.acquisition_request_sha256,
+        "urls": urls,
+        "discovery_outcome": "completed",
+    }).canonical_json)
+    row_checks = 0
+    acquiring = False
+    completed = 0
+    original_check = snapshots._validated_normalized_row
+
+    def check(row):
+        nonlocal row_checks
+        if acquiring:
+            row_checks += 1
+        return original_check(row)
+
+    def fault(point):
+        nonlocal acquiring, completed
+        if point == "after_started_attempt_checkpoint":
+            acquiring = True
+        elif point == "after_fetched_record_persistence":
+            completed += 1
+            if completed == 3:
+                acquiring = False
+
+    monkeypatch.setattr(snapshots, "_validated_normalized_row", check)
+    monkeypatch.setattr(controller, "_quality_fault", fault)
+    monkeypatch.setattr(acquisition, "collect_public_source_records", partial(
+        acquisition.collect_public_source_records,
+        resolver=lambda _: ["93.184.216.34"],
+        fetcher=lambda *_: (
+            200, "text/html",
+            ("<article>Shadow Priest guide: " + quality_request.deck_code + "</article>").encode(),
+        ),
+    ))
+
+    prepared = controller.complete_live_start_research(
+        session_root=discovery.run_root, draft_path=draft
+    )
+
+    assert isinstance(prepared, controller.LiveStartPreparation)
+    progress = FrozenJsonDocument.from_json_bytes(
+        (discovery.run_root / "research/progress.json").read_bytes()
+    ).to_value()
+    assert [row["state"] for row in progress["attempts"]] == ["completed"] * 3
+    assert [row["source_url"] for row in progress["source_records"]] == urls
+    assert all(row["deck_match"]["exact_deck_evidence"]["matched"]
+               for row in progress["source_records"])
+    assert row_checks == card_count
+
+
 def test_quality_prepare_seals_discovery_before_candidate_access(
     quality_request, monkeypatch
 ):

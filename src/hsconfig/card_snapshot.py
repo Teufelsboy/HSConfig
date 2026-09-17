@@ -1,9 +1,37 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import Context, ContextVar
 from hashlib import sha256
 from typing import Any
 
 from hsconfig.package_request import FrozenJsonDocument
+
+
+_VALIDATED_SNAPSHOT_BYTES: ContextVar[bytes | None] = ContextVar(
+    "hsconfig_validated_snapshot_bytes", default=None
+)
+
+
+@contextmanager
+def card_snapshot_validation_scope(snapshot: FrozenJsonDocument) -> Iterator[None]:
+    """Fully validate on entry; reuse only these immutable bytes until exit."""
+    token = _VALIDATED_SNAPSHOT_BYTES.set(None)
+    try:
+        # Nested/new scopes must still perform their own full entrance check.
+        validated_card_snapshot(snapshot)
+        _VALIDATED_SNAPSHOT_BYTES.set(snapshot.canonical_json)
+        yield
+    finally:
+        _VALIDATED_SNAPSHOT_BYTES.reset(token)
+
+
+def card_snapshot_worker_context() -> Context:
+    """Carry only the checked snapshot, never unrelated runtime authority."""
+    context = Context()
+    context.run(_VALIDATED_SNAPSHOT_BYTES.set, _VALIDATED_SNAPSHOT_BYTES.get())
+    return context
 
 
 _SNAPSHOT_FIELDS = frozenset(
@@ -83,10 +111,16 @@ def build_card_snapshot(
 
 
 def validated_card_snapshot(snapshot: FrozenJsonDocument) -> dict[str, Any]:
-    """Revalidate a frozen snapshot and all of its derived projections."""
+    """Validate the snapshot, or reuse an acquisition-local immutable check."""
     if type(snapshot) is not FrozenJsonDocument:
         raise ValueError("card_snapshot_invalid")
     value = snapshot.to_value()
+    # Never reuse a mutable projection or trust a caller-provided digest/flag.
+    # A different bytes object (even with equal content) takes the full path.
+    if type(snapshot.canonical_json) is bytes and (
+        snapshot.canonical_json is _VALIDATED_SNAPSHOT_BYTES.get()
+    ):
+        return value
     if not isinstance(value, dict) or set(value) != _SNAPSHOT_FIELDS:
         raise ValueError("card_snapshot_invalid")
     full_cards = value.get("full_cards")

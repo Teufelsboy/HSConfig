@@ -38,7 +38,7 @@ def test_research_messages_are_distinct_safe_and_bounded():
     assert "The guide search budget was exhausted." in result
     assert "A guide page returned an unsuccessful HTTP response." in result
     assert "A guide page request timed out." in result
-    assert "The shared page-acquisition deadline was exhausted." in result
+    assert "A guide page or the shared acquisition exceeded its time limit." in result
     assert "Additional research limitations are present in the preserved evidence." in result
 
 

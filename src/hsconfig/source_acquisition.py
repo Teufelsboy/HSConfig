@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code, decode_deck_code_from_snapshot
-from hsconfig.card_snapshot import validated_card_snapshot
+from hsconfig.card_snapshot import card_snapshot_worker_context, validated_card_snapshot
 from hsconfig.package_request import FrozenJsonDocument
 from hsconfig.evidence_contract import load_policy_profile
 from hsconfig.package_domain import PolicyProfile
@@ -444,7 +444,8 @@ def _bounded_stage(operation: Callable[[], Any], *, deadline_utc: float | None,
 
     # DNS and third-party transport can ignore socket timeouts. Never join these
     # workers on timeout. Their private queue cannot publish acquisition records.
-    Thread(target=run, daemon=True).start()
+    snapshot_context = card_snapshot_worker_context()
+    Thread(target=lambda: snapshot_context.run(run), daemon=True).start()
     try:
         succeeded, value = result.get(timeout=remaining)
     except Empty as exc:

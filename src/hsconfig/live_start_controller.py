@@ -3740,7 +3740,7 @@ _RESEARCH_VISIBLE_MESSAGES = {
     "discovery_budget_exhausted": "The guide search budget was exhausted.",
     "no_useful_observations": "No useful card-specific guide observations were retained.",
     "no_verified_exact_guide_observations": "No retained observation has verified exact-deck guide identity.",
-    "acquisition_research_budget_exhausted": "The shared page-acquisition deadline was exhausted.",
+    "acquisition_research_budget_exhausted": "A guide page or the shared acquisition exceeded its time limit.",
     "source_context_incomplete": "Some selected guide excerpts omit adjacent context; review the limitation before relying on them.",
     "acquisition_failed": "A guide page could not be acquired.",
     "acquisition_interrupted": "A guide page acquisition was interrupted.",
@@ -5384,6 +5384,7 @@ def _finish_quality_inputs(
 
 
 def _quality_research_under_lock(*, session_lease, current, draft_path=None):
+    from hsconfig.card_snapshot import card_snapshot_validation_scope
     from hsconfig.input_snapshot_manifest import _operator_bindings_from_values
     from hsconfig.live_start_research import validate_research_draft, research_timeout
     from hsconfig.source_acquisition import collect_public_source_records
@@ -5395,7 +5396,7 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
     ):
         raise SessionConflictError("live_start_quality_discovery_required")
     profile = load_operator_profile()
-    with lease_operator_profile(expected_profile=profile):
+    with lease_operator_profile(expected_profile=profile), ExitStack() as acquisition_scope:
         # Seed identity remains authoritative even when the final input CAS
         # interrupted after physically installing its successor documents.
         if "inputs/quality_seed.json" in current.artifact_bindings:
@@ -5460,6 +5461,7 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                 },
             )
         acquisition_budget_exhausted = False
+        snapshot_scope_started = False
         for url in urls:
             if url in {row["url"] for row in progress["attempts"]}:
                 continue
@@ -5489,6 +5491,10 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                 },
             )
             _quality_fault("after_started_attempt_checkpoint")
+            if not snapshot_scope_started:
+                # Keep the first full check inside the persisted total budget.
+                acquisition_scope.enter_context(card_snapshot_validation_scope(snapshot))
+                snapshot_scope_started = True
             acquired = collect_public_source_records(
                 deck_name=current.deck_name,
                 deck_identity=deck["deck_identity"],
@@ -5542,6 +5548,7 @@ def _quality_research_under_lock(*, session_lease, current, draft_path=None):
                 },
             )
             _quality_fault("after_fetched_record_persistence")
+        acquisition_scope.close()
         state = _load_quality_state(root=root, current=current, profile=profile)
         return _finish_quality_inputs(
             session_lease=session_lease,
