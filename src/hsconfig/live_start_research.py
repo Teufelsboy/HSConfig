@@ -37,6 +37,10 @@ _QUALIFICATION_HINT = re.compile(
     r"(?<!\w)(?:exception|except|unless|however|instead|only\s+if|never|do\s+not|don't)(?!\w)",
     re.IGNORECASE,
 )
+_STRATEGIC_CONTEXT_HINT = re.compile(
+    r"(?<!\w)(?:matchup|against|aggro|control|resource|removal|game\s+plan)(?!\w)",
+    re.IGNORECASE,
+)
 _RETAINED_FIELDS = (
     "evidence_id",
     "source_id",
@@ -113,9 +117,6 @@ def build_research_request(
     ):
         raise ValueError("research_queries_invalid")
     cards = deck_identity.get("cards", [])
-    names = [str(card.get("name", "")).strip() for card in cards if card.get("name")][
-        :3
-    ]
     classes = sorted(
         {str(card.get("card_class", "")) for card in cards if card.get("card_class")}
     )
@@ -124,13 +125,41 @@ def build_research_request(
         or deck_identity.get("card_class")
         or " ".join(classes)
     )
+    # Query relevance only: neither inferred archetype nor strategic authority.
+    label = str(deck_identity.get("deck_name") or "Deck").strip() or "Deck"
+    token_label = re.sub(r"([a-z])([A-Z])|([A-Z])(?=[A-Z][a-z])", r"\1\3 \2", label)
+    label_tokens = set(re.findall(r"[a-z]{3,}", token_label.casefold())) - {
+        "deck", "standard", "wild", "classic", "twist", "hearthstone",
+        "death", "knight", "demon", "hunter", "druid", "mage", "paladin",
+        "priest", "rogue", "shaman", "warlock", "warrior",
+    }
+    named_cards = [
+        card for card in cards
+        if isinstance(card.get("name"), str) and card["name"].strip()
+    ]
+    named_cards.sort(key=lambda card: (
+        not bool(label_tokens & set(re.findall(r"[a-z]{3,}", str(card["name"]).casefold()))),
+        not (str(card.get("card_class", "")).upper() == card_class.upper()
+             and card_class.upper() not in {"", "NEUTRAL"}),
+        str(card.get("card_id", "")),
+        str(card["name"]).casefold(),
+        str(card["name"]),
+    ))
+    names = []
+    seen_names = set()
+    for card in named_cards:
+        name = " ".join(str(card["name"]).split())
+        if name.casefold() not in seen_names:
+            names.append(name)
+            seen_names.add(name.casefold())
+        if len(names) == 3:
+            break
     format_name = _research_format(deck_identity.get("format"))
     if not names:
         raise ValueError("research_request_signature_cards_missing")
     factual_query = " ".join(
         [format_name, card_class, *names, "guide mulligan"]
     ).strip()
-    label = str(deck_identity.get("deck_name") or "Deck").strip() or "Deck"
     label_query = " ".join(
         [format_name, card_class, label, "guide strategy"]
     ).strip()
@@ -367,8 +396,33 @@ def _observation_windows(text: str, metadata: dict) -> list[tuple[str, bool]]:
             last_span += 1
         if match_end > spans[last_span][1]:
             continue
-        left = spans[max(0, span_index - 1)][0]
-        right = spans[min(len(spans) - 1, last_span + 1)][1]
+        left_index = max(0, span_index - 1)
+        right_index = min(len(spans) - 1, last_span + 1)
+        # Keep nearby cardless qualifications attached to a real card mention.
+        # Extend by at most two sentences total; never join distant passages.
+        remaining = 2
+        candidates = sorted(
+            (distance, side, index)
+            for distance in (1, 2)
+            for side, index in (("left", left_index - distance), ("right", right_index + distance))
+            if 0 <= index < len(spans)
+        )
+        for _distance, side, index in candidates:
+            sentence = text[spans[index][0]:spans[index][1]]
+            added = left_index - index if side == "left" else index - right_index
+            if (
+                0 < added <= remaining
+                and not _mentioned_cards(sentence, metadata)
+                and (_OPENING_HINT.search(sentence) or _STRATEGIC_CONTEXT_HINT.search(sentence))
+                and (_DECISION_HINT.search(sentence) or _QUALIFICATION_HINT.search(sentence))
+            ):
+                if side == "left":
+                    left_index = index
+                else:
+                    right_index = index
+                remaining -= added
+        left = spans[left_index][0]
+        right = spans[right_index][1]
         start, end = left, right
         if right - left > 600:
             before = (600 - (match_end - match_start)) // 2

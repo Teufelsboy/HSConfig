@@ -5723,6 +5723,14 @@ def prepare_quality_live_start(
                     ),
                     "",
                 ),
+                "card_class": next(
+                    (
+                        row.get("card_class", "")
+                        for row in captured["full_cards"]
+                        if row["id"] == card["card_id"]
+                    ),
+                    "",
+                ),
             }
             for card in identity["cards"]
         ],
