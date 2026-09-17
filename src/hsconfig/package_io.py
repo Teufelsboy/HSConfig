@@ -38,6 +38,7 @@ MAX_FILESYSTEM_DEPTH = 64
 MAX_FILESYSTEM_ENTRIES_PER_DIRECTORY = 10_000
 MAX_FILESYSTEM_NODES = 110_000
 _REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+_NATIVE_PATH_TYPE = type(Path())
 PathIdentity = tuple[int, int, int]
 SiblingNoReplaceFaultPoint = Literal[
     "after_posix_link_before_source_unlink",
@@ -2393,7 +2394,10 @@ def path_identity_from_status(status: os.stat_result) -> PathIdentity:
 
 
 def path_identity(path: Path) -> PathIdentity:
-    return path_identity_from_status(Path(path).lstat())
+    # Keep normalization for subclasses and other path-like inputs.
+    if type(path) is not _NATIVE_PATH_TYPE:
+        path = Path(path)
+    return path_identity_from_status(path.lstat())
 
 
 def require_plain_directory(path: Path) -> None:

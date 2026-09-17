@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import cProfile
 import errno
 import json
 import multiprocessing
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
 import signal
 import stat
 import sys
@@ -96,6 +97,122 @@ def _create_ntfs_stream_or_skip(path: Path) -> Path:
     stream_path = Path(f"{path}:review-fix")
     stream_path.write_bytes(b"foreign-stream")
     return stream_path
+
+
+@pytest.mark.parametrize("directory", (False, True))
+def test_path_identity_does_not_reconstruct_native_path(
+    tmp_path: Path, directory: bool,
+) -> None:
+    path = tmp_path / "identity"
+    if directory:
+        path.mkdir()
+    else:
+        path.write_bytes(b"identity")
+    status = os.lstat(path)
+    profiler = cProfile.Profile()
+
+    identity = profiler.runcall(package_io.path_identity, path)
+
+    assert identity == (status.st_dev, status.st_ino, status.st_mode)
+    assert sum(
+        entry.callcount for entry in profiler.getstats()
+        if entry.code is Path.__new__.__code__
+    ) == 0
+
+
+@pytest.mark.parametrize("kind", ("text", "pathlike", "pure_path", "empty_text"))
+def test_path_identity_preserves_input_normalization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "identity.bin"
+    target.write_bytes(b"identity")
+    text = "." + os.sep + "identity.bin"
+
+    class TextPath(os.PathLike[str]):
+        def __fspath__(self) -> str:
+            return text
+
+    value = {
+        "text": text,
+        "pathlike": TextPath(),
+        "pure_path": PurePath(text),
+        "empty_text": "",
+    }[kind]
+    status = os.lstat(tmp_path if kind == "empty_text" else target)
+
+    assert package_io.path_identity(value) == (
+        status.st_dev, status.st_ino, status.st_mode,
+    )
+
+
+def test_path_identity_normalizes_subclass_before_filesystem_dispatch(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "identity.bin"
+    target.write_bytes(b"identity")
+    status = os.lstat(target)
+
+    class CustomPath(type(tmp_path)):
+        def lstat(self) -> os.stat_result:
+            raise AssertionError("subclass lstat must not be dispatched")
+
+        def __fspath__(self) -> str:
+            raise AssertionError("subclass fspath must not be dispatched")
+
+    assert package_io.path_identity(CustomPath(target)) == (
+        status.st_dev, status.st_ino, status.st_mode,
+    )
+
+
+@pytest.mark.parametrize("value", (b"identity.bin", 0, False, None))
+def test_path_identity_preserves_invalid_input_rejection(value: object) -> None:
+    with pytest.raises(TypeError):
+        package_io.path_identity(value)
+
+
+@pytest.mark.parametrize("as_text", (False, True))
+def test_path_identity_preserves_missing_path_error(
+    tmp_path: Path, as_text: bool,
+) -> None:
+    missing = tmp_path / "missing.bin"
+    with pytest.raises(FileNotFoundError) as caught:
+        package_io.path_identity(str(missing) if as_text else missing)
+    assert caught.value.errno == errno.ENOENT
+    assert caught.value.filename == str(missing)
+
+
+def test_path_identity_observes_replacement_without_caching(tmp_path: Path) -> None:
+    target = tmp_path / "identity.bin"
+    replacement = tmp_path / "replacement.bin"
+    target.write_bytes(b"old")
+    replacement.write_bytes(b"new")
+    before = package_io.path_identity(target)
+    status = os.lstat(replacement)
+    expected = status.st_dev, status.st_ino, status.st_mode
+    assert before != expected
+
+    os.replace(replacement, target)
+
+    assert package_io.path_identity(target) == expected
+
+
+def test_path_identity_observes_symlink_not_its_target(tmp_path: Path) -> None:
+    target = tmp_path / "target.bin"
+    link = tmp_path / "link.bin"
+    target.write_bytes(b"target")
+    try:
+        link.symlink_to(target)
+    except OSError as error:
+        if os.name == "nt" and error.winerror == 1314:
+            pytest.skip("Windows symlink privilege unavailable")
+        raise
+    status = os.lstat(link)
+    expected = status.st_dev, status.st_ino, status.st_mode
+    assert stat.S_ISLNK(expected[2])
+    assert package_io.path_identity(link) == expected
+    target.unlink()
+    assert package_io.path_identity(link) == expected
 
 
 def test_bounded_package_snapshot_returns_stable_sorted_content(tmp_path: Path) -> None:
